@@ -1,56 +1,112 @@
 "use client";
-
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { Suspense, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { api, message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CustomerAvatar } from "@/components/shared/customer-avatar";
-import { currentUser, tenant } from "@/lib/mock-data";
-
-export default function InvitePage() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-
+export default function Page() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <CustomerAvatar name={currentUser.name} color={currentUser.avatarColor} size="lg" />
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">You&apos;ve been invited</h1>
-          <p className="text-[13px] text-muted-foreground">
-            <span className="text-foreground">{currentUser.name}</span> invited you to join{" "}
-            <span className="text-foreground">{tenant.name}</span> on Janus as a Support Agent.
+    <Suspense fallback={<p>Loading invitation…</p>}>
+      <Invite />
+    </Suspense>
+  );
+}
+function Invite() {
+  const router = useRouter();
+  const token = useSearchParams().get("token");
+  const invitation = useApi<{ tenant: string; role: string; inviter: string }>(
+    token ? `/invitations/${encodeURIComponent(token)}` : null,
+  );
+  const [existing, setExisting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <div className="flex flex-col gap-5">
+      <h1 className="text-2xl font-semibold">Join your team</h1>
+      {!invitation.data ? (
+        <p role="status">
+          {invitation.error ||
+            (token
+              ? "Loading invitation…"
+              : "Open the invitation link from your email.")}
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {invitation.data.inviter} invited you to {invitation.data.tenant} as{" "}
+            {invitation.data.role}.
           </p>
-        </div>
-      </div>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          router.push("/dashboard");
-        }}
-        className="flex flex-col gap-4"
-      >
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="name">Your name</Label>
-          <Input id="name" required placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">Set a password</Label>
-          <Input id="password" type="password" required placeholder="At least 8 characters" />
-        </div>
-        <Button type="submit" className="w-full">
-          Accept invite & join
-          <ArrowRight className="size-3.5" />
-        </Button>
-      </form>
-
-      <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-[11px] text-muted-foreground">
-        <ShieldCheck className="size-3.5 shrink-0 text-accent" />
-        Your access is scoped by role and tenant. An admin can change your permissions at any time.
-      </div>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const values = new FormData(e.currentTarget);
+              setBusy(true);
+              setError("");
+              try {
+                await api(`/invitations/${encodeURIComponent(token!)}/accept`, {
+                  method: "POST",
+                  body: JSON.stringify(
+                    existing
+                      ? {}
+                      : {
+                          name: values.get("name"),
+                          password: values.get("password"),
+                        },
+                  ),
+                });
+                router.replace("/leads");
+                router.refresh();
+              } catch (error) {
+                setError(message(error));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={existing}
+                onChange={(e) => setExisting(e.target.checked)}
+              />
+              I already have a Janus account
+            </label>
+            {existing ? (
+              <p className="text-sm">
+                Sign in with the invited email in another tab, then accept here.{" "}
+                <Link className="text-accent" href="/login" target="_blank">
+                  Sign in
+                </Link>
+              </p>
+            ) : (
+              <>
+                <Label htmlFor="invite-name">Name</Label>
+                <Input id="invite-name" name="name" required maxLength={120} />
+                <Label htmlFor="invite-password">Password</Label>
+                <Input
+                  id="invite-password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  maxLength={128}
+                />
+              </>
+            )}
+            {error && (
+              <p role="alert" className="text-sm text-danger">
+                {error}
+              </p>
+            )}
+            <Button disabled={busy}>Accept invitation</Button>
+          </form>
+        </>
+      )}
     </div>
   );
 }

@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: janus
+      POSTGRES_USER: janus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?Set WORKER_DB_PASSWORD}
+    ports: ["127.0.0.1:55433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U janus -d janus"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  migrate:
+    build: .
+    command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+    environment:
+      JANUS_DATABASE_URL: postgresql+asyncpg://janus_app:${APP_DB_PASSWORD}@postgres:5432/janus
+      JANUS_MIGRATION_DATABASE_URL: postgresql+asyncpg://janus:${POSTGRES_PASSWORD}@postgres:5432/janus
+      JANUS_JWT_SECRET: ${JANUS_JWT_SECRET:?Set JANUS_JWT_SECRET}
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    build: .
+    env_file: .env
+    environment:
+      JANUS_DATABASE_URL: postgresql+asyncpg://janus_app:${APP_DB_PASSWORD}@postgres:5432/janus
+      JANUS_JWT_SECRET: ${JANUS_JWT_SECRET:?Set JANUS_JWT_SECRET}
+      # Do not pass migration credentials to the running API.
+      JANUS_MIGRATION_DATABASE_URL: ""
+      POSTGRES_PASSWORD: ""
+      APP_DB_PASSWORD: ""
+      WORKER_DB_PASSWORD: ""
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  worker:
+    build: .
+    command: ["/app/.venv/bin/python", "-m", "janus_api.worker.main"]
+    env_file: .env
+    environment:
+      JANUS_DATABASE_URL: postgresql+asyncpg://janus_worker:${WORKER_DB_PASSWORD}@postgres:5432/janus
+      JANUS_MIGRATION_DATABASE_URL: ""
+      POSTGRES_PASSWORD: ""
+      APP_DB_PASSWORD: ""
+      WORKER_DB_PASSWORD: ""
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+volumes:
+  pgdata:

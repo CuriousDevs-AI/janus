@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
-  Inbox,
+  MessageCircle,
   Radio,
   UserRoundPlus,
   Handshake,
@@ -38,7 +38,7 @@ export const navSections: NavSection[] = [
     title: "Main",
     items: [
       { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Inbox", href: "/inbox", icon: Inbox },
+      { label: "Chats", href: "/inbox", icon: MessageCircle },
       { label: "Lead Sources", href: "/lead-sources", icon: Radio },
       { label: "Leads", href: "/leads", icon: UserRoundPlus },
       { label: "Deals", href: "/deals", icon: Handshake },

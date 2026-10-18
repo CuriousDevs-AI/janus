@@ -5,7 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrencyINR(amount: number): string {
+export function formatCurrencyINR(amount: number, compact = true): string {
+  if (!compact)
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)}Cr`;
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
   if (amount >= 1000) return `₹${(amount / 1000).toFixed(1)}K`;
@@ -18,7 +25,7 @@ export function formatNumber(n: number): string {
 
 export function formatRelativeTime(iso: string): string {
   const date = new Date(iso);
-  const now = new Date("2026-08-17T18:30:00+05:30");
+  const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.round(diffMs / 60000);
   if (diffMin < 1) return "just now";

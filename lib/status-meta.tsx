@@ -6,15 +6,13 @@ import {
   Phone,
   CalendarClock,
   StickyNote,
-  Share2,
-  Camera,
   Megaphone,
-  Search,
-  Briefcase,
   Users,
   Webhook,
   Code2,
   FileSpreadsheet,
+  Store,
+  PenLine,
 } from "lucide-react";
 import type {
   LeadStage,
@@ -99,17 +97,15 @@ export const channelMeta: Record<ChannelType, { label: string; icon: ComponentTy
 
 export const leadSourceMeta: Record<LeadSource, { label: string; icon: ComponentType<{ className?: string }> }> = {
   website: { label: "Website", icon: Globe },
-  email: { label: "Email", icon: Mail },
   whatsapp: { label: "WhatsApp", icon: MessageCircle },
-  facebook: { label: "Facebook", icon: Share2 },
-  instagram: { label: "Instagram", icon: Camera },
-  meta_ads: { label: "Meta Ads", icon: Megaphone },
-  google_ads: { label: "Google Ads", icon: Search },
-  linkedin: { label: "LinkedIn", icon: Briefcase },
-  referral: { label: "Referral", icon: Users },
-  webhook: { label: "Webhook", icon: Webhook },
-  api: { label: "API", icon: Code2 },
+  phone_call: { label: "Phone Calls & Missed Calls", icon: Phone },
+  webhook: { label: "Custom Webhook", icon: Webhook },
+  api: { label: "REST API", icon: Code2 },
   csv_import: { label: "CSV Import", icon: FileSpreadsheet },
+  meta_lead_ads: { label: "Meta Lead Ads", icon: Megaphone },
+  indiamart: { label: "IndiaMART", icon: Store },
+  manual: { label: "Manual", icon: PenLine },
+  referral: { label: "Referral", icon: Users },
 };
 
 export const automationTriggerMeta: Record<AutomationTriggerKind, string> = {

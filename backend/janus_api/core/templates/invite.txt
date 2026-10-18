@@ -1,0 +1,2 @@
+Join your team on Janus: {url}
+This invitation expires in 7 days and can be used once.

@@ -29,13 +29,10 @@ export const pipelineFunnel: FunnelStage[] = [
 
 export const leadsBySource = [
   { source: "Website", leads: 342, conversion: 24.1 },
-  { source: "Facebook", leads: 128, conversion: 10.2 },
-  { source: "Email", leads: 96, conversion: 19.8 },
+  { source: "Meta Lead Ads", leads: 180, conversion: 9.7 },
+  { source: "Manual", leads: 157, conversion: 18.9 },
   { source: "Referral", leads: 74, conversion: 31.4 },
-  { source: "LinkedIn", leads: 61, conversion: 17.6 },
-  { source: "Google Ads", leads: 88, conversion: 12.9 },
-  { source: "Instagram", leads: 52, conversion: 8.4 },
-  { source: "Webhook / API", leads: 40, conversion: 22.0 },
+  { source: "Webhook / API", leads: 128, conversion: 15.7 },
 ];
 
 export const revenueTrend: TimeSeriesPoint[] = [

@@ -87,8 +87,7 @@ export default function IntegrationsPage() {
           <div className="flex items-center gap-3">
             <Radio className="size-4 shrink-0 text-accent" />
             <p className="text-[12.5px] text-foreground">
-              Looking for Email, Website Chat, WhatsApp or Facebook &amp; Instagram? Those are lead &amp; conversation
-              channels, managed under <span className="font-medium">Lead Sources</span>.
+              Looking for Website Forms, WhatsApp, Phone Calls or Custom Webhooks? Manage them under <span className="font-medium">Lead Sources</span>.
             </p>
           </div>
           <ArrowRight className="size-4 shrink-0 text-accent transition-transform group-hover:translate-x-0.5" />

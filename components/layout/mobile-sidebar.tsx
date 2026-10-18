@@ -1,19 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useAppStore } from "@/lib/stores/app-store";
+import { useUIStore } from "@/lib/stores/ui-store";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { SidebarNav } from "@/components/layout/sidebar";
 
 export function MobileSidebar() {
-  const open = useAppStore((s) => s.mobileNavOpen);
-  const setOpen = useAppStore((s) => s.setMobileNavOpen);
+  const open = useUIStore((s) => s.mobileNavOpen);
+  const setOpen = useUIStore((s) => s.setMobileNavOpen);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent side="left" className="max-w-[270px] p-0 md:hidden">
         <div className="flex h-14 items-center border-b border-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setOpen(false)}>
+          <Link
+            href="/leads"
+            className="flex items-center gap-2"
+            onClick={() => setOpen(false)}
+          >
             <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">
               C
             </span>

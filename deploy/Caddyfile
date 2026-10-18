@@ -1,0 +1,28 @@
+{
+	email {$TLS_EMAIL}
+	# Email links and webhook URLs contain bearer tokens. Keep request objects out of errors.
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request delete
+				resp_headers delete
+			}
+		}
+	}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 6MB
+	}
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN} {
+	request_body {
+		max_size 6MB
+	}
+	reverse_proxy api:8000
+}

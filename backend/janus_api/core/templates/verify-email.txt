@@ -1,0 +1,3 @@
+Verify your Janus email: {url}
+This link expires in 24 hours and can be used once.
+If you didn't sign up, ignore this email.

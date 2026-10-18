@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import type { VariantProps } from "class-variance-authority";
-import { Globe, Webhook, Fingerprint, Key, PenLine, FileSpreadsheet, CheckCircle2, XCircle, Circle } from "lucide-react";
+import { Globe, Webhook, Fingerprint, Key, RefreshCcw, FileSpreadsheet, CheckCircle2, XCircle, Circle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { badgeVariants } from "@/components/ui/badge";
 import type { LeadSourceConnection, IngestionResult } from "@/lib/types";
@@ -11,6 +11,7 @@ export const sourceStatusMeta: Record<LeadSourceConnection["status"], { label: s
   connected: { label: "Connected", tone: "success" },
   available: { label: "Not connected", tone: "neutral" },
   error: { label: "Needs attention", tone: "danger" },
+  coming_soon: { label: "Coming soon", tone: "neutral" },
 };
 
 export function SourceStatusBadge({ status, className }: { status: LeadSourceConnection["status"]; className?: string }) {
@@ -27,7 +28,7 @@ export const connectionKindMeta: Record<LeadSourceConnection["connectionKind"], 
   webhook: { label: "Webhook", icon: Webhook },
   oauth: { label: "Connected account", icon: Fingerprint },
   api_key: { label: "API key", icon: Key },
-  manual: { label: "Manual / no connection", icon: PenLine },
+  pull: { label: "Scheduled pull", icon: RefreshCcw },
   csv: { label: "File import", icon: FileSpreadsheet },
 };
 

@@ -1,13 +1,9 @@
 import type { Integration } from "@/lib/types";
 
 // Third-party business tools — CRM sync, commerce, scheduling, productivity.
-// Communication channels (Email, Website Chat, WhatsApp, Facebook & Instagram
-// Leads) are NOT listed here — they're entry points into the customer
-// lifecycle, not generic app connections, so they're owned by Lead Sources
-// (and surfaced again in Settings -> Channels) as the single source of
-// truth. Duplicating them here previously caused Integrations and Lead
-// Sources to silently disagree about whether WhatsApp/Facebook were even
-// connected.
+// Lead capture connections live in lead-sources.ts. Communication channels
+// are configured in Settings → Channels; this list contains business tools.
+
 export const integrations: Integration[] = [
   {
     id: "int-calendar",
