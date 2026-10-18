@@ -58,9 +58,8 @@ const bySourceLeadsDesc = [...leadsBySource].sort((a, b) => b.leads - a.leads);
 const bySourceConversionDesc = [...leadsBySource].sort((a, b) => b.conversion - a.conversion);
 
 const website = sourceByName("Website");
-const facebook = sourceByName("Facebook");
+const metaLeadAds = sourceByName("Meta Lead Ads");
 const referral = sourceByName("Referral");
-const instagram = sourceByName("Instagram");
 const secondBySourceVolume = bySourceLeadsDesc.find((s) => s.source !== website.source)!;
 const websiteVsSecondRatio = +(website.leads / secondBySourceVolume.leads).toFixed(1);
 
@@ -127,7 +126,7 @@ const revenueGrowthPct = Math.round(((lastRevenue.value - firstRevenue.value) / 
 
 const CANNED_ENTRIES: CannedEntry[] = [
   {
-    keywords: ["website", "how many leads", "leads came from", "facebook", "source"],
+    keywords: ["website", "how many leads", "leads came from", "meta lead ads", "source"],
     data: {
       question: "How many leads came from the website this month?",
       answer: `Website is our largest lead source this month with ${website.leads} leads at a ${website.conversion}% conversion rate. That's ${websiteVsSecondRatio}x the volume of ${secondBySourceVolume.source}, the next-largest source (${secondBySourceVolume.leads} leads, ${secondBySourceVolume.conversion}% conversion) — and Website converts more than double as well.`,
@@ -212,7 +211,7 @@ const CANNED_ENTRIES: CannedEntry[] = [
     ],
     data: {
       question: "Why did conversion improve in August?",
-      answer: `Conversion didn't fall — it rose. Overall conversion climbed from ${firstConv.value}% in ${firstConv.date} to ${lastConv.value}% in ${lastConv.date}, a +${convDelta}pt improvement over the period. There was one dip along the way: ${convDip?.date} slipped to ${convDip?.value}% from ${convDipPrev?.value}% in ${convDipPrev?.date}, before rebounding the following month. Two likely contributors: the sales cycle has been shortening (${firstCycle.value} days in ${firstCycle.date} down to ${lastCycle.value} days in ${lastCycle.date}), and the lead mix has been tilting toward higher-converting sources like ${referral.source} (${referral.conversion}%) and ${website.source} (${website.conversion}%) relative to lower-converting paid channels like ${facebook.source} (${facebook.conversion}%) and ${instagram.source} (${instagram.conversion}%).`,
+      answer: `Conversion didn't fall — it rose. Overall conversion climbed from ${firstConv.value}% in ${firstConv.date} to ${lastConv.value}% in ${lastConv.date}, a +${convDelta}pt improvement over the period. There was one dip along the way: ${convDip?.date} slipped to ${convDip?.value}% from ${convDipPrev?.value}% in ${convDipPrev?.date}, before rebounding the following month. Two likely contributors: the sales cycle has been shortening (${firstCycle.value} days in ${firstCycle.date} down to ${lastCycle.value} days in ${lastCycle.date}), and the lead mix has been tilting toward higher-converting sources like ${referral.source} (${referral.conversion}%) and ${website.source} (${website.conversion}%) relative to lower-converting paid channels like ${metaLeadAds.source} (${metaLeadAds.conversion}%).`,
       dataUsed: ["Conversion Trend", "Sales Cycle", "Lead Sources"],
       calculation: {
         metric: "Month-over-month conversion rate",

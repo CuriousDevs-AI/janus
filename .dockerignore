@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+node_modules
+.next
+.env*
+**/.env*
+*.pem
+*.tsbuildinfo
+backend
+deploy
+scripts
+.DS_Store

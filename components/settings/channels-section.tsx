@@ -15,11 +15,10 @@ import type { ChannelType } from "@/lib/types";
 
 const channels: ChannelType[] = ["website_chat", "email", "whatsapp"];
 
-// The same channels double as lead sources — reuse that connection config
+// Website and WhatsApp also capture leads — reuse their connection config
 // (webhook URLs, embed snippet, business account) instead of duplicating it.
 const sourceByChannel: Partial<Record<ChannelType, (typeof leadSourceConnections)[number]>> = {
   website_chat: leadSourceConnections.find((s) => s.source === "website"),
-  email: leadSourceConnections.find((s) => s.source === "email"),
   whatsapp: leadSourceConnections.find((s) => s.source === "whatsapp"),
 };
 
@@ -152,9 +151,7 @@ export function ChannelsSection() {
                   {source.webhookUrl && (
                     <div className="flex flex-col gap-1.5">
                       <span className="text-[11px] text-muted-foreground">
-                        {channel === "whatsapp"
-                          ? "Configured as the callback URL in your WhatsApp Cloud API app — this is where incoming messages land. Outgoing replies send back through the same API using the number above."
-                          : "Inbound parse webhook — new mail to your connected address lands here and appears in the same customer's timeline. Outgoing replies send from the address above."}
+                        Configured as the callback URL in your WhatsApp Cloud API app — this is where incoming messages land. Outgoing replies send back through the same API using the number above.
                       </span>
                       <div className="flex items-center justify-between gap-2 border border-border bg-surface px-2.5 py-2">
                         <code className="text-mono truncate text-[11px] text-foreground">{source.webhookUrl}</code>

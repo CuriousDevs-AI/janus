@@ -61,7 +61,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-2 — Priya Mehta / Nova Systems
   // ---------------------------------------------------------------------
-  a("cus-2", "lead_created", SYS, "Lead created from Facebook lead ad", "2026-08-14T11:05:00+05:30", { relatedId: "lead-2", relatedKind: "lead" }),
+  a("cus-2", "lead_created", SYS, "Historical lead — Meta Lead Ads", "2026-08-14T11:05:00+05:30", { relatedId: "lead-2", relatedKind: "lead" }),
   a("cus-2", "ai_qualified", AI.qualification, "AI qualified lead — score 78", "2026-08-14T11:08:00+05:30"),
   a("cus-2", "deal_created", H.riya, "Deal created — Nova Unified Inbox (₹5,40,000)", "2026-08-14T14:00:00+05:30", { relatedId: "deal-4", relatedKind: "deal" }),
   a("cus-2", "proposal_sent", H.riya, "Proposal sent — Nova Unified Inbox", "2026-08-15T12:00:00+05:30", { relatedId: "deal-4", relatedKind: "deal" }),
@@ -82,7 +82,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-4 — Meera Nair / Vertex AI
   // ---------------------------------------------------------------------
-  a("cus-4", "lead_created", SYS, "Lead created via LinkedIn outreach reply", "2026-08-10T08:40:00-07:00", { relatedId: "lead-4", relatedKind: "lead" }),
+  a("cus-4", "lead_created", SYS, "Lead added manually", "2026-08-10T08:40:00-07:00", { relatedId: "lead-4", relatedKind: "lead" }),
   a("cus-4", "ai_qualified", AI.qualification, "AI qualified lead — score 72", "2026-08-10T08:45:00-07:00"),
   a("cus-4", "message", CUST, "Asked about multi-region deployments via website chat", "2026-08-16T09:05:00-07:00", { relatedId: "conv-8", relatedKind: "conversation" }),
   a("cus-4", "ai_action", AI.sales, "AI answered multi-region deployment question", "2026-08-16T09:06:00-07:00", { relatedId: "conv-8", relatedKind: "conversation" }),
@@ -97,7 +97,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-6 — Sneha Rao / Zenith Cloud
   // ---------------------------------------------------------------------
-  a("cus-6", "lead_created", SYS, "Lead created via email campaign", "2025-02-11T10:00:00+08:00", { relatedId: "lead-6", relatedKind: "lead" }),
+  a("cus-6", "lead_created", SYS, "Lead added manually", "2025-02-11T10:00:00+08:00", { relatedId: "lead-6", relatedKind: "lead" }),
   a("cus-6", "deal_won", H.karan, "Deal won — onboarded as customer", "2025-03-01T09:00:00+08:00"),
   a("cus-6", "customer_created", SYS, "Sneha Rao became a customer", "2025-03-01T09:05:00+08:00"),
   a("cus-6", "human_action", H.karan, "Requested deletion of legacy Zapier credentials", "2026-08-12T09:00:00+08:00", { relatedId: "appr-10", relatedKind: "approval" }),
@@ -108,7 +108,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-7 — Vivaan Kapoor / Lumen Robotics
   // ---------------------------------------------------------------------
-  a("cus-7", "lead_created", SYS, "Lead created from Google Ads — Robotics Search Q3", "2026-08-16T12:05:00+02:00", { relatedId: "lead-7", relatedKind: "lead" }),
+  a("cus-7", "lead_created", SYS, "Lead captured via webhook — Google Ads Lead Form — Robotics Search Q3", "2026-08-16T12:05:00+02:00", { relatedId: "lead-7", relatedKind: "lead" }),
   a("cus-7", "ai_qualified", AI.qualification, "AI qualified lead — score 54, limited signal so far", "2026-08-16T12:07:00+02:00"),
 
   // ---------------------------------------------------------------------
@@ -144,7 +144,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-11 — Dev Patel / Quanta Finance
   // ---------------------------------------------------------------------
-  a("cus-11", "lead_created", SYS, "Lead created from Meta Ads retargeting", "2026-08-12T15:40:00+05:30", { relatedId: "lead-11", relatedKind: "lead" }),
+  a("cus-11", "lead_created", SYS, "Lead added manually", "2026-08-12T15:40:00+05:30", { relatedId: "lead-11", relatedKind: "lead" }),
   a("cus-11", "message", CUST, "First WhatsApp contact — asked about AI support for payments product", "2026-08-13T10:00:00+05:30", { relatedId: "conv-10", relatedKind: "conversation" }),
   a("cus-11", "ai_qualified", AI.qualification, "AI qualified lead — score 61", "2026-08-13T10:01:30+05:30"),
   a("cus-11", "deal_created", H.riya, "Deal created — Growth Plan Rollout (₹2,40,000)", "2026-08-13T11:00:00+05:30", { relatedId: "deal-1", relatedKind: "deal" }),
@@ -168,7 +168,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-14 — Aditi Verma / Aster Biotech
   // ---------------------------------------------------------------------
-  a("cus-14", "lead_created", SYS, "Lead created from Instagram campaign", "2026-08-05T09:15:00+02:00", { relatedId: "lead-14", relatedKind: "lead" }),
+  a("cus-14", "lead_created", SYS, "Historical lead — Meta Lead Ads", "2026-08-05T09:15:00+02:00", { relatedId: "lead-14", relatedKind: "lead" }),
   a("cus-14", "ai_qualified", AI.qualification, "AI qualified lead — score 65", "2026-08-05T09:20:00+02:00"),
   a("cus-14", "deal_created", H.riya, "Deal created — Aster R&D Support Desk (₹3,80,000)", "2026-08-06T09:00:00+02:00", { relatedId: "deal-2", relatedKind: "deal" }),
   a("cus-14", "message", H.riya, "Shared regulatory compliance one-pager", "2026-08-15T09:00:00+02:00"),
@@ -183,7 +183,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-16 — Naina Chopra / Anchorpoint Systems
   // ---------------------------------------------------------------------
-  a("cus-16", "lead_created", SYS, "Lead created via LinkedIn outreach", "2026-07-30T10:00:00+03:00", { relatedId: "lead-16", relatedKind: "lead" }),
+  a("cus-16", "lead_created", SYS, "Lead added manually", "2026-07-30T10:00:00+03:00", { relatedId: "lead-16", relatedKind: "lead" }),
   a("cus-16", "deal_created", H.karan, "Deal created — Anchorpoint Security Rollout (₹9,20,000)", "2026-07-31T10:00:00+03:00", { relatedId: "deal-3", relatedKind: "deal" }),
   a("cus-16", "message", H.karan, "Delivered security architecture demo", "2026-08-14T10:00:00+03:00"),
   a("cus-16", "human_action", H.karan, "Shared SOC2 report — required approval", "2026-08-16T10:10:00+03:00", { relatedId: "appr-5", relatedKind: "approval" }),
@@ -193,7 +193,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-17 — Farhan Ali / Brightline Media
   // ---------------------------------------------------------------------
-  a("cus-17", "lead_created", SYS, "Lead created via email outreach", "2025-03-09T09:00:00-08:00", { relatedId: "lead-17", relatedKind: "lead" }),
+  a("cus-17", "lead_created", SYS, "Lead added manually", "2025-03-09T09:00:00-08:00", { relatedId: "lead-17", relatedKind: "lead" }),
   a("cus-17", "deal_won", H.sana, "Deal won — onboarded as customer", "2025-03-28T09:00:00-08:00"),
   a("cus-17", "customer_created", SYS, "Farhan Ali became a customer", "2025-03-28T09:05:00-08:00"),
   a("cus-17", "ticket_created", CUST, "Ticket #1002 opened — SSO login intermittently failing", "2026-08-15T15:40:00-08:00", { relatedId: "tck-1002", relatedKind: "ticket" }),
@@ -220,7 +220,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-20 — Kiara D'Souza / Granite Payments
   // ---------------------------------------------------------------------
-  a("cus-20", "lead_created", SYS, "Lead created from Google Ads — Fintech Search", "2026-08-16T09:20:00+05:30", { relatedId: "lead-20", relatedKind: "lead" }),
+  a("cus-20", "lead_created", SYS, "Lead captured via webhook — Google Ads Lead Form — Fintech Search", "2026-08-16T09:20:00+05:30", { relatedId: "lead-20", relatedKind: "lead" }),
   a("cus-20", "ai_qualified", AI.qualification, "AI qualified lead — score 69", "2026-08-16T09:25:00+05:30"),
 
   // ---------------------------------------------------------------------
@@ -232,13 +232,13 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-22 — Sofia Martins / Driftwood Hospitality
   // ---------------------------------------------------------------------
-  a("cus-22", "lead_created", SYS, "Lead created from Instagram campaign", "2026-08-17T08:10:00+05:30", { relatedId: "lead-22", relatedKind: "lead" }),
+  a("cus-22", "lead_created", SYS, "Historical lead — Meta Lead Ads", "2026-08-17T08:10:00+05:30", { relatedId: "lead-22", relatedKind: "lead" }),
   a("cus-22", "ai_qualified", AI.qualification, "AI qualified lead — score 47, just submitted contact form", "2026-08-17T08:12:00+05:30"),
 
   // ---------------------------------------------------------------------
   // cus-23 — Liam Chen / Junction Mobility (lost)
   // ---------------------------------------------------------------------
-  a("cus-23", "lead_created", SYS, "Lead created from Meta Ads", "2026-06-20T10:00:00+02:00", { relatedId: "lead-23", relatedKind: "lead" }),
+  a("cus-23", "lead_created", SYS, "Lead added manually", "2026-06-20T10:00:00+02:00", { relatedId: "lead-23", relatedKind: "lead" }),
   a("cus-23", "deal_lost", H.aman, "Lead marked Lost — chose a mobility-specific competitor", "2026-07-10T10:00:00+02:00", { relatedId: "lead-23", relatedKind: "lead" }),
 
   // ---------------------------------------------------------------------
@@ -255,7 +255,7 @@ export const activities: Activity[] = [
   // ---------------------------------------------------------------------
   // cus-25 — Diego Fernandes / Meadowline Foods
   // ---------------------------------------------------------------------
-  a("cus-25", "lead_created", SYS, "Lead created via email nurture sequence", "2025-08-30T09:00:00+05:30", { relatedId: "lead-25", relatedKind: "lead" }),
+  a("cus-25", "lead_created", SYS, "Lead added manually", "2025-08-30T09:00:00+05:30", { relatedId: "lead-25", relatedKind: "lead" }),
   a("cus-25", "deal_won", H.sana, "Deal won — onboarded as customer", "2025-09-18T09:00:00+05:30"),
   a("cus-25", "customer_created", SYS, "Diego Fernandes became a customer", "2025-09-18T09:05:00+05:30"),
 ];

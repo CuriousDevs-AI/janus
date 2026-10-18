@@ -111,17 +111,15 @@ export interface Customer {
 
 export type LeadSource =
   | "website"
-  | "email"
   | "whatsapp"
-  | "facebook"
-  | "instagram"
-  | "meta_ads"
-  | "google_ads"
-  | "linkedin"
-  | "referral"
+  | "phone_call"
   | "webhook"
   | "api"
-  | "csv_import";
+  | "csv_import"
+  | "meta_lead_ads"
+  | "indiamart"
+  | "manual"
+  | "referral";
 
 export type LeadStage =
   | "new"
@@ -633,7 +631,7 @@ export interface Integration {
 // channel flow into Janus in the first place.
 // ---------------------------------------------------------------------------
 
-export type LeadSourceConnectionKind = "embed" | "webhook" | "oauth" | "api_key" | "manual" | "csv";
+export type LeadSourceConnectionKind = "embed" | "webhook" | "oauth" | "api_key" | "csv" | "pull";
 
 export interface FieldMapping {
   rawField: string;
@@ -646,14 +644,18 @@ export interface LeadSourceConnection {
   name: string;
   description: string;
   connectionKind: LeadSourceConnectionKind;
-  status: "connected" | "available" | "error";
+  status: "connected" | "available" | "error" | "coming_soon";
   connectedAccount?: string;
   webhookUrl?: string;
   signingSecret?: string;
   apiKeyMasked?: string;
   embedSnippet?: string;
   fieldMapping?: FieldMapping[];
-  leadsCaptured30d: number;
+  preset?: string;
+  /** Pull sources only; defaults to five minutes. */
+  syncInterval?: "5m" | "15m" | "1h" | "24h";
+  lastSyncAt?: string;
+  leadsCaptured30d?: number;
   lastEventAt?: string;
   errorMessage?: string;
 }

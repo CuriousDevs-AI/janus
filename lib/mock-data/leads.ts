@@ -46,7 +46,7 @@ export const leads: Lead[] = [
   {
     id: "lead-2",
     customerId: "cus-2",
-    source: "facebook",
+    source: "meta_lead_ads",
     campaign: "Cloud Infra Launch",
     stage: "proposal",
     score: 78,
@@ -82,7 +82,7 @@ export const leads: Lead[] = [
   {
     id: "lead-4",
     customerId: "cus-4",
-    source: "linkedin",
+    source: "manual",
     stage: "qualified",
     score: 72,
     scoreReasons: [
@@ -119,7 +119,7 @@ export const leads: Lead[] = [
   {
     id: "lead-6",
     customerId: "cus-6",
-    source: "email",
+    source: "manual",
     stage: "won",
     score: 88,
     scoreReasons: [{ label: "Fast follow-up response times", signal: "positive" }],
@@ -134,7 +134,7 @@ export const leads: Lead[] = [
   {
     id: "lead-7",
     customerId: "cus-7",
-    source: "google_ads",
+    source: "webhook",
     campaign: "Robotics Search Q3",
     stage: "new",
     score: 54,
@@ -202,7 +202,7 @@ export const leads: Lead[] = [
   {
     id: "lead-11",
     customerId: "cus-11",
-    source: "meta_ads",
+    source: "manual",
     campaign: "Fintech Retarget",
     stage: "new",
     score: 61,
@@ -251,7 +251,7 @@ export const leads: Lead[] = [
   {
     id: "lead-14",
     customerId: "cus-14",
-    source: "instagram",
+    source: "meta_lead_ads",
     stage: "qualified",
     score: 65,
     scoreReasons: [
@@ -286,7 +286,7 @@ export const leads: Lead[] = [
   {
     id: "lead-16",
     customerId: "cus-16",
-    source: "linkedin",
+    source: "manual",
     stage: "demo",
     score: 73,
     scoreReasons: [
@@ -305,7 +305,7 @@ export const leads: Lead[] = [
   {
     id: "lead-17",
     customerId: "cus-17",
-    source: "email",
+    source: "manual",
     stage: "won",
     score: 80,
     scoreReasons: [{ label: "Fast-track legal review", signal: "positive" }],
@@ -350,7 +350,7 @@ export const leads: Lead[] = [
   {
     id: "lead-20",
     customerId: "cus-20",
-    source: "google_ads",
+    source: "webhook",
     campaign: "Fintech Search",
     stage: "qualified",
     score: 69,
@@ -384,7 +384,7 @@ export const leads: Lead[] = [
   {
     id: "lead-22",
     customerId: "cus-22",
-    source: "instagram",
+    source: "meta_lead_ads",
     stage: "new",
     score: 47,
     scoreReasons: [{ label: "Just submitted contact form", signal: "neutral" }],
@@ -398,7 +398,7 @@ export const leads: Lead[] = [
   {
     id: "lead-23",
     customerId: "cus-23",
-    source: "meta_ads",
+    source: "manual",
     stage: "lost",
     score: 40,
     scoreReasons: [{ label: "Chose a competitor with mobility-specific features", signal: "negative" }],
@@ -428,7 +428,7 @@ export const leads: Lead[] = [
   {
     id: "lead-25",
     customerId: "cus-25",
-    source: "email",
+    source: "manual",
     stage: "won",
     score: 62,
     scoreReasons: [{ label: "Consistent multi-touch engagement", signal: "positive" }],

@@ -1,258 +1,360 @@
 "use client";
 
-import * as React from "react";
-import { use } from "react";
+import { use, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { MessageSquare, UserRoundCog, Handshake, MoreHorizontal, Sparkles, ArrowRight } from "lucide-react";
-import { useAppStore, useCompany } from "@/lib/stores/app-store";
-import { users, getMemoryForCustomer } from "@/lib/mock-data";
-import { CustomerAvatar } from "@/components/shared/customer-avatar";
-import { LeadStageBadge } from "@/components/shared/status-badge";
-import { ChannelBadge } from "@/components/shared/channel-badge";
-import { AIIndicator } from "@/components/shared/ai-indicator";
-import { ActivityTimeline } from "@/components/shared/activity-timeline";
-import { leadSourceMeta } from "@/lib/status-meta";
-import { formatCurrencyINR, formatRelativeTime, formatDate } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  ArrowLeft,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  ExternalLink,
+  FileText,
+  Mail,
+  MessageCircle,
+  MessageSquareText,
+  Phone,
+  Send,
+  UserRound,
+} from "lucide-react";
+import { useApi } from "@/lib/api/use-api";
+import type { Contact, Lead } from "@/lib/api/types";
+import { useSession } from "@/components/auth/session-provider";
+import { LeadDeal } from "@/components/deals/deal-form";
+import { WhatsAppButton } from "@/components/inbox/whatsapp-button";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatDateTime } from "@/lib/utils";
 
-export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const router = useRouter();
-  const lead = useAppStore((s) => s.leads.find((l) => l.id === id));
-  const customer = useAppStore((s) => s.customers.find((c) => c.id === lead?.customerId));
-  const allActivities = useAppStore((s) => s.activities);
-  const allConversations = useAppStore((s) => s.conversations);
-  const activities = allActivities.filter((a) => a.customerId === lead?.customerId);
-  const conversations = allConversations.filter((c) => c.customerId === lead?.customerId);
-  const createDeal = useAppStore((s) => s.createDeal);
-  const moveLeadStage = useAppStore((s) => s.moveLeadStage);
-  const company = useCompany(customer?.companyId);
-  const [askOpen, setAskOpen] = React.useState(false);
+const stages = [
+  "new",
+  "contacted",
+  "qualified",
+  "demo",
+  "proposal",
+  "negotiation",
+  "approval",
+  "won",
+  "lost",
+] as const;
 
-  if (!lead || !customer) {
-    return (
-      <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-2 px-6 py-16 text-center">
-        <p className="text-[14px] font-medium text-foreground">Lead not found</p>
-        <Button size="sm" variant="secondary" asChild>
-          <Link href="/leads">Back to leads</Link>
+function label(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function initials(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "L";
+}
+
+function stageVariant(stage: string): "neutral" | "accent" | "success" | "danger" {
+  if (stage === "won") return "success";
+  if (stage === "lost") return "danger";
+  if (stage === "new" || stage === "contacted") return "accent";
+  return "neutral";
+}
+
+function TimelineItem({
+  icon,
+  title,
+  detail,
+  time,
+  tone = "accent",
+}: {
+  icon: ReactNode;
+  title: string;
+  detail: string;
+  time: string;
+  tone?: "accent" | "success" | "info" | "warning";
+}) {
+  const toneClasses = {
+    accent: "border-accent-border bg-accent-muted text-accent",
+    success: "border-success/30 bg-success-muted text-success",
+    info: "border-info/30 bg-info-muted text-info",
+    warning: "border-warning/30 bg-warning-muted text-warning",
+  };
+
+  return (
+    <div className="relative flex gap-3 pb-5 last:pb-0">
+      <div className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border ${toneClasses[tone]}`}>
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          <time className="text-[11px] text-muted-foreground">{time}</time>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function FollowUpActions({ contact }: { contact: Contact }) {
+  const phone = contact.phone?.replace(/[^\d+]/g, "") || "";
+  const email = contact.email?.trim() || "";
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button size="sm">
+          <Send className="size-3.5" />
+          Follow up
         </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 bg-surface p-0 shadow-2xl">
+        <div className="border-b border-border px-3 py-3">
+          <p className="text-sm font-semibold">Choose a channel</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Start the next conversation from this lead.
+          </p>
+        </div>
+        <div className="space-y-1.5 p-3">
+          {phone && (
+            <WhatsAppButton
+              contactId={contact.id}
+              label="Add to chat · WhatsApp"
+              className="w-full justify-start bg-[#128C7E] text-white hover:bg-[#0f7b6f]"
+            />
+          )}
+          {email && (
+            <Button asChild size="sm" variant="secondary" className="w-full justify-start">
+              <a href={`mailto:${encodeURIComponent(email)}`}>
+                <Mail className="size-3.5" />
+                Email {email}
+              </a>
+            </Button>
+          )}
+          {phone && (
+            <Button asChild size="sm" variant="secondary" className="w-full justify-start">
+              <a href={`tel:${phone}`}>
+                <Phone className="size-3.5" />
+                Call {contact.phone}
+              </a>
+            </Button>
+          )}
+          {phone && (
+            <Button asChild size="sm" variant="secondary" className="w-full justify-start">
+              <a href={`sms:${phone}`}>
+                <MessageSquareText className="size-3.5" />
+                SMS {contact.phone}
+              </a>
+            </Button>
+          )}
+          {!phone && !email && (
+            <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
+              Add a phone number or email to this contact before starting a follow-up.
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2.5 text-[11px] text-muted-foreground">
+          <MessageCircle className="size-3.5" />
+          WhatsApp opens the unified inbox and keeps replies on this lead.
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const session = useSession();
+  const lead = useApi<Lead>(`/leads/${encodeURIComponent(id)}`);
+  const contact = useApi<Contact>(
+    lead.data ? `/contacts/${lead.data.customerId}` : null,
+  );
+
+  if (!lead.data || !contact.data) {
+    return (
+      <div className="mx-auto max-w-6xl p-6">
+        <Link href="/leads" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-3.5" />
+          Leads
+        </Link>
+        <p role="status" className="mt-8 text-sm">
+          {lead.error || contact.error || "Loading lead…"}
+        </p>
       </div>
     );
   }
 
-  const owner = users.find((u) => u.id === lead.ownerId);
-  const memory = getMemoryForCustomer(customer.id).filter((m) => m.kind === "derived_insight");
-  const sortedActivities = [...activities].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-
-  function handleConvert() {
-    const id = createDeal({
-      name: `${company?.name ?? customer!.name} — ${lead!.requirement.split(" ").slice(0, 4).join(" ")}`,
-      customerId: customer!.id,
-      amount: lead!.score >= 80 ? 800000 : lead!.score >= 60 ? 400000 : 150000,
-      stage: "qualified",
-      expectedCloseAt: new Date(Date.now() + 45 * 86400000).toISOString(),
-    });
-    moveLeadStage(lead!.id, "qualified");
-    toast.success("Converted to deal", { description: "A new deal was created from this lead." });
-    router.push(`/deals/${id}`);
-  }
+  const leadData = lead.data;
+  const contactData = contact.data;
+  const displayName = contactData.name || contactData.phone || contactData.email || `Lead #${leadData.id}`;
+  const owner = leadData.ownerId === session.user.id
+    ? session.user.name
+    : leadData.ownerId
+      ? `Member #${leadData.ownerId}`
+      : "Unassigned";
+  const currentStage = stages.indexOf(leadData.stage as (typeof stages)[number]);
+  const sourceLabel = label(leadData.source);
+  const hasRecentActivity = leadData.lastActivityAt !== leadData.createdAt;
 
   return (
-    <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-6 py-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <CustomerAvatar name={customer.name} color={customer.avatarColor} size="lg" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-[22px] font-semibold tracking-tight text-foreground">{customer.name}</h1>
-              <LeadStageBadge stage={lead.stage} />
-            </div>
-            <Link href={`/customers/${customer.id}`} className="text-[13px] text-muted-foreground hover:text-accent">
-              {company?.name}
-            </Link>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" asChild>
-            <Link href="/inbox">
-              <MessageSquare className="size-3.5" />
-              Message
-            </Link>
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="sm">
-                <UserRoundCog className="size-3.5" />
-                Assign
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {users.filter((u) => u.role.includes("sales")).map((u) => (
-                <DropdownMenuItem key={u.id} onSelect={() => toast.success(`Assigned to ${u.name}`)}>
-                  {u.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {lead.stage !== "won" && lead.stage !== "lost" && (
-            <Button size="sm" onClick={handleConvert}>
-              <Handshake className="size-3.5" />
-              Convert to Deal
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => moveLeadStage(lead.id, "lost")} variant="destructive">
-                Mark as Lost
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+    <div className="mx-auto flex max-w-6xl flex-col gap-5 p-6">
+      <Link href="/leads" className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-3.5" />
+        Back to leads
+      </Link>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr_300px]">
-        {/* LEFT — customer info */}
-        <div className="flex flex-col gap-4">
-          <InfoBlock title="Lead score">
-            <div className="flex items-baseline gap-2">
-              <span className="text-mono text-[28px] font-semibold text-foreground">{lead.score}</span>
-              <span className="text-[12px] text-muted-foreground">/ 100</span>
+      <header className="relative overflow-hidden rounded-xl border border-border bg-surface p-5 shadow-sm">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-accent via-info to-success" />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-border bg-accent-muted text-sm font-semibold text-accent">
+              {initials(displayName)}
             </div>
-            <div className="mt-2 flex flex-col gap-1">
-              {lead.scoreReasons.map((r, i) => (
-                <span key={i} className={"text-[12px] " + (r.signal === "positive" ? "text-success" : r.signal === "negative" ? "text-danger" : "text-muted-foreground")}>
-                  {r.signal === "positive" ? "✓" : r.signal === "negative" ? "✕" : "?"} {r.label}
-                </span>
-              ))}
-            </div>
-          </InfoBlock>
-
-          <InfoBlock title="Details">
-            <Row label="Status"><LeadStageBadge stage={lead.stage} /></Row>
-            <Row label="Owner">{owner?.name}</Row>
-            <Row label="Source">
-              <span className="inline-flex items-center gap-1.5">
-                {React.createElement(leadSourceMeta[lead.source].icon, { className: "size-3.5" })}
-                {leadSourceMeta[lead.source].label}
-              </span>
-            </Row>
-            <Row label="Intent">{lead.intent}</Row>
-            <Row label="Budget">{lead.budgetSignal}</Row>
-            <Row label="Decision maker">{lead.decisionMaker ?? "Unknown"}</Row>
-            <Row label="Created">{formatDate(lead.createdAt)}</Row>
-          </InfoBlock>
-
-          <InfoBlock title="Contact">
-            <Row label="Email">{customer.email}</Row>
-            <Row label="Phone">{customer.phone}</Row>
-            <Row label="Company">{company?.name}</Row>
-            <Row label="Industry">{company?.industry}</Row>
-          </InfoBlock>
-        </div>
-
-        {/* CENTER — communication timeline */}
-        <div className="rounded-lg border border-border bg-surface">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="text-[13px] font-semibold text-foreground">Communication timeline</h2>
-            <div className="flex items-center gap-1.5">
-              {conversations.map((c) => (
-                <span key={c.id} title={c.channel}>
-                  <ChannelBadge channel={c.channel} iconOnly />
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="max-h-[600px] overflow-y-auto px-4 py-3">
-            <ActivityTimeline activities={sortedActivities} groupByDay />
-          </div>
-        </div>
-
-        {/* RIGHT — AI context */}
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-accent-border bg-accent-muted p-4">
-            <div className="mb-2 flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-accent" />
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">AI Summary</span>
-            </div>
-            <p className="text-[13px] leading-relaxed text-foreground">
-              {customer.name.split(" ")[0]} is evaluating {company?.name ? `an offering for ${company.name}` : "our product"}.
-            </p>
-            <dl className="mt-3 flex flex-col gap-1.5 text-[12px]">
-              <div className="flex justify-between"><dt className="text-muted-foreground">Primary concern</dt><dd className="text-foreground">{memory[0]?.value.split(".")[0] ?? "Not yet identified"}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">Intent</dt><dd className="capitalize text-foreground">{lead.intent}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">Budget</dt><dd className="capitalize text-foreground">{lead.budgetSignal}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">Decision maker</dt><dd className="text-foreground">{lead.decisionMaker ?? "Unknown"}</dd></div>
-            </dl>
-            <Separator className="my-3 bg-accent-border" />
-            <p className="text-[12px] font-medium text-foreground">Recommended next step</p>
-            <p className="text-[12px] text-muted-foreground">
-              {lead.stage === "new" || lead.stage === "contacted" ? "Schedule a qualification call." : lead.stage === "qualified" ? "Schedule technical demo." : "Follow up on the last outreach."}
-            </p>
-            <Button size="sm" variant="secondary" className="mt-3 w-full" onClick={() => setAskOpen((v) => !v)}>
-              <Sparkles className="size-3.5 text-accent" />
-              Ask AI
-            </Button>
-            {askOpen && (
-              <div className="mt-2 rounded-md border border-border bg-surface p-2.5 text-[12px] text-muted-foreground">
-                &ldquo;Based on {sortedActivities.length} timeline events, {customer.name.split(" ")[0]} shows {lead.intent} intent with{" "}
-                {lead.budgetSignal === "known" ? "a confirmed budget" : "budget still unconfirmed"}. Recommend involving {lead.decisionMaker ?? "the economic buyer"} directly.&rdquo;
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lead #{leadData.id}</p>
+                <Badge variant={stageVariant(leadData.stage)}>{label(leadData.stage)}</Badge>
               </div>
-            )}
+              <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-foreground">{displayName}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {contactData.company && <span className="inline-flex items-center gap-1.5"><Building2 className="size-3.5 text-accent" />{contactData.company}</span>}
+                <span className="inline-flex items-center gap-1.5"><FileText className="size-3.5 text-info" />{sourceLabel}</span>
+                <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-3.5 text-success" />Captured {formatDateTime(leadData.createdAt)}</span>
+              </div>
+            </div>
           </div>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <FollowUpActions contact={contactData} />
+            <LeadDeal lead={leadData} customerName={displayName} />
+          </div>
+        </div>
+      </header>
 
-          {memory.length > 0 && (
-            <InfoBlock title="AI-derived insights">
-              <div className="flex flex-col gap-2">
-                {memory.map((m) => (
-                  <div key={m.id} className="flex items-start gap-1.5">
-                    <AIIndicator label={m.confidence ? `${Math.round(m.confidence * 100)}%` : "AI"} />
-                    <p className="text-[12px] text-muted-foreground">{m.value}</p>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <main className="flex min-w-0 flex-col gap-5">
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-accent">Pipeline</p>
+                <h2 className="mt-1 text-base font-semibold">Where this lead is now</h2>
+              </div>
+              <Badge variant={stageVariant(leadData.stage)}>{label(leadData.stage)}</Badge>
+            </div>
+            <div className="mt-5 grid grid-cols-5 gap-1 sm:grid-cols-9">
+              {stages.map((stage, index) => {
+                const complete = leadData.stage !== "lost" && currentStage >= index;
+                const active = leadData.stage === stage;
+                return (
+                  <div key={stage} className="min-w-0">
+                    <div className={`h-1.5 rounded-full ${complete ? "bg-gradient-to-r from-accent to-info" : "bg-surface-3"}`} />
+                    <p className={`mt-2 truncate text-[10px] ${active ? "font-semibold text-accent" : "text-muted-foreground"}`} title={label(stage)}>
+                      {label(stage)}
+                    </p>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-info">Activity</p>
+                <h2 className="mt-1 text-base font-semibold">Lead timeline</h2>
               </div>
-            </InfoBlock>
-          )}
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="size-3.5 text-info" />Newest first</span>
+            </div>
+            <div className="relative mt-5 pl-0">
+              <div className="absolute bottom-2 left-4 top-2 w-px bg-border" />
+              <TimelineItem
+                icon={<CheckCircle2 className="size-4" />}
+                title="Lead captured"
+                detail={`Captured from ${sourceLabel}${leadData.campaign ? ` · Campaign ${leadData.campaign}` : ""}.`}
+                time={formatDateTime(leadData.createdAt)}
+                tone="success"
+              />
+              {hasRecentActivity && (
+                <TimelineItem
+                  icon={<MessageCircle className="size-4" />}
+                  title="Last activity recorded"
+                  detail="This lead has a newer activity timestamp. Open the unified inbox to continue the conversation."
+                  time={formatDateTime(leadData.lastActivityAt)}
+                  tone="info"
+                />
+              )}
+              {leadData.recordingUrl && /^https?:\/\//.test(leadData.recordingUrl) && (
+                <TimelineItem
+                  icon={<Phone className="size-4" />}
+                  title="Call recording available"
+                  detail="The recording was attached to this lead by the call provider."
+                  time={formatDateTime(leadData.lastActivityAt || leadData.createdAt)}
+                  tone="warning"
+                />
+              )}
+            </div>
+          </section>
 
-          <Link href={`/customers/${customer.id}`} className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-[12px] text-muted-foreground hover:border-border-strong hover:text-foreground">
-            View full customer profile
-            <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <FileText className="size-4 text-warning" />
+              <h2 className="text-base font-semibold">Requirement</h2>
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+              {leadData.requirement || "No requirement recorded yet."}
+            </p>
+          </section>
+        </main>
+
+        <aside className="flex min-w-0 flex-col gap-5">
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <UserRound className="size-4 text-success" />
+              <h2 className="text-base font-semibold">Contact</h2>
+            </div>
+            <div className="mt-4 space-y-3 text-sm">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Name</p>
+                <p className="mt-1 font-medium">{displayName}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Mobile</p>
+                {contactData.phone ? <a href={`tel:${contactData.phone.replace(/[^\d+]/g, "")}`} className="mt-1 inline-flex items-center gap-1.5 font-medium text-accent hover:underline"><Phone className="size-3.5" />{contactData.phone}</a> : <p className="mt-1 text-muted-foreground">Not available</p>}
+              </div>
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Email</p>
+                {contactData.email ? <a href={`mailto:${encodeURIComponent(contactData.email)}`} className="mt-1 inline-flex max-w-full items-center gap-1.5 break-all text-accent hover:underline"><Mail className="size-3.5 shrink-0" />{contactData.email}</a> : <p className="mt-1 text-muted-foreground">Not available</p>}
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" asChild className="mt-4 w-full">
+              <Link href={`/customers/${contactData.id}`}>
+                Open customer record
+                <ChevronRight className="ml-auto size-3.5" />
+              </Link>
+            </Button>
+          </section>
+
+          <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="size-4 text-accent" />
+              <h2 className="text-base font-semibold">Lead details</h2>
+            </div>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd className="text-right font-medium">{sourceLabel}</dd></div>
+              <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Owner</dt><dd className="text-right font-medium">{owner}</dd></div>
+              <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Created</dt><dd className="text-right font-medium">{formatDateTime(leadData.createdAt)}</dd></div>
+              {leadData.campaign && <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Campaign</dt><dd className="text-right font-medium">{leadData.campaign}</dd></div>}
+            </dl>
+            {leadData.recordingUrl && /^https?:\/\//.test(leadData.recordingUrl) && (
+              <Button size="sm" variant="secondary" asChild className="mt-4 w-full">
+                <a href={leadData.recordingUrl} target="_blank" rel="noreferrer">
+                  Open call recording
+                  <ExternalLink className="ml-auto size-3.5" />
+                </a>
+              </Button>
+            )}
+            {leadData.recordingReference && <p className="mt-3 break-all text-[11px] text-muted-foreground">Recording reference: {leadData.recordingReference}</p>}
+          </section>
+        </aside>
       </div>
-    </div>
-  );
-}
-
-function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between border-b border-border/60 py-1.5 text-[12px] last:border-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground">{children}</span>
     </div>
   );
 }
