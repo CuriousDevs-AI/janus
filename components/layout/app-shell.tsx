@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -10,22 +9,28 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { MobileSidebar } from "@/components/layout/mobile-sidebar";
+import { WorkspaceProvider } from "@/components/layout/workspace-context";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  return (
+    <React.Suspense fallback={<div className="min-h-dvh bg-background" />}>
+      <WorkspaceProvider>
+        <AppShellContent>{children}</AppShellContent>
+      </WorkspaceProvider>
+    </React.Suspense>
+  );
+}
+
+function AppShellContent({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const [sending, setSending] = React.useState(false);
-  const live =
-    pathname === "/inbox" ||
-    /^\/(leads|lead-sources|deals)(\/[^/]+)?$/.test(pathname) ||
-    /^\/customers\/\d+$/.test(pathname);
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
       <Sidebar />
       <MobileSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-y-auto">
+        <main className="app-main flex-1 overflow-y-scroll">
           {!session.user.email_verified_at && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-muted px-6 py-3 text-sm">
               <p>Verify your email to connect lead sources.</p>
@@ -64,19 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           )}
-          {live ? (
-            children
-          ) : (
-            <div className="max-w-2xl p-6">
-              <h1 className="text-xl font-semibold">
-                This screen is not connected yet
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Your workspace is live. Start with Lead Sources and Leads; this
-                module will be available when its workflow is ready.
-              </p>
-            </div>
-          )}
+          {children}
         </main>
       </div>
       <CommandPalette />

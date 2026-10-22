@@ -1,31 +1,40 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  LayoutDashboard,
-  MessageCircle,
-  Radio,
-  UserRoundPlus,
-  Handshake,
-  Building2,
-  LifeBuoy,
-  Workflow,
-  Database,
   BarChart3,
-  Sparkles,
+  Bell,
   Bot,
   BrainCircuit,
+  Building2,
+  CalendarClock,
+  ClipboardList,
+  Database,
+  FileText,
   FlaskConical,
-  Plug,
-  ShieldCheck,
-  Bell,
-  ScrollText,
   Gauge,
-  Settings,
+  Handshake,
+  LayoutDashboard,
+  LifeBuoy,
+  MessageCircle,
+  Package,
+  Plug,
+  Radio,
+  Receipt,
+  ScrollText,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  UserRoundPlus,
+  Users,
+  WalletCards,
+  Workflow,
 } from "lucide-react";
+import type { WorkspaceId } from "@/lib/workspace-config";
 
 export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  requiredPermission?: string;
 }
 
 export interface NavSection {
@@ -33,11 +42,12 @@ export interface NavSection {
   items: NavItem[];
 }
 
-export const navSections: NavSection[] = [
+/** CRM navigation stays on the existing routes and is never duplicated. */
+export const crmNavSections: NavSection[] = [
   {
-    title: "Main",
+    title: "CRM & Sales",
     items: [
-      { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
+      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard },
       { label: "Chats", href: "/inbox", icon: MessageCircle },
       { label: "Lead Sources", href: "/lead-sources", icon: Radio },
       { label: "Leads", href: "/leads", icon: UserRoundPlus },
@@ -52,21 +62,183 @@ export const navSections: NavSection[] = [
   {
     title: "AI",
     items: [
-      { label: "AI Assistant", href: "/ai", icon: Sparkles },
-      { label: "Agents", href: "/agents", icon: Bot },
-      { label: "Memory", href: "/memory", icon: BrainCircuit },
-      { label: "Evaluations", href: "/evaluations", icon: FlaskConical },
+      { label: "AI Assistant", href: "/ai?workspace=crm-sales", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "Agents", href: "/agents?workspace=crm-sales", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage" },
+      { label: "Evaluations", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage" },
     ],
   },
   {
-    title: "System",
+    title: "CRM Management",
     items: [
       { label: "Integrations", href: "/integrations", icon: Plug },
       { label: "Approvals", href: "/approvals", icon: ShieldCheck },
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Audit Logs", href: "/audit", icon: ScrollText },
       { label: "Usage", href: "/usage", icon: Gauge },
-      { label: "Settings", href: "/settings", icon: Settings },
     ],
   },
 ];
+
+export const businessNavSections: NavSection[] = [
+  {
+    title: "Business",
+    items: [
+      { label: "Business Overview", href: "/settings?tab=workspace&view=overview", icon: LayoutDashboard, requiredPermission: "settings:manage" },
+      { label: "Janus Intelligence", href: "/ai", icon: Sparkles, requiredPermission: "ai:manage" },
+    ],
+  },
+  {
+    title: "Management",
+    items: [
+      { label: "People & Access", href: "/settings?tab=team", icon: Users, requiredPermission: "members:manage" },
+      { label: "Workspaces", href: "/settings?tab=workspace&view=workspaces", icon: Building2, requiredPermission: "settings:manage" },
+    ],
+  },
+  {
+    title: "Intelligence",
+    items: [
+      { label: "Business Reports", href: "/analytics", icon: BarChart3, requiredPermission: "settings:manage" },
+      { label: "AI Agents", href: "/agents", icon: Bot, requiredPermission: "agents:manage" },
+    ],
+  },
+  {
+    title: "Automation",
+    items: [
+      { label: "Workflows", href: "/automations?workspace=business", icon: Workflow, requiredPermission: "agents:manage" },
+    ],
+  },
+  {
+    title: "Settings",
+    items: [
+      { label: "Profile", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRoundPlus, requiredPermission: "settings:manage" },
+      { label: "Security & Sessions", href: "/settings?tab=security&workspace=business", icon: ShieldCheck, requiredPermission: "settings:manage" },
+      { label: "Notifications", href: "/settings?tab=notifications&workspace=business", icon: Bell, requiredPermission: "settings:manage" },
+      { label: "Billing & Subscription", href: "/settings?tab=workspace&view=administration&section=billing&workspace=business", icon: WalletCards, requiredPermission: "settings:manage" },
+    ],
+  },
+  {
+    title: "Business Settings",
+    items: [
+      { label: "Business Settings", href: "/settings?tab=workspace&view=settings", icon: Settings2, requiredPermission: "settings:manage" },
+    ],
+  },
+];
+
+const moduleNavSections: Record<Exclude<WorkspaceId, "business" | "crm-sales">, NavSection[]> = {
+  "hr-people": [
+    { title: "HR & People", items: [
+      { label: "HR Overview", href: "/workspace/hr-people", icon: LayoutDashboard },
+      { label: "Employees", href: "/workspace/hr-people?view=employees", icon: Users },
+      { label: "Attendance", href: "/workspace/hr-people?view=attendance", icon: CalendarClock },
+      { label: "Leave Management", href: "/workspace/hr-people?view=leave", icon: CalendarClock },
+      { label: "Recruitment", href: "/workspace/hr-people?view=recruitment", icon: UserRoundPlus },
+      { label: "Payroll", href: "/workspace/hr-people?view=payroll", icon: Receipt },
+      { label: "Performance & Reviews", href: "/workspace/hr-people?view=performance", icon: BarChart3 },
+      { label: "HR Reports", href: "/workspace/hr-people?view=reports", icon: FileText },
+      { label: "HR AI Chat", href: "/ai?workspace=hr-people", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "HR Settings", href: "/settings?tab=team", icon: Settings2, requiredPermission: "members:manage" },
+    ] },
+  ],
+  "finance-accounting": [
+    { title: "Finance & Accounting", items: [
+      { label: "Finance Overview", href: "/workspace/finance-accounting", icon: LayoutDashboard },
+      { label: "Income & Revenue", href: "/workspace/finance-accounting?view=income", icon: BarChart3 },
+      { label: "Expenses", href: "/workspace/finance-accounting?view=expenses", icon: WalletCards },
+      { label: "Invoices", href: "/workspace/finance-accounting?view=invoices", icon: Receipt },
+      { label: "Payments & Receivables", href: "/workspace/finance-accounting?view=receivables", icon: Handshake },
+      { label: "Bills & Payables", href: "/workspace/finance-accounting?view=payables", icon: FileText },
+      { label: "Budgets", href: "/workspace/finance-accounting?view=budgets", icon: Gauge },
+      { label: "Cash Flow", href: "/workspace/finance-accounting?view=cash-flow", icon: BarChart3 },
+      { label: "Profit & Loss", href: "/workspace/finance-accounting?view=profit-loss", icon: FileText },
+      { label: "Financial Reports", href: "/workspace/finance-accounting?view=reports", icon: BarChart3 },
+      { label: "Finance AI Chat", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "Finance Settings", href: "/settings?tab=billing", icon: Settings2, requiredPermission: "billing:manage" },
+    ] },
+  ],
+  "projects-delivery": [
+    { title: "Projects & Delivery", items: [
+      { label: "Projects Overview", href: "/workspace/projects-delivery", icon: LayoutDashboard },
+      { label: "All Projects", href: "/workspace/projects-delivery?view=projects", icon: ClipboardList },
+      { label: "Tasks & Work Items", href: "/workspace/projects-delivery?view=tasks", icon: FileText },
+      { label: "Milestones & Deliverables", href: "/workspace/projects-delivery?view=milestones", icon: CalendarClock },
+      { label: "Resource Allocation", href: "/workspace/projects-delivery?view=resources", icon: Users },
+      { label: "Timesheets", href: "/workspace/projects-delivery?view=timesheets", icon: CalendarClock },
+      { label: "Project Calendar", href: "/workspace/projects-delivery?view=calendar", icon: CalendarClock },
+      { label: "Client Delivery", href: "/workspace/projects-delivery?view=client-delivery", icon: Handshake },
+      { label: "Project Reports", href: "/workspace/projects-delivery?view=reports", icon: BarChart3 },
+      { label: "Project AI Chat", href: "/ai?workspace=projects-delivery", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "Project Settings", href: "/settings?tab=workspace", icon: Settings2, requiredPermission: "settings:manage" },
+    ] },
+  ],
+  "customer-support": [
+    { title: "Customer Support & Success", items: [
+      { label: "Support Overview", href: "/workspace/customer-support", icon: LayoutDashboard },
+      { label: "Tickets", href: "/tickets?workspace=customer-support", icon: LifeBuoy },
+      { label: "Customer Directory", href: "/customers?workspace=customer-support", icon: Building2 },
+      { label: "Queues & Assignments", href: "/workspace/customer-support?view=queues", icon: Users },
+      { label: "SLA Management", href: "/workspace/customer-support?view=sla", icon: Gauge },
+      { label: "Knowledge Base", href: "/knowledge?workspace=customer-support", icon: Database },
+      { label: "Customer Feedback", href: "/workspace/customer-support?view=feedback", icon: MessageCircle },
+      { label: "Renewals & Success", href: "/workspace/customer-support?view=renewals", icon: Handshake },
+      { label: "Support Reports", href: "/workspace/customer-support?view=reports", icon: BarChart3 },
+      { label: "Support AI Chat", href: "/ai?workspace=customer-support", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "Support Settings", href: "/settings?tab=notifications", icon: Settings2, requiredPermission: "settings:manage" },
+    ] },
+  ],
+  "operations-inventory": [
+    { title: "Operations & Inventory", items: [
+      { label: "Operations Overview", href: "/workspace/operations-inventory", icon: LayoutDashboard },
+      { label: "Inventory", href: "/workspace/operations-inventory?view=inventory", icon: Package },
+      { label: "Products & Stock", href: "/workspace/operations-inventory?view=products", icon: Package },
+      { label: "Warehouses & Locations", href: "/workspace/operations-inventory?view=warehouses", icon: Building2 },
+      { label: "Procurement", href: "/workspace/operations-inventory?view=procurement", icon: FileText },
+      { label: "Purchase Orders", href: "/workspace/operations-inventory?view=purchase-orders", icon: Receipt },
+      { label: "Vendors", href: "/workspace/operations-inventory?view=vendors", icon: Users },
+      { label: "Orders & Fulfillment", href: "/workspace/operations-inventory?view=orders", icon: Handshake },
+      { label: "Operational Workflows", href: "/workspace/operations-inventory?view=workflows", icon: Workflow },
+      { label: "Operations Reports", href: "/workspace/operations-inventory?view=reports", icon: BarChart3 },
+      { label: "Operations AI Chat", href: "/ai?workspace=operations-inventory", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "Operations Settings", href: "/settings?tab=automation", icon: Settings2, requiredPermission: "settings:manage" },
+    ] },
+  ],
+  "it-infrastructure": [
+    { title: "IT & Infrastructure", items: [
+      { label: "IT Overview", href: "/workspace/it-infrastructure", icon: LayoutDashboard },
+      { label: "IT Assets", href: "/workspace/it-infrastructure?view=assets", icon: Database },
+      { label: "IT Helpdesk", href: "/workspace/it-infrastructure?view=helpdesk", icon: LifeBuoy },
+      { label: "Access Management", href: "/workspace/it-infrastructure?view=access", icon: ShieldCheck },
+      { label: "Software & Licenses", href: "/workspace/it-infrastructure?view=licenses", icon: Plug },
+      { label: "Infrastructure Monitoring", href: "/workspace/it-infrastructure?view=monitoring", icon: Gauge },
+      { label: "Incidents", href: "/workspace/it-infrastructure?view=incidents", icon: LifeBuoy },
+      { label: "Change Management", href: "/workspace/it-infrastructure?view=changes", icon: Workflow },
+      { label: "Security & Compliance", href: "/settings?tab=security", icon: ShieldCheck, requiredPermission: "settings:manage" },
+      { label: "IT Reports", href: "/workspace/it-infrastructure?view=reports", icon: BarChart3 },
+      { label: "IT AI Chat", href: "/ai?workspace=it-infrastructure", icon: Sparkles, requiredPermission: "ai:manage" },
+      { label: "IT Settings", href: "/settings?tab=security", icon: Settings2, requiredPermission: "settings:manage" },
+    ] },
+  ],
+};
+
+export function getNavSectionsForWorkspace(workspaceId: WorkspaceId): NavSection[] {
+  if (workspaceId === "crm-sales") return crmNavSections;
+  if (workspaceId === "business") return businessNavSections;
+  return moduleNavSections[workspaceId];
+}
+
+export function appendWorkspace(href: string, workspaceId: WorkspaceId) {
+  if (/[?&]workspace=/.test(href)) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}workspace=${workspaceId}`;
+}
+
+export const CRM_ROUTE_PREFIXES = crmNavSections[0].items.map((item) => item.href);
+
+export function isCrmRoute(pathname: string) {
+  return CRM_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+/** Kept for existing consumers; new consumers should select by workspace. */
+export const navSections = crmNavSections;

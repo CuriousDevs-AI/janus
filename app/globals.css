@@ -124,6 +124,9 @@ body {
   color: var(--foreground);
   font-feature-settings:
     "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
@@ -137,8 +140,8 @@ body {
   scrollbar-color: var(--border-strong) transparent;
 }
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 4px;
+  height: 4px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -149,6 +152,38 @@ body {
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #c9bda9;
+}
+
+.app-main {
+  scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
+}
+
+.page-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.page-header-actions {
+  min-height: 28px;
+}
+
+.janus-tab-strip {
+  min-height: 40px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.janus-tab-strip::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.janus-tab-strip::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
 }
 
 .text-mono {

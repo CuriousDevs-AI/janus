@@ -10,6 +10,9 @@ export type ID = string;
 export type Role =
   | "owner"
   | "admin"
+  | "ceo"
+  | "business_manager"
+  | "product_manager"
   | "sales_manager"
   | "sales_agent"
   | "support_agent"
@@ -492,6 +495,59 @@ export interface WorkflowEdgeData {
   source: string;
   target: string;
   label?: string;
+}
+
+export type BusinessWorkflowStatus = "draft" | "on" | "off" | "error";
+
+export interface BusinessWorkflowStep {
+  id: ID;
+  type: string;
+  module?: string;
+  action?: string;
+  title: string;
+  note?: string;
+  disabled?: boolean;
+  config: Record<string, unknown>;
+  branches?: Record<string, BusinessWorkflowStep[]>;
+}
+
+export interface BusinessWorkflowDefinition {
+  id: ID;
+  name: string;
+  description: string;
+  folderId?: ID | null;
+  ownerId?: ID | null;
+  scope: "business";
+  status: BusinessWorkflowStatus;
+  liveVersion?: number | null;
+  draftVersion?: number | null;
+  trigger: Record<string, unknown>;
+  steps: BusinessWorkflowStep[];
+  goal?: Record<string, unknown>;
+  settings: Record<string, unknown>;
+  modulesUsed: string[];
+  createdBy?: ID | null;
+  updatedBy?: ID | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface BusinessWorkflowRun {
+  id: ID;
+  workflowId: ID;
+  version?: number | null;
+  recordRef?: Record<string, unknown> | null;
+  status: string;
+  currentStepId?: ID | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  steps: Array<Record<string, unknown>>;
+}
+
+export interface BusinessAutomationCatalog {
+  modules: Array<{ id: string; label: string; connected: boolean }>;
+  triggers: Array<Record<string, unknown>>;
+  actions: Array<Record<string, unknown>>;
 }
 
 // ---------------------------------------------------------------------------

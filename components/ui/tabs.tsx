@@ -11,7 +11,7 @@ function Tabs({ className, ...props }: React.ComponentProps<typeof TabsPrimitive
 function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
   return (
     <TabsPrimitive.List
-      className={cn("inline-flex h-9 items-center gap-1 border-b border-border", className)}
+      className={cn("janus-tab-strip inline-flex h-9 max-w-full items-center gap-1 overflow-x-auto", className)}
       {...props}
     />
   );
@@ -21,8 +21,8 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "inline-flex h-9 items-center border-b-2 border-transparent px-3 text-[13px] font-medium text-muted-foreground transition-colors",
-        "hover:text-foreground data-[state=active]:border-accent data-[state=active]:text-foreground",
+        "inline-flex h-9 items-center rounded-sm px-3 text-[13px] font-medium text-muted-foreground transition-colors",
+        "hover:bg-surface-2 hover:text-foreground data-[state=active]:bg-surface-2 data-[state=active]:text-foreground",
         "focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40",
         className
       )}
@@ -32,15 +32,13 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 }
 
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
-  // forceMount + data-state styling (instead of Radix's default unmount-when-inactive)
-  // keeps every tab panel alive once visited, so local component state — a
-  // pending approval just marked "approved," a proposal just marked "sent,"
-  // a row selection — survives switching tabs and back instead of silently
-  // resetting to its initial value.
+  // Keep panels mounted so local form/table state survives tab switches. Do
+  // not animate the panel itself: height-changing animations made the page
+  // jump when switching between panels with different content lengths.
   return (
     <TabsPrimitive.Content
       forceMount
-      className={cn("outline-none data-[state=active]:animate-fade-in data-[state=inactive]:hidden", className)}
+      className={cn("outline-none data-[state=inactive]:hidden", className)}
       {...props}
     />
   );

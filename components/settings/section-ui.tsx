@@ -3,20 +3,25 @@ import { cn } from "@/lib/utils";
 export function SectionCard({
   title,
   description,
+  action,
   children,
   className,
 }: {
   title?: string;
   description?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("rounded-lg border border-border bg-surface p-5", className)}>
       {(title || description) && (
-        <div className="mb-4 flex flex-col gap-0.5">
-          {title && <h2 className="text-[13px] font-semibold text-foreground">{title}</h2>}
-          {description && <p className="text-[12px] text-muted-foreground">{description}</p>}
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            {title && <h2 className="text-[13px] font-semibold text-foreground">{title}</h2>}
+            {description && <p className="text-[12px] text-muted-foreground">{description}</p>}
+          </div>
+          {action}
         </div>
       )}
       {children}

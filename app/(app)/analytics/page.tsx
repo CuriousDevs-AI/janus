@@ -1,5 +1,9 @@
 "use client";
 
+import * as React from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, BarChart3, CalendarClock, Download, ExternalLink, FileBarChart, Filter, MoreHorizontal, Pencil, Pin, Plus, Search, Share2, Sparkles, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AcquisitionSection } from "@/components/analytics/acquisition-section";
@@ -8,44 +12,136 @@ import { AiSection } from "@/components/analytics/ai-section";
 import { SupportSection } from "@/components/analytics/support-section";
 import { CustomerSection } from "@/components/analytics/customer-section";
 import { AutomationSection } from "@/components/analytics/automation-section";
+import { useWorkspace } from "@/components/layout/workspace-context";
+import { useApi } from "@/lib/api/use-api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SectionCard } from "@/components/settings/section-ui";
+import { leadSourceConnections } from "@/lib/mock-data/lead-sources";
+import { reportCatalogue, reportDepartments, type ReportDefinition, type ReportDepartment } from "@/lib/report-catalogue";
+import { demoMode } from "@/lib/demo-mode";
+
+type Summary = { leads: number; openDeals: number; wonDeals: number; pipelineValue: string };
+type ReportTab = "library" | "my" | "scheduled";
+type CustomReport = { id: string; name: string; source: string; lastRun: string; owner: string; metrics: string[]; groupBy: string; chart: string };
+type ScheduledReport = { id: string; report: string; recipients: string; channel: "Email" | "WhatsApp"; frequency: string; lastSent: string; status: "Active" | "Paused" };
+
+const demoCustomReports: CustomReport[] = [
+  { id: "demo-report-pipeline", name: "Weekly pipeline review", source: "CRM & Sales", lastRun: "Today · 09:15", owner: "Pankaj Neema", metrics: ["Leads", "Open deals", "Pipeline value"], groupBy: "Stage", chart: "Bar" },
+  { id: "demo-report-source", name: "Lead source quality", source: "CRM & Sales", lastRun: "Yesterday · 18:00", owner: "Sales team", metrics: ["Leads", "Won deals"], groupBy: "Source", chart: "Table" },
+];
+
+const demoScheduledReports: ScheduledReport[] = [
+  { id: "demo-schedule-sales", report: "Sales summary", recipients: "owner@acmetraders.in, sales@acmetraders.in", channel: "Email", frequency: "Weekly · 09:00", lastSent: "Today · 09:00", status: "Active" },
+  { id: "demo-schedule-pipeline", report: "Pipeline", recipients: "owner@acmetraders.in", channel: "Email", frequency: "Monthly · 09:00", lastSent: "1 Oct 2026", status: "Paused" },
+];
 
 export default function AnalyticsPage() {
+  const { workspaceId } = useWorkspace();
+  const businessReports = workspaceId === "business";
+  if (businessReports) return <BusinessReports />;
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
-      <PageHeader
-        title="Analytics"
-        description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days."
-      />
-
+      <PageHeader title="Analytics" description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days." />
       <Tabs defaultValue="acquisition" className="px-6 pb-8">
-        <TabsList>
-          <TabsTrigger value="acquisition">Acquisition</TabsTrigger>
-          <TabsTrigger value="sales">Sales</TabsTrigger>
-          <TabsTrigger value="ai">AI</TabsTrigger>
-          <TabsTrigger value="support">Support</TabsTrigger>
-          <TabsTrigger value="customer">Customer</TabsTrigger>
-          <TabsTrigger value="automation">Automation</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="acquisition" className="pt-5">
-          <AcquisitionSection />
-        </TabsContent>
-        <TabsContent value="sales" className="pt-5">
-          <SalesSection />
-        </TabsContent>
-        <TabsContent value="ai" className="pt-5">
-          <AiSection />
-        </TabsContent>
-        <TabsContent value="support" className="pt-5">
-          <SupportSection />
-        </TabsContent>
-        <TabsContent value="customer" className="pt-5">
-          <CustomerSection />
-        </TabsContent>
-        <TabsContent value="automation" className="pt-5">
-          <AutomationSection />
-        </TabsContent>
+        <TabsList><TabsTrigger value="acquisition">Acquisition</TabsTrigger><TabsTrigger value="sales">Sales</TabsTrigger><TabsTrigger value="ai">AI</TabsTrigger><TabsTrigger value="support">Support</TabsTrigger><TabsTrigger value="customer">Customer</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList>
+        <TabsContent value="acquisition" className="pt-5"><AcquisitionSection /></TabsContent>
+        <TabsContent value="sales" className="pt-5"><SalesSection /></TabsContent>
+        <TabsContent value="ai" className="pt-5"><AiSection /></TabsContent>
+        <TabsContent value="support" className="pt-5"><SupportSection /></TabsContent>
+        <TabsContent value="customer" className="pt-5"><CustomerSection /></TabsContent>
+        <TabsContent value="automation" className="pt-5"><AutomationSection /></TabsContent>
       </Tabs>
     </div>
   );
 }
+
+function BusinessReports() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawTab = searchParams.get("tab");
+  const legacySection = searchParams.get("section");
+  const activeTab: ReportTab = rawTab === "my" || rawTab === "scheduled" ? rawTab : legacySection === "scheduled" ? "scheduled" : legacySection === "custom" ? "my" : "library";
+  const reportId = searchParams.get("report");
+  const report = reportCatalogue.find((item) => item.id === reportId);
+  const [query, setQuery] = React.useState("");
+  const [department, setDepartment] = React.useState<ReportDepartment | "All">("All");
+  const [pinned, setPinned] = React.useState<string[]>(["sales-summary"]);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [builderOpen, setBuilderOpen] = React.useState(false);
+  const [scheduleOpen, setScheduleOpen] = React.useState(false);
+  const [customReports, setCustomReports] = React.useState<CustomReport[]>(() => demoMode ? demoCustomReports : []);
+  const [scheduledReports, setScheduledReports] = React.useState<ScheduledReport[]>(() => demoMode ? demoScheduledReports : []);
+
+  function setTab(tab: ReportTab) { router.replace(`/analytics?workspace=business&tab=${tab}`); }
+  function openReport(definition: ReportDefinition) { router.push(`/analytics?workspace=business&tab=library&report=${definition.id}&period=${searchParams.get("period") ?? "this_month"}&compare=${searchParams.get("compare") ?? "none"}`); }
+  function connectWorkspace(definition: ReportDefinition) { router.push(`/settings?tab=workspace&view=workspaces&workspace=business&activate=${definition.requiredWorkspace}`); }
+  function togglePin(id: string) { setPinned((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
+  const visible = reportCatalogue.filter((item) => (department === "All" || item.department === department) && `${item.name} ${item.description}`.toLowerCase().includes(query.toLowerCase()));
+  const connectedDepartments = new Set<ReportDepartment>(["Sales"]);
+  const pinnedReports = visible.filter((item) => pinned.includes(item.id));
+  const mostUsed = visible.filter((item) => item.department === "Sales").slice(0, 4);
+
+  if (report) return <ReportView definition={report} onBack={() => router.replace(`/analytics?workspace=business&tab=library`)} onSchedule={() => setScheduleOpen(true)} onNotice={setNotice} />;
+
+  return <div className="mx-auto flex max-w-[1400px] flex-col"><PageHeader title="Business Reports" description="Explore verified reports from connected workspaces. Unavailable departments are shown as connect actions." actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined} />
+    <div role="tablist" className="janus-tab-strip sticky top-0 z-20 mx-6 flex gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1"><ReportTabButton active={activeTab === "library"} onClick={() => setTab("library")}>Library</ReportTabButton><ReportTabButton active={activeTab === "my"} onClick={() => setTab("my")}>My reports</ReportTabButton><ReportTabButton active={activeTab === "scheduled"} onClick={() => setTab("scheduled")}>Scheduled</ReportTabButton></div>
+    {notice && <div role="status" className="mx-6 mt-4 rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent">{notice}</div>}
+    {activeTab === "library" && <><div className="grid gap-3 px-6 pt-4 sm:grid-cols-3"><ReportSummaryCard label="Verified reports" value={String(reportCatalogue.filter((item) => item.live).length)} detail="Ready from connected CRM" /><ReportSummaryCard label="Departments connected" value={`${connectedDepartments.size} / ${reportDepartments.length}`} detail="Connect more workspaces to expand coverage" /><ReportSummaryCard label="Scheduled delivery" value={String(scheduledReports.length)} detail="Demo schedules and team delivery" /></div><div className="flex flex-col gap-5 px-6 py-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="relative w-full max-w-md"><Search className="pointer-events-none absolute left-3 top-2.5 size-3.5 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reports" aria-label="Search reports" className="pl-9" /></div><div className="flex items-center gap-2 text-xs text-muted-foreground"><Filter className="size-3.5" /><label htmlFor="report-department" className="sr-only">Department</label><select id="report-department" value={department} onChange={(event) => setDepartment(event.target.value as ReportDepartment | "All")} className="h-9 min-w-44 rounded-md border border-input bg-surface-2 px-3 text-sm text-foreground"><option value="All">All departments</option>{reportDepartments.map((item) => <option key={item} value={item}>{item}</option>)}</select></div></div><SectionCard title={pinnedReports.length ? "Pinned reports" : "Most used"} description={pinnedReports.length ? "Your quick access reports." : "Your most-opened connected reports."}><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">{(pinnedReports.length ? pinnedReports : mostUsed).map((item) => <ReportCard key={item.id} report={item} pinned={pinned.includes(item.id)} onPin={() => togglePin(item.id)} onOpen={() => openReport(item)} />)}</div>{(pinnedReports.length ? pinnedReports : mostUsed).length === 0 && <EmptyState title="No reports match your search" description="Try another report name or department." />}</SectionCard><div className="flex flex-col gap-6">{reportDepartments.map((dept) => { const cards = visible.filter((item) => item.department === dept); const catalogCards = cards.filter((item) => !pinned.includes(item.id)); const departmentMatches = `${dept} ${reportCatalogue.find((item) => item.department === dept)?.requiredWorkspace ?? ""}`.toLowerCase().includes(query.toLowerCase()); if (department !== "All" && department !== dept) return null; if (!connectedDepartments.has(dept)) { if (!departmentMatches) return null; const definition = reportCatalogue.find((item) => item.department === dept)!; return <DisconnectedDepartment key={dept} department={dept} definition={definition} onConnect={() => connectWorkspace(definition)} />; } if (catalogCards.length === 0) return null; return <section key={dept}><h2 className="mb-3 text-base font-semibold">{dept}</h2><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{catalogCards.map((item) => <ReportCard key={item.id} report={item} pinned={pinned.includes(item.id)} onPin={() => togglePin(item.id)} onOpen={() => openReport(item)} />)}</div></section>; })}</div></div></>}
+    {activeTab === "my" && <div className="px-6 py-5"><SectionCard title="My reports" description="Custom reports you create and save for your team." action={<Button size="sm" onClick={() => setBuilderOpen(true)}><Plus className="size-3.5" />New report</Button>}>{customReports.length === 0 ? <EmptyState title="No custom reports yet" description="Build a report from connected, permission-allowed data." action={<Button onClick={() => setBuilderOpen(true)}><Plus className="size-3.5" />New report</Button>} /> : <CustomReportsTable reports={customReports} onDelete={(id) => setCustomReports((current) => current.filter((item) => item.id !== id))} onDuplicate={(report) => { setCustomReports((current) => [...current, { ...report, id: `custom-${Date.now()}`, name: `${report.name} copy`, lastRun: "Not run yet" }]); setNotice(`${report.name} duplicated.`); }} onNotice={setNotice} />}</SectionCard></div>}
+    {activeTab === "scheduled" && <div className="px-6 py-5"><SectionCard title="Scheduled reports" description="Deliver reports to your team on a schedule." action={<Button size="sm" onClick={() => setScheduleOpen(true)}><CalendarClock className="size-3.5" />Schedule a report</Button>}>{scheduledReports.length === 0 ? <EmptyState title="No scheduled reports" description="Schedule a verified report for email delivery." action={<Button onClick={() => setScheduleOpen(true)}><CalendarClock className="size-3.5" />Schedule a report</Button>} /> : <ScheduledTable reports={scheduledReports} onNotice={setNotice} onDelete={(id) => setScheduledReports((current) => current.filter((item) => item.id !== id))} onToggle={(id) => setScheduledReports((current) => current.map((item) => item.id === id ? { ...item, status: item.status === "Active" ? "Paused" : "Active" } : item))} />}</SectionCard></div>}
+    <ReportBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} onSave={(reportDefinition) => { setCustomReports((current) => [...current, reportDefinition]); setBuilderOpen(false); setNotice("Custom report saved."); }} />
+    <ScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} onSave={(scheduled) => { setScheduledReports((current) => [...current, scheduled]); setScheduleOpen(false); setNotice("Report schedule saved."); }} />
+  </div>;
+}
+
+function ReportSummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) { return <div className="rounded-lg border border-border bg-surface p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs leading-4 text-muted-foreground">{detail}</p></div>; }
+function ReportTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`shrink-0 rounded-sm px-3 py-2 text-[12px] transition-colors ${active ? "bg-white font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"}`}>{children}</button>; }
+
+function ReportCard({ report, pinned, onPin, onOpen }: { report: ReportDefinition; pinned: boolean; onPin: () => void; onOpen: () => void }) {
+  return <div className="group flex flex-col rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent-border hover:bg-surface-2"><div className="flex items-start justify-between gap-3"><button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-2 text-left"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><FileBarChart className="size-4" /></span><span className="min-w-0"><span className="block text-sm font-semibold">{report.name}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{report.description}</span></span></button><button type="button" aria-label={`${pinned ? "Unpin" : "Pin"} ${report.name}`} onClick={onPin} className={`rounded-md p-1.5 ${pinned ? "text-accent" : "text-muted-foreground opacity-60 hover:opacity-100"}`}><Pin className="size-3.5" fill={pinned ? "currentColor" : "none"} /></button></div><div className="mt-4 flex items-center justify-between gap-2 text-[11px] text-muted-foreground"><span>{report.live ? "Updated from connected CRM" : "Connect workspace to unlock"}</span><button type="button" onClick={onOpen} className="font-medium text-accent opacity-0 transition-opacity group-hover:opacity-100">Open <ExternalLink className="inline size-3" /></button></div></div>;
+}
+
+function DisconnectedDepartment({ department, definition, onConnect }: { department: ReportDepartment; definition: ReportDefinition; onConnect: () => void }) { return <div className="flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed border-border bg-surface-2 px-4 py-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">{department}</p><p className="mt-1 text-xs text-muted-foreground">Connect {definition.requiredWorkspace.replaceAll("-", " ")} to unlock reports.</p></div><Button size="sm" variant="secondary" onClick={onConnect}>Connect</Button></div>; }
+
+function ReportView({ definition, onBack, onSchedule, onNotice }: { definition: ReportDefinition; onBack: () => void; onSchedule: () => void; onNotice: (message: string) => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const summary = useApi<Summary>(definition.endpoint === "/business/reports/summary" ? definition.endpoint : null);
+  const period = searchParams.get("period") ?? "this_month";
+  const compare = searchParams.get("compare") ?? "none";
+  const [sortAsc, setSortAsc] = React.useState(true);
+  const periodLabel = period.replaceAll("_", " ");
+  const summaryData = summary.data;
+  const live = definition.live && !summary.loading && !summary.error && summaryData !== undefined;
+  const metrics = definition.id === "sales-summary" && live ? [["Leads", String(summaryData.leads)], ["Open deals", String(summaryData.openDeals)], ["Won deals", String(summaryData.wonDeals)], ["Pipeline", summaryData.pipelineValue]] : definition.id === "sales-pipeline" && live ? [["Open deals", String(summaryData.openDeals)], ["Pipeline", summaryData.pipelineValue]] : [];
+  function updateQuery(key: "period" | "compare", value: string) { const params = new URLSearchParams(searchParams.toString()); params.set(key, value); router.replace(`/analytics?${params.toString()}`); }
+  function exportReport(format: string) { onNotice(`${format} export started for ${definition.name}. This UI demo does not create a file yet.`); }
+  const detailRows = metrics.map(([label, value]) => ({ label, value }));
+  if (!sortAsc) detailRows.reverse();
+  return <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-6 py-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><button type="button" onClick={onBack} className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Back to Library</button><div className="flex items-center gap-2"><Badge variant="neutral">{definition.department}</Badge>{definition.live ? <Badge variant="success">Connected</Badge> : <Badge variant="warning">Not connected</Badge>}</div><h1 className="mt-2 text-2xl font-semibold tracking-tight">{definition.name}</h1><p className="mt-1 text-sm text-muted-foreground">{definition.description}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => exportReport("PDF")}><Download className="size-3.5" />PDF</Button><Button size="sm" variant="secondary" onClick={() => exportReport("Excel")}><Download className="size-3.5" />Excel</Button><Button size="sm" variant="secondary" onClick={onSchedule}><CalendarClock className="size-3.5" />Schedule</Button><Button size="sm" variant="secondary" onClick={() => onNotice("Share link copied for this report view.")}><Share2 className="size-3.5" />Share</Button><Link href={`/ai?workspace=business&view=chat&report=${definition.id}&period=${period}&compare=${compare}`}><Button size="sm"><Sparkles className="size-3.5" />Ask Janus</Button></Link></div></div><div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 sm:flex-row sm:items-end"><div><Label htmlFor="report-period">Period</Label><select id="report-period" value={period} onChange={(event) => updateQuery("period", event.target.value)} className="mt-1 h-9 rounded-md border border-input bg-surface-2 px-2 text-sm"><option value="today">Today</option><option value="this_week">This week</option><option value="this_month">This month</option><option value="quarter">Quarter</option><option value="custom">Custom range</option></select></div><div><Label htmlFor="report-compare">Compare with</Label><select id="report-compare" value={compare} onChange={(event) => updateQuery("compare", event.target.value)} className="mt-1 h-9 rounded-md border border-input bg-surface-2 px-2 text-sm"><option value="previous_period">Previous period</option><option value="same_period_last_year">Same period last year</option><option value="none">None</option></select></div><Badge variant="neutral">{periodLabel}</Badge></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{(definition.live ? ["Leads", "Open deals", "Won deals", "Pipeline"] : ["Metric 1", "Metric 2", "Metric 3"]).map((label, index) => <div key={label} className="rounded-lg border border-border bg-surface p-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{definition.live && metrics[index] ? metrics[index][0] : label}</p><p className="mt-2 text-2xl font-semibold">{summary.loading ? "…" : definition.live && metrics[index] ? metrics[index][1] : "—"}</p><p className="mt-1 text-xs text-muted-foreground">{definition.live && summary.error ? "Unavailable" : compare === "none" ? "No comparison selected" : "Comparison data unavailable"}</p></div>)}</div><SectionCard title="Trend" description={definition.live ? "Chart uses the connected report response. Historical series will appear when the endpoint provides period data." : `Unavailable until ${definition.requiredWorkspace.replaceAll("-", " ")} is connected.`}>{definition.live && metrics.length > 0 ? <ReportBars metrics={metrics} /> : <UnavailableReport message={summary.error ? `Report unavailable: ${summary.error}` : `This report needs its backend endpoint (${definition.endpoint}) before values can be shown.`} />}</SectionCard><SectionCard title="Detail" description="Sortable report rows. Pagination will be enabled when the endpoint returns record-level rows."><div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-2 py-2"><button type="button" onClick={() => setSortAsc((value) => !value)} className="flex items-center gap-1">Metric {sortAsc ? "↑" : "↓"}</button></th><th className="px-2 py-2">Value</th><th className="px-2 py-2">Status</th></tr></thead><tbody>{detailRows.length ? detailRows.map((row) => <tr key={row.label} className="border-b border-border last:border-0"><td className="px-2 py-3 font-medium">{row.label}</td><td className="px-2 py-3">{row.value}</td><td className="px-2 py-3"><Badge variant="success">Verified</Badge></td></tr>) : <tr><td colSpan={3} className="px-2 py-8 text-center text-sm text-muted-foreground">No verified rows are available for this report yet.</td></tr>}</tbody></table></div></SectionCard></div>;
+}
+
+function ReportBars({ metrics }: { metrics: string[][] }) { const numeric = metrics.map(([, value]) => Number(value.replace(/[^0-9.]/g, "")) || 0); const max = Math.max(...numeric, 1); return <div className="flex h-48 items-end gap-4 rounded-lg bg-surface-2 p-4">{metrics.map(([label, value], index) => <div key={label} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-md bg-accent" style={{ height: `${Math.max((numeric[index] / max) * 100, 8)}%` }} title={`${label}: ${value}`} /><span className="max-w-20 text-center text-[10px] text-muted-foreground">{label}</span></div>)}</div>; }
+function UnavailableReport({ message }: { message: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">— · {message}</div>; }
+
+function ReportBuilderDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (report: CustomReport) => void }) {
+  const [step, setStep] = React.useState(1); const [name, setName] = React.useState(""); const [metrics, setMetrics] = React.useState<string[]>(["Leads"]); const [groupBy, setGroupBy] = React.useState("Date"); const [chart, setChart] = React.useState("Table");
+  function reset(openState: boolean) { onOpenChange(openState); if (openState) { setStep(1); setName(""); setMetrics(["Leads"]); setGroupBy("Date"); setChart("Table"); } }
+  function save() { if (!name.trim()) return; onSave({ id: `custom-${Date.now()}`, name: name.trim(), source: "CRM & Sales", lastRun: "Not run yet", owner: "You", metrics, groupBy, chart }); }
+  return <Dialog open={open} onOpenChange={reset}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>New report · Step {step} of 4</DialogTitle><DialogDescription>Build a report only from connected, permission-allowed business sources.</DialogDescription></DialogHeader><div className="mb-4 flex gap-1">{[1, 2, 3, 4].map((number) => <div key={number} className={`h-1.5 flex-1 rounded-full ${number <= step ? "bg-accent" : "bg-border"}`} />)}</div>{step === 1 && <div className="flex flex-col gap-3"><Label>Source</Label><button type="button" className="flex items-center gap-3 rounded-lg border border-accent-border bg-accent-muted p-3 text-left"><Checkbox checked /><span><span className="block text-sm font-medium">CRM & Sales</span><span className="block text-xs text-muted-foreground">Connected · Leads, deals and pipeline</span></span></button><div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">Other departments are disabled until their workspace is connected.</div></div>}{step === 2 && <div className="flex flex-col gap-3"><Label>Metrics</Label>{["Leads", "Open deals", "Won deals", "Pipeline value"].map((item) => <label key={item} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"><Checkbox checked={metrics.includes(item)} onCheckedChange={() => setMetrics((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item])} />{item}</label>)}</div>}{step === 3 && <div><Label htmlFor="report-group">Group by</Label><select id="report-group" value={groupBy} onChange={(event) => setGroupBy(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option>Date</option><option>Owner</option><option>Stage</option><option>Source</option></select></div>}{step === 4 && <div className="flex flex-col gap-3"><div><Label htmlFor="custom-report-name">Report name</Label><Input id="custom-report-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Weekly pipeline review" className="mt-1" autoFocus /></div><div><Label>Chart</Label><div className="mt-1 flex gap-2">{["Line", "Bar", "Table"].map((item) => <button key={item} type="button" onClick={() => setChart(item)} className={`rounded-md border px-3 py-2 text-xs ${chart === item ? "border-accent bg-accent-muted text-accent" : "border-border"}`}>{item}</button>)}</div></div><div className="rounded-md bg-surface-2 p-3 text-xs text-muted-foreground">Preview · {metrics.length} metric{metrics.length === 1 ? "" : "s"} grouped by {groupBy} as a {chart.toLowerCase()}.</div></div>}<DialogFooter><Button type="button" variant="secondary" onClick={() => step === 1 ? onOpenChange(false) : setStep((current) => current - 1)}>{step === 1 ? "Cancel" : "Back"}</Button>{step < 4 ? <Button type="button" disabled={step === 2 && metrics.length === 0} onClick={() => setStep((current) => current + 1)}>Continue</Button> : <Button type="button" disabled={!name.trim()} onClick={save}>Save report</Button>}</DialogFooter></DialogContent></Dialog>;
+}
+
+function ScheduleDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (report: ScheduledReport) => void }) {
+  const whatsappConnected = leadSourceConnections.some((source) => source.source === "whatsapp" && source.status === "connected"); const [report, setReport] = React.useState("sales-summary"); const [recipients, setRecipients] = React.useState(""); const [channel, setChannel] = React.useState<"Email" | "WhatsApp">("Email"); const [frequency, setFrequency] = React.useState("Weekly · 09:00");
+  function save() { if (!recipients.trim()) return; const definition = reportCatalogue.find((item) => item.id === report); if (!definition) return; onSave({ id: `schedule-${Date.now()}`, report: definition.name, recipients: recipients.trim(), channel, frequency, lastSent: "Not sent yet", status: "Active" }); setRecipients(""); }
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>Schedule a report</DialogTitle><DialogDescription>Choose a verified report and delivery schedule.</DialogDescription></DialogHeader><div className="flex flex-col gap-3"><div><Label htmlFor="scheduled-report">Report</Label><select id="scheduled-report" value={report} onChange={(event) => setReport(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm">{reportCatalogue.filter((item) => item.live).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div><Label htmlFor="scheduled-recipients">Recipients</Label><Input id="scheduled-recipients" value={recipients} onChange={(event) => setRecipients(event.target.value)} placeholder="owner@company.com, sales@company.com" className="mt-1" /></div><div><Label htmlFor="scheduled-channel">Channel</Label><select id="scheduled-channel" value={channel} onChange={(event) => setChannel(event.target.value as "Email" | "WhatsApp")} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option>Email</option>{whatsappConnected && <option>WhatsApp</option>}</select></div><div><Label htmlFor="scheduled-frequency">Frequency and time</Label><select id="scheduled-frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option>Daily · 09:00</option><option>Weekly · 09:00</option><option>Monthly · 09:00</option></select></div></div><DialogFooter><Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={!recipients.trim()} onClick={save}>Save schedule</Button></DialogFooter></DialogContent></Dialog>;
+}
+
+function CustomReportsTable({ reports, onDelete, onDuplicate, onNotice }: { reports: CustomReport[]; onDelete: (id: string) => void; onDuplicate: (report: CustomReport) => void; onNotice: (message: string) => void }) { return <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-2 py-2">Report</th><th className="px-2 py-2">Source</th><th className="px-2 py-2">Last run</th><th className="px-2 py-2">Owner</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{reports.map((report) => <tr key={report.id} className="border-b border-border last:border-0"><td className="px-2 py-3 font-medium">{report.name}</td><td className="px-2 py-3 text-muted-foreground">{report.source}</td><td className="px-2 py-3 text-muted-foreground">{report.lastRun}</td><td className="px-2 py-3">{report.owner}</td><td className="px-2 py-3"><div className="flex gap-1"><Button size="sm" variant="secondary" onClick={() => onNotice(`${report.name} opened in the report viewer.`)}>Open</Button><Button size="icon" variant="ghost" aria-label={`Edit ${report.name}`} onClick={() => onNotice(`${report.name} is ready to edit in the builder.`)}><Pencil className="size-3.5" /></Button><Button size="icon" variant="ghost" aria-label={`Duplicate ${report.name}`} onClick={() => onDuplicate(report)}><MoreHorizontal className="size-3.5" /></Button><Button size="icon" variant="ghost" aria-label={`Delete ${report.name}`} onClick={() => { if (window.confirm(`Delete ${report.name}?`)) onDelete(report.id); }}><Trash2 className="size-3.5 text-danger" /></Button></div></td></tr>)}</tbody></table></div>; }
+function ScheduledTable({ reports, onNotice, onDelete, onToggle }: { reports: ScheduledReport[]; onNotice: (message: string) => void; onDelete: (id: string) => void; onToggle: (id: string) => void }) { return <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-sm"><thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-2 py-2">Report</th><th className="px-2 py-2">Recipients</th><th className="px-2 py-2">Channel</th><th className="px-2 py-2">Frequency</th><th className="px-2 py-2">Last sent</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{reports.map((report) => <tr key={report.id} className="border-b border-border last:border-0"><td className="px-2 py-3 font-medium">{report.report}</td><td className="px-2 py-3 text-muted-foreground">{report.recipients}</td><td className="px-2 py-3">{report.channel}</td><td className="px-2 py-3">{report.frequency}</td><td className="px-2 py-3 text-muted-foreground">{report.lastSent}</td><td className="px-2 py-3"><Badge variant={report.status === "Active" ? "success" : "warning"}>{report.status}</Badge></td><td className="px-2 py-3"><div className="flex gap-1"><Button size="sm" variant="secondary" onClick={() => onNotice(`${report.report} schedule opened for editing.`)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => onToggle(report.id)}>{report.status === "Active" ? "Pause" : "Resume"}</Button><Button size="icon" variant="ghost" aria-label={`Delete ${report.report} schedule`} onClick={() => onDelete(report.id)}><Trash2 className="size-3.5 text-danger" /></Button></div></td></tr>)}</tbody></table></div>; }
+function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) { return <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-5 py-12 text-center"><BarChart3 className="size-6 text-muted-foreground" /><p className="text-sm font-medium">{title}</p><p className="max-w-md text-xs text-muted-foreground">{description}</p>{action}</div>; }

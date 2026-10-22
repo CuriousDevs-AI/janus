@@ -1,108 +1,62 @@
-import { Check } from "lucide-react";
-import { tenant, costSummary } from "@/lib/mock-data";
-import { SectionCard } from "@/components/settings/section-ui";
+"use client";
+
+import * as React from "react";
+import { Check, Download, Plus, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatCurrencyINR } from "@/lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { SectionCard, FieldRow } from "@/components/settings/section-ui";
 import { cn } from "@/lib/utils";
 
-const plans = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: "₹15,000/mo",
-    blurb: "For small teams getting started with AI-assisted operations.",
-    features: ["1 AI agent", "Up to 2,000 conversations/mo", "Email & website chat", "Community support"],
-  },
-  {
-    id: "growth",
-    name: "Growth",
-    price: "₹45,000/mo",
-    blurb: "For growing teams that need AI across the full customer lifecycle.",
-    features: ["Up to 5 AI agents", "Up to 15,000 conversations/mo", "All channels incl. WhatsApp", "Priority support"],
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    price: "Custom",
-    blurb: "For organizations with advanced governance and scale needs.",
-    features: ["Unlimited AI agents", "Unlimited conversations", "SSO, audit exports & SLAs", "Dedicated success manager"],
-  },
-] as const;
+type Plan = { id: string; name: string; price: string; detail: string; features: string[] };
+const plans: Plan[] = [
+  { id: "starter", name: "Starter", price: "₹1,499", detail: "/ month", features: ["Up to 10 seats", "CRM & Sales workspace", "2,000 AI credits a month", "Email support"] },
+  { id: "business", name: "Business", price: "₹4,999", detail: "/ month, yearly", features: ["Up to 50 seats", "All 7 workspaces", "10,000 AI credits a month", "AI agents and workflows"] },
+  { id: "enterprise", name: "Enterprise", price: "Custom", detail: "", features: ["Unlimited seats", "SSO and audit export", "Custom AI credit limits", "Dedicated success manager"] },
+];
+const invoices = [
+  ["JAN-2027-0414", "14 Apr 2027", "Janus Business · annual renewal", "₹70,786", "Upcoming"],
+  ["JAN-2026-0918", "18 Sep 2026", "Add-on · 10 seats, prorated to Apr 2027", "₹5,900", "Paid"],
+  ["JAN-2026-0414", "14 Apr 2026", "Janus Business · annual", "₹70,786", "Paid"],
+  ["JAN-2025-1102", "2 Nov 2025", "Janus Starter · upgrade credit applied", "₹8,850", "Paid"],
+];
 
 export function BillingSection() {
-  return (
-    <div className="flex flex-col gap-4">
-      <SectionCard title="Current plan" description="Your workspace is on the following plan.">
-        <div className="flex items-center gap-3">
-          <Badge variant="accent" className="text-[12px] capitalize">
-            {tenant.plan}
-          </Badge>
-          <span className="text-[12px] text-muted-foreground capitalize">{tenant.environment} environment</span>
-        </div>
-      </SectionCard>
+  const [cycle, setCycle] = React.useState<"annual" | "monthly">("annual");
+  const [plan, setPlan] = React.useState("business");
+  const [planOpen, setPlanOpen] = React.useState(false);
+  const [seatsOpen, setSeatsOpen] = React.useState(false);
+  const [paymentOpen, setPaymentOpen] = React.useState(false);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
+  const [seatCount, setSeatCount] = React.useState("50");
+  const current = plans.find((item) => item.id === plan) ?? plans[1];
 
-      <SectionCard title="Plans" description="Compare available plans.">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {plans.map((plan) => {
-            const isCurrent = plan.id === tenant.plan;
-            return (
-              <div
-                key={plan.id}
-                className={cn(
-                  "flex flex-col gap-3 rounded-lg border p-4",
-                  isCurrent ? "border-accent-border bg-accent-muted" : "border-border bg-surface-2"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-foreground">{plan.name}</span>
-                  {isCurrent && <Badge variant="accent">Current</Badge>}
-                </div>
-                <span className="text-mono text-[18px] font-semibold text-foreground">{plan.price}</span>
-                <p className="text-[11.5px] text-muted-foreground">{plan.blurb}</p>
-                <ul className="flex flex-col gap-1.5">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-1.5 text-[12px] text-foreground">
-                      <Check className="mt-0.5 size-3.5 shrink-0 text-accent" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Button variant={isCurrent ? "secondary" : "outline"} size="sm" disabled={isCurrent} className="mt-1">
-                  {isCurrent ? "Current plan" : plan.id === "enterprise" ? "Contact sales" : "Switch plan"}
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      </SectionCard>
+  function switchCycle() { const next = cycle === "annual" ? "monthly" : "annual"; setCycle(next); toast.success(`Switched to ${next} billing preview`); }
+  function choosePlan(value: string) { setPlan(value); setPlanOpen(false); toast.success(`${value === "business" ? "Janus Business" : value[0].toUpperCase() + value.slice(1)} selected in this demo`); }
 
-      <SectionCard title="This billing period" description="Usage-based cost breakdown for the current month.">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <CostStat label="Total" value={formatCurrencyINR(costSummary.totalThisMonth)} highlight />
-          <CostStat label="LLM" value={formatCurrencyINR(costSummary.llm)} />
-          <CostStat label="Embeddings" value={formatCurrencyINR(costSummary.embeddings)} />
-          <CostStat label="WhatsApp" value={formatCurrencyINR(costSummary.whatsapp)} />
-          <CostStat label="Email" value={formatCurrencyINR(costSummary.email)} />
-          <CostStat label="Voice" value={formatCurrencyINR(costSummary.voice)} />
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-3">
-          <CostStat label="Cost per lead" value={`₹${costSummary.costPerLead}`} />
-          <CostStat label="Cost per conversation" value={`₹${costSummary.costPerConversation}`} />
-          <CostStat label="Cost per resolved ticket" value={`₹${costSummary.costPerResolvedTicket}`} />
-        </div>
-      </SectionCard>
-    </div>
-  );
+  return <div className="flex flex-col gap-5">
+    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Account</p><div className="mt-1 flex flex-wrap items-center gap-2"><h2 className="text-2xl font-semibold tracking-tight">Plan & Billing</h2><Badge variant="neutral">Sample data</Badge><Badge variant="warning">Owner only</Badge></div><p className="mt-1 text-sm text-muted-foreground">Your subscription, usage, payment method and GST invoices.</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p><strong>84% of seats used.</strong> You have 8 seats left. Add seats before inviting more people.</p><Button size="sm" variant="secondary" onClick={() => setSeatsOpen(true)}>Add seats</Button></div>
+    <SectionCard title="Current plan" description="Your active Janus subscription and renewal schedule." action={<div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={switchCycle}>Switch to {cycle === "annual" ? "monthly" : "annual"}</Button><Button size="sm" onClick={() => setPlanOpen(true)}>Change plan</Button></div>}>
+      <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><h3 className="text-lg font-semibold">{current.name === "Business" ? "Janus Business" : current.name}</h3><Badge variant="success">Active · {cycle === "annual" ? "Annual" : "Monthly"}</Badge></div><p className="mt-2"><span className="text-3xl font-semibold tabular-nums">{current.price}</span><span className="ml-1 text-sm text-muted-foreground">{current.detail}, billed {cycle === "annual" ? "yearly" : "monthly"}</span></p><p className="mt-2 text-xs text-muted-foreground">Renews on 14 Apr 2027. ₹70,786 will be charged through UPI AutoPay.</p></div><div className="flex size-12 items-center justify-center rounded-xl bg-accent-muted text-accent"><Sparkles className="size-5" /></div></div>
+    </SectionCard>
+    <SectionCard title="Usage this month" description="1 Oct – 31 Oct 2026 · resets in 9 days"><div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3"><Usage label="Seats" value="42 of 50" percent={84} note="8 seats left · ₹999 per extra seat a year" tone="orange" /><Usage label="Janus AI credits" value="7,820 of 10,000" percent={78} note="Used by chat, agents and Knowledge answers" /><Usage label="Automation runs" value="3,412 of 10,000" percent={34} note="Workflow and agent runs" /><Usage label="Knowledge sources" value="148 of 500" percent={30} note="Files, pages, links and Q&As" /><Usage label="File storage" value="18.4 GB of 50 GB" percent={37} note="Attachments and uploaded documents" /></div><p className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">WhatsApp conversation charges are billed by Meta through your WhatsApp provider and are not part of this plan.</p></SectionCard>
+    <div><h3 className="mb-3 text-base font-semibold">Plans</h3><div className="grid gap-4 lg:grid-cols-3">{plans.map((item) => <PlanCard key={item.id} plan={item} current={item.id === plan} onSelect={() => item.id === "enterprise" ? toast.message("Sales contact form opened") : choosePlan(item.id)} />)}</div></div>
+    <div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Payment method" action={<Button size="sm" variant="link" onClick={() => setPaymentOpen(true)}><Plus className="size-3.5" />Add method</Button>}><div className="divide-y divide-border"><PaymentRow icon="UPI" title="UPI AutoPay" detail="acmetraders@okbank · mandate up to ₹1,00,000" primary onEdit={() => toast.success("UPI payment method opened")} /><PaymentRow icon="VISA" title="Visa ending 4417" detail="Backup · expires 08/2028" onEdit={() => toast.success("Card payment method opened")} /></div></SectionCard><SectionCard title="Billing details" action={<Button size="sm" variant="link" onClick={() => setDetailsOpen(true)}>Edit</Button>}><div className="divide-y divide-border text-sm"><DetailRow label="Billed to" value="Acme Traders Private Limited" /><DetailRow label="GSTIN" value="06AAB•••••••1Z5 (Haryana)" /><DetailRow label="Billing email" value="accounts@acmetraders.in" /><DetailRow label="Address" value="Plot 14, Udyog Vihar Phase 4, Gurugram, Haryana 122015" /></div></SectionCard></div>
+    <SectionCard title="Invoices" description="GST tax invoices, sent to accounts@acmetraders.in"><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground"><th className="px-2 py-2">Invoice</th><th className="px-2 py-2">Date</th><th className="px-2 py-2">Description</th><th className="px-2 py-2 text-right">Amount</th><th className="px-2 py-2">Status</th><th className="px-2 py-2 text-right">PDF</th></tr></thead><tbody>{invoices.map(([id, date, description, amount, status]) => <tr key={id} className="border-b border-border last:border-0"><td className="px-2 py-3 font-mono text-xs font-semibold">{id}</td><td className="px-2 py-3 text-xs text-muted-foreground">{date}</td><td className="px-2 py-3">{description}</td><td className="px-2 py-3 text-right font-semibold tabular-nums">{amount}</td><td className="px-2 py-3"><Badge variant={status === "Paid" ? "success" : "warning"}>{status}</Badge></td><td className="px-2 py-3 text-right"><Button size="sm" variant="link" onClick={() => toast.success(`${id} download started`)}><Download className="size-3.5" />Download</Button></td></tr>)}</tbody></table></div></SectionCard>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 p-4"><div><h3 className="text-sm font-semibold">Cancel subscription</h3><p className="mt-1 text-xs text-muted-foreground">You keep access until 14 Apr 2027. You can export all your data before then.</p></div><Button size="sm" variant="destructive" onClick={() => setCancelOpen(true)}>Cancel plan</Button></div>
+    <PlanDialog open={planOpen} current={plan} onClose={() => setPlanOpen(false)} onSelect={choosePlan} /><SeatsDialog open={seatsOpen} value={seatCount} onClose={() => setSeatsOpen(false)} onChange={setSeatCount} onSave={() => { setSeatsOpen(false); toast.success(`${seatCount} seats are ready to add in this demo`); }} /><PaymentDialog open={paymentOpen} onClose={() => setPaymentOpen(false)} /><BillingDetailsDialog open={detailsOpen} onClose={() => setDetailsOpen(false)} /><Dialog open={cancelOpen} onOpenChange={setCancelOpen}><DialogContent><DialogHeader><DialogTitle>Cancel Janus Business?</DialogTitle><DialogDescription>Your access stays active until 14 Apr 2027. This is a demo action and does not change your subscription.</DialogDescription></DialogHeader><div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Export your customer, knowledge and billing data before cancelling.</div><DialogFooter><Button variant="secondary" onClick={() => setCancelOpen(false)}>Keep plan</Button><Button variant="destructive" onClick={() => { setCancelOpen(false); toast.success("Cancellation request saved for this demo"); }}>Cancel plan</Button></DialogFooter></DialogContent></Dialog>
+  </div>;
 }
 
-function CostStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className={cn("text-mono text-[15px] font-semibold", highlight ? "text-accent" : "text-foreground")}>
-        {value}
-      </span>
-    </div>
-  );
-}
+function Usage({ label, value, percent, note, tone }: { label: string; value: string; percent: number; note: string; tone?: "orange" }) { return <div><div className="flex items-center justify-between gap-2 text-xs"><span className="font-semibold">{label}</span><span className="text-muted-foreground">{value}</span></div><div className="mt-2 h-2 rounded-full bg-surface-3"><div className={cn("h-2 rounded-full bg-accent", tone === "orange" && "bg-orange-600")} style={{ width: `${percent}%` }} /></div><p className={cn("mt-1.5 text-[11px]", tone === "orange" ? "text-orange-700" : "text-muted-foreground")}>{note}</p></div>; }
+function PlanCard({ plan, current, onSelect }: { plan: Plan; current: boolean; onSelect: () => void }) { return <div className={cn("flex flex-col gap-3 rounded-xl border bg-surface p-4", current ? "border-accent ring-1 ring-accent" : "border-border")}><div className="flex items-center justify-between"><h4 className="font-semibold">{plan.name}</h4>{current && <Badge variant="accent">Current</Badge>}</div><p><span className="text-xl font-semibold">{plan.price}</span><span className="ml-1 text-xs text-muted-foreground">{plan.detail}</span></p><p className="min-h-10 text-xs text-muted-foreground">{plan.id === "starter" ? "For small teams starting with CRM and reports." : plan.id === "business" ? "All workspaces, Janus Intelligence and automation." : "For larger companies with special security needs."}</p><ul className="flex flex-col gap-2 text-xs">{plan.features.map((feature) => <li key={feature} className="flex gap-2"><Check className="size-3.5 shrink-0 text-emerald-600" />{feature}</li>)}</ul><Button size="sm" variant={current ? "secondary" : "outline"} className="mt-auto" disabled={current} onClick={onSelect}>{current ? "Current plan" : plan.id === "enterprise" ? "Talk to sales" : "Switch plan"}</Button></div>; }
+function PaymentRow({ icon, title, detail, primary, onEdit }: { icon: string; title: string; detail: string; primary?: boolean; onEdit: () => void }) { return <div className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex h-8 w-11 items-center justify-center rounded-md border border-border bg-surface-2 text-[10px] font-bold">{icon}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs text-muted-foreground">{detail}</p></div>{primary && <Badge variant="success">Primary</Badge>}<Button size="sm" variant="link" onClick={onEdit}>Edit</Button></div>; }
+function DetailRow({ label, value }: { label: string; value: string }) { return <div className="grid gap-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[110px_1fr]"><span className="text-xs text-muted-foreground">{label}</span><span className="text-sm">{value}</span></div>; }
+function PlanDialog({ open, current, onClose, onSelect }: { open: boolean; current: string; onClose: () => void; onSelect: (value: string) => void }) { return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>Change plan</DialogTitle><DialogDescription>Compare plans before choosing the next subscription.</DialogDescription></DialogHeader><div className="grid gap-2">{plans.map((plan) => <button key={plan.id} type="button" onClick={() => onSelect(plan.id)} className={cn("flex items-center justify-between rounded-md border p-3 text-left", plan.id === current ? "border-accent bg-accent-muted" : "border-border hover:bg-surface-2")}><span><span className="block text-sm font-semibold">{plan.name}</span><span className="text-xs text-muted-foreground">{plan.price} {plan.detail}</span></span>{plan.id === current && <Badge variant="accent">Current</Badge>}</button>)}</div><DialogFooter><Button variant="secondary" onClick={onClose}>Close</Button></DialogFooter></DialogContent></Dialog>; }
+function SeatsDialog({ open, value, onClose, onChange, onSave }: { open: boolean; value: string; onClose: () => void; onChange: (value: string) => void; onSave: () => void }) { return <Dialog open={open} onOpenChange={(next) => !next && onClose()}><DialogContent><DialogHeader><DialogTitle>Add seats</DialogTitle><DialogDescription>Seat changes are prorated to your annual renewal.</DialogDescription></DialogHeader><FieldRow label="Total seats"><Input value={value} onChange={(e) => onChange(e.target.value)} type="number" min="1" /></FieldRow><div className="rounded-md border border-border bg-surface-2 p-3 text-xs text-muted-foreground">8 seats are currently available. Additional seats cost ₹999 per seat per year.</div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={onSave}>Add seats</Button></DialogFooter></DialogContent></Dialog>; }
+function PaymentDialog({ open, onClose }: { open: boolean; onClose: () => void }) { const [type, setType] = React.useState("UPI"); return <Dialog open={open} onOpenChange={(next) => !next && onClose()}><DialogContent><DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Payment details are demo-only until billing is connected.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Method"><select value={type} onChange={(e) => setType(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>UPI</option><option>Visa / Mastercard</option></select></FieldRow><FieldRow label={type === "UPI" ? "UPI ID" : "Card number"}><Input placeholder={type === "UPI" ? "business@bank" : "•••• •••• •••• 0000"} /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => { onClose(); toast.success("Payment method added to this demo"); }}>Add method</Button></DialogFooter></DialogContent></Dialog>; }
+function BillingDetailsDialog({ open, onClose }: { open: boolean; onClose: () => void }) { return <Dialog open={open} onOpenChange={(next) => !next && onClose()}><DialogContent><DialogHeader><DialogTitle>Edit billing details</DialogTitle><DialogDescription>These details appear on GST invoices.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Billed to"><Input defaultValue="Acme Traders Private Limited" /></FieldRow><FieldRow label="GSTIN"><Input defaultValue="06AAB1234567891Z5" /></FieldRow><FieldRow label="Billing email"><Input defaultValue="accounts@acmetraders.in" type="email" /></FieldRow><FieldRow label="Address"><Input defaultValue="Plot 14, Udyog Vihar Phase 4, Gurugram, Haryana 122015" /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => { onClose(); toast.success("Billing details saved to this demo"); }}>Save details</Button></DialogFooter></DialogContent></Dialog>; }

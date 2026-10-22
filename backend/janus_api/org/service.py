@@ -24,6 +24,11 @@ PERMISSIONS = {
     "ai:manage",
     "settings:manage",
     "billing:manage",
+    "workspaces:manage",
+    "reports:read",
+    "agents:manage",
+    "automations:manage",
+    "approvals:manage",
 }
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
@@ -37,6 +42,11 @@ async def create_workspace(db: AsyncSession, user_id: int, name: str) -> int:
     result = await db.scalar(text("SELECT create_workspace(:name)"), {"name": name})
     tenant_id = int(result)
     await set_context(db, user_id=user_id, tenant_id=tenant_id)
+    # Every business starts with one real CRM workspace. Department workspaces
+    # are explicitly created by the Owner during setup.
+    from janus_api.business.service import ensure_crm_workspace
+
+    await ensure_crm_workspace(db, tenant_id, user_id)
     return tenant_id
 
 

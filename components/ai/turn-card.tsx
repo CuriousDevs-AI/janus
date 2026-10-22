@@ -6,7 +6,7 @@ import { EXAMPLE_QUESTIONS, type BusinessAnswer } from "@/lib/services/business-
 import { MiniBarChart } from "@/components/ai/mini-bar-chart";
 
 const FALLBACK_MESSAGE =
-  "I can help with acquisition, sales, support and customer health questions right now. Try one of the examples below, or ask about lead sources, conversion, or at-risk customers.";
+  "Janus could not answer from the connected records. Check the data connection and permissions, then try again.";
 
 function FollowupChips({ questions, onSelect }: { questions: string[]; onSelect: (q: string) => void }) {
   if (questions.length === 0) return null;
