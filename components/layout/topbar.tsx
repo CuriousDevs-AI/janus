@@ -1,26 +1,39 @@
 "use client";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, Search, LogOut } from "lucide-react";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
-import { navSections } from "@/lib/nav-config";
+import { getNavSectionsForWorkspace } from "@/lib/nav-config";
+import { useWorkspace } from "@/components/layout/workspace-context";
 import { Button } from "@/components/ui/button";
 export function Topbar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { workspaceId, workspace } = useWorkspace();
   const session = useSession();
   const signOut = useSignOut();
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const setMobile = useUIStore((s) => s.setMobileNavOpen);
   const title =
-    navSections
+    getNavSectionsForWorkspace(workspaceId)
       .flatMap((s) => s.items)
       .find(
-        (item) =>
-          pathname === item.href || pathname.startsWith(item.href + "/"),
+        (item) => {
+          const [itemPath, itemQuery] = item.href.split("?");
+          if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
+          const itemParams = new URLSearchParams(itemQuery ?? "");
+          for (const [key, value] of itemParams.entries()) {
+            if (searchParams.get(key) !== value) return false;
+          }
+          for (const [key] of searchParams.entries()) {
+            if (key !== "workspace" && !itemParams.has(key)) return false;
+          }
+          return true;
+        },
       )?.label || "Janus";
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <Button
           variant="ghost"
           size="icon"
@@ -30,7 +43,12 @@ export function Topbar() {
         >
           <Menu className="size-4" />
         </Button>
-        <span className="text-sm font-medium">{title}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="max-w-[min(38vw,280px)] truncate text-sm font-medium">{title}</span>
+          <span className="hidden border border-accent-border bg-accent-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent sm:inline-flex">
+            <span className="max-w-[180px] truncate">{workspace.name}</span>
+          </span>
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>

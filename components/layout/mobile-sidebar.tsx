@@ -14,7 +14,7 @@ export function MobileSidebar() {
       <SheetContent side="left" className="max-w-[270px] p-0 md:hidden">
         <div className="flex h-14 items-center border-b border-border px-4">
           <Link
-            href="/leads"
+            href="/dashboard"
             className="flex items-center gap-2"
             onClick={() => setOpen(false)}
           >

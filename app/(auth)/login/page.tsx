@@ -35,7 +35,13 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify(values),
       });
-      router.replace("/leads");
+      try {
+        const setup = await api<{ setupCompleted: boolean }>("/business/setup");
+        router.replace(setup.setupCompleted ? "/leads" : "/setup");
+      } catch {
+        // Older deployments without the business migration continue to CRM.
+        router.replace("/leads");
+      }
     } catch (error) {
       toast.error(message(error));
     }

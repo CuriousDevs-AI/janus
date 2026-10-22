@@ -3,500 +3,163 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Check,
-  CheckCircle2,
-  Database,
-  FlaskConical,
-  GitCompare,
-  ShieldAlert,
-  ShieldCheck,
-  X,
-} from "lucide-react";
-import { useAppStore } from "@/lib/stores/app-store";
-import { knowledgeDocuments, getEvaluationsForAgent } from "@/lib/mock-data";
-import { AgentTypeBadge, AgentStatusBadge, VerdictBadge, VersionStatusBadge } from "@/components/agents/agent-meta";
-import { ChannelBadge } from "@/components/shared/channel-badge";
-import { MetricCard } from "@/components/shared/metric-card";
-import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Check, Download, FlaskConical, Lock, MoreHorizontal, Pause, Pencil, Play, RotateCcw, ShieldAlert, Sparkles, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { formatDate, formatNumber, formatCurrencyINR, cn } from "@/lib/utils";
-import type { AgentVersion } from "@/lib/types";
+import { EmptyState } from "@/components/shared/empty-state";
+import { api, message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
+import { toast } from "sonner";
+import { demoMode } from "@/lib/demo-mode";
+
+type Agent = { id: string; key: string; name: string; department: string; status: string; workspaceId: string | null; configuration: Record<string, unknown> };
+type Tab = "overview" | "job" | "triggers" | "permissions" | "activity" | "approvals" | "settings" | "versions";
+
+const tabLabels: Array<[Tab, string]> = [["overview", "Overview"], ["job", "Job"], ["triggers", "Triggers"], ["permissions", "Permissions & limits"], ["activity", "Activity"], ["approvals", "Approvals"], ["settings", "Settings"], ["versions", "Versions"]];
+const workspaceNames: Record<string, string> = { crm_sales: "CRM & Sales", finance_accounting: "Finance & Accounting", customer_support: "Customer Support & Success", operations_inventory: "Operations & Inventory", hr_people: "HR & People", projects_delivery: "Projects & Delivery", it_infrastructure: "IT & Infrastructure", business: "Business" };
+
+const demoAgentRecords: Agent[] = [
+  { id: "demo-agent-health", key: "business-health", name: "Business Health Monitor", department: "business", status: "active", workspaceId: null, configuration: { description: "Prepares a daily owner brief from connected CRM activity.", ownerName: "Pankaj Neema", approvalMode: "Ask before sensitive actions", lastRunAt: "Today · 09:00", "Runs · 7d": "18", "Actions taken": "18", "Waiting approval": "2", Failed: "0", "Success rate": "96%", "Avg run time": "4.2s", instructions: "Review verified business signals and highlight the next best action.", readPermissions: true, knowledgeCollectionIds: ["business-faq"], approvers: ["owner"], readScopes: ["pipeline", "customers"], actions: ["create_task", "assign_owner"], triggers: ["Every morning at 09:00"], limits: { dailyRuns: 100, dailyActions: 500, workingHours: "09:00–18:00" } } },
+  { id: "demo-agent-lead", key: "lead-follow-up", name: "Lead Follow-up Agent", department: "crm_sales", status: "active", workspaceId: null, configuration: { description: "Qualifies new enquiries and prepares follow-ups for approval.", ownerName: "Sales team", approvalMode: "Ask before every action", lastRunAt: "Today · 08:42", "Runs · 7d": "34", "Actions taken": "34", "Waiting approval": "4", Failed: "1", "Success rate": "92%", "Avg run time": "3.8s", instructions: "Summarise new leads, recommend the next action and draft a reply.", readPermissions: true, knowledgeCollectionIds: ["sales-playbook"], approvers: ["owner"], readScopes: ["leads", "conversations"], actions: ["draft_reply", "create_task"], triggers: ["New lead captured"], limits: { dailyRuns: 150, dailyActions: 400, workingHours: "09:00–18:00" } } },
+  { id: "demo-agent-support", key: "support-triage", name: "Support Triage Agent", department: "customer_support", status: "paused", workspaceId: null, configuration: { description: "Classifies incoming support requests and routes urgent issues.", ownerName: "Support team", approvalMode: "Ask before every action", lastRunAt: "Yesterday · 17:20", "Runs · 7d": "11", "Actions taken": "11", "Waiting approval": "0", Failed: "0", "Success rate": "98%", "Avg run time": "2.9s", instructions: "Classify customer issues and escalate anything requiring a human.", readPermissions: true, knowledgeCollectionIds: ["support-knowledge"], approvers: ["owner"], readScopes: ["tickets", "customers"], actions: ["assign_owner", "create_task"], triggers: ["New support ticket"], limits: { dailyRuns: 100, dailyActions: 250, workingHours: "09:00–18:00" } } },
+];
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const agent = useAppStore((s) => s.agents.find((a) => a.id === id));
-  const switchAgentVersion = useAppStore((s) => s.switchAgentVersion);
+  const router = useRouter();
+  const search = useSearchParams();
+  const isDemoAgent = demoMode && id.startsWith("demo-agent-");
+  const rawTab = search.get("tab") as Tab | null;
+  const tab: Tab = tabLabels.some(([key]) => key === rawTab) ? (rawTab as Tab) : "overview";
+  const [editing, setEditing] = React.useState(search.get("mode") === "edit");
+  const [menu, setMenu] = React.useState(false);
+  const [testOutput, setTestOutput] = React.useState<Record<string, unknown> | null>(null);
+  const agent = useApi<Agent>(isDemoAgent ? null : `/business/agents/${id}`);
+  const [demoItem, setDemoItem] = React.useState<Agent | null>(() => isDemoAgent ? demoAgentRecords.find((record) => record.id === id) ?? null : null);
+  const item = agent.data ?? demoItem;
 
-  const [compareSelection, setCompareSelection] = React.useState<string[]>([]);
-  const [showDiff, setShowDiff] = React.useState(false);
-
-  if (!agent) {
-    return (
-      <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-2 px-6 py-16 text-center">
-        <p className="text-[14px] font-medium text-foreground">Agent not found</p>
-        <Button size="sm" variant="secondary" asChild>
-          <Link href="/agents">Back to agents</Link>
-        </Button>
-      </div>
-    );
+  function selectTab(value: Tab) { router.replace(`/agents/${id}?workspace=business&tab=${value}`); }
+  async function archive() {
+    if (!item || !window.confirm(`Archive “${item.name}”? Run history will be retained.`)) return;
+    if (isDemoAgent) { toast.success("Demo agent archived"); router.push("/agents?workspace=business&tab=agents"); return; }
+    try { await api(`/business/agents/${id}`, { method: "DELETE" }); toast.success("Agent archived"); router.push("/agents?workspace=business&tab=agents"); }
+    catch (error) { toast.error(message(error)); }
   }
 
-  const evaluations = getEvaluationsForAgent(agent.id);
-  const latestEvaluation = evaluations[0];
-
-  const autoTools = agent.tools.filter((t) => t.allowed && !t.requiresApproval);
-  const approvalTools = agent.tools.filter((t) => t.allowed && t.requiresApproval);
-  const disallowedTools = agent.tools.filter((t) => !t.allowed);
-  const policySummary =
-    approvalTools.length > 0
-      ? `${formatList(approvalTools.map((t) => policyLabelForTool(t.name)))} require human approval before execution. All other allowed actions execute automatically.`
-      : "All allowed actions execute automatically — no tool currently requires human approval.";
-
-  const estimatedCost = agent.conversationsHandled * 12;
-
-  function toggleCompare(version: string) {
-    setShowDiff(false);
-    setCompareSelection((sel) => {
-      if (sel.includes(version)) return sel.filter((v) => v !== version);
-      if (sel.length >= 2) return [sel[1], version];
-      return [...sel, version];
-    });
+  async function testRun() {
+    if (isDemoAgent) { setTestOutput({ dryRun: true, status: "passed", preview: `Reviewed ${item?.name ?? "agent"} against demo records`, side_effects: false }); toast.success("Demo agent dry run completed"); return; }
+    try {
+      const result = await api<Record<string, unknown>>(`/business/agents/${id}/test`, { method: "POST", body: JSON.stringify({ dryRun: true }) });
+      setTestOutput(result);
+      toast.success("Agent dry run completed");
+    } catch (error) { toast.error(message(error)); }
   }
 
-  function handleDeploy(version: string) {
-    switchAgentVersion(agent!.id, version);
-    toast.success(`Deployed ${version}`, { description: `${agent!.name} is now running ${version}.` });
+  async function toggleStatus() {
+    if (!item) return;
+    const status = item.status === "active" ? "paused" : "active";
+    if (isDemoAgent) { setDemoItem({ ...item, status }); toast.success(status === "active" ? "Demo agent activated" : "Demo agent paused"); return; }
+    try {
+      await api(`/business/agents/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      toast.success(status === "active" ? "Agent activated" : "Agent paused");
+      agent.reload();
+    } catch (error) { toast.error(message(error)); }
   }
 
-  return (
-    <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-6 py-6">
-      {/* Header */}
+  if (agent.loading && !item) return <div className="px-6 py-8 text-sm text-muted-foreground">Loading verified agent…</div>;
+  if (agent.error || !item) return <Unavailable title="Agent details unavailable" text={agent.error ?? "The agent could not be found in this workspace."} />;
+  if (!item) return null;
+  if (editing) return <AgentEditor agent={item} onCancel={() => setEditing(false)} onSaved={(updated) => { setEditing(false); if (isDemoAgent && updated) setDemoItem(updated); else agent.reload(); }} onTest={testRun} testOutput={testOutput} />;
+
+  const config = item.configuration ?? {};
+  const status = item.status.replaceAll("_", " ");
+  const approval = stringValue(config.approvalMode) ?? "Ask before every action";
+  const owner = stringValue(config.ownerName) ?? "Owner not returned by API";
+  const lastRun = stringValue(config.lastRunAt) ?? "Last run unavailable";
+
+  return <div className="mx-auto flex max-w-[1400px] flex-col">
+    <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[22px] font-semibold tracking-tight text-foreground">{agent.name}</h1>
-            <AgentTypeBadge type={agent.type} />
-            <AgentStatusBadge status={agent.status} />
-          </div>
-          <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted-foreground">
-            <span className="text-mono text-foreground">{agent.model}</span>
-            <span>·</span>
-            <span className="text-mono">Current version {agent.version}</span>
-          </div>
+        <div className="min-w-0">
+          <Link href="/agents?workspace=business&tab=agents" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />All agents</Link>
+          <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{item.name}</h1><Badge variant={item.status === "active" ? "success" : item.status === "needs_attention" ? "danger" : "neutral"}>{status}</Badge><Badge variant="outline">Business-wide</Badge><Badge variant="outline">{approval}</Badge></div>
+          <p className="mt-1 text-xs text-muted-foreground">{workspaceNames[item.department] ?? item.department} · {owner} · {lastRun}</p>
         </div>
-        <Button variant="secondary" size="sm" asChild>
-          <Link href="/agents">
-            <ArrowLeft className="size-3.5" />
-            All agents
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => void testRun()}><FlaskConical className="size-3.5" />Test run</Button><Button size="sm" variant="secondary" onClick={() => void toggleStatus()}><Pause className="size-3.5" />{item.status === "active" ? "Pause" : "Activate"}</Button><Button size="sm" onClick={() => setEditing(true)}><Pencil className="size-3.5" />Edit</Button><Button size="icon" variant="ghost" aria-label="More agent actions" onClick={() => setMenu((value) => !value)}><MoreHorizontal className="size-4" /></Button></div>
       </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <MetricCard label="Success rate" value={`${agent.successRate}%`} />
-        <MetricCard label="Conversations handled" value={formatNumber(agent.conversationsHandled)} />
-        <MetricCard label="Escalation rate" value={`${agent.escalationRate}%`} />
-      </div>
-
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="instructions">Instructions</TabsTrigger>
-          <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
-          <TabsTrigger value="tools">Tools</TabsTrigger>
-          <TabsTrigger value="policies">Policies</TabsTrigger>
-          <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
-          <TabsTrigger value="versions">Versions</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-        </TabsList>
-
-        {/* Overview */}
-        <TabsContent value="overview" className="grid grid-cols-1 gap-4 pt-4 lg:grid-cols-3">
-          <div className="flex flex-col gap-4 lg:col-span-2">
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Purpose</p>
-              <p className="text-[13px] leading-relaxed text-foreground">{agent.purpose}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Channels</p>
-              <div className="flex flex-wrap gap-2">
-                {agent.channels.map((c) => (
-                  <ChannelBadge key={c} channel={c} className="rounded-md border border-border bg-surface-2 px-2 py-1" />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">At a glance</p>
-            <div className="grid grid-cols-2 gap-2">
-              <Stat label="Model" value={agent.model} />
-              <Stat label="Version" value={agent.version} />
-              <Stat label="Temperature" value={agent.temperature.toFixed(1)} />
-              <Stat label="Tools" value={String(agent.tools.length)} />
-              <Stat label="Knowledge docs" value={String(agent.knowledgeDocIds.length)} />
-              <Stat label="Channels" value={String(agent.channels.length)} />
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Instructions */}
-        <TabsContent value="instructions" className="pt-4">
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">System prompt</p>
-              <span className="text-[11px] text-muted-foreground">{agent.instructions.length} characters</span>
-            </div>
-            <div className="whitespace-pre-wrap rounded-md border border-border bg-surface-2 p-4 text-mono text-[12.5px] leading-relaxed text-foreground">
-              {agent.instructions}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Knowledge */}
-        <TabsContent value="knowledge" className="pt-4">
-          {agent.knowledgeDocIds.length === 0 ? (
-            <EmptyState
-              icon={Database}
-              title="No knowledge documents linked"
-              description="This agent doesn't reference any knowledge base documents."
-            />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {agent.knowledgeDocIds.map((docId) => {
-                const doc = knowledgeDocuments.find((d) => d.id === docId);
-                if (!doc) return null;
-                const statusTone =
-                  doc.status === "published" ? "success" : doc.status === "processing" ? "warning" : doc.status === "archived" ? "outline" : "neutral";
-                return (
-                  <Link
-                    key={docId}
-                    href={`/knowledge/${docId}`}
-                    className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:border-border-strong"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-medium text-foreground">{doc.title}</p>
-                      <p className="text-[12px] text-muted-foreground">
-                        {doc.category} · {doc.chunkCount} chunks · v{doc.version}
-                      </p>
-                    </div>
-                    <Badge variant={statusTone}>{doc.status}</Badge>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Tools */}
-        <TabsContent value="tools" className="grid grid-cols-1 gap-4 pt-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <CheckCircle2 className="size-3.5 text-success" />
-              Allowed actions
-            </p>
-            <ul className="flex flex-col gap-2">
-              {autoTools.length === 0 && <p className="text-[12px] text-muted-foreground">No auto-executing tools configured.</p>}
-              {autoTools.map((t) => (
-                <li key={t.name} className="flex items-center gap-2 text-[13px]">
-                  <Check className="size-3.5 text-success" />
-                  <span className="text-mono text-foreground">{t.name}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <ShieldAlert className="size-3.5 text-warning" />
-              Approval required
-            </p>
-            <ul className="flex flex-col gap-2">
-              {approvalTools.length === 0 && <p className="text-[12px] text-muted-foreground">No tools require human approval.</p>}
-              {approvalTools.map((t) => (
-                <li key={t.name} className="flex items-center justify-between gap-2 text-[13px]">
-                  <span className="flex items-center gap-2">
-                    <Check className="size-3.5 text-success" />
-                    <span className="text-mono text-foreground">{t.name}</span>
-                  </span>
-                  <Badge variant="warning">Requires approval</Badge>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {disallowedTools.length > 0 && (
-            <div className="rounded-lg border border-border bg-surface p-4 lg:col-span-2">
-              <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <X className="size-3.5 text-danger" />
-                Not allowed
-              </p>
-              <ul className="flex flex-col gap-2">
-                {disallowedTools.map((t) => (
-                  <li key={t.name} className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                    <X className="size-3.5 text-danger" />
-                    <span className="text-mono">{t.name}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Policies */}
-        <TabsContent value="policies" className="grid grid-cols-1 gap-4 pt-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Model configuration</p>
-            <div className="grid grid-cols-3 gap-2">
-              <Stat label="Temperature" value={agent.temperature.toFixed(1)} />
-              <Stat label="Model" value={agent.model} />
-              <Stat label="Version" value={agent.version} />
-            </div>
-            <p className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Channels</p>
-            <div className="flex flex-wrap gap-2">
-              {agent.channels.map((c) => (
-                <ChannelBadge key={c} channel={c} className="rounded-md border border-border bg-surface-2 px-2 py-1" />
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-accent-border bg-accent-muted p-4">
-            <div className="mb-2 flex items-center gap-1.5">
-              <ShieldCheck className="size-3.5 text-accent" />
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">Approval policy</span>
-            </div>
-            <p className="text-[13px] leading-relaxed text-foreground">{policySummary}</p>
-            {approvalTools.length > 0 && (
-              <ul className="mt-3 flex flex-col gap-1.5">
-                {approvalTools.map((t) => (
-                  <li key={t.name} className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                    <ShieldAlert className="size-3.5 text-warning" />
-                    <span className="text-mono text-foreground">{t.name}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Evaluation */}
-        <TabsContent value="evaluation" className="flex flex-col gap-4 pt-4">
-          {!latestEvaluation ? (
-            <EmptyState icon={FlaskConical} title="No evaluation runs yet" description="This agent hasn't been evaluated against a dataset." />
-          ) : (
-            <>
-              <div className="rounded-lg border border-border bg-surface p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[13px] font-medium text-foreground">{latestEvaluation.datasetName}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      Latest run · {formatDate(latestEvaluation.runAt)}
-                      {latestEvaluation.comparedToVersion ? ` · vs ${latestEvaluation.comparedToVersion}` : ""}
-                    </p>
-                  </div>
-                  <VerdictBadge verdict={latestEvaluation.verdict} />
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                  <EvalMetric label="Accuracy" value={latestEvaluation.accuracy} />
-                  <EvalMetric label="Groundedness" value={latestEvaluation.groundedness} />
-                  <EvalMetric label="Tool success" value={latestEvaluation.toolSuccess} />
-                  <EvalMetric label="Escalation quality" value={latestEvaluation.escalationQuality} />
-                  <EvalMetric label="Policy compliance" value={latestEvaluation.policyCompliance} />
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-border bg-surface">
-                <div className="border-b border-border px-4 py-3">
-                  <p className="text-[13px] font-semibold text-foreground">All runs</p>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Run date</TableHead>
-                      <TableHead>Dataset</TableHead>
-                      <TableHead>Accuracy</TableHead>
-                      <TableHead>Groundedness</TableHead>
-                      <TableHead>Tool success</TableHead>
-                      <TableHead>Escalation</TableHead>
-                      <TableHead>Policy</TableHead>
-                      <TableHead>Verdict</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {evaluations.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="text-muted-foreground">{formatDate(r.runAt)}</TableCell>
-                        <TableCell className="text-mono text-foreground">{r.datasetName}</TableCell>
-                        <TableCell className="text-mono">{r.accuracy}%</TableCell>
-                        <TableCell className="text-mono">{r.groundedness}%</TableCell>
-                        <TableCell className="text-mono">{r.toolSuccess}%</TableCell>
-                        <TableCell className="text-mono">{r.escalationQuality}%</TableCell>
-                        <TableCell className="text-mono">{r.policyCompliance}%</TableCell>
-                        <TableCell>
-                          <VerdictBadge verdict={r.verdict} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
-        </TabsContent>
-
-        {/* Versions */}
-        <TabsContent value="versions" className="flex flex-col gap-4 pt-4">
-          <div className="rounded-lg border border-border bg-surface">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-              <p className="text-[13px] font-semibold text-foreground">Version history</p>
-              <Button size="sm" variant="secondary" disabled={compareSelection.length !== 2} onClick={() => setShowDiff(true)}>
-                <GitCompare className="size-3.5" />
-                Compare selected
-              </Button>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-9" />
-                  <TableHead>Version</TableHead>
-                  <TableHead>Deployed</TableHead>
-                  <TableHead>Change summary</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {agent.versions.map((v) => (
-                  <TableRow key={v.version}>
-                    <TableCell>
-                      <Checkbox checked={compareSelection.includes(v.version)} onCheckedChange={() => toggleCompare(v.version)} />
-                    </TableCell>
-                    <TableCell className="text-mono font-medium text-foreground">{v.version}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(v.deployedAt)}</TableCell>
-                    <TableCell className="max-w-[360px] whitespace-normal text-foreground">{v.changeSummary}</TableCell>
-                    <TableCell>
-                      <VersionStatusBadge status={v.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {v.status === "current" ? (
-                        <Button size="sm" variant="secondary" disabled>
-                          Rollback
-                        </Button>
-                      ) : (
-                        <Button size="sm" onClick={() => handleDeploy(v.version)}>
-                          Deploy
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {showDiff && compareSelection.length === 2 && (
-            <div className="rounded-lg border border-accent-border bg-accent-muted p-4">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-accent">
-                Comparing {compareSelection[0]} vs {compareSelection[1]}
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {compareSelection.map((vNum) => {
-                  const v: AgentVersion | undefined = agent.versions.find((x) => x.version === vNum);
-                  if (!v) return null;
-                  return (
-                    <div key={vNum} className="rounded-md border border-border bg-surface p-3">
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <span className="text-mono text-[13px] font-semibold text-foreground">{v.version}</span>
-                        <VersionStatusBadge status={v.status} />
-                      </div>
-                      <p className="text-[12px] text-muted-foreground">{formatDate(v.deployedAt)}</p>
-                      <p className="mt-2 text-[13px] text-foreground">{v.changeSummary}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Usage */}
-        <TabsContent value="usage" className="pt-4">
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-[13px] font-semibold text-foreground">Estimated usage &amp; cost</p>
-              <span className="text-[11px] text-muted-foreground">Estimate only</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="Conversations handled" value={formatNumber(agent.conversationsHandled)} />
-              <Stat label="Est. cost / conversation" value="₹12" />
-              <Stat label="Est. total cost" value={formatCurrencyINR(estimatedCost)} />
-              <Stat label="Model" value={agent.model} />
-            </div>
-            <p className="mt-4 text-[12px] text-muted-foreground">
-              Estimated at ₹12 per conversation handled ({formatNumber(agent.conversationsHandled)} conversations × ₹12 ≈{" "}
-              {formatCurrencyINR(estimatedCost)}). See the{" "}
-              <Link href="/usage" className="text-accent hover:underline">
-                Usage
-              </Link>{" "}
-              page for full billing detail across all agents.
-            </p>
-          </div>
-        </TabsContent>
-      </Tabs>
+      {menu && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3"><Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(JSON.stringify(item, null, 2)).then(() => toast.success("Configuration copied"))}><Download className="size-3.5" />Export config</Button><Button size="sm" variant="ghost" onClick={() => toast.info("Duplicate is available from the agents list.")}><RotateCcw className="size-3.5" />Duplicate</Button><Button size="sm" variant="ghost" onClick={archive}><Trash2 className="size-3.5" />Archive</Button><Button size="sm" variant="ghost" onClick={() => toast.info("Permanent deletion is restricted until the agent is archived.")}><X className="size-3.5" />Delete</Button></div>}
     </div>
-  );
+    {item.status === "needs_attention" && <div className="mx-6 mt-4 flex items-center gap-2 border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-800"><ShieldAlert className="size-4" />Configuration needs attention. Fix the flagged field before activating this agent.</div>}
+    <div role="tablist" aria-label="Agent details" className="mx-6 mt-5 flex gap-1 overflow-x-auto bg-[#f5f3ee] p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{tabLabels.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => selectTab(key)} className={`shrink-0 px-3 py-2 text-xs ${tab === key ? "bg-white font-medium shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}>{label}</button>)}</div>
+    <div className="px-6 py-5">{testOutput && <div role="status" className="mb-4 rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent"><div className="flex items-center justify-between gap-3"><span>Dry run passed. No side effects were performed.</span><button type="button" className="text-xs underline" onClick={() => setTestOutput(null)}>Dismiss</button></div><pre className="mt-2 max-h-40 overflow-auto text-[11px]">{JSON.stringify(testOutput, null, 2)}</pre></div>}{tab === "overview" && <AgentOverview agent={item} />}{tab === "job" && <AgentJob config={config} />}{tab === "triggers" && <AgentTriggers config={config} />}{tab === "permissions" && <AgentPermissions config={config} />}{tab === "activity" && <Unavailable title="Activity is ready for run records" text="The agent runs endpoint is not connected yet. This section will show time, trigger, records, result, actions and duration when it is available." action="Activity endpoint missing" />}{tab === "approvals" && <Unavailable title="No agent approval records returned" text="The agent approvals endpoint is not connected yet. Pending decisions will appear here with their previews and approval controls." action="Approvals endpoint missing" />}{tab === "settings" && <AgentSettings agent={item} onNotice={(text) => toast.info(text)} />}{tab === "versions" && <Unavailable title="Version history is not connected" text="Every save will appear here once the agent versions endpoint is available, including compare and restore controls." action="Versions endpoint missing" />}</div>
+  </div>;
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 px-3 py-2.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-mono text-[13px] font-medium text-foreground">{value}</span>
-    </div>
-  );
-}
+function AgentOverview({ agent }: { agent: Agent }) { const c = agent.configuration ?? {}; const checks: Array<[string, boolean | undefined, string]> = [["Permissions valid", Boolean(c.readPermissions), "Connect read scopes to validate access."], ["Knowledge connected", Boolean(c.knowledgeCollectionIds), "Knowledge collections are not returned by the API."], ["Approver assigned", Boolean(c.approvers), "Assign an approver before sensitive actions."], ["No repeated failures", undefined, "Run health checks will appear with the activity endpoint."]]; return <div className="grid gap-4 lg:grid-cols-3"><div className="grid gap-3 sm:grid-cols-2 lg:col-span-2 xl:grid-cols-3">{["Runs · 7d", "Actions taken", "Waiting approval", "Failed", "Success rate", "Avg run time"].map((label) => <StatCard key={label} label={label} value={stringValue(c[label]) ?? "—"} />)}</div><section className="border border-border bg-surface p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-accent" />What this agent does</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">{stringValue(c.instructions) ?? "The agent summary will be generated from its saved job, triggers and actions."}</p></section><section className="border border-border bg-surface p-4 lg:col-span-2"><h2 className="text-sm font-semibold">Health checks</h2><div className="mt-3 grid gap-2 sm:grid-cols-2">{checks.map(([label, ok, hint]) => <div key={label} className="flex items-start gap-2 border border-border p-3 text-sm"><span className={`mt-0.5 flex size-5 items-center justify-center rounded-full ${ok === true ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{ok === true ? <Check className="size-3" /> : <ShieldAlert className="size-3" />}</span><span><span className="block font-medium">{label}</span><span className="mt-1 block text-xs text-muted-foreground">{ok === true ? "Passed" : hint}</span></span></div>)}</div></section><section className="border border-border bg-surface p-4"><h2 className="text-sm font-semibold">Last 5 runs</h2><p className="mt-2 text-xs text-muted-foreground">Run records are unavailable until the activity endpoint is connected.</p><Button className="mt-4" size="sm" variant="secondary" disabled>Open activity</Button></section></div>; }
+function AgentJob({ config }: { config: Record<string, unknown> }) { return <div className="grid gap-4 lg:grid-cols-2"><InfoCard title="Goal" value={stringValue(config.goal) ?? "No goal saved."} /><InfoCard title="Instructions" value={stringValue(config.instructions) ?? "No instructions saved."} /><InfoCard title="Tone" value={stringValue(config.tone) ?? "Not configured"} /><InfoCard title="Language" value={stringValue(config.language) ?? "Not configured"} /><InfoCard title="Model" value={stringValue(config.model) ?? "Standard model not returned"} /><InfoCard title="Knowledge collections" value={Array.isArray(config.knowledgeCollectionIds) ? config.knowledgeCollectionIds.join(", ") : "Knowledge endpoint not connected"} /></div>; }
+function AgentTriggers({ config }: { config: Record<string, unknown> }) { const triggers = Array.isArray(config.triggers) ? config.triggers : []; return <section className="border border-border bg-surface p-4"><h2 className="text-sm font-semibold">When this agent runs</h2>{triggers.length ? <div className="mt-3 grid gap-2">{triggers.map((trigger, index) => <div key={index} className="border border-border p-3 text-sm">{typeof trigger === "string" ? trigger : JSON.stringify(trigger)}</div>)}</div> : <EmptyState icon={Play} title="No triggers returned" description="Add triggers in Edit, or connect the agent configuration endpoint to load saved triggers." />}</section>; }
+function AgentPermissions({ config }: { config: Record<string, unknown> }) { const scopes = Array.isArray(config.readScopes) ? config.readScopes : []; const actions = Array.isArray(config.actions) ? config.actions : []; return <div className="grid gap-4 lg:grid-cols-2"><section className="overflow-hidden border border-border bg-surface"><div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Read scope</h2></div>{scopes.length ? <div className="divide-y divide-border">{scopes.map((scope, index) => <div key={index} className="grid gap-1 p-3 text-xs sm:grid-cols-3"><span>{typeof scope === "string" ? scope : JSON.stringify(scope)}</span><span className="text-muted-foreground">Record types returned</span><span className="text-muted-foreground">Hidden fields returned</span></div>)}</div> : <p className="p-4 text-xs text-muted-foreground">No read scopes returned.</p>}</section><section className="overflow-hidden border border-border bg-surface"><div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Actions and limits</h2></div>{actions.length ? <div className="divide-y divide-border">{actions.map((action, index) => <div key={index} className="flex items-center gap-2 p-3 text-xs"><Lock className="size-3.5 text-amber-700" /><span className="flex-1">{typeof action === "string" ? action : JSON.stringify(action)}</span><Badge variant="warning">Approval check</Badge></div>)}</div> : <p className="p-4 text-xs text-muted-foreground">No actions returned.</p>}</section><InfoCard title="Global limits" value={config.limits ? JSON.stringify(config.limits) : "Limits are unavailable until the agent configuration endpoint is connected."} /></div>; }
+function AgentSettings({ agent, onNotice }: { agent: Agent; onNotice: (text: string) => void }) { return <div className="grid gap-4 lg:grid-cols-2"><InfoCard title="Owner and approvers" value="Owner and approver records are not returned by the current API." action="Owner endpoint missing" /><InfoCard title="Notifications" value="Approval, failure and daily summary recipients will appear here when configured." action="Notification settings unavailable" /><InfoCard title="Model and limits" value="Model, message limits and working hours are read-only until the settings endpoint is connected." action="Settings endpoint missing" /><section className="border border-amber-300/70 bg-amber-50 p-4"><h2 className="text-sm font-semibold text-amber-900">Danger zone</h2><p className="mt-2 text-xs text-amber-800">Archive keeps the run history for audit. Permanent deletion is restricted to archived agents.</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => onNotice(`Archive ${agent.name} from the detail menu.`)}>Archive</Button><Button size="sm" variant="ghost" disabled>Delete after archive</Button></div></section></div>; }
+function AgentEditor({ agent, onCancel, onSaved, onTest, testOutput }: { agent: Agent; onCancel: () => void; onSaved: (updated?: Agent) => void; onTest: () => void; testOutput: Record<string, unknown> | null }) {
+  const c = agent.configuration ?? {};
+  const [name, setName] = React.useState(agent.name);
+  const [department, setDepartment] = React.useState(agent.department);
+  const [status, setStatus] = React.useState(agent.status);
+  const [description, setDescription] = React.useState(stringValue(c.description) ?? "");
+  const [goal, setGoal] = React.useState(stringValue(c.goal) ?? "");
+  const [instructions, setInstructions] = React.useState(stringValue(c.instructions) ?? "");
+  const [tone, setTone] = React.useState(stringValue(c.tone) ?? "Professional and concise");
+  const [language, setLanguage] = React.useState(stringValue(c.language) ?? "English");
+  const [model, setModel] = React.useState(stringValue(c.model) ?? "Standard");
+  const [triggers, setTriggers] = React.useState(stringArray(c.triggers).length ? stringArray(c.triggers) : ["lead_created"]);
+  const [reads, setReads] = React.useState(stringArray(c.readScopes).length ? stringArray(c.readScopes) : ["leads", "customers", "deals"]);
+  const [actions, setActions] = React.useState(stringArray(c.actions).length ? stringArray(c.actions) : ["qualify_lead", "draft_reply", "create_task"]);
+  const [approval, setApproval] = React.useState(stringValue(c.approvalMode) ?? "ask_sensitive");
+  const [approvers, setApprovers] = React.useState(stringArray(c.approvers).length ? stringArray(c.approvers) : ["owner"]);
+  const [notifications, setNotifications] = React.useState(stringArray(c.notifications).length ? stringArray(c.notifications) : ["approval", "failure"]);
+  const limits = c.limits && typeof c.limits === "object" ? c.limits as Record<string, unknown> : {};
+  const [dailyRuns, setDailyRuns] = React.useState(String(limits.dailyRuns ?? 100));
+  const [dailyActions, setDailyActions] = React.useState(String(limits.dailyActions ?? 500));
+  const [hours, setHours] = React.useState(String(limits.workingHours ?? "09:00–18:00"));
+  const [saving, setSaving] = React.useState(false);
+  const toggle = (set: React.Dispatch<React.SetStateAction<string[]>>, value: string) => set((old) => old.includes(value) ? old.filter((x) => x !== value) : [...old, value]);
+  const sensitive = ["send_whatsapp", "send_email", "bulk_message", "refund", "delete_record"];
+  const config = { ...c, description, goal, instructions, tone, language, model, triggers, readScopes: reads, actions, approvalMode: approval, approvers, notifications, limits: { ...limits, dailyRuns: Number(dailyRuns) || 0, dailyActions: Number(dailyActions) || 0, workingHours: hours } };
 
-function EvalMetric({ label, value }: { label: string; value: number }) {
-  const tone = value >= 90 ? "bg-success" : value >= 75 ? "bg-warning" : "bg-danger";
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="text-mono font-medium text-foreground">{value}%</span>
-      </div>
-      <Progress value={value} indicatorClassName={cn(tone)} />
-    </div>
-  );
-}
-
-const APPROVAL_VERBS = ["apply", "issue", "send", "create", "update", "get", "schedule", "notify", "run", "reset"];
-
-function policyLabelForTool(name: string): string {
-  const clean = name.replace(/\(\)\s*$/, "");
-  const parts = clean.split("_").filter(Boolean);
-  if (parts.length > 1 && APPROVAL_VERBS.includes(parts[0])) {
-    const noun = parts.slice(1).join(" ");
-    return pluralize(noun);
+  async function save() {
+    if (!name.trim()) return;
+    const next = { ...agent, name: name.trim(), department, status, configuration: config };
+    if (agent.id.startsWith("demo-")) { toast.success("Demo agent updated"); onSaved(next); return; }
+    setSaving(true);
+    try { await api("/business/agents/" + agent.id, { method: "PATCH", body: JSON.stringify({ name: next.name, department, status, configuration: config }) }); toast.success("Agent changes saved"); onSaved(); }
+    catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   }
-  return parts.join(" ");
+
+  return <div className="mx-auto flex max-w-[1400px] flex-col">
+    <header className="sticky top-0 z-20 border-b border-border bg-background/95 px-6 py-4 backdrop-blur"><div className="flex flex-wrap items-center justify-between gap-3"><div><Link href={"/agents/" + agent.id + "?workspace=business"} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Back to agent</Link><h1 className="text-xl font-semibold">Edit {agent.name}</h1><p className="mt-1 text-xs text-muted-foreground">Configure the complete agent contract, permissions, approvals and operating limits.</p></div><div className="flex gap-2"><Button size="sm" variant="secondary" onClick={onTest}><FlaskConical className="size-3.5" />Test run</Button><Button size="sm" variant="secondary" onClick={onCancel}>Cancel</Button><Button size="sm" onClick={save} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save changes"}</Button></div></div>{testOutput && <div className="mt-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-xs text-accent">Dry run passed. No side effects were performed.</div>}</header>
+    <div className="grid gap-5 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_250px]"><main className="min-w-0 space-y-5">
+      <section className="border border-border bg-surface p-5"><SectionHeading title="Basics" text="Identity, workspace scope and lifecycle state." /><div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Agent name" id="agent-name"><Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Workspace" id="agent-workspace"><select id="agent-workspace" value={department} onChange={(e) => setDepartment(e.target.value)} className="h-9 w-full border border-input bg-surface px-3 text-sm">{Object.entries(workspaceNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field><Field label="Status" id="agent-status"><select id="agent-status" value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 w-full border border-input bg-surface px-3 text-sm"><option value="draft">Draft</option><option value="active">Active</option><option value="paused">Paused</option><option value="needs_attention">Needs attention</option></select></Field><Field label="Description" id="agent-description"><Input id="agent-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this agent owns" /></Field></div></section>
+      <section className="border border-border bg-surface p-5"><SectionHeading title="Job & instructions" text="Define the objective, tone and model behavior." /><div className="mt-4 grid gap-4"><Field label="Primary goal" id="agent-goal"><Input id="agent-goal" value={goal} onChange={(e) => setGoal(e.target.value)} /></Field><Field label="System instructions" id="agent-instructions"><Textarea id="agent-instructions" value={instructions} onChange={(e) => setInstructions(e.target.value)} className="min-h-36" placeholder="Role, rules, escalation behavior and output format" /></Field><div className="grid gap-4 sm:grid-cols-3"><Field label="Tone" id="agent-tone"><select id="agent-tone" value={tone} onChange={(e) => setTone(e.target.value)} className="h-9 w-full border border-input bg-surface px-3 text-sm"><option>Professional and concise</option><option>Friendly and helpful</option><option>Direct and action-oriented</option><option>Formal</option></select></Field><Field label="Language" id="agent-language"><select id="agent-language" value={language} onChange={(e) => setLanguage(e.target.value)} className="h-9 w-full border border-input bg-surface px-3 text-sm"><option>English</option><option>Hindi</option><option>Hinglish</option><option>Customer language</option></select></Field><Field label="Model" id="agent-model"><select id="agent-model" value={model} onChange={(e) => setModel(e.target.value)} className="h-9 w-full border border-input bg-surface px-3 text-sm"><option>Standard</option><option>Fast</option><option>Reasoning</option></select></Field></div></div></section>
+      <section className="border border-border bg-surface p-5"><SectionHeading title="Triggers" text="Events that can start this agent." /><div className="mt-4"><Permission title="Run when" values={[["lead_created","A lead is created"],["message_received","A customer message is received"],["missed_call","A missed call is received"],["deal_stage_changed","A deal stage changes"],["ticket_opened","A support ticket opens"],["schedule","A schedule is due"],["manual","A team member starts it"]]} selected={triggers} onToggle={(x) => toggle(setTriggers, x)} /></div></section>
+      <section className="border border-border bg-surface p-5"><SectionHeading title="Permissions & actions" text="Control exactly what the agent can read and do." /><div className="mt-4 grid gap-5 lg:grid-cols-2"><Permission title="Read from" values={[["leads","Leads"],["customers","Customers"],["deals","Deals"],["conversations","Conversations"],["tickets","Support tickets"],["knowledge","Knowledge base"],["invoices","Invoices"],["reports","Business reports"]]} selected={reads} onToggle={(x) => toggle(setReads, x)} /><Permission title="Allowed actions" values={[["qualify_lead","Qualify lead"],["draft_reply","Draft a reply"],["create_task","Create a task"],["update_record","Update a record"],["send_whatsapp","Send WhatsApp"],["send_email","Send email"],["bulk_message","Send bulk message"],["refund","Issue refund"],["delete_record","Delete record"]]} selected={actions} onToggle={(x) => toggle(setActions, x)} /></div>{actions.some((x) => sensitive.includes(x)) && <div className="mt-4 flex items-start gap-2 border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800"><ShieldAlert className="size-4" />Sensitive actions are always approval-gated.</div>}</section>
+      <section className="border border-border bg-surface p-5"><SectionHeading title="Approvals & notifications" text="Keep consequential work under human control." /><div className="mt-4 grid gap-5 lg:grid-cols-2"><Field label="Approval policy" id="agent-approval"><select id="agent-approval" value={approval} onChange={(e) => setApproval(e.target.value)} className="h-9 w-full border border-input bg-surface px-3 text-sm"><option value="ask_every_action">Ask before every action</option><option value="ask_sensitive">Ask only for sensitive actions</option><option value="act_report">Act and report</option></select></Field><Permission title="Approvers" values={[["owner","Business owner"],["manager","Workspace manager"],["assigned_user","Assigned user"]]} selected={approvers} onToggle={(x) => toggle(setApprovers, x)} /><Permission title="Notify on" values={[["approval","Approval requested"],["failure","Execution failure"],["daily_summary","Daily summary"],["escalation","Escalation"]]} selected={notifications} onToggle={(x) => toggle(setNotifications, x)} /></div></section>
+      <section className="border border-border bg-surface p-5"><SectionHeading title="Limits & settings" text="Bound execution volume and working hours." /><div className="mt-4 grid gap-4 sm:grid-cols-3"><Field label="Runs per day" id="agent-runs"><Input id="agent-runs" type="number" min="0" value={dailyRuns} onChange={(e) => setDailyRuns(e.target.value)} /></Field><Field label="Actions per day" id="agent-actions"><Input id="agent-actions" type="number" min="0" value={dailyActions} onChange={(e) => setDailyActions(e.target.value)} /></Field><Field label="Working hours" id="agent-hours"><Input id="agent-hours" value={hours} onChange={(e) => setHours(e.target.value)} /></Field></div><div className="mt-4 flex items-start gap-2 border border-border bg-surface-2 p-3 text-xs text-muted-foreground"><Lock className="size-3.5" />Permission checks and audit events are enforced by the backend when saved.</div></section>
+    </main><aside className="h-fit space-y-4 lg:sticky lg:top-24"><section className="border border-border bg-surface p-4"><h2 className="text-sm font-semibold">Configuration summary</h2><dl className="mt-3 space-y-3 text-xs"><Summary label="Workspace" value={workspaceNames[department] ?? department} /><Summary label="Status" value={status.replaceAll("_", " ")} /><Summary label="Triggers" value={String(triggers.length)} /><Summary label="Read scopes" value={String(reads.length)} /><Summary label="Actions" value={String(actions.length)} /><Summary label="Approval" value={approval === "ask_sensitive" ? "Sensitive actions" : approval === "ask_every_action" ? "Every action" : "Act and report"} /></dl></section><section className="border border-amber-300/70 bg-amber-50 p-4"><h2 className="text-sm font-semibold text-amber-900">Before activating</h2><ul className="mt-2 space-y-2 text-xs text-amber-800"><li>• Check read scopes match the workspace.</li><li>• Keep sensitive actions approval-gated.</li><li>• Run a dry preview before publishing.</li></ul></section></aside></div>
+  </div>;
 }
 
-function pluralize(s: string): string {
-  return s.endsWith("s") ? s : `${s}s`;
-}
+function SectionHeading({ title, text }: { title: string; text: string }) { return <div><h2 className="text-sm font-semibold">{title}</h2><p className="mt-1 text-xs text-muted-foreground">{text}</p></div>; }
+function Summary({ label, value }: { label: string; value: string }) { return <div><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 font-medium capitalize">{value}</dd></div>; }
+function StatCard({ label, value }: { label: string; value: string }) { return <div className="border border-border bg-surface p-4"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></div>; }
+function InfoCard({ title, value, action }: { title: string; value: string; action?: string }) { return <section className="border border-border bg-surface p-4"><h2 className="text-sm font-semibold">{title}</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{value}</p>{action && <p className="mt-3 text-xs text-amber-700">{action}</p>}</section>; }
+function Unavailable({ title, text, action }: { title: string; text: string; action?: string }) { return <div className="mx-auto flex max-w-[800px] flex-col gap-3 px-6 py-10"><div className="border border-dashed border-border bg-surface p-6"><h1 className="text-base font-semibold">{title}</h1><p className="mt-2 text-sm text-muted-foreground">{text}</p>{action && <Badge className="mt-4" variant="outline">{action}</Badge>}</div><Button size="sm" variant="secondary" asChild><Link href="/agents?workspace=business"><ArrowLeft className="size-3.5" />Back to agents</Link></Button></div>; }
+function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) { return <div><Label htmlFor={id}>{label}</Label><div className="mt-1">{children}</div></div>; }
+function Permission({ title, values, selected, onToggle }: { title: string; values: string[][]; selected: string[]; onToggle: (value: string) => void }) { return <div><Label>{title}</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{values.map(([value, label]) => <label key={value} className="flex items-center gap-2 border border-border px-3 py-2 text-sm"><Checkbox checked={selected.includes(value)} onCheckedChange={() => onToggle(value)} />{label}</label>)}</div></div>; }
+function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
 
-function formatList(items: string[]): string {
-  if (items.length === 0) return "";
-  const capped = items.map((s, i) => (i === 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s));
-  if (capped.length === 1) return capped[0];
-  if (capped.length === 2) return `${capped[0]} and ${capped[1]}`;
-  return `${capped.slice(0, -1).join(", ")} and ${capped[capped.length - 1]}`;
-}
+function stringValue(value: unknown) { return typeof value === "string" ? value : undefined; }
