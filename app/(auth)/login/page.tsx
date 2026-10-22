@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, message } from "@/lib/api/client";
+import type { Me } from "@/lib/api/types";
 
 const schema = z.object({
   email: z.string().email("Enter a valid work email"),
@@ -35,9 +36,14 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify(values),
       });
+      const me = await api<Me>("/me");
+      if (!me.user.email_verified_at) {
+        router.replace(`/verify-email?email=${encodeURIComponent(me.user.email)}`);
+        return;
+      }
       try {
         const setup = await api<{ setupCompleted: boolean }>("/business/setup");
-        router.replace(setup.setupCompleted ? "/leads" : "/setup");
+        router.replace(setup.setupCompleted ? "/settings?tab=workspace&view=overview&workspace=business" : "/setup");
       } catch {
         // Older deployments without the business migration continue to CRM.
         router.replace("/leads");

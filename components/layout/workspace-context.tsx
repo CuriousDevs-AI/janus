@@ -19,6 +19,7 @@ const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null)
 function workspaceFromPath(pathname: string): WorkspaceId {
   const moduleMatch = pathname.match(/^\/workspace\/([^/]+)/);
   if (moduleMatch && isWorkspaceId(moduleMatch[1])) return moduleMatch[1];
+  if (pathname === "/setup") return "business";
   if (pathname === "/settings" || pathname.startsWith("/settings/")) return "business";
   if (["/ai", "/agents", "/memory", "/evaluations"].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return "business";
   return "crm-sales";

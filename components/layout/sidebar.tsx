@@ -56,7 +56,23 @@ export function SidebarNav({
   };
   const tenant = session.tenant;
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
-  const navSections = getNavSectionsForWorkspace(workspaceId);
+  const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
+  const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    const key = "janus.setup.active-workspace";
+    const read = () => {
+      const stored = window.localStorage.getItem(key);
+      setActivationOverride(stored === null ? null : stored !== "none");
+    };
+    read();
+    window.addEventListener("janus:workspace-activation", read);
+    window.addEventListener("storage", read);
+    return () => { window.removeEventListener("janus:workspace-activation", read); window.removeEventListener("storage", read); };
+  }, []);
+  const setupWorkspaceChosen = setupApi.data?.completedSteps?.includes("workspaces") ?? false;
+  const hasActiveWorkspace = activationOverride ?? (setupWorkspaceChosen && Boolean(workspacesApi.data?.some((item) => item.status === "active")));
+  const effectiveWorkspaceId = hasActiveWorkspace ? workspaceId : "business";
+  const navSections = getNavSectionsForWorkspace(effectiveWorkspaceId);
   const visibleSections = navSections
     .map((section) => ({
       ...section,
@@ -86,9 +102,9 @@ export function SidebarNav({
       name: item.name,
       description: item.description,
     }));
-    if (fromApi?.length) return fromApi;
-    return [{ id: "crm-sales", name: "CRM & Sales", description: "Leads, conversations, deals and customer follow-up." }];
-  }, [workspacesApi.data]);
+    if (hasActiveWorkspace && fromApi?.length) return fromApi;
+    return [];
+  }, [hasActiveWorkspace, workspacesApi.data]);
 
   function workspaceHref(id: string) {
     if (id === "crm-sales") return "/dashboard?workspace=crm-sales";
@@ -123,7 +139,7 @@ export function SidebarNav({
                       {tenant.name}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
-                    {workspace.name}
+                    {hasActiveWorkspace ? workspace.name : "No active workspace"}
                     </span>
                   </span>
                   <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
@@ -147,12 +163,12 @@ export function SidebarNav({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel>Created workspaces</DropdownMenuLabel>
-            {accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>
+            {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>
               <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
                 <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{item.description}</span></span>
                 {workspaceId === item.id && <Circle className="size-2 shrink-0 fill-accent text-accent" />}
               </Link>
-            </DropdownMenuItem>)}
+            </DropdownMenuItem>) : <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">No active workspace yet</span></DropdownMenuItem>}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings?tab=workspace&view=workspaces&create=1&workspace=business">
