@@ -401,8 +401,8 @@ function WorkspacesPanel() {
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business setup</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspace management</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Keep each department’s records and access separate while the business owner manages them from one place.</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Create and manage the workspaces your business uses.</p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-3.5" />Activate workspace</Button>
       </div>

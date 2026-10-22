@@ -21,6 +21,7 @@ import { useSignOut, useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
+import { workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
 import {
   DropdownMenu,
@@ -70,7 +71,11 @@ export function SidebarNav({
     return () => { window.removeEventListener("janus:workspace-activation", read); window.removeEventListener("storage", read); };
   }, []);
   const setupWorkspaceChosen = setupApi.data?.completedSteps?.includes("workspaces") ?? false;
-  const hasActiveWorkspace = activationOverride ?? (setupWorkspaceChosen && Boolean(workspacesApi.data?.some((item) => item.status === "active")));
+  const catalogHasActiveWorkspace = workspaceDefinitions.some((item) => item.id === "crm-sales" && item.status === "active");
+  const apiHasActiveWorkspace = Boolean(workspacesApi.data?.some((item) => item.status === "active"));
+  // CRM & Sales is provisioned with every business, so a stale setup value
+  // must not hide an already-active CRM workspace.
+  const hasActiveWorkspace = catalogHasActiveWorkspace || activationOverride === true || (activationOverride === null && setupWorkspaceChosen && apiHasActiveWorkspace);
   const effectiveWorkspaceId = hasActiveWorkspace ? workspaceId : "business";
   const navSections = getNavSectionsForWorkspace(effectiveWorkspaceId);
   const visibleSections = navSections
@@ -103,6 +108,7 @@ export function SidebarNav({
       description: item.description,
     }));
     if (hasActiveWorkspace && fromApi?.length) return fromApi;
+    if (hasActiveWorkspace) return [{ id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." }];
     return [];
   }, [hasActiveWorkspace, workspacesApi.data]);
 
@@ -139,7 +145,7 @@ export function SidebarNav({
                       {tenant.name}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
-                    {hasActiveWorkspace ? workspace.name : "No active workspace"}
+                    {hasActiveWorkspace ? (workspaceId === "business" ? "CRM & Sales" : workspace.name) : "No active workspace"}
                     </span>
                   </span>
                   <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />

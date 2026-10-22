@@ -77,7 +77,7 @@ function SettingsPageInner() {
   const tabParam = searchParams.get("tab");
   const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "workspace";
   const view = searchParams.get("view");
-  const showPageHeader = !(businessMode && activeTab === "workspace" && (view === "overview" || view === "settings"));
+  const showPageHeader = !(businessMode && activeTab === "workspace" && (view === "overview" || view === "settings" || view === "workspaces"));
   const pageHeader = activeTab !== "workspace"
     ? { title: "Settings", description: "Manage your profile, access, notifications and business configuration." }
     : view === "overview"
