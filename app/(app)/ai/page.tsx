@@ -21,7 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 const INTELLIGENCE_VIEWS = [
   { value: "chat", label: "Business AI Chat" },
-  { value: "knowledge", label: "Knowledge & Memory" },
+  { value: "knowledge", label: "Knowledge" },
+  { value: "memory", label: "Memory" },
   { value: "insights", label: "Insights" },
   { value: "performance", label: "Performance Analysis" },
   { value: "risks", label: "Risk & Alerts" },
@@ -106,6 +107,10 @@ function AskYourBusinessPageInner() {
 
   if (workspaceId === "business" && intelligenceView === "knowledge") {
     return <BusinessKnowledgeView />;
+  }
+
+  if (workspaceId === "business" && intelligenceView === "memory") {
+    return <BusinessMemoryView />;
   }
 
   if (workspaceId === "business" && intelligenceView === "chat") {
@@ -314,7 +319,6 @@ function BusinessKnowledgeView() {
   const [facts, setFacts] = React.useState<Record<string, "approved" | "rejected">>({});
   const [sources, setSources] = React.useState<KnowledgeSource[]>(() => demoMode ? initialKnowledgeSources : []);
   const [collections, setCollections] = React.useState<KnowledgeCollection[]>(() => demoMode ? initialKnowledgeCollections : []);
-  const [memory] = React.useState<BusinessMemory[]>(() => demoMode ? initialBusinessMemory : []);
   const [unanswered, setUnanswered] = React.useState(() => demoMode ? [["What is the refund window for bulk orders?", "Asked 7 times · WhatsApp and team chat"], ["Do we deliver to Jaipur on Sundays?", "Asked 4 times · WhatsApp"], ["What warranty do industrial fans come with?", "Asked 3 times · Sales team"], ["Who approves travel expenses above ₹10,000?", "Asked 2 times · HR"]] : []);
   const [dialog, setDialog] = React.useState<KnowledgeDialog | null>(null);
   const [form, setForm] = React.useState<KnowledgeForm>(emptyKnowledgeForm);
@@ -327,8 +331,6 @@ function BusinessKnowledgeView() {
   const addedSources = Math.max(0, sources.length - initialKnowledgeSources.length);
   const readySources = 139 + sources.slice(initialKnowledgeSources.length).filter((source) => source.status === "Ready").length;
   const reviewSources = 6 + sources.slice(initialKnowledgeSources.length).filter((source) => source.status === "Needs review").length;
-  const visibleMemory = memory.filter((item) => item.ownerId === AI_VIEWER_ID);
-
   function updateForm(field: keyof KnowledgeForm, value: string) { setForm((current) => ({ ...current, [field]: value })); }
   function closeDialog() { setDialog(null); setSaving(false); setDialogError(null); setSelectedFiles([]); setAnsweringQuestion(null); }
   function openDialog(kind: KnowledgeDialog) { setDialog(kind); setForm(emptyKnowledgeForm); setDialogError(null); setSelectedFiles([]); setNotice(null); }
@@ -391,14 +393,12 @@ function BusinessKnowledgeView() {
       </DialogContent>
     </Dialog>
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Knowledge &amp; Memory</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified sources"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Business knowledge is permission-aware. Personal AI memory and saved conversations are private to your account.</p></div>
+      <div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified sources"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Everything Janus knows about your business. Answers use this knowledge and connected records, with access controlled by permissions.</p></div>
       <div className="flex gap-2"><Button variant="secondary" onClick={() => openDialog("app")}><Link2 className="size-3.5" />Connect an app</Button><Button onClick={() => openDialog("menu")}><Plus className="size-3.5" />Add knowledge</Button></div>
     </div>
     <BusinessIntelligenceNav active="knowledge" />
     {notice && <div role="status" className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent">{notice}</div>}
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{demoMode ? <><KnowledgeStat label="Sources" value={String(148 + addedSources)} detail="Files, pages, links and Q&As" /><KnowledgeStat label="Ready for Janus" value={String(readySources)} detail="Read and searchable" tone="success" /><KnowledgeStat label="Needs review" value={String(reviewSources)} detail="Conflicting or out of date" tone="warning" /><KnowledgeStat label="Unanswered questions" value={String(11 + unanswered.length - 4)} detail="This month, no source found" tone="danger" /></> : <><KnowledgeStat label="Sources" value="—" detail="No verified sources connected." /><KnowledgeStat label="Ready for Janus" value="—" detail="Indexing is not connected." /><KnowledgeStat label="Needs review" value="—" detail="No source review queue yet." /><KnowledgeStat label="Unanswered questions" value="—" detail="Connect knowledge to measure this." /></>}</div>
-
-    <SectionCard title="Your AI memory" description="Saved preferences and context used only in your Business AI Chat. Other members cannot see these items."><div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-xs text-accent"><span>Private to Pankaj Neema · Owner</span><Badge variant="outline">Private</Badge></div><div className="flex flex-col divide-y divide-border">{visibleMemory.map((item) => <div key={item.id} className="flex flex-wrap items-start gap-3 py-3 first:pt-1 last:pb-1"><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.source} · {item.updated}</p></div><Badge variant="neutral">Private</Badge></div>)}</div>{visibleMemory.length === 0 && <p className="text-sm text-muted-foreground">No private memory has been saved yet.</p>}</SectionCard>
 
     <section><h2 className="mb-3 text-base font-semibold">Add knowledge</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[[Upload, "Upload files", "PDF, Word, Excel, images", "upload"], [Pencil, "Write a page", "Policies, SOPs, notes", "write"], [Globe2, "Add a website", "Your site, catalogue, help pages", "website"], [Link2, "Connect an app", "Google Drive, Notion, Tally", "app"], [MessageSquarePlus, "Add a Q&A", "Exact answers to common questions", "qa"]].map(([Icon, title, detail, kind]) => <button key={title as string} type="button" onClick={() => openDialog(kind as KnowledgeDialog)} className="group flex min-h-24 flex-col items-start gap-2 rounded-lg border border-border bg-surface p-4 text-left transition-colors hover:border-accent-border hover:bg-accent-muted"><span className="text-accent">{React.createElement(Icon as React.ElementType, { className: "size-4" })}</span><span className="text-sm font-semibold">{title as string}</span><span className="text-xs text-muted-foreground">{detail as string}</span></button>)}</div></section>
 
@@ -407,6 +407,33 @@ function BusinessKnowledgeView() {
     <SectionCard title="All sources" description="Review what Janus can read and who can use each source."><div className="mb-4 flex flex-col justify-between gap-3 lg:flex-row lg:items-center"><div className="relative max-w-xs"><Search className="pointer-events-none absolute left-3 top-2.5 size-3.5 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sources" className="pl-9" /></div><div className="flex flex-wrap gap-1">{["All", "Ready", "Processing", "Needs review", "Outdated"].map((item) => <button key={item} type="button" onClick={() => setFilter(item)} className={`rounded-full border px-3 py-1.5 text-xs ${filter === item ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}>{item}</button>)}</div></div><div className="overflow-x-auto"><div className="min-w-[760px]"><div className="grid grid-cols-[2fr_0.7fr_1.2fr_1fr_1fr_0.7fr] gap-3 border-b border-border px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"><span>Source</span><span>Type</span><span>Collection</span><span>Who can use it</span><span>Status</span><span>Updated</span></div>{visibleSources.map((source) => <div key={`${source.name}-${source.updated}`} className="grid grid-cols-[2fr_0.7fr_1.2fr_1fr_1fr_0.7fr] items-center gap-3 border-b border-border px-2 py-3 text-xs last:border-0"><div><p className="font-semibold">{source.name}</p><p className={`mt-1 ${source.status === "Outdated" || source.status === "Needs review" ? "text-danger" : "text-muted-foreground"}`}>{source.detail}</p></div><span>{source.type}</span><span>{source.collection}</span><span>{source.access}</span><Badge variant={source.status === "Ready" ? "success" : source.status === "Needs review" ? "warning" : source.status === "Outdated" ? "danger" : "info"}>{source.status}</Badge><span className="text-muted-foreground">{source.updated}</span></div>)}{visibleSources.length === 0 && <div className="px-2 py-8 text-center text-sm text-muted-foreground">No sources match this filter.</div>}</div></div></SectionCard>
 
     <div className="grid gap-4 xl:grid-cols-2"><SectionCard title="Questions Janus couldn&apos;t answer" description="Asked by your team or customers this month, with no source found."><div className="flex flex-col divide-y divide-border">{unanswered.map(([title, detail]) => <div key={title} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" onClick={() => openAnswer(title)}>Add answer</Button></div>)}</div>{unanswered.length === 0 && <p className="text-sm text-muted-foreground">All current questions have an approved answer.</p>}</SectionCard><SectionCard title="Suggested facts" description="Janus noticed these in chats and records. Nothing is added until you approve it."><div className="flex flex-col divide-y divide-border">{initialSuggested.map(([title, detail]) => <div key={title} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-semibold">{facts[title] === "approved" ? "Approved · " : facts[title] === "rejected" ? "Rejected · " : ""}{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><div className="flex shrink-0 gap-2"><Button size="sm" variant="secondary" onClick={() => decideFact(title, "rejected")}>Reject</Button><Button size="sm" onClick={() => decideFact(title, "approved")}><Check className="size-3.5" />Approve</Button></div></div>)}</div></SectionCard></div>
+  </div>;
+}
+
+function BusinessMemoryView() {
+  const [memory] = React.useState<BusinessMemory[]>(() => demoMode ? initialBusinessMemory : []);
+  const visibleMemory = memory.filter((item) => item.ownerId === AI_VIEWER_ID);
+
+  return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-6 py-7">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Memory</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Your private memory"}</Badge></div>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Preferences and context that Janus remembers for your work. Memory is personal to your account and separate from shared business knowledge.</p>
+      </div>
+      <div className="flex items-center gap-2"><Badge variant="success">Owner scope</Badge><Badge variant="outline">Private to you</Badge></div>
+    </div>
+    <BusinessIntelligenceNav active="memory" />
+    <div className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent"><span className="font-semibold">Private to Pankaj Neema · Owner</span><span className="ml-2 text-accent/80">Only you can see and use these saved memories.</span></div>
+    <SectionCard title="Your AI memory" description="Saved preferences and context used by Business AI Chat. Other members cannot see these items.">
+      <div className="flex flex-col divide-y divide-border">
+        {visibleMemory.map((item) => <div key={item.id} className="flex flex-wrap items-start gap-3 py-3 first:pt-1 last:pb-1"><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.source} · {item.updated}</p></div><Badge variant="neutral">Private</Badge></div>)}
+      </div>
+      {visibleMemory.length === 0 && <p className="text-sm text-muted-foreground">No private memory has been saved yet.</p>}
+    </SectionCard>
+    <SectionCard title="How memory works" description="Keep personal context useful and permission-safe.">
+      <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-md bg-surface-2 p-3"><p className="text-sm font-semibold">Personal by default</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Your saved preferences and chat context stay scoped to your account.</p></div><div className="rounded-md bg-surface-2 p-3"><p className="text-sm font-semibold">Separate from Knowledge</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Shared policies and business sources remain managed in the Knowledge tab.</p></div><div className="rounded-md bg-surface-2 p-3"><p className="text-sm font-semibold">You stay in control</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Review what Janus remembers before a real save or deletion action is connected.</p></div></div>
+    </SectionCard>
   </div>;
 }
 
