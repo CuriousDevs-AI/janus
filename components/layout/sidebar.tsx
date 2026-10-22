@@ -145,7 +145,7 @@ export function SidebarNav({
                       {tenant.name}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
-                    {hasActiveWorkspace ? (workspaceId === "business" ? "CRM & Sales" : workspace.name) : "No active workspace"}
+                    {workspaceId === "business" ? "Business Management" : hasActiveWorkspace ? workspace.name : "No active workspace"}
                     </span>
                   </span>
                   <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
