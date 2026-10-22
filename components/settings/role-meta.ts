@@ -32,6 +32,24 @@ export const roleMeta: Record<Role, RoleMeta> = {
       "No billing access",
     ],
   },
+  ceo: {
+    label: "CEO",
+    tone: "accent",
+    summary: "Company-level owner of business direction and approvals.",
+    bullets: ["Business-wide visibility and decision making", "Manage workspaces, people and sensitive approvals", "Workspace record access is assigned separately"],
+  },
+  business_manager: {
+    label: "Business Manager",
+    tone: "info",
+    summary: "Runs company operations across Business Management.",
+    bullets: ["Manage assigned business settings and workspaces", "Review reports, risks and automation approvals", "No CRM or HR records without explicit workspace access"],
+  },
+  product_manager: {
+    label: "Product Manager",
+    tone: "info",
+    summary: "Owns product direction, insights and cross-workspace planning.",
+    bullets: ["Read business reports and intelligence", "Manage product-related workflows and recommendations", "No department records without explicit workspace access"],
+  },
   sales_manager: {
     label: "Sales Manager",
     tone: "info",
@@ -97,6 +115,9 @@ export const roleMeta: Record<Role, RoleMeta> = {
 export const roleOrder: Role[] = [
   "owner",
   "admin",
+  "ceo",
+  "business_manager",
+  "product_manager",
   "sales_manager",
   "sales_agent",
   "support_agent",

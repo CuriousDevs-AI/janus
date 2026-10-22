@@ -10,6 +10,9 @@ export type ID = string;
 export type Role =
   | "owner"
   | "admin"
+  | "ceo"
+  | "business_manager"
+  | "product_manager"
   | "sales_manager"
   | "sales_agent"
   | "support_agent"
