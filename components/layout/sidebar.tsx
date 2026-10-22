@@ -4,8 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  ChevronsLeft,
-  ChevronsRight,
   ChevronsUpDown,
   Circle,
   Building2,
@@ -16,7 +14,6 @@ import {
   getNavSectionsForWorkspace,
   type NavItem,
 } from "@/lib/nav-config";
-import { useUIStore } from "@/lib/stores/ui-store";
 import { useSignOut, useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
@@ -298,23 +295,14 @@ export function SidebarNav({
 }
 
 export function Sidebar() {
-  const collapsed = useUIStore((s) => s.sidebarCollapsed);
-  const setSidebarCollapsed = useUIStore((s) => s.setSidebarCollapsed);
-
   return (
     <TooltipProvider delayDuration={200}>
       <aside
         className={cn(
-          "hidden md:flex h-dvh shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-150",
-          collapsed ? "w-[68px]" : "w-[258px]",
+          "hidden w-[258px] shrink-0 flex-col border-r border-border bg-surface md:flex",
         )}
       >
-        <div
-          className={cn(
-            "flex h-14 items-center border-b border-border",
-            collapsed ? "justify-center px-0" : "px-4",
-          )}
-        >
+        <div className="flex h-14 items-center border-b border-border px-4">
           <Link
             href="/dashboard"
             className="flex items-center gap-2 overflow-hidden"
@@ -322,36 +310,16 @@ export function Sidebar() {
             <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">
               C
             </span>
-            {!collapsed && (
-              <span className="flex flex-col leading-none">
-                <span className="text-[13px] font-semibold text-foreground">
-                  Curious<span className="text-accent">Devs</span>
-                </span>
-                <span className="text-[10px] text-muted-foreground">Janus</span>
+            <span className="flex flex-col leading-none">
+              <span className="text-[13px] font-semibold text-foreground">
+                Curious<span className="text-accent">Devs</span>
               </span>
-            )}
+              <span className="text-[10px] text-muted-foreground">Janus</span>
+            </span>
           </Link>
         </div>
 
-        <SidebarNav collapsed={collapsed} />
-
-        {collapsed ? (
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="flex items-center justify-center gap-2 border-t border-border py-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-            aria-label="Expand sidebar"
-          >
-            <ChevronsRight className="size-3.5" />
-          </button>
-        ) : (
-          <button
-            onClick={() => setSidebarCollapsed(true)}
-            className="flex items-center justify-center gap-2 border-t border-border py-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-            aria-label="Collapse sidebar"
-          >
-            <ChevronsLeft className="size-3.5" />
-          </button>
-        )}
+        <SidebarNav />
       </aside>
     </TooltipProvider>
   );
