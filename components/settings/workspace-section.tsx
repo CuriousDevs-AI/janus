@@ -250,6 +250,8 @@ function BusinessOverviewPanel() {
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
       </div>
 
+      {demoMode && <OverviewPulse />}
+
       <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <OverviewChart metric={metric} onMetricChange={setMetric} loading={loading} error={error} demoMode={demoMode} leads={leads} openDeals={openDeals} wonDeals={wonDeals} />
         {demoMode ? <AttentionPanel /> : <SectionCard title="Owner attention" description="Only verified alerts and approvals appear here."><UnavailableMessage text={unavailable ?? "No verified alerts or pending approvals yet."} /></SectionCard>}
@@ -264,6 +266,7 @@ function BusinessOverviewPanel() {
           <ApprovalSnapshot />
           <ActivitySnapshot />
         </div>
+        <BusinessInsights />
       </>}
 
       <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
@@ -281,18 +284,30 @@ function OverviewKpi({ label, value, detail }: { label: string; value: string; d
   return <div className="rounded-xl border border-[#e4e4df] bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
+function OverviewPulse() {
+  const metrics = [
+    ["Lead to deal", "51.6%", "161 of 312 leads qualified", "success"],
+    ["Win rate", "16.8%", "27 won from active deals", "success"],
+    ["Follow-up SLA", "94%", "Replies handled within 2 hours", "success"],
+    ["Owner workload", "17", "12 due today · 5 overdue", "warning"],
+  ] as const;
+  return <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Business pulse"><div className="sm:col-span-2 xl:col-span-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business pulse</p><p className="mt-1 text-xs text-muted-foreground">A quick read of conversion, response quality and work waiting for attention.</p></div>{metrics.map(([label, value, detail, tone]) => <div key={label} className="rounded-lg border border-[#e4e4df] bg-white px-4 py-3"><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><span className={`size-2 rounded-full ${tone === "warning" ? "bg-warning" : "bg-success"}`} /></div><p className="mt-2 text-xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>)}</section>;
+}
+
 function OverviewChart({ metric, onMetricChange, loading, error, demoMode, leads, openDeals, wonDeals }: { metric: "growth" | "revenue"; onMetricChange: (metric: "growth" | "revenue") => void; loading: boolean; error?: string; demoMode: boolean; leads: number; openDeals: number; wonDeals: number }) {
   const bars = [{ label: "Captured leads", value: leads }, { label: "Open deals", value: openDeals }, { label: "Won deals", value: wonDeals }];
-  const max = Math.max(...bars.map((bar) => bar.value), 1);
   return <SectionCard title={metric === "growth" ? "Growth snapshot" : "Revenue vs target"} description={metric === "growth" ? `${demoMode ? "Demo" : "Verified"} CRM counts from the current reporting summary.` : demoMode ? "Demo revenue trend for the owner dashboard preview." : "Revenue history requires a connected Finance & Accounting workspace."}>
     <div className="mb-5 flex w-fit gap-1 rounded-lg border border-border bg-surface-2 p-1" role="group" aria-label="Business chart metric">
       {([["growth", "Growth"], ["revenue", "Revenue"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => onMetricChange(value)} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${metric === value ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
     </div>
-    {metric === "revenue" && demoMode ? <RevenueChart /> : metric === "revenue" ? <UnavailableMessage text={loading ? "Loading verified finance records…" : error ? "Revenue is unavailable because the connected report could not be loaded." : "No verified revenue records are connected yet. Janus will not estimate revenue from CRM pipeline value."} /> : <div className="flex flex-col gap-4">
-      {bars.map((bar) => <div key={bar.label} className="flex flex-col gap-2"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{bar.label}</span><span className="tabular-nums text-muted-foreground">{loading || error ? "—" : bar.value}</span></div><div className="h-2 rounded-full bg-[#efefea]"><div className="h-2 rounded-full bg-accent transition-all" style={{ width: `${loading || error ? 0 : Math.max((bar.value / max) * 100, bar.value ? 8 : 0)}%` }} /></div></div>)}
-      <p className="text-xs text-muted-foreground">This is a current CRM snapshot. Historical growth will appear when period history is connected.</p>
-    </div>}
+    {metric === "revenue" && demoMode ? <RevenueChart /> : metric === "revenue" ? <UnavailableMessage text={loading ? "Loading verified finance records…" : error ? "Revenue is unavailable because the connected report could not be loaded." : "No verified revenue records are connected yet. Janus will not estimate revenue from CRM pipeline value."} /> : <GrowthChart bars={bars} loading={loading || Boolean(error)} />}
   </SectionCard>;
+}
+
+function GrowthChart({ bars, loading }: { bars: Array<{ label: string; value: number }>; loading: boolean }) {
+  const trend = [{ label: "May", leads: 188, deals: 79 }, { label: "Jun", leads: 214, deals: 92 }, { label: "Jul", leads: 231, deals: 104 }, { label: "Aug", leads: 247, deals: 119 }, { label: "Sep", leads: 264, deals: 142 }, { label: "Oct", leads: 312, deals: 161 }];
+  const points = (key: "leads" | "deals") => trend.map((item, index) => `${48 + index * 92},${178 - (item[key] / 340) * 145}`).join(" ");
+  return <div className="flex flex-col gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-accent" />Leads</span><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-info" />Open deals</span></div><div className="flex gap-3 text-xs"><span className="font-medium text-success">+18% leads</span><span className="font-medium text-info">+11% deals</span></div></div><svg viewBox="0 0 540 218" role="img" aria-label="Six month lead and deal growth" className="h-auto w-full"><g stroke="#efefea" strokeWidth="1"><line x1="40" y1="178" x2="520" y2="178" /><line x1="40" y1="130" x2="520" y2="130" /><line x1="40" y1="82" x2="520" y2="82" /><line x1="40" y1="34" x2="520" y2="34" /></g><g fill="#7a7f87" fontSize="10" textAnchor="end"><text x="34" y="182">0</text><text x="34" y="134">110</text><text x="34" y="86">220</text><text x="34" y="38">330</text></g>{!loading && <><polyline points={points("leads")} fill="none" stroke="hsl(var(--accent))" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /><polyline points={points("deals")} fill="none" stroke="hsl(var(--info))" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />{trend.map((item, index) => <g key={item.label}><circle cx={48 + index * 92} cy={178 - (item.leads / 340) * 145} r={index === trend.length - 1 ? 5 : 3.5} fill="hsl(var(--accent))" /><circle cx={48 + index * 92} cy={178 - (item.deals / 340) * 145} r={index === trend.length - 1 ? 5 : 3.5} fill="hsl(var(--info))" /><text x={48 + index * 92} y="202" fill="#7a7f87" fontSize="10" textAnchor="middle">{item.label}</text></g>)}</>}</svg><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Qualified this month</p><p className="mt-1 text-sm font-semibold">46 leads</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Pipeline added</p><p className="mt-1 text-sm font-semibold">₹12.4L</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Current snapshot</p><p className="mt-1 text-sm font-semibold">{loading ? "Loading" : `${bars[0].value} leads`}</p></div></div><p className="text-xs text-muted-foreground">Demo trend · Janus compares the current CRM snapshot with the previous five months.</p></div>;
 }
 
 const demoOverview = { leads: 312, openDeals: 161, wonDeals: 27, pipelineValue: "₹84L", unavailable: [] as string[] };
@@ -324,6 +339,11 @@ function ApprovalSnapshot() {
 function ActivitySnapshot() {
   const activity = [["Riya won the Sharma Logistics renewal · ₹3.6L", "2h ago"], ["Meera imported 14 leads from IndiaMART", "4h ago"], ["HR & People workspace created", "Yesterday"], ["Weekly sales report sent to owners", "Yesterday"]];
   return <SectionCard title="Recent activity" description="Demo activity showing how owner history will read."><div className="flex flex-col divide-y divide-border">{activity.map(([text, time]) => <div key={text} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><span className="text-sm">{text}</span><span className="shrink-0 text-xs text-muted-foreground">{time}</span></div>)}</div></SectionCard>;
+}
+
+function BusinessInsights() {
+  const insights = [["Positive", "Lead quality is improving", "Website and referral leads now make up 42% of qualified opportunities, up from 35% last month.", "Keep the current qualification rules"], ["Watch", "Proposal follow-ups are slowing", "Six proposals have been waiting for more than 10 days and represent ₹14.2L in potential value.", "Review the proposal queue"], ["Action", "Collections can release cash", "Four invoices are over 30 days overdue. A focused reminder sequence could unlock ₹3.1L this week.", "Open collection approvals"]];
+  return <SectionCard title="Janus insights" description="Sample recommendations based on the connected CRM, finance and activity records."><div className="grid gap-3 lg:grid-cols-3">{insights.map(([tone, title, detail, action]) => <div key={title} className="flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-4"><div className="flex items-center justify-between gap-2"><Badge variant={tone === "Positive" ? "success" : tone === "Watch" ? "warning" : "info"}>{tone}</Badge><Sparkles className="size-3.5 text-accent" /></div><div><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" className="mt-auto w-fit">{action}<ArrowRight className="size-3.5" /></Button></div>)}</div></SectionCard>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
