@@ -21,13 +21,14 @@ import { Textarea } from "@/components/ui/textarea";
 
 const INTELLIGENCE_VIEWS = [
   { value: "chat", label: "Business AI Chat" },
-  { value: "knowledge", label: "Knowledge" },
+  { value: "knowledge", label: "Knowledge & Memory" },
   { value: "insights", label: "Insights" },
   { value: "performance", label: "Performance Analysis" },
   { value: "risks", label: "Risk & Alerts" },
-  { value: "forecasts", label: "Forecasts & Planning" },
-  { value: "recommendations", label: "Recommendations" },
+  { value: "planning", label: "Forecasts & Planning" },
 ] as const;
+
+const AI_VIEWER_ID = "pankaj";
 
 type Turn = {
   id: string;
@@ -51,7 +52,7 @@ function AskYourBusinessPageInner() {
   const { workspaceId, workspace } = useWorkspace();
   const departmentChat = workspaceId !== "business" && workspaceId !== "crm-sales";
   const requestedIntelligenceView = searchParams.get("view");
-  const intelligenceView = requestedIntelligenceView === "history" ? "insights" : requestedIntelligenceView ?? (workspaceId === "business" ? "knowledge" : "chat");
+  const intelligenceView = requestedIntelligenceView === "history" ? "insights" : requestedIntelligenceView === "forecasts" || requestedIntelligenceView === "recommendations" ? "planning" : requestedIntelligenceView ?? (workspaceId === "business" ? "knowledge" : "chat");
   const reportSummary = useApi<{
     leads: number;
     openDeals: number;
@@ -172,7 +173,7 @@ function AskYourBusinessPageInner() {
 }
 
 type ChatMessage = { id: string; role: "user" | "assistant"; text: string; day: string; time: string };
-type ChatThread = { id: string; title: string; date: string; stored: boolean; messages: ChatMessage[] };
+type ChatThread = { id: string; title: string; date: string; stored: boolean; ownerId: string; messages: ChatMessage[] };
 
 const initialChatThreads: ChatThread[] = [
   {
@@ -180,6 +181,7 @@ const initialChatThreads: ChatThread[] = [
     title: "Weekly business review",
     date: "Today",
     stored: true,
+    ownerId: AI_VIEWER_ID,
     messages: [
       { id: "m-1", role: "user", text: "What should I focus on this week?", day: "Today", time: "09:18" },
       { id: "m-2", role: "assistant", text: "Focus on the 6 deals that have been in Proposal for more than 10 days. They represent ₹14.2L of pipeline. Collections are also behind by ₹3.1L, so reviewing overdue invoices is the second priority.", day: "Today", time: "09:19" },
@@ -190,6 +192,7 @@ const initialChatThreads: ChatThread[] = [
     title: "Pipeline risk scan",
     date: "Yesterday",
     stored: true,
+    ownerId: AI_VIEWER_ID,
     messages: [
       { id: "m-3", role: "user", text: "Which deals need attention?", day: "Yesterday", time: "17:35" },
       { id: "m-4", role: "assistant", text: "Six Proposal-stage deals have no activity for more than 10 days. The largest is Acme Traders at ₹4.8L, followed by Bharat Cooling at ₹3.2L.", day: "Yesterday", time: "17:36" },
@@ -200,20 +203,22 @@ const initialChatThreads: ChatThread[] = [
     title: "New conversation",
     date: "Earlier",
     stored: false,
+    ownerId: AI_VIEWER_ID,
     messages: [],
   },
 ];
 
 function BusinessChatView() {
-  const blankThread: ChatThread = { id: "chat-new", title: "New conversation", date: "Just now", stored: false, messages: [] };
+  const blankThread: ChatThread = { id: "chat-new", title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
   const [threads, setThreads] = React.useState<ChatThread[]>(() => demoMode ? initialChatThreads : [blankThread]);
   const [activeThreadId, setActiveThreadId] = React.useState(() => demoMode ? initialChatThreads[0].id : blankThread.id);
   const [question, setQuestion] = React.useState("");
   const [notice, setNotice] = React.useState<string | null>(null);
-  const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0];
+  const visibleThreads = threads.filter((thread) => thread.ownerId === AI_VIEWER_ID);
+  const activeThread = visibleThreads.find((thread) => thread.id === activeThreadId) ?? visibleThreads[0];
 
   function newChat() {
-    const thread: ChatThread = { id: `chat-${Date.now()}`, title: "New conversation", date: "Just now", stored: false, messages: [] };
+    const thread: ChatThread = { id: `chat-${Date.now()}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
     setThreads((current) => [thread, ...current]);
     setActiveThreadId(thread.id);
     setQuestion("");
@@ -226,7 +231,7 @@ function BusinessChatView() {
       return;
     }
     setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, stored: true } : thread));
-    setNotice("Conversation stored in this demo workspace.");
+    setNotice("Conversation stored privately for your account. Other members cannot see it.");
   }
 
   async function ask(event: React.FormEvent) {
@@ -252,11 +257,11 @@ function BusinessChatView() {
   }
 
   return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-6 py-7">
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Business AI Chat</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified records"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Ask Janus about performance, risks, customers, operations, and what the business should do next.</p></div><Badge variant="success">Owner scope</Badge></div>
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Business AI Chat</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified records"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Ask Janus about performance, risks, customers, operations, and what the business should do next.</p></div><div className="flex items-center gap-2"><Badge variant="success">Owner scope</Badge><Badge variant="outline">Private to you</Badge></div></div>
     <BusinessIntelligenceNav active="chat" />
     {notice && <DemoNotice>{notice}</DemoNotice>}
     <div className="grid gap-4 lg:grid-cols-[245px_1fr]">
-      <aside className="rounded-lg border border-border bg-surface p-3"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conversations</p><Button size="sm" variant="secondary" onClick={newChat}><Plus className="size-3.5" />New chat</Button></div><div className="flex flex-col gap-1">{threads.filter((thread) => thread.messages.length > 0 || thread.id === activeThreadId).map((thread) => <button key={thread.id} type="button" onClick={() => { setActiveThreadId(thread.id); setNotice(null); }} className={`flex items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${thread.id === activeThreadId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"}`}><MessageSquare className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{thread.title}</span><span className="mt-0.5 block text-[10px] opacity-70">{thread.date}{thread.stored ? " · Stored" : ""}</span></span></button>)}</div></aside>
+      <aside className="rounded-lg border border-border bg-surface p-3"><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your conversations</p><p className="mt-1 text-[10px] text-muted-foreground">Private to your account</p></div><Button size="sm" variant="secondary" onClick={newChat}><Plus className="size-3.5" />New chat</Button></div><div className="flex flex-col gap-1">{visibleThreads.filter((thread) => thread.messages.length > 0 || thread.id === activeThreadId).map((thread) => <button key={thread.id} type="button" onClick={() => { setActiveThreadId(thread.id); setNotice(null); }} className={`flex items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${thread.id === activeThreadId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"}`}><MessageSquare className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{thread.title}</span><span className="mt-0.5 block text-[10px] opacity-70">{thread.date}{thread.stored ? " · Stored privately" : ""}</span></span></button>)}</div></aside>
       <div className="min-w-0"><SectionCard title={activeThread.title} description={`${activeThread.date} · ${activeThread.stored ? "Stored conversation" : "Not stored yet"}`}><div className="flex min-h-[420px] flex-col"><div className="flex-1">{activeThread.messages.length === 0 ? <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center"><Sparkles className="mb-3 size-6 text-accent" /><p className="text-sm font-medium">What would you like to understand?</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">Ask about your pipeline, revenue, customers, risks or the next best action.</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((message, index) => <React.Fragment key={message.id}>{(index === 0 || activeThread.messages[index - 1].day !== message.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{message.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{message.role === "user" ? "You" : "Janus"}</span><span>{message.time}</span></div>{message.text}</div></div></React.Fragment>)}</div>}</div><form onSubmit={ask} className="mt-5 flex gap-2 border-t border-border pt-4"><Input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about your business..." aria-label="Ask about your business" /><Button type="submit" disabled={!question.trim()}><Send className="size-3.5" />Ask Janus</Button></form></div></SectionCard><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["What is at risk?", "Which leads need attention?", "Where should we reduce cost?", "What should I approve?"] .map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div></div>
     </div>
     <div className="grid gap-3 sm:grid-cols-3">{demoMode ? <><KnowledgeStat label="Records available" value="148" detail="Demo business sources" tone="success" /><KnowledgeStat label="Insights ready" value="12" detail="Reviewed findings" tone="neutral" /><KnowledgeStat label="Approval needed" value="3" detail="Consequential actions" tone="warning" /></> : <><KnowledgeStat label="Records available" value="—" detail="Connected knowledge sources will appear here." /><KnowledgeStat label="Insights ready" value="—" detail="No verified findings yet." /><KnowledgeStat label="Approval needed" value="—" detail="No verified approvals yet." /></>}</div>
@@ -269,6 +274,7 @@ function BusinessIntelligenceNav({ active }: { active: string }) {
 
 type KnowledgeSource = { name: string; detail: string; type: string; collection: string; access: string; status: "Ready" | "Processing" | "Needs review" | "Outdated"; updated: string };
 type KnowledgeCollection = { name: string; detail: string; access: string };
+type BusinessMemory = { id: string; title: string; detail: string; source: string; ownerId: string; updated: string };
 type KnowledgeDialog = "menu" | "upload" | "write" | "website" | "app" | "qa" | "collection";
 type KnowledgeForm = { title: string; content: string; url: string; app: string; question: string; answer: string; collection: string; description: string };
 
@@ -291,6 +297,12 @@ const initialKnowledgeCollections: KnowledgeCollection[] = [
   { name: "Processes & SOPs", detail: "19 sources · updated 5 days ago", access: "Everyone" },
 ];
 
+const initialBusinessMemory: BusinessMemory[] = [
+  { id: "memory-1", title: "Pankaj prefers concise owner briefs", detail: "Keep daily summaries to the top three risks and next actions.", source: "Saved from Business AI Chat", ownerId: AI_VIEWER_ID, updated: "Today" },
+  { id: "memory-2", title: "Review WhatsApp spend before outbound campaigns", detail: "Use email or phone when the expected value does not justify message cost.", source: "Saved from Planning", ownerId: AI_VIEWER_ID, updated: "Yesterday" },
+  { id: "memory-3", title: "Acme Traders needs a 48-hour follow-up", detail: "Owner note linked to the stalled proposal and next best action.", source: "Saved from CRM context", ownerId: AI_VIEWER_ID, updated: "2 days ago" },
+];
+
 const emptyKnowledgeForm: KnowledgeForm = { title: "", content: "", url: "", app: "Google Drive", question: "", answer: "", collection: "Company & policies", description: "" };
 
 function BusinessKnowledgeView() {
@@ -302,6 +314,7 @@ function BusinessKnowledgeView() {
   const [facts, setFacts] = React.useState<Record<string, "approved" | "rejected">>({});
   const [sources, setSources] = React.useState<KnowledgeSource[]>(() => demoMode ? initialKnowledgeSources : []);
   const [collections, setCollections] = React.useState<KnowledgeCollection[]>(() => demoMode ? initialKnowledgeCollections : []);
+  const [memory] = React.useState<BusinessMemory[]>(() => demoMode ? initialBusinessMemory : []);
   const [unanswered, setUnanswered] = React.useState(() => demoMode ? [["What is the refund window for bulk orders?", "Asked 7 times · WhatsApp and team chat"], ["Do we deliver to Jaipur on Sundays?", "Asked 4 times · WhatsApp"], ["What warranty do industrial fans come with?", "Asked 3 times · Sales team"], ["Who approves travel expenses above ₹10,000?", "Asked 2 times · HR"]] : []);
   const [dialog, setDialog] = React.useState<KnowledgeDialog | null>(null);
   const [form, setForm] = React.useState<KnowledgeForm>(emptyKnowledgeForm);
@@ -314,6 +327,7 @@ function BusinessKnowledgeView() {
   const addedSources = Math.max(0, sources.length - initialKnowledgeSources.length);
   const readySources = 139 + sources.slice(initialKnowledgeSources.length).filter((source) => source.status === "Ready").length;
   const reviewSources = 6 + sources.slice(initialKnowledgeSources.length).filter((source) => source.status === "Needs review").length;
+  const visibleMemory = memory.filter((item) => item.ownerId === AI_VIEWER_ID);
 
   function updateForm(field: keyof KnowledgeForm, value: string) { setForm((current) => ({ ...current, [field]: value })); }
   function closeDialog() { setDialog(null); setSaving(false); setDialogError(null); setSelectedFiles([]); setAnsweringQuestion(null); }
@@ -377,12 +391,14 @@ function BusinessKnowledgeView() {
       </DialogContent>
     </Dialog>
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified sources"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Everything Janus knows about your business. Answers use this knowledge and connected records, with access controlled by permissions.</p></div>
+      <div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Knowledge &amp; Memory</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified sources"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Business knowledge is permission-aware. Personal AI memory and saved conversations are private to your account.</p></div>
       <div className="flex gap-2"><Button variant="secondary" onClick={() => openDialog("app")}><Link2 className="size-3.5" />Connect an app</Button><Button onClick={() => openDialog("menu")}><Plus className="size-3.5" />Add knowledge</Button></div>
     </div>
     <BusinessIntelligenceNav active="knowledge" />
     {notice && <div role="status" className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent">{notice}</div>}
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{demoMode ? <><KnowledgeStat label="Sources" value={String(148 + addedSources)} detail="Files, pages, links and Q&As" /><KnowledgeStat label="Ready for Janus" value={String(readySources)} detail="Read and searchable" tone="success" /><KnowledgeStat label="Needs review" value={String(reviewSources)} detail="Conflicting or out of date" tone="warning" /><KnowledgeStat label="Unanswered questions" value={String(11 + unanswered.length - 4)} detail="This month, no source found" tone="danger" /></> : <><KnowledgeStat label="Sources" value="—" detail="No verified sources connected." /><KnowledgeStat label="Ready for Janus" value="—" detail="Indexing is not connected." /><KnowledgeStat label="Needs review" value="—" detail="No source review queue yet." /><KnowledgeStat label="Unanswered questions" value="—" detail="Connect knowledge to measure this." /></>}</div>
+
+    <SectionCard title="Your AI memory" description="Saved preferences and context used only in your Business AI Chat. Other members cannot see these items."><div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-xs text-accent"><span>Private to Pankaj Neema · Owner</span><Badge variant="outline">Private</Badge></div><div className="flex flex-col divide-y divide-border">{visibleMemory.map((item) => <div key={item.id} className="flex flex-wrap items-start gap-3 py-3 first:pt-1 last:pb-1"><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.source} · {item.updated}</p></div><Badge variant="neutral">Private</Badge></div>)}</div>{visibleMemory.length === 0 && <p className="text-sm text-muted-foreground">No private memory has been saved yet.</p>}</SectionCard>
 
     <section><h2 className="mb-3 text-base font-semibold">Add knowledge</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[[Upload, "Upload files", "PDF, Word, Excel, images", "upload"], [Pencil, "Write a page", "Policies, SOPs, notes", "write"], [Globe2, "Add a website", "Your site, catalogue, help pages", "website"], [Link2, "Connect an app", "Google Drive, Notion, Tally", "app"], [MessageSquarePlus, "Add a Q&A", "Exact answers to common questions", "qa"]].map(([Icon, title, detail, kind]) => <button key={title as string} type="button" onClick={() => openDialog(kind as KnowledgeDialog)} className="group flex min-h-24 flex-col items-start gap-2 rounded-lg border border-border bg-surface p-4 text-left transition-colors hover:border-accent-border hover:bg-accent-muted"><span className="text-accent">{React.createElement(Icon as React.ElementType, { className: "size-4" })}</span><span className="text-sm font-semibold">{title as string}</span><span className="text-xs text-muted-foreground">{detail as string}</span></button>)}</div></section>
 
@@ -475,8 +491,7 @@ function BusinessIntelligenceDemo({ view }: { view: string }) {
   if (view === "insights") return <InsightsDemo />;
   if (view === "performance") return <PerformanceDemo />;
   if (view === "risks") return <RisksDemo />;
-  if (view === "forecasts") return <ForecastsDemo />;
-  if (view === "recommendations") return <RecommendationsDemo />;
+  if (view === "planning") return <ForecastsDemo />;
   return <InsightsDemo />;
 }
 
@@ -503,14 +518,10 @@ function RisksDemo() {
 
 function ForecastsDemo() {
   const [notice, setNotice] = React.useState<string | null>(null);
-  const scenarios = [["Conservative", "₹39.2L", 62, "warning"], ["Base", "₹48.6L", 78, "success"], ["Upside", "₹57.4L", 91, "info"]];
-  return <div className="flex flex-col gap-4">{notice && <DemoNotice>{notice}</DemoNotice>}<div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="Next-month revenue" value="₹48.6L" detail="Base scenario" tone="success" /><KnowledgeStat label="Expected cash" value="₹21.6L" detail="31 Jan forecast" tone="neutral" /><KnowledgeStat label="Confidence" value="78%" detail="Weighted pipeline + history" tone="success" /></div><div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Revenue scenarios" description="Demo planning scenarios based on weighted pipeline."><div className="flex flex-col gap-4">{scenarios.map(([name, value, percent, tone]) => <div key={name}><div className="flex justify-between text-sm"><span className="font-medium">{name}</span><span>{value}</span></div><div className="mt-2 h-2 rounded-full bg-[#efefea]"><div className={tone === "warning" ? "h-2 rounded-full bg-warning" : tone === "info" ? "h-2 rounded-full bg-info" : "h-2 rounded-full bg-success"} style={{ width: String(percent) + "%" }} /></div></div>)}</div></SectionCard><SectionCard title="Planning notes" description="The owner can turn forecasts into approved plans."><div className="flex flex-col gap-3 text-sm text-muted-foreground"><p>• Closing the stalled proposals moves the base scenario closer to the upside case.</p><p>• Collecting the overdue invoices protects the cash forecast.</p><p>• Forecasts remain sample data until Finance and CRM history are connected.</p><Button className="w-fit" variant="secondary" onClick={() => setNotice("Planning action staged for Owner approval. No business record was changed.")}>Create planning action</Button></div></SectionCard></div></div>;
-}
-
-function RecommendationsDemo() {
   const [reviewed, setReviewed] = React.useState<string[]>([]);
+  const scenarios = [["Conservative", "₹39.2L", 62, "warning"], ["Base", "₹48.6L", 78, "success"], ["Upside", "₹57.4L", 91, "info"]];
   const recommendations = [["Prioritise stalled proposals", "Assign the 6 inactive proposals to owners and create a 48-hour follow-up task.", "Sales", "High impact"], ["Start a collections sprint", "Send approved reminders for the 4 invoices overdue by more than 30 days.", "Finance", "High impact"], ["Review support routing", "Move the two SLA-risk tickets to the senior support queue.", "Support", "Medium impact"]];
-  return <div className="flex flex-col gap-4"><SectionCard title="Recommended next actions" description="Sample recommendations generated from business signals."><div className="flex flex-col divide-y divide-border">{recommendations.map(([title, detail, area, impact]) => <div key={title} className="flex flex-wrap items-start gap-4 py-4 first:pt-0 last:pb-0"><span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{title}</p><Badge variant="neutral">{area}</Badge><Badge variant={impact === "High impact" ? "success" : "warning"}>{impact}</Badge></div><p className="mt-1 text-sm leading-6 text-muted-foreground">{detail}</p></div><Button size="sm" onClick={() => setReviewed((current) => current.includes(title) ? current : [...current, title])}>{reviewed.includes(title) ? "Queued for approval" : "Review"}</Button></div>)}</div></SectionCard><SectionCard title="Approval boundary" description="Janus keeps consequential actions under human control."><div className="flex items-center gap-3 rounded-lg bg-surface-2 p-4 text-sm text-muted-foreground"><Check className="size-4 shrink-0 text-success" />Messages, discounts, refunds, payments, and other sensitive actions require approval before execution.</div></SectionCard></div>;
+  return <div className="flex flex-col gap-4">{notice && <DemoNotice>{notice}</DemoNotice>}<div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="Next-month revenue" value="₹48.6L" detail="Base scenario" tone="success" /><KnowledgeStat label="Expected cash" value="₹21.6L" detail="31 Jan forecast" tone="neutral" /><KnowledgeStat label="Confidence" value="78%" detail="Weighted pipeline + history" tone="success" /></div><div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Revenue scenarios" description="Demo planning scenarios based on weighted pipeline."><div className="flex flex-col gap-4">{scenarios.map(([name, value, percent, tone]) => <div key={name}><div className="flex justify-between text-sm"><span className="font-medium">{name}</span><span>{value}</span></div><div className="mt-2 h-2 rounded-full bg-[#efefea]"><div className={tone === "warning" ? "h-2 rounded-full bg-warning" : tone === "info" ? "h-2 rounded-full bg-info" : "h-2 rounded-full bg-success"} style={{ width: String(percent) + "%" }} /></div></div>)}</div></SectionCard><SectionCard title="Planning notes" description="The owner can turn forecasts into approved plans."><div className="flex flex-col gap-3 text-sm text-muted-foreground"><p>• Closing the stalled proposals moves the base scenario closer to the upside case.</p><p>• Collecting the overdue invoices protects the cash forecast.</p><p>• Forecasts remain sample data until Finance and CRM history are connected.</p><Button className="w-fit" variant="secondary" onClick={() => setNotice("Planning action staged for Owner approval. No business record was changed.")}>Create planning action</Button></div></SectionCard></div><SectionCard title="Recommended next actions" description="Forecast signals and practical recommendations in one planning view."><div className="flex flex-col divide-y divide-border">{recommendations.map(([title, detail, area, impact]) => <div key={title} className="flex flex-wrap items-start gap-4 py-4 first:pt-0 last:pb-0"><span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{title}</p><Badge variant="neutral">{area}</Badge><Badge variant={impact === "High impact" ? "success" : "warning"}>{impact}</Badge></div><p className="mt-1 text-sm leading-6 text-muted-foreground">{detail}</p></div><Button size="sm" onClick={() => setReviewed((current) => current.includes(title) ? current : [...current, title])}>{reviewed.includes(title) ? "Queued for approval" : "Review"}</Button></div>)}</div></SectionCard></div>;
 }
 
 function DemoNotice({ children }: { children: React.ReactNode }) {
