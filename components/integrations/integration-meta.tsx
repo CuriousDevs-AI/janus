@@ -69,7 +69,7 @@ export const mockAccountLabel: Record<string, string> = {
   "int-hubspot": "curiousdevs.hubspot.com",
   "int-salesforce": "curiousdevs.my.salesforce.com",
   "int-shopify": "curiousdevs.myshopify.com",
-  "int-stripe": "acct_••••4821",
+  "int-razorpay": "rzp_live_••••4821", "int-tally": "TallyPrime-GGN-01",
   "int-zendesk": "curiousdevs.zendesk.com",
   "int-freshdesk": "curiousdevs.freshdesk.com",
   "int-intercom": "curiousdevs (workspace)",

@@ -1,31 +1,40 @@
-import type { AuditEvent } from "@/lib/types";
+import type { ActivityActor, AuditEvent } from "@/lib/types";
+import { at } from "@/lib/demo-universe";
 
-export const auditEvents: AuditEvent[] = [
-  { id: "aud-1", at: "2026-08-17T15:40:05+05:30", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, action: "notify_human()", customerId: "cus-1", objectLabel: "Ticket #1023", objectKind: "ticket", result: "success", approvalRequired: false },
-  { id: "aud-2", at: "2026-08-17T13:25:00+05:30", actor: { type: "human", userId: "u-4", userName: "Karan Bhatt" }, action: "approve_discount", customerId: "cus-1", objectLabel: "Deal — Enterprise AI Support", objectKind: "deal", result: "success", policy: "Discounts above 15% on deals over ₹5L require manager approval.", approvalRequired: true },
-  { id: "aud-3", at: "2026-08-17T13:18:00+05:30", actor: { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" }, action: "request_approval(apply_discount)", customerId: "cus-1", objectLabel: "Deal — Enterprise AI Support", objectKind: "deal", result: "success", approvalRequired: true },
-  { id: "aud-4", at: "2026-08-17T11:19:00+05:30", actor: { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" }, action: "schedule_meeting()", customerId: "cus-1", objectLabel: "Technical Demo", objectKind: "conversation", result: "success", approvalRequired: false },
-  { id: "aud-5", at: "2026-08-17T11:15:00+05:30", actor: { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" }, action: "send_whatsapp()", customerId: "cus-1", objectLabel: "Conversation — WhatsApp", objectKind: "conversation", result: "success", approvalRequired: false },
-  { id: "aud-6", at: "2026-08-17T09:35:00+05:30", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, action: "reset_api_token()", customerId: "cus-1", objectLabel: "Ticket #1023", objectKind: "ticket", result: "success", policy: "Auto-resolvable support action.", approvalRequired: false },
-  { id: "aud-7", at: "2026-08-17T08:57:00+05:30", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, action: "request_approval(issue_refund)", customerId: "cus-8", objectLabel: "Ticket #1018", objectKind: "ticket", result: "success", approvalRequired: true },
-  { id: "aud-8", at: "2026-08-17T08:42:00+05:30", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, action: "notify_human()", customerId: "cus-8", objectLabel: "Ticket #1018", objectKind: "ticket", result: "success", approvalRequired: false },
-  { id: "aud-9", at: "2026-08-16T18:05:00+02:00", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, action: "update_ticket(status=resolved)", customerId: "cus-3", objectLabel: "Ticket #1015", objectKind: "ticket", result: "success", approvalRequired: false },
-  { id: "aud-10", at: "2026-08-16T15:10:00+05:30", actor: { type: "human", userId: "u-7", userName: "Vikram Rao" }, action: "approve_refund", customerId: "cus-19", objectLabel: "Ticket #1009", objectKind: "ticket", result: "success", policy: "Refunds above ₹25,000 require finance approval.", approvalRequired: true },
-  { id: "aud-11", at: "2026-08-16T14:00:00+02:00", actor: { type: "human", userId: "u-7", userName: "Vikram Rao" }, action: "reject_contract_action", customerId: "cus-3", objectLabel: "Payment terms extension", objectKind: "approval", result: "denied", policy: "Payment term changes beyond Net-30 require finance sign-off.", approvalRequired: true },
-  { id: "aud-12", at: "2026-08-16T10:12:00+03:00", actor: { type: "human", userId: "u-1", userName: "Pankaj" }, action: "approve_sensitive_message", customerId: "cus-16", objectLabel: "SOC2 report share", objectKind: "approval", result: "success", approvalRequired: true },
-  { id: "aud-13", at: "2026-08-16T09:00:00+08:00", actor: { type: "human", userId: "u-1", userName: "Pankaj" }, action: "approve_deletion", customerId: "cus-6", objectLabel: "Legacy Zapier credentials", objectKind: "approval", result: "success", policy: "Credential deletion requires owner or admin approval.", approvalRequired: true },
-  { id: "aud-14", at: "2026-08-15T17:00:00-08:00", actor: { type: "human", userId: "u-7", userName: "Vikram Rao" }, action: "approve_refund", customerId: "cus-17", objectLabel: "Ticket #1002", objectKind: "ticket", result: "success", approvalRequired: true },
-  { id: "aud-15", at: "2026-08-15T12:40:00+05:30", actor: { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" }, action: "send_email()", customerId: "cus-1", objectLabel: "Proposal follow-up", objectKind: "conversation", result: "success", approvalRequired: false },
-  { id: "aud-16", at: "2026-08-13T12:40:00+05:30", actor: { type: "human", userId: "u-2", userName: "Aman Verma" }, action: "send_email()", customerId: "cus-1", objectLabel: "Proposal — Enterprise AI Support", objectKind: "conversation", result: "success", approvalRequired: false },
-  { id: "aud-17", at: "2026-08-13T10:01:00+05:30", actor: { type: "ai", agentId: "agent-qualification", agentName: "Qualification Agent" }, action: "update_lead(score=61)", customerId: "cus-11", objectLabel: "Lead — Dev Patel", objectKind: "lead", result: "success", approvalRequired: false },
-  { id: "aud-18", at: "2026-08-12T09:30:00+08:00", actor: { type: "human", userId: "u-1", userName: "Pankaj" }, action: "publish_knowledge(v1)", objectLabel: "Product Documentation", objectKind: "knowledge", result: "success", approvalRequired: false },
-  { id: "aud-19", at: "2026-08-10T09:08:00+05:30", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, action: "send_email()", customerId: "cus-1", objectLabel: "Ticket #1023", objectKind: "ticket", result: "success", approvalRequired: false },
-  { id: "aud-20", at: "2026-08-09T10:37:00+05:30", actor: { type: "system" }, action: "route_conversation(reason=security_sensitive)", customerId: "cus-1", objectLabel: "Website chat", objectKind: "conversation", result: "success", approvalRequired: false },
-  { id: "aud-21", at: "2026-08-09T10:35:00+05:30", actor: { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" }, action: "get_customer()", customerId: "cus-1", objectLabel: "Website chat", objectKind: "conversation", result: "success", approvalRequired: false },
-  { id: "aud-22", at: "2026-08-05T09:00:00-04:00", actor: { type: "system" }, action: "create_customer(from_deal_won)", customerId: "cus-24", objectLabel: "Fathom Analytics Expansion", objectKind: "deal", result: "success", approvalRequired: false },
-  { id: "aud-23", at: "2026-07-25T09:00:00+05:30", actor: { type: "human", userId: "u-2", userName: "Aman Verma" }, action: "mark_deal(stage=lost)", customerId: "cus-15", objectLabel: "Fenwick Support Desk", objectKind: "deal", result: "success", approvalRequired: false },
-  { id: "aud-24", at: "2026-08-17T08:10:00+05:30", actor: { type: "ai", agentId: "agent-qualification", agentName: "Qualification Agent" }, action: "update_lead(score=47)", customerId: "cus-22", objectLabel: "Lead — Sofia Martins", objectKind: "lead", result: "success", approvalRequired: false },
+const SALES: ActivityActor = { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" };
+const SUPPORT: ActivityActor = { type: "ai", agentId: "agent-support", agentName: "Support Agent" };
+const QUALIFY: ActivityActor = { type: "ai", agentId: "agent-qualification", agentName: "Qualification Agent" };
+const human = (userId: string, userName: string): ActivityActor => ({ type: "human", userId, userName });
+const PANKAJ = human("u-1", "Pankaj Neema");
+const SYS: ActivityActor = { type: "system" };
+
+type Row = [number, string, ActivityActor, string, number | undefined, string, AuditEvent["objectKind"], AuditEvent["result"], boolean, string?, string?];
+const rows: Row[] = [
+  [0, "09:30", SUPPORT, "notify_human()", 12, "Ticket #1031", "ticket", "success", false],
+  [0, "09:05", SUPPORT, "create_ticket()", 12, "Ticket #1031", "ticket", "success", false],
+  [0, "09:40", SUPPORT, "request_approval(issue_refund)", 12, "Credit note ₹4,200", "approval", "success", true, "Credit notes above ₹2,500 need approval.", "Credit notes above ₹2,500 need approval."],
+  [1, "16:25", SALES, "request_approval(extend_credit)", 7, "45-day credit, Metro Value Mart", "approval", "success", true, "Credit beyond 30 days needs owner approval.", "Credit beyond 30 days needs owner approval."],
+  [1, "16:20", SALES, "send_whatsapp()", 7, "Conversation: WhatsApp", "conversation", "success", false],
+  [1, "12:30", SUPPORT, "create_ticket()", 9, "Ticket #1029", "ticket", "success", false],
+  [2, "10:20", QUALIFY, "update_lead(score=72)", 1, "Lead: Northstar Retail", "lead", "success", false],
+  [2, "11:40", SALES, "send_email()", 3, "Rate card: Rajasthan routes", "conversation", "success", false],
+  [3, "11:40", human("u-5", "Karan Bhatt"), "update_ticket(status=waiting_customer)", 7, "Ticket #1024", "ticket", "success", false],
+  [4, "08:30", SUPPORT, "update_ticket(priority=high)", 10, "Ticket #1015", "ticket", "success", false],
+  [5, "09:30", SALES, "send_whatsapp(payment_reminder)", 3, "Payment reminder, Annapurna Foods", "conversation", "success", true, "Payment reminders to key accounts need review.", "Payment reminders to key accounts need review."],
+  [5, "09:45", PANKAJ, "approve_sensitive_message", 3, "Payment reminder, Annapurna Foods", "approval", "success", false],
+  [6, "12:15", human("u-4", "Arjun Mehta"), "mark_deal(stage=won)", 9, "Rajputana monthly dry goods", "deal", "success", true, "Deals above ₹5L need owner confirmation before Won.", "Deals above ₹5L need owner confirmation before Won."],
+  [6, "12:10", PANKAJ, "approve_deal_stage", 9, "Rajputana monthly dry goods", "approval", "success", false],
+  [6, "12:20", SYS, "create_customer(from_deal_won)", 9, "Rajputana Wholesale Co-op", "deal", "success", false],
+  [12, "10:45", PANKAJ, "approve_refund", 14, "Replacement batch, Shiv Shakti Bakery", "approval", "success", false],
+  [20, "17:30", PANKAJ, "reject_discount", 5, "12% discount to win back Green Basket", "approval", "success", false, "Discounts above 10% are not allowed on staples.", "Discounts above 10% are not allowed on staples."],
+  [3, "10:00", PANKAJ, "publish_knowledge(v3)", undefined, "Price list, October 2026", "knowledge", "success", false],
+  [2, "08:10", QUALIFY, "update_lead(score=48)", 2, "Lead: Orbit Canteen Services", "lead", "success", false],
+  [1, "09:00", SALES, "apply_discount(15%)", 7, "Metro personal-care range", "approval", "denied", true, "Blocked: 15% is above the staples limit.", "Discount limits"],
 ];
+
+export const auditEvents: AuditEvent[] = rows.map(([daysAgo, time, actor, action, customer, objectLabel, objectKind, result, approvalRequired, reason, policy], index) => ({
+  id: `aud-${index + 1}`, at: at(daysAgo, time), actor, action, customerId: customer ? `cus-${customer}` : undefined, objectLabel, objectKind, result, reason, policy, approvalRequired,
+})).sort((x, y) => (x.at < y.at ? 1 : -1));
 
 export function getAuditForCustomer(customerId: string): AuditEvent[] {
   return auditEvents.filter((a) => a.customerId === customerId);

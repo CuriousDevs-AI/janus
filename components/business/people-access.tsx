@@ -78,15 +78,13 @@ const initialMembers: AccessMember[] = [...users.map((user, index) => ({
   name: user.name,
   email: user.email,
   role: user.role,
-  department: user.role === "finance" ? "Finance" : user.role === "support_agent" ? "Customer Support" : "Sales",
+  department: user.role === "finance" ? "Finance" : user.role === "support_agent" ? "Support" : user.role === "admin" ? "People" : user.role === "owner" ? "Management" : "Sales",
   status: "Active" as const,
-  businessAccess: user.role === "owner" || isManagementRole(user.role),
-  workspaces: (index === 0 ? workspaceOptions.map(([key]) => key as WorkspaceKey) : user.role === "support_agent" ? ["crm-sales", "customer-support"] : user.role === "finance" ? ["crm-sales", "finance-accounting"] : ["crm-sales"]) as WorkspaceKey[],
+  businessAccess: user.role === "owner" || (isManagementRole(user.role) && user.role !== "admin"),
+  workspaces: (index === 0 ? workspaceOptions.map(([key]) => key as WorkspaceKey) : user.role === "support_agent" ? ["crm-sales", "customer-support"] : user.role === "admin" || user.role === "finance" ? ["hr-people"] : ["crm-sales"]) as WorkspaceKey[],
   permissions: rolePermissions[user.role],
   lastActive: user.online ? "Online now" : "Yesterday",
 })),
-  { id: "management-1", name: "Shaista Kapoor", email: "shaista@acmetrader.in", role: "product_manager", department: "Management", status: "Active" as const, businessAccess: true, workspaces: [] as WorkspaceKey[], permissions: rolePermissions.product_manager, lastActive: "Online now" },
-  { id: "management-2", name: "Rohan Malhotra", email: "rohan@acmetrader.in", role: "business_manager", department: "Management", status: "Active" as const, businessAccess: true, workspaces: [] as WorkspaceKey[], permissions: rolePermissions.business_manager, lastActive: "Yesterday" },
 ];
 
 const initialRoles: RoleRecord[] = roleOrder.map((role) => ({ id: role, label: roleMeta[role].label, summary: roleMeta[role].summary, tone: roleMeta[role].tone as RoleRecord["tone"], permissions: rolePermissions[role], builtIn: true }));

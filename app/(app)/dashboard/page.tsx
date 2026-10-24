@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { demoConnectedSources, demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
+import { monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSession } from "@/components/auth/session-provider";
@@ -11,135 +13,12 @@ import { useApi } from "@/lib/api/use-api";
 import type { Deal, Lead, Source } from "@/lib/api/types";
 import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
 
-const demoLeadRows: Lead[] = [
-  {
-    dealId: "demo-deal-1",
-    id: "demo-lead-1042",
-    customerId: "demo-customer-1",
-    contactName: "Riya Kapoor",
-    phone: "+91 98765 43210",
-    email: "riya@northstar.in",
-    company: "Northstar Retail",
-    whatsappOptIn: true,
-    doNotContact: false,
-    consentSource: "website_form",
-    consentUpdatedAt: "2026-10-22T10:20:00+05:30",
-    source: "website",
-    stage: "qualified",
-    ownerId: "demo-owner",
-    ownerName: "Pankaj Neema",
-    requirement: "WhatsApp follow-up for a multi-store support rollout.",
-    campaign: "Diwali retail readiness",
-    recordingUrl: null,
-    recordingReference: null,
-    createdAt: "2026-10-22T10:15:00+05:30",
-    lastActivityAt: "2026-10-22T15:40:00+05:30",
-  },
-  {
-    dealId: null,
-    id: "demo-lead-1041",
-    customerId: "demo-customer-2",
-    contactName: "Amit Shah",
-    phone: "+91 98100 11223",
-    email: "amit@orbitlogistics.in",
-    company: "Orbit Logistics",
-    whatsappOptIn: false,
-    doNotContact: false,
-    consentSource: null,
-    consentUpdatedAt: null,
-    source: "phone_call",
-    stage: "new",
-    ownerId: "demo-owner",
-    ownerName: "Pankaj Neema",
-    requirement: "Missed call from a fleet operations team.",
-    campaign: null,
-    recordingUrl: null,
-    recordingReference: "call-demo-882",
-    createdAt: "2026-10-21T12:05:00+05:30",
-    lastActivityAt: "2026-10-21T12:05:00+05:30",
-  },
-  {
-    dealId: "demo-deal-2",
-    id: "demo-lead-1039",
-    customerId: "demo-customer-3",
-    contactName: "Neha Verma",
-    phone: "+91 99200 77881",
-    email: "neha@acmefoods.in",
-    company: "Acme Foods",
-    whatsappOptIn: true,
-    doNotContact: false,
-    consentSource: "whatsapp_inbound",
-    consentUpdatedAt: "2026-10-19T09:00:00+05:30",
-    source: "whatsapp",
-    stage: "proposal",
-    ownerId: "demo-owner",
-    ownerName: "Pankaj Neema",
-    requirement: "Centralise distributor enquiries and payment reminders.",
-    campaign: "Distributor operations",
-    recordingUrl: null,
-    recordingReference: null,
-    createdAt: "2026-10-19T08:45:00+05:30",
-    lastActivityAt: "2026-10-22T11:10:00+05:30",
-  },
-];
-
-const demoDealRows: Deal[] = [
-  {
-    id: "demo-deal-1",
-    leadId: "demo-lead-1042",
-    customerId: "demo-customer-1",
-    customerName: "Riya Kapoor",
-    company: "Northstar Retail",
-    phone: "+91 98765 43210",
-    ownerId: "demo-owner",
-    ownerName: "Pankaj Neema",
-    name: "Northstar support rollout",
-    amount: "480000.00",
-    stage: "qualified",
-    expectedCloseAt: "2026-11-08T00:00:00+05:30",
-    lostReason: "",
-    version: 1,
-    createdAt: "2026-10-22T10:30:00+05:30",
-    updatedAt: "2026-10-22T15:40:00+05:30",
-  },
-  {
-    id: "demo-deal-2",
-    leadId: "demo-lead-1039",
-    customerId: "demo-customer-3",
-    customerName: "Neha Verma",
-    company: "Acme Foods",
-    phone: "+91 99200 77881",
-    ownerId: "demo-owner",
-    ownerName: "Pankaj Neema",
-    name: "Acme distributor operations",
-    amount: "275000.00",
-    stage: "proposal",
-    expectedCloseAt: "2026-11-15T00:00:00+05:30",
-    lostReason: "",
-    version: 1,
-    createdAt: "2026-10-19T09:00:00+05:30",
-    updatedAt: "2026-10-22T11:10:00+05:30",
-  },
-];
-
-const demoConnectedSources: Pick<Source, "status">[] = [
-  { status: "connected" },
-  { status: "connected" },
-  { status: "connected" },
-];
-
 function sourceLabel(source: string) {
   return source.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-const demoGrowthTrend = [
-  { month: "May", leads: 12, pipeline: 180000 },
-  { month: "Jun", leads: 16, pipeline: 245000 },
-  { month: "Jul", leads: 19, pipeline: 310000 },
-  { month: "Aug", leads: 23, pipeline: 410000 },
-  { month: "Sep", leads: 28, pipeline: 560000 },
-  { month: "Oct", leads: 34, pipeline: 755000 },
-];
+/** Leads per month and the pipeline those leads carry, from the shared demo company. */
+const demoGrowthTrend = monthlyLeads.map((item) => ({ month: item.label, leads: item.leads, pipeline: Math.round(item.leads * (crm.pipeline / Math.max(1, crm.leads)) * (item.label === "Oct" ? 1 : 0.8)) }));
 
 export default function DashboardPage() {
   const session = useSession();
