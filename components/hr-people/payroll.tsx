@@ -19,7 +19,7 @@ const signed = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${
 const when = (value: string) => new Date(value).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 interface Exception { id: string; title: string; detail: string; severity: HrPayrollIssue["severity"]; status: HrPayrollIssue["status"]; source: "record" | "derived"; blocking: boolean; employeeName: string; amountDelta: number }
-interface Line { employee: HrEmployee; slip: HrPayslip; previous: HrPayslip | null; delta: number; pct: number | null; flags: string[] }
+export interface Line { employee: HrEmployee; slip: HrPayslip; previous: HrPayslip | null; delta: number; pct: number | null; flags: string[] }
 
 function register(employees: HrEmployee[], key: string): Line[] {
   const prev = previousKey(key);
@@ -120,7 +120,7 @@ function ReasonDialog({ title, confirm, onSubmit, onClose }: { title: string; co
   </HrModal>;
 }
 
-function PayslipDialog({ line, published, onClose }: { line: Line; published: boolean; onClose: () => void }) {
+export function PayslipDialog({ line, published, onClose }: { line: Line; published: boolean; onClose: () => void }) {
   const { slip, employee } = line;
   const shown: HrPayslip = { ...slip, status: published ? "published" : "review" };
   return <HrModal open onOpenChange={(value) => !value && onClose()} title={`${slip.label} payslip`} description={`${employee.name} · ${employee.id.toUpperCase()} · ${employee.title}`}>

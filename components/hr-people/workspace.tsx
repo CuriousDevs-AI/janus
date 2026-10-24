@@ -33,6 +33,12 @@ import { HrReportsView } from "@/components/hr-people/reports";
 import { HrExpensesView } from "@/components/hr-people/expenses";
 import { HrApprovalsView } from "@/components/hr-people/approvals";
 import { HrEmployeeImport } from "@/components/hr-people/employee-import";
+import { HrHomeView } from "@/components/hr-people/home";
+import { HrEngageView } from "@/components/hr-people/engage";
+import { HrLeaveApplyView, HrLeaveBalancesView, HrHolidayCalendarView } from "@/components/hr-people/leave-pages";
+import { HrAttendanceInfoView, HrRegularizationView } from "@/components/hr-people/attendance-pages";
+import { HrDocumentCenterView } from "@/components/hr-people/document-center";
+import { HrSalaryView } from "@/components/hr-people/salary";
 import { HrPolicyQaView } from "@/components/hr-people/policy-qa";
 import { HrPolicyPanel } from "@/components/hr-people/policy-settings";
 import { HrAttendanceView } from "@/components/hr-people/attendance";
@@ -61,6 +67,8 @@ function statusVariant(status: string): "success" | "warning" | "danger" | "info
   return "neutral";
 }
 
+const selfServiceViews = new Set(["my-home", "engage", "leave-apply", "leave-balances", "holiday-calendar", "attendance-info", "my-regularization", "document-center", "my-documents", "my-payslips", "my-requests", "my-onboarding", "my-profile", "policy-qa"]);
+
 export function HrPeopleWorkspace() {
   const params = useSearchParams();
   const router = useRouter();
@@ -69,7 +77,10 @@ export function HrPeopleWorkspace() {
   const setDemoRole = useHrPeopleStore((state) => state.setDemoRole);
   const employees = useHrPeopleStore((state) => state.employees);
   const employeeRows = visibleEmployees(role, employees);
-  const title = viewTitle(view);
+  // An employee lands on Home, not the HR dashboard.
+  const shown = role === "employee" && view === "overview" ? "my-home" : view;
+  React.useEffect(() => { if (role === "employee" && view === "overview") router.replace("/workspace/hr-people?view=my-home&workspace=hr-people"); }, [role, view, router]);
+  const title = viewTitle(shown);
 
   function changeRole(nextRole: HrDemoRole) {
     setDemoRole(nextRole);
@@ -85,35 +96,39 @@ export function HrPeopleWorkspace() {
 
   const blocked = !canOpenHrView(role, view);
 
-  if (role === "employee" && view === "overview") {
-    return <div className="mx-auto flex max-w-[1320px] flex-col"><PageHeader title="My profile" description="Your profile, requests and people records in one place." actions={<div className="flex flex-wrap items-center gap-2"><Badge variant="info">Self-service</Badge>{demoMode && <label className="flex items-center gap-2 text-xs text-muted-foreground"><span>Preview as</span><select value={role} onChange={(event) => changeRole(event.target.value as HrDemoRole)} className="h-8 border border-border bg-surface px-2 text-xs text-foreground">{roleOptions.map((item) => <option key={item} value={item}>{hrRoleLabels[item]}</option>)}</select></label>}</div>} /><div className="px-6 pb-10"><div className="mb-4 flex items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />Employee access is limited to your own HR records.</div><MyProfileView role={role} /></div></div>;
-  }
-
   return (
     <div className="mx-auto flex max-w-[1320px] flex-col">
       <PageHeader
         title={title}
-        description="Employee records, approvals and people operations in one permission-aware workspace."
+        description={selfServiceViews.has(shown) ? "Your work, time off, pay and documents in one place." : "Employee records, approvals and people operations in one permission-aware workspace."}
         actions={<div className="flex flex-wrap items-center gap-2"><Badge variant={demoMode ? "info" : "neutral"}>{demoMode ? "Sample data" : "Live records"}</Badge>{demoMode && <label className="flex items-center gap-2 text-xs text-muted-foreground"><span>Preview as</span><select value={role} onChange={(event) => changeRole(event.target.value as HrDemoRole)} className="h-8 border border-border bg-surface px-2 text-xs text-foreground">{roleOptions.map((item) => <option key={item} value={item}>{hrRoleLabels[item]}</option>)}</select></label>}</div>}
       />
       <div className="px-6 pb-10">
         {demoMode && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />Access preview: {hrRoleLabels[role]}. Business Management access and HR workspace access are separate.</div>}
         {blocked ? <AccessNotice role={role} /> : (
           <>
-            {view === "overview" && <Overview role={role} employees={employeeRows} onNavigate={(next) => router.push(`/workspace/hr-people?view=${next}&workspace=hr-people`)} />}
+            {shown === "my-home" && <HrHomeView role={role} actorId={demoActorId(role)} />}
+            {shown === "engage" && <HrEngageView role={role} actorId={demoActorId(role)} />}
+            {shown === "leave-apply" && <HrLeaveApplyView actorId={demoActorId(role)} />}
+            {shown === "leave-balances" && <HrLeaveBalancesView actorId={demoActorId(role)} />}
+            {shown === "holiday-calendar" && <HrHolidayCalendarView role={role} actorId={demoActorId(role)} />}
+            {shown === "attendance-info" && <HrAttendanceInfoView actorId={demoActorId(role)} />}
+            {shown === "my-regularization" && <HrRegularizationView actorId={demoActorId(role)} />}
+            {shown === "document-center" && <HrDocumentCenterView role={role} actorId={demoActorId(role)} />}
+            {shown === "overview" && <Overview role={role} employees={employeeRows} onNavigate={(next) => router.push(`/workspace/hr-people?view=${next}&workspace=hr-people`)} />}
             {view === "employees" && <EmployeesView role={role} employees={employeeRows} />}
             {view === "attendance" && <HrAttendanceView role={role} actorId={demoActorId(role)} />}
             {view === "leave" && <HrLeaveView role={role} actorId={demoActorId(role)} />}
             {view === "my-requests" && <HrLeaveView role={role} actorId={demoActorId(role)} personal />}
             {view === "leave-calendar" && <HrLeaveCalendarView role={role} actorId={demoActorId(role)} />}
             {view === "documents" && <HrDocumentsView role={role} actorId={demoActorId(role)} />}
-            {view === "my-documents" && <HrDocumentsView role={role} actorId={demoActorId(role)} personal />}
+            {view === "my-documents" && <HrDocumentsView key={params.get("tab") ?? "mine"} role={role} actorId={demoActorId(role)} personal />}
             {view === "onboarding" && <HrOnboardingView role={role} actorId={demoActorId(role)} />}
             {view === "my-onboarding" && <HrOnboardingView role={role} actorId={demoActorId(role)} personal />}
             {view === "offboarding" && <HrOffboardingView role={role} actorId={demoActorId(role)} />}
             {view === "recruitment" && <HrRecruitmentView role={role} actorId={demoActorId(role)} />}
             {view === "payroll" && <HrPayrollView role={role} actorId={demoActorId(role)} />}
-            {view === "my-payslips" && <HrPayrollView role={role} actorId={demoActorId(role)} personal />}
+            {view === "my-payslips" && <HrSalaryView key={params.get("tab") ?? "payslips"} role={role} actorId={demoActorId(role)} />}
             {view === "team" && <TeamView role={role} />}
             {view === "approvals" && <HrApprovalsView role={role} actorId={demoActorId(role)} />}
             {view === "my-profile" && <MyProfileView role={role} />}
@@ -132,7 +147,7 @@ export function HrPeopleWorkspace() {
 }
 
 function viewTitle(view: string) {
-  const titles: Record<string, string> = { overview: "HR Overview", employees: "Employees", attendance: "Attendance", leave: "Leave Management", "leave-calendar": "Leave Calendar", "my-requests": "My requests", documents: "Documents", "my-documents": "My documents", onboarding: "Onboarding", "my-onboarding": "My onboarding", offboarding: "Offboarding", recruitment: "Recruitment", payroll: "Payroll", "my-payslips": "My payslips", team: "My Team", approvals: "Pending Approvals", "my-profile": "My profile", performance: "Performance & Reviews", reports: "HR Reports", expenses: "Expenses & Reimbursements", compliance: "HR Compliance", signatures: "Signature & Audit", settings: "HR Settings", "policy-qa": "Ask about policy" };
+  const titles: Record<string, string> = { overview: "HR Overview", employees: "Employees", attendance: "Attendance", leave: "Leave Management", "leave-calendar": "Leave Calendar", "my-requests": "My requests", documents: "Documents", "my-documents": "My documents", onboarding: "Onboarding", "my-onboarding": "My onboarding", offboarding: "Offboarding", recruitment: "Recruitment", payroll: "Payroll", "my-payslips": "Payslips", team: "My Team", approvals: "Pending Approvals", "my-profile": "My profile", performance: "Performance & Reviews", reports: "HR Reports", expenses: "Expenses & Reimbursements", compliance: "HR Compliance", signatures: "Signature & Audit", settings: "HR Settings", "policy-qa": "Ask about policy", "my-home": "Home", engage: "Engage", "leave-apply": "Leave Apply", "leave-balances": "Leave Balances", "holiday-calendar": "Holiday Calendar", "attendance-info": "Attendance Info", "my-regularization": "Regularization & Permission", "document-center": "Document Center" };
   return titles[view] ?? "HR & People";
 }
 

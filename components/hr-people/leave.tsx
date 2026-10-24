@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { canManageHr } from "@/lib/hr-people-access";
+import { useCompanyHolidayDates } from "@/lib/hr-holidays";
 import { canDecide, findOverlap, isTeamOf, leaveBalance, leaveTypeLabels, nextAfterApproval, paidLeaveTypes, stepLabel, workingDays, type LeaveType } from "@/lib/hr-leave";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, HrTable, hrCell, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrLeaveRequest } from "@/lib/types";
@@ -93,21 +94,22 @@ function TeamBalances({ employeeIds }: { employeeIds: string[] }) {
   </HrPanel>;
 }
 
-function RequestDialog({ employeeId, onClose }: { employeeId: string; onClose: () => void }) {
+export function LeaveRequestForm({ employeeId, initial, onDone }: { employeeId: string; initial?: { type?: LeaveType; from?: string }; onDone: () => void }) {
   const { employees, leaveRequests, addLeave } = useHrPeopleStore();
   const { settings, log } = useHrOperationsStore();
+  const closed = useCompanyHolidayDates();
   const employee = employees.find((item) => item.id === employeeId)!;
   const manager = employees.find((item) => item.id === employee.managerId);
   const today = hrToday();
-  const [type, setType] = React.useState<LeaveType>("casual");
-  const [from, setFrom] = React.useState(today);
-  const [to, setTo] = React.useState(today);
+  const [type, setType] = React.useState<LeaveType>(initial?.type ?? "casual");
+  const [from, setFrom] = React.useState(initial?.from ?? today);
+  const [to, setTo] = React.useState(initial?.from ?? today);
   const [reason, setReason] = React.useState("");
-  const days = workingDays(from, to, settings.workWeek);
+  const days = workingDays(from, to, settings.workWeek, closed);
   const balance = leaveBalance(leaveRequests, employeeId, type, settings, today);
   const oldest = new Date(`${today}T12:00:00`); oldest.setDate(oldest.getDate() - 30);
   const overlap = from && to && to >= from ? findOverlap(leaveRequests, employeeId, from, to) : undefined;
-  const error = !from || !to ? "Choose the dates." : to < from ? "The end date can't be before the start date." : from < oldest.toLocaleDateString("en-CA") ? "Leave can be backdated by 30 days at most." : days === 0 ? "Those dates are all weekly offs, so no leave is needed." : overlap ? `This overlaps your ${leaveTypeLabels[overlap.type].toLowerCase()} leave on ${hrDate(overlap.from)}.` : type !== "unpaid" && days > balance.remaining ? `You have ${balance.remaining} ${leaveTypeLabels[type].toLowerCase()} day${balance.remaining === 1 ? "" : "s"} left. Choose fewer days or request unpaid leave.` : reason.trim().length < 5 ? "Give a short reason (at least 5 characters)." : "";
+  const error = !from || !to ? "Choose the dates." : to < from ? "The end date can't be before the start date." : from < oldest.toLocaleDateString("en-CA") ? "Leave can be backdated by 30 days at most." : days === 0 ? "Those dates are weekly offs or company holidays, so no leave is needed." : overlap ? `This overlaps your ${leaveTypeLabels[overlap.type].toLowerCase()} leave on ${hrDate(overlap.from)}.` : type !== "unpaid" && days > balance.remaining ? `You have ${balance.remaining} ${leaveTypeLabels[type].toLowerCase()} day${balance.remaining === 1 ? "" : "s"} left. Choose fewer days or request unpaid leave.` : reason.trim().length < 5 ? "Give a short reason (at least 5 characters)." : "";
   const showError = Boolean(error) && (reason.length > 0 || !error.startsWith("Give a short"));
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -116,21 +118,24 @@ function RequestDialog({ employeeId, onClose }: { employeeId: string; onClose: (
     addLeave(request);
     log({ recordId: request.id, actorId: employeeId, action: "requested", reason: request.reason });
     toast.success(`Leave requested. ${manager ? `${manager.name} will review it.` : "HR will review it."}`);
-    onClose();
+    onDone();
   }
-  return <HrModal open onOpenChange={(value) => !value && onClose()} title="Request leave" description={manager ? `Goes to ${manager.name}${settings.approvalChain === "manager_hr" ? ", then HR" : ""}.` : "Goes to HR."}>
-    <form onSubmit={submit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <HrField label="Type"><select className={hrInputClass} value={type} onChange={(event) => setType(event.target.value as LeaveType)}>{(Object.keys(leaveTypeLabels) as LeaveType[]).map((item) => <option key={item} value={item}>{leaveTypeLabels[item]}</option>)}</select></HrField>
-        <HrField label="From"><Input type="date" value={from} onChange={(event) => { setFrom(event.target.value); if (to < event.target.value) setTo(event.target.value); }} className="rounded-none" /></HrField>
-        <HrField label="To"><Input type="date" min={from} value={to} onChange={(event) => setTo(event.target.value)} className="rounded-none" /></HrField>
-      </div>
-      <p className="text-sm">{days > 0 ? <><strong>{dayText(days)}</strong> of leave</> : "No working days selected"}{type !== "unpaid" && <span className="text-muted-foreground"> · {balance.remaining} {leaveTypeLabels[type].toLowerCase()} {balance.remaining === 1 ? "day" : "days"} available{days > 0 && days <= balance.remaining ? `, ${balance.remaining - days} after this` : ""}</span>}</p>
-      <HrField label="Reason"><Textarea required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-none" /></HrField>
-      {showError && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={Boolean(error)}>Submit request</Button></div>
-    </form>
-  </HrModal>;
+  return <form onSubmit={submit} className="space-y-4">
+    <div className="grid gap-4 sm:grid-cols-3">
+      <HrField label="Type"><select className={hrInputClass} value={type} onChange={(event) => setType(event.target.value as LeaveType)}>{(Object.keys(leaveTypeLabels) as LeaveType[]).map((item) => <option key={item} value={item}>{leaveTypeLabels[item]}</option>)}</select></HrField>
+      <HrField label="From"><Input type="date" value={from} onChange={(event) => { setFrom(event.target.value); if (to < event.target.value) setTo(event.target.value); }} className="rounded-none" /></HrField>
+      <HrField label="To"><Input type="date" min={from} value={to} onChange={(event) => setTo(event.target.value)} className="rounded-none" /></HrField>
+    </div>
+    <p className="text-sm">{days > 0 ? <><strong>{dayText(days)}</strong> of leave</> : "No working days selected"}{type !== "unpaid" && <span className="text-muted-foreground"> · {balance.remaining} {leaveTypeLabels[type].toLowerCase()} {balance.remaining === 1 ? "day" : "days"} available{days > 0 && days <= balance.remaining ? `, ${balance.remaining - days} after this` : ""}</span>}</p>
+    <HrField label="Reason"><Textarea required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-none" /></HrField>
+    <p className="text-xs text-muted-foreground">{manager ? `Goes to ${manager.name}${settings.approvalChain === "manager_hr" ? ", then HR" : ""}.` : "Goes to HR."} Weekly offs and company holidays aren&apos;t counted.</p>
+    {showError && <p role="alert" className="text-sm text-danger">{error}</p>}
+    <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onDone}>Cancel</Button><Button disabled={Boolean(error)}>Submit request</Button></div>
+  </form>;
+}
+
+function RequestDialog({ employeeId, onClose }: { employeeId: string; onClose: () => void }) {
+  return <HrModal open onOpenChange={(value) => !value && onClose()} title="Request leave" description="Your reporting manager reviews it first."><LeaveRequestForm employeeId={employeeId} onDone={onClose} /></HrModal>;
 }
 
 function DecisionDialog({ decision, onSubmit, onClose }: { decision: Decision; onSubmit: (reason: string) => void; onClose: () => void }) {
