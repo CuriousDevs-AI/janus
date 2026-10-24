@@ -1,7 +1,6 @@
 import type { Customer, CustomerHealth, Consent, LeadStage } from "@/lib/types";
 import { buyers, leadRows } from "@/lib/demo-universe";
 
-const ownerMap: Record<string, string> = { "demo-owner": "u-1", "emp-003": "u-4", "emp-004": "u-3", "emp-009": "u-2" };
 const roles = ["Purchase Head", "Canteen Purchase Manager", "Proprietor", "Owner", "Store Manager", "Purchase Manager", "Category Manager", "Procurement Lead", "Secretary", "Supply Chain Lead", "Administrator", "Proprietor", "Purchase Manager", "Owner"];
 const colours = ["#0284C7", "#7C3AED", "#D97706", "#16A34A", "#DC2626", "#0891B2", "#4F46E5", "#DB2777", "#65A30D", "#EA580C", "#0D9488", "#9333EA", "#CA8A04", "#2563EB"];
 const rank: LeadStage[] = ["lost", "new", "contacted", "qualified", "demo", "proposal", "negotiation", "approval", "won"];
@@ -27,7 +26,7 @@ export const customers: Customer[] = buyers.map((buyer, index) => {
   const stage: Customer["stage"] = best === "won" ? "customer" : best === "lost" ? "lost" : best === "new" ? "lead" : best === "qualified" ? "qualified" : "opportunity";
   return {
     id: `cus-${index + 1}`, name: buyer.contact, email: buyer.email, phone: buyer.phone, title: roles[index], companyId: `co-${index + 1}`, avatarColor: colours[index],
-    ownerId: ownerMap[first.ownerId ?? "demo-owner"] ?? "u-1", stage, source: first.source as Customer["source"], campaign: first.campaign ?? undefined, firstTouchAt: first.createdAt,
+    ownerId: (first.ownerId ?? "u-1"), stage, source: first.source as Customer["source"], campaign: first.campaign ?? undefined, firstTouchAt: first.createdAt,
     consent: consent(first.source === "phone_call" ? "call" : first.source === "website" ? "email" : "whatsapp"), health: health(best, quiet),
     tags: [buyer.city, buyer.kind.split(",")[0], ...(stage === "customer" ? ["repeat buyer"] : [])],
   };

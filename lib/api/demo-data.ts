@@ -14,22 +14,22 @@ export const demoConnectedSources: Pick<Source, "status">[] = [
 
 export const demoSourceRows: Source[] = [
   {
-    id: "demo-source-website", name: "Website Form & Chat Widget", description: "Embedded website enquiries", connectionKind: "embed", source: "website", status: "connected", preset: "website", fieldMapping: [], ingestUrl: "https://ingest.janus.example/forms/demo-website", webhookUrl: null, allowedOrigins: [`https://${company.domain}`], eventIdField: null, lastEventAt: lastBySource("website"), capturedLeads: countBySource("website"),
+    id: "src-website", name: "Website Form & Chat Widget", description: "Embedded website enquiries", connectionKind: "embed", source: "website", status: "connected", preset: "website", fieldMapping: [], ingestUrl: "https://ingest.janus.example/forms/demo-website", webhookUrl: null, allowedOrigins: [`https://${company.domain}`], eventIdField: null, lastEventAt: lastBySource("website"), capturedLeads: countBySource("website"),
   },
   {
-    id: "demo-source-whatsapp", name: "WhatsApp Business", description: "Meta Cloud API conversations", connectionKind: "oauth", source: "whatsapp", status: "connected", preset: "meta_cloud_api", fieldMapping: [], ingestUrl: "", webhookUrl: "https://ingest.janus.example/hooks/whatsapp/demo", allowedOrigins: [], eventIdField: null, lastEventAt: lastBySource("whatsapp"), capturedLeads: countBySource("whatsapp"),
+    id: "src-whatsapp", name: "WhatsApp Business", description: "Meta Cloud API conversations", connectionKind: "oauth", source: "whatsapp", status: "connected", preset: "meta_cloud_api", fieldMapping: [], ingestUrl: "", webhookUrl: "https://ingest.janus.example/hooks/whatsapp/demo", allowedOrigins: [], eventIdField: null, lastEventAt: lastBySource("whatsapp"), capturedLeads: countBySource("whatsapp"),
   },
   {
-    id: "demo-source-phone", name: "Phone Calls & Missed Calls", description: "Exotel call webhook with recording capture", connectionKind: "webhook", source: "phone_call", status: "connected", preset: "exotel", fieldMapping: [{ rawField: "caller_number", mapsTo: "phone" }], ingestUrl: "https://ingest.janus.example/hooks/demo-phone", webhookUrl: "https://ingest.janus.example/hooks/demo-phone", allowedOrigins: [], eventIdField: "call_id", lastEventAt: lastBySource("phone_call"), capturedLeads: countBySource("phone_call"),
+    id: "src-phone", name: "Phone Calls & Missed Calls", description: "Exotel call webhook with recording capture", connectionKind: "webhook", source: "phone_call", status: "connected", preset: "exotel", fieldMapping: [{ rawField: "caller_number", mapsTo: "phone" }], ingestUrl: "https://ingest.janus.example/hooks/demo-phone", webhookUrl: "https://ingest.janus.example/hooks/demo-phone", allowedOrigins: [], eventIdField: "call_id", lastEventAt: lastBySource("phone_call"), capturedLeads: countBySource("phone_call"),
   },
   {
-    id: "demo-source-webhook", name: "Custom Webhook", description: "Google Ads, Zapier, Make or custom form events", connectionKind: "webhook", source: "webhook", status: "available", preset: "google_ads_lead_form", fieldMapping: [], ingestUrl: "https://ingest.janus.example/hooks/demo-custom", webhookUrl: "https://ingest.janus.example/hooks/demo-custom", allowedOrigins: [], eventIdField: null, lastEventAt: null, capturedLeads: 0,
+    id: "src-webhook", name: "Custom Webhook", description: "Google Ads, Zapier, Make or custom form events", connectionKind: "webhook", source: "webhook", status: "available", preset: "google_ads_lead_form", fieldMapping: [], ingestUrl: "https://ingest.janus.example/hooks/demo-custom", webhookUrl: "https://ingest.janus.example/hooks/demo-custom", allowedOrigins: [], eventIdField: null, lastEventAt: null, capturedLeads: 0,
   },
   {
-    id: "demo-source-api", name: "REST API", description: "Scoped lead creation API key", connectionKind: "api_key", source: "api", status: "available", preset: "lead_create", fieldMapping: [], ingestUrl: "https://api.janus.example/v1/leads", webhookUrl: null, allowedOrigins: [], eventIdField: null, lastEventAt: null, capturedLeads: 0,
+    id: "src-api", name: "REST API", description: "Scoped lead creation API key", connectionKind: "api_key", source: "api", status: "available", preset: "lead_create", fieldMapping: [], ingestUrl: "https://api.janus.example/v1/leads", webhookUrl: null, allowedOrigins: [], eventIdField: null, lastEventAt: null, capturedLeads: 0,
   },
   {
-    id: "demo-source-csv", name: "CSV Import", description: "One-off bulk import", connectionKind: "csv", source: "csv_import", status: "available", preset: "csv", fieldMapping: [], ingestUrl: "", webhookUrl: null, allowedOrigins: [], eventIdField: null, lastEventAt: null, capturedLeads: 0,
+    id: "src-csv", name: "CSV Import", description: "One-off bulk import", connectionKind: "csv", source: "csv_import", status: "available", preset: "csv", fieldMapping: [], ingestUrl: "", webhookUrl: null, allowedOrigins: [], eventIdField: null, lastEventAt: null, capturedLeads: 0,
   },
 ];
 

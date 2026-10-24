@@ -1,5 +1,8 @@
 "use client";
 
+import { demoMode } from "@/lib/demo-mode";
+import { demoRequest, NOT_HANDLED } from "@/lib/demo-backend/handler";
+
 export class APIError extends Error {
   constructor(
     message: string,
@@ -58,6 +61,11 @@ async function responseError(response: Response) {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // The preview has no server. The leads, deals and customers routes are answered here, with the same visibility rules the API applies.
+  if (demoMode) {
+    const answer = await demoRequest(path, init);
+    if (answer !== NOT_HANDLED) return answer as T;
+  }
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");

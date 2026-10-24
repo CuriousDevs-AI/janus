@@ -1,5 +1,7 @@
 "use client";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { buyers } from "@/lib/demo-universe";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -62,13 +64,14 @@ function Inbox() {
     `/whatsapp/conversations?limit=50&before_id=${before}`,
   );
   const usingDemo = Boolean(list.error);
+  const access = useCrmAccess();
   const reload = list.reload;
   useEffect(() => {
     const timer = setInterval(reload, 5000);
     return () => clearInterval(timer);
   }, [reload]);
   const allRows =
-    (list.data ?? (usingDemo ? demoConversations : [])).filter((c) =>
+    (list.data ?? (usingDemo ? access.conversations(demoConversations) : [])).filter((c) =>
       [c.name, c.phone, c.company].some((v) =>
         v?.toLowerCase().includes(query.toLowerCase()),
       ),
@@ -224,7 +227,7 @@ function DemoContextPanel({ conversationId }: { conversationId: string }) {
     <aside className="hidden w-[240px] shrink-0 overflow-y-auto border-l border-border bg-surface lg:flex lg:flex-col">
       <div className="border-b border-border p-4">
         <div className="flex items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">{conversation.name || conversation.phone}</h2><p className="text-xs text-muted-foreground">{conversation.company || "Customer"}</p></div></div>
-        <dl className="mt-4 grid gap-2 text-xs"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Phone</dt><dd>{conversation.phone}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Email</dt><dd>{conversation.contactId === "demo-customer-1" ? "riya@northstar.in" : "neha@acmefoods.in"}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd>WhatsApp</dd></div></dl>
+        <dl className="mt-4 grid gap-2 text-xs"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Phone</dt><dd>{conversation.phone}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Email</dt><dd>{buyers.find((item) => item.id === conversation.contactId)?.email ?? ""}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd>WhatsApp</dd></div></dl>
       </div>
       <div className="flex flex-col gap-4 p-4">
         <section><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Janus summary</p><p className="text-xs leading-relaxed">{lead?.requirement || "Customer conversation is ready for qualification."}</p><p className="mt-2 text-xs"><span className="font-medium">Next step:</span> confirm requirements and schedule the review.</p></section>
@@ -519,7 +522,7 @@ function ChannelPanel({
   const [outcome, setOutcome] = useState("Connected");
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
-  const email = thread.contactId === "demo-customer-1" ? "riya@northstar.in" : "neha@acmefoods.in";
+  const email = buyers.find((item) => item.id === thread.contactId)?.email ?? "";
   if (channel === "email") {
     return (
       <form
@@ -580,7 +583,7 @@ function DemoUnifiedComposer({
   const [notes, setNotes] = useState("");
   const template = demoWhatsAppTemplates.find((item) => item.name === selected) ?? demoWhatsAppTemplates[0];
   const preview = template.body.replace(/\{\{(\d+)\}\}/g, (match, number) => parameters[Number(number) - 1] || match);
-  const email = thread.contactId === "demo-customer-1" ? "riya@northstar.in" : "neha@acmefoods.in";
+  const email = buyers.find((item) => item.id === thread.contactId)?.email ?? "";
   const addTimelineItem = (item: Omit<DemoTimelineItem, "id" | "createdAt">) => onAdded({ ...item, id: `demo-timeline-${Date.now()}`, createdAt: new Date().toISOString() });
   if (sendChannel === "whatsapp" && thread.doNotContact) return <p className="border-t border-border bg-amber-50 p-4 text-sm text-amber-800">Outbound communication is suppressed for this customer.</p>;
   return (

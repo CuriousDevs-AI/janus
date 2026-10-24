@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -30,7 +31,9 @@ const statusToneMap: Record<Approval["status"], "warning" | "success" | "danger"
 };
 
 export default function ApprovalsPage() {
-  const approvals = useAppStore((s) => s.approvals);
+  const allApprovals = useAppStore((s) => s.approvals);
+  const access = useCrmAccess();
+  const approvals = React.useMemo(() => access.approvals(allApprovals), [access, allApprovals]);
   const decideApproval = useAppStore((s) => s.decideApproval);
   const router = useRouter();
   const [filter, setFilter] = React.useState<FilterValue>("pending");

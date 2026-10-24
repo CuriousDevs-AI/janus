@@ -139,6 +139,7 @@ export default function LoginPage() {
               </li>
             ))}
           </ul>
+          <button type="button" className="self-start text-[12px] text-accent hover:underline" onClick={() => { try { Object.keys(window.localStorage).filter((key) => key.startsWith("janus.")).forEach((key) => window.localStorage.removeItem(key)); } catch { /* storage blocked */ } toast.success("Test data reset to how it started."); }}>Reset the test data</button>
         </section>
       )}
     </div>

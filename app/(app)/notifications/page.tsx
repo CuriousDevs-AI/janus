@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import { useRouter } from "next/navigation";
 import type { ComponentType } from "react";
 import { Handshake, LifeBuoy, Sparkles, Workflow, Bell, BellOff, CheckCheck } from "lucide-react";
@@ -37,7 +38,9 @@ const TABS: { key: "all" | NotificationCategory; label: string }[] = [
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const notifications = useAppStore((s) => s.notifications);
+  const allNotifications = useAppStore((s) => s.notifications);
+  const access = useCrmAccess();
+  const notifications = React.useMemo(() => access.notifications(allNotifications), [access, allNotifications]);
   const markNotificationRead = useAppStore((s) => s.markNotificationRead);
   const markAllNotificationsRead = useAppStore((s) => s.markAllNotificationsRead);
   const [tab, setTab] = React.useState<"all" | NotificationCategory>("all");

@@ -1,7 +1,7 @@
 "use client";
 
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { pipelineFunnel, revenueTrend, salesCycleDays, salesLeaderboard } from "@/lib/mock-data";
+import { useCrmStats } from "@/lib/use-crm-stats";
 import { cn, formatCurrencyINR } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,6 +16,7 @@ import {
 } from "./chart-theme";
 
 function PipelineFunnel() {
+  const { pipelineFunnel } = useCrmStats();
   const baseline = pipelineFunnel[0]?.count || 1;
   return (
     <div className="flex flex-col gap-2.5">
@@ -50,6 +51,7 @@ function PipelineFunnel() {
 }
 
 export function SalesSection() {
+  const { revenueTrend, salesCycleDays, salesLeaderboard } = useCrmStats();
   return (
     <div className="flex flex-col gap-5">
       <Card>
