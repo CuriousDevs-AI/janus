@@ -15,7 +15,7 @@ import type { HrDemoRole, HrEmployee, HrOnboardingTask } from "@/lib/types";
 
 type Owner = HrOnboardingTask["ownerRole"];
 const ownerLabels: Record<Owner, string> = { employee: "Employee", manager: "Manager", hr: "HR", finance: "Finance", it: "IT" };
-const standardTasks: { title: string; ownerRole: Owner; days: number }[] = [
+export const standardTasks: { title: string; ownerRole: Owner; days: number }[] = [
   { title: "Send offer and employment agreement", ownerRole: "hr", days: 2 },
   { title: "Upload identity and bank account proof", ownerRole: "employee", days: 5 },
   { title: "Sign NDA and policy acknowledgements", ownerRole: "employee", days: 5 },

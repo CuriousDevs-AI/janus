@@ -4,8 +4,12 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export interface HrOperationAudit { id: string; recordId: string; actorId: string; action: string; reason: string; at: string }
+/** One kind of leave HR offers. `days: null` means no yearly limit. `approval: "default"` follows the company chain. */
+export interface HrLeaveTypeConfig { id: string; name: string; days: number | null; paid: boolean; active: boolean; approval: "default" | "manager" | "manager_hr" | "hr"; documentAfterDays: number | null }
+/** HR adding or removing days from someone's balance, with a reason. Negative days take days away. */
+export interface HrLeaveAdjustment { id: string; employeeId: string; typeId: string; days: number; reason: string; by: string; at: string }
 export interface HrPolicySettings {
-  yearStart: string; earnedDays: number; casualDays: number; sickDays: number;
+  yearStart: string; leaveTypes: HrLeaveTypeConfig[]; escalateAfterDays: number; promotionOwnerApproval: boolean;
   approvalChain: "manager" | "manager_hr"; workWeek: string[]; shiftStart: string;
   shiftEnd: string; graceMinutes: number; payrollDay: number; reminderDays: number;
   notifications: boolean; delegation: Record<string, { employeeId: string; until: string }>;
@@ -17,7 +21,7 @@ export interface HrLetterRequest { id: string; employeeId: string; type: string;
 export interface HrHoliday { id: string; date: string; name: string; kind: "company" | "optional" }
 export interface ExpenseEvidence { description: string; date: string; filename?: string; mime?: string; dataUrl?: string }
 interface HrOperationsState {
-  settings: HrPolicySettings; audit: HrOperationAudit[]; evidence: Record<string, ExpenseEvidence>; filingReferences: Record<string, string>; reviews: HrReview[]; regularisations: HrRegularisation[]; policyQuestions: HrPolicyQuestion[]; customHolidays: HrHoliday[]; removedHolidays: string[]; letterRequests: HrLetterRequest[];
+  settings: HrPolicySettings; audit: HrOperationAudit[]; evidence: Record<string, ExpenseEvidence>; filingReferences: Record<string, string>; reviews: HrReview[]; regularisations: HrRegularisation[]; policyQuestions: HrPolicyQuestion[]; customHolidays: HrHoliday[]; removedHolidays: string[]; letterRequests: HrLetterRequest[]; leaveAdjustments: HrLeaveAdjustment[];
   saveSettings: (settings: HrPolicySettings) => void;
   log: (entry: Omit<HrOperationAudit, "id" | "at">) => void;
   saveEvidence: (id: string, evidence: ExpenseEvidence) => void;
@@ -26,6 +30,7 @@ interface HrOperationsState {
   addRegularisation: (request: HrRegularisation) => void;
   addPolicyQuestion: (question: HrPolicyQuestion) => void;
   addHoliday: (holiday: HrHoliday) => void;
+  addLeaveAdjustment: (adjustment: HrLeaveAdjustment) => void;
   addLetterRequest: (request: HrLetterRequest) => void;
   decideLetterRequest: (id: string, patch: Pick<HrLetterRequest, "status" | "decidedBy" | "reply" | "documentId">) => void;
   withdrawRegularisation: (id: string) => void;
@@ -33,8 +38,15 @@ interface HrOperationsState {
   replyPolicyQuestion: (id: string, reply: string, repliedBy: string) => void;
   decideRegularisation: (id: string, patch: Pick<HrRegularisation, "status" | "decidedBy" | "decisionReason">) => void;
 }
+export const defaultLeaveTypes = (): HrLeaveTypeConfig[] => [
+  { id: "earned", name: "Earned leave", days: 18, paid: true, active: true, approval: "default", documentAfterDays: null },
+  { id: "casual", name: "Casual leave", days: 6, paid: true, active: true, approval: "default", documentAfterDays: null },
+  { id: "sick", name: "Sick leave", days: 6, paid: true, active: true, approval: "default", documentAfterDays: 2 },
+  { id: "unpaid", name: "Unpaid leave", days: null, paid: false, active: true, approval: "default", documentAfterDays: null },
+];
+
 export const useHrOperationsStore = create<HrOperationsState>()(persist((set) => ({
-  settings: { yearStart: "04-01", earnedDays: 18, casualDays: 6, sickDays: 6, approvalChain: "manager_hr", workWeek: ["Mon", "Tue", "Wed", "Thu", "Fri"], shiftStart: "09:00", shiftEnd: "18:00", graceMinutes: 15, payrollDay: 28, reminderDays: 3, notifications: true, delegation: {} },
+  settings: { yearStart: "04-01", leaveTypes: defaultLeaveTypes(), escalateAfterDays: 3, promotionOwnerApproval: true, approvalChain: "manager_hr", workWeek: ["Mon", "Tue", "Wed", "Thu", "Fri"], shiftStart: "09:00", shiftEnd: "18:00", graceMinutes: 15, payrollDay: 28, reminderDays: 3, notifications: true, delegation: {} },
   audit: [],
   evidence: {
     "expense-001": { description: "Travel to the Jaipur warehouse for stock handover", date: "2026-10-21", filename: "Travel receipt — sample.txt", mime: "text/plain", dataUrl: "data:text/plain;charset=utf-8,DEMO%20RECEIPT%0AWarehouse%20visit%20travel%0AAmount%3A%20INR%201840%0ANot%20a%20real%20tax%20invoice." },
@@ -50,6 +62,8 @@ export const useHrOperationsStore = create<HrOperationsState>()(persist((set) =>
   regularisations: [],
   policyQuestions: [],
   customHolidays: [],
+  leaveAdjustments: [],
+  addLeaveAdjustment: (adjustment) => set((state) => ({ leaveAdjustments: [adjustment, ...state.leaveAdjustments] })),
   letterRequests: [],
   addLetterRequest: (request) => set((state) => ({ letterRequests: [request, ...state.letterRequests] })),
   decideLetterRequest: (id, patch) => set((state) => ({ letterRequests: state.letterRequests.map((item) => item.id === id ? { ...item, ...patch, decidedAt: new Date().toISOString() } : item) })),
@@ -66,4 +80,18 @@ export const useHrOperationsStore = create<HrOperationsState>()(persist((set) =>
   saveEvidence: (id, evidence) => set((state) => ({ evidence: { ...state.evidence, [id]: evidence } })),
   saveFiling: (id, reference) => set((state) => ({ filingReferences: { ...state.filingReferences, [id]: reference } })),
   saveReview: (review) => set((state) => ({ reviews: state.reviews.some((item) => item.id === review.id) ? state.reviews.map((item) => item.id === review.id ? review : item) : [...state.reviews, review] })),
-}), { name: "janus.hr-operations-demo.v1", storage: createJSONStorage(() => localStorage) }));
+}), {
+  name: "janus.hr-operations-demo.v1",
+  version: 2,
+  storage: createJSONStorage(() => localStorage),
+  // Version 2 made leave types configurable. Keep the entitlement numbers HR had already set.
+  migrate: (persisted) => {
+    const state = persisted as Partial<HrOperationsState> & { settings?: Partial<HrPolicySettings> & { earnedDays?: number; casualDays?: number; sickDays?: number } };
+    const old = state.settings;
+    if (old && !old.leaveTypes) {
+      const types = defaultLeaveTypes().map((type) => type.id === "earned" && old.earnedDays !== undefined ? { ...type, days: old.earnedDays } : type.id === "casual" && old.casualDays !== undefined ? { ...type, days: old.casualDays } : type.id === "sick" && old.sickDays !== undefined ? { ...type, days: old.sickDays } : type);
+      state.settings = { ...old, leaveTypes: types, escalateAfterDays: old.escalateAfterDays ?? 3, promotionOwnerApproval: old.promotionOwnerApproval ?? true } as HrPolicySettings;
+    }
+    return state as HrOperationsState;
+  },
+}));

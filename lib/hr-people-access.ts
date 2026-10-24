@@ -66,9 +66,10 @@ const viewAccess: Record<string, HrDemoRole[]> = {
   employees: ["owner", "hr_manager", "payroll_admin"], documents: ["owner", "hr_manager", "payroll_admin"], payroll: ["owner", "hr_manager", "payroll_admin"],
   compliance: ["owner", "hr_manager", "payroll_admin"],
   team: ["owner", "hr_manager", "reporting_manager"], approvals: ["owner", "hr_manager", "reporting_manager"],
+  promotions: ["owner", "hr_manager", "reporting_manager"],
   performance: ["owner", "hr_manager", "reporting_manager", "employee"],
   reports: ["owner", "business_manager", "hr_manager", "payroll_admin"],
-  onboarding: hrOnly, offboarding: hrOnly, recruitment: hrOnly, signatures: hrOnly, settings: hrOnly,
+  organization: hrOnly, onboarding: hrOnly, offboarding: hrOnly, recruitment: hrOnly, signatures: hrOnly, settings: hrOnly,
 };
 
 export function canOpenHrView(role: HrDemoRole, view: string) {

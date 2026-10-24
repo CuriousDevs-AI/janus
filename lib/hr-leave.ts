@@ -1,9 +1,22 @@
 import type { HrEmployee, HrLeaveRequest } from "@/lib/types";
-import type { HrPolicySettings } from "@/lib/stores/hr-operations-store";
+import type { HrLeaveAdjustment, HrPolicySettings } from "@/lib/stores/hr-operations-store";
+import { useHrOrgStore } from "@/lib/stores/hr-org-store";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+import { approvesForDepartment, chainForDepartment, departmentByName, hasPermission, isBackupFor } from "@/lib/hr-org";
 
-export type LeaveType = HrLeaveRequest["type"];
-export const leaveTypeLabels: Record<LeaveType, string> = { earned: "Earned", casual: "Casual", sick: "Sick", unpaid: "Unpaid" };
-export const paidLeaveTypes: LeaveType[] = ["earned", "casual", "sick"];
+export type LeaveType = string;
+const fallbackName = (id: string) => id.charAt(0).toUpperCase() + id.slice(1).replace(/[-_]/g, " ");
+/** The name HR gave a leave type. Removed types still read sensibly on old requests. */
+export const typeName = (settings: HrPolicySettings, id: string) => settings.leaveTypes.find((item) => item.id === id)?.name ?? fallbackName(id);
+export const activeTypes = (settings: HrPolicySettings) => settings.leaveTypes.filter((item) => item.active);
+/** Types with a yearly limit. These get a balance. */
+export const limitedTypes = (settings: HrPolicySettings) => activeTypes(settings).filter((item) => item.days !== null);
+/** The approval chain for a leave type. A department can set its own; a leave type's own setting wins over both. */
+export const chainFor = (settings: HrPolicySettings, typeId: string, departmentName?: string) => {
+  const type = settings.leaveTypes.find((item) => item.id === typeId);
+  const org = useHrOrgStore.getState();
+  return chainForDepartment(settings, type?.approval ?? "default", departmentName ? departmentByName(org.departments, departmentName) : undefined);
+};
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const at = (date: string) => new Date(`${date}T12:00:00`);
 const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -29,17 +42,20 @@ export function leaveYear(date: string, yearStart: string) {
   return { start, end: iso(next) };
 }
 
-export function entitlement(type: LeaveType, settings: HrPolicySettings) {
-  return type === "earned" ? settings.earnedDays : type === "casual" ? settings.casualDays : type === "sick" ? settings.sickDays : Infinity;
+export function entitlement(typeId: LeaveType, settings: HrPolicySettings, adjustments: HrLeaveAdjustment[] = []) {
+  const type = settings.leaveTypes.find((item) => item.id === typeId);
+  if (!type || type.days === null) return Infinity;
+  return Math.max(0, type.days + adjustments.reduce((sum, item) => sum + item.days, 0));
 }
 
-export function leaveBalance(requests: HrLeaveRequest[], employeeId: string, type: LeaveType, settings: HrPolicySettings, today: string, ignoreId?: string) {
+export function leaveBalance(requests: HrLeaveRequest[], employeeId: string, type: LeaveType, settings: HrPolicySettings, today: string, ignoreId?: string, adjustments: HrLeaveAdjustment[] = []) {
   const year = leaveYear(today, settings.yearStart);
   const mine = requests.filter((item) => item.employeeId === employeeId && item.type === type && item.id !== ignoreId && item.from >= year.start && item.from <= year.end);
   const used = mine.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.days, 0);
   const pending = mine.filter((item) => item.status === "pending" || item.status === "needs_clarification").reduce((sum, item) => sum + item.days, 0);
-  const total = entitlement(type, settings);
-  return { total, used, pending, remaining: total - used - pending };
+  const mineAdjustments = adjustments.filter((item) => item.employeeId === employeeId && item.typeId === type && item.at.slice(0, 10) >= year.start && item.at.slice(0, 10) <= year.end);
+  const total = entitlement(type, settings, mineAdjustments);
+  return { total, used, pending, remaining: total - used - pending, adjusted: mineAdjustments.reduce((sum, item) => sum + item.days, 0) };
 }
 
 export function findOverlap(requests: HrLeaveRequest[], employeeId: string, from: string, to: string) {
@@ -52,18 +68,22 @@ export type Decider = { allowed: boolean; mode?: "manager" | "delegate" | "hr"; 
 export function canDecide(request: Pick<HrLeaveRequest, "employeeId" | "managerId" | "step" | "status">, actorId: string, role: string, settings: HrPolicySettings, today: string): Decider {
   if (request.employeeId === actorId) return { allowed: false, reason: "You can't decide your own request." };
   if (request.status !== "pending") return { allowed: false };
-  const hr = role === "owner" || role === "hr_manager";
+  const org = useHrOrgStore.getState();
+  const hr = role === "owner" || role === "hr_manager" || hasPermission(org, actorId, "leave.approve_all");
   if (request.step === "hr") return hr ? { allowed: true, mode: "hr" } : { allowed: false, reason: "Waiting for HR." };
   if (request.step !== "manager") return { allowed: false };
   if (request.managerId === actorId) return { allowed: true, mode: "manager" };
   const delegation = request.managerId ? settings.delegation[request.managerId] : undefined;
   if (delegation && delegation.employeeId === actorId && delegation.until >= today) return { allowed: true, mode: "delegate" };
+  // A department head or a backup approver can step in without being the employee's direct manager.
+  const requester = useHrPeopleStore.getState().employees.find((item) => item.id === request.employeeId);
+  if (requester && (approvesForDepartment(org, actorId, requester) || isBackupFor(org, actorId, requester))) return { allowed: true, mode: "delegate" };
   return hr ? { allowed: true, mode: "hr" } : { allowed: false, reason: "Waiting for the reporting manager." };
 }
 
 /** Where an approval goes next: with the two-step chain a manager's approval still needs HR. */
-export function nextAfterApproval(mode: NonNullable<Decider["mode"]>, settings: HrPolicySettings): { status: HrLeaveRequest["status"]; step: HrLeaveRequest["step"] } {
-  if (mode !== "hr" && settings.approvalChain === "manager_hr") return { status: "pending", step: "hr" };
+export function nextAfterApproval(mode: NonNullable<Decider["mode"]>, settings: HrPolicySettings, typeId: LeaveType, departmentName?: string): { status: HrLeaveRequest["status"]; step: HrLeaveRequest["step"] } {
+  if (mode !== "hr" && chainFor(settings, typeId, departmentName) === "manager_hr") return { status: "pending", step: "hr" };
   return { status: "approved", step: "complete" };
 }
 

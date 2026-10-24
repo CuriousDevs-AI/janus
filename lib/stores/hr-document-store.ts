@@ -31,6 +31,7 @@ interface HrDocumentState {
   patch: (id: string, value: Partial<DocumentExtras>) => void;
   record: (id: string, event: Omit<DocumentEvent, "id" | "at">) => void;
   savePolicy: (policy: CompanyPolicy) => void;
+  removePolicy: (id: string) => void;
   acknowledgePolicy: (policyId: string, employeeId: string, version: number) => void;
 }
 const blank = (): DocumentExtras => ({ events: [], versions: [] });
@@ -39,6 +40,11 @@ export const useHrDocumentStore = create<HrDocumentState>()(persist((set) => ({
   patch: (id, value) => set((state) => ({ extras: { ...state.extras, [id]: { ...blank(), ...state.extras[id], ...value } } })),
   record: (id, event) => set((state) => ({ extras: { ...state.extras, [id]: { ...blank(), ...state.extras[id], events: [{ ...event, id: crypto.randomUUID(), at: new Date().toISOString() }, ...(state.extras[id]?.events ?? [])] } } })),
   savePolicy: (entry) => set((state) => ({ policies: state.policies.some((item) => item.id === entry.id) ? state.policies.map((item) => item.id === entry.id ? entry : item) : [...state.policies, entry] })),
+  removePolicy: (id) => set((state) => ({
+    policies: state.policies.filter((item) => item.id !== id),
+    acknowledgements: Object.fromEntries(Object.entries(state.acknowledgements).filter(([key]) => !key.startsWith(`${id}:`))),
+    extras: Object.fromEntries(Object.entries(state.extras).filter(([key]) => key !== id)),
+  })),
   acknowledgePolicy: (policyId, employeeId, version) => set((state) => ({ acknowledgements: { ...state.acknowledgements, [`${policyId}:${version}:${employeeId}`]: new Date().toISOString() } })),
 }), {
   name: "janus.hr-document-centre.v1",

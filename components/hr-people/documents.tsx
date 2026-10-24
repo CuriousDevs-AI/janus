@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrEngageStore } from "@/lib/stores/hr-engage-store";
 import { demoHrSignatureProvider, saveHrFile, useHrDocumentStore, type CompanyPolicy, type DocumentExtras, type DocumentSigner } from "@/lib/stores/hr-document-store";
+import { PolicyEditor } from "@/components/hr-people/policy-editor";
 import { DocumentReader, FullReadDialog, ReadFullButton, useDocumentSource } from "@/components/hr-people/document-reader";
 import { DeclineDialog, SignDialog, SignatureSummary } from "@/components/hr-people/sign-dialog";
 import { certificateText, deviceLabel, firstSentence, plainText, readingMinutes, sampleMarkup, type SignatureRecord } from "@/lib/hr-document-content";
@@ -80,6 +81,7 @@ function DocumentCentre({ role, actorId, personal = false, signaturesOnly = fals
   const [selectedAction, setSelectedAction] = React.useState<"sign" | "acknowledge" | undefined>(undefined);
   const [upload, setUpload] = React.useState<{ document?: HrDocument; company?: boolean } | null>(null);
   const [templateOpen, setTemplateOpen] = React.useState(false);
+  const [editingPolicy, setEditingPolicy] = React.useState<CompanyPolicy | "new" | null>(null);
   const manager = canManage(role);
   const actor = employees.find((item) => item.id === actorId);
   const visible = documents.filter((item) => canRead(item, role, actorId, employees, extras[item.id], personal));
@@ -102,11 +104,11 @@ function DocumentCentre({ role, actorId, personal = false, signaturesOnly = fals
     {(toSignMine.length > 0 || policiesPending.length > 0) && <div role="status" className="flex flex-wrap items-center justify-between gap-3 border border-accent bg-accent-muted px-4 py-3 text-sm"><p><strong>Action needed.</strong> {toSignMine.length > 0 && `${toSignMine.length} ${toSignMine.length === 1 ? "document" : "documents"} to sign`}{toSignMine.length > 0 && policiesPending.length > 0 && " · "}{policiesPending.length > 0 && `${policiesPending.length} ${policiesPending.length === 1 ? "policy" : "policies"} to acknowledge`}</p><div className="flex gap-2">{toSignMine.length > 0 && <Button size="sm" onClick={() => openDoc(toSignMine[0].id, "sign")}>Review &amp; sign</Button>}{policiesPending.length > 0 && <Button size="sm" variant="outline" onClick={() => { setScope("company"); setFilter("all"); }}>See policies</Button>}</div></div>}
     <div className="flex flex-wrap items-center justify-between gap-3">
       {!signaturesOnly ? <div className="flex flex-wrap gap-1 border border-border bg-surface-2 p-1" role="tablist" aria-label="Document library"><button id="doc-tab-employees" role="tab" aria-selected={scope === "employees"} aria-controls="doc-panel" onClick={() => { setScope("employees"); setFilter("all"); }} className={`px-4 py-2 text-sm ${scope === "employees" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"}`}>{personal ? "My documents" : "Employee folders"}</button><button id="doc-tab-company" role="tab" aria-selected={scope === "company"} aria-controls="doc-panel" onClick={() => { setScope("company"); setFilter("all"); }} className={`px-4 py-2 text-sm ${scope === "company" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"}`}>Company policies</button></div> : <p className="text-sm text-muted-foreground">Track document reviews and signatures. Demo only — no emails or legal signatures are sent.</p>}
-      <div className="flex gap-2">{manager && !personal && scope !== "company" && <Button variant="outline" onClick={() => setTemplateOpen(true)}><FileSignature className="mr-2 size-4" />Use template</Button>}{(scope === "company" ? manager : (manager || personal)) && <Button onClick={() => setUpload({ company: scope === "company" })}><Upload className="mr-2 size-4" />{scope === "company" ? "Add policy" : "Upload document"}</Button>}</div>
+      <div className="flex gap-2">{manager && !personal && scope !== "company" && <Button variant="outline" onClick={() => setTemplateOpen(true)}><FileSignature className="mr-2 size-4" />Use template</Button>}{scope === "company" ? (manager && <><Button onClick={() => setEditingPolicy("new")}><FileText className="mr-2 size-4" />Write a policy</Button><Button variant="outline" onClick={() => setUpload({ company: true })}><Upload className="mr-2 size-4" />Upload a file</Button></>) : (manager || personal) && <Button onClick={() => setUpload({ company: false })}><Upload className="mr-2 size-4" />Upload document</Button>}</div>
     </div>
     <div id="doc-panel" role={signaturesOnly ? undefined : "tabpanel"} aria-labelledby={signaturesOnly ? undefined : `doc-tab-${scope}`} className={`${panelClass} overflow-hidden`}>
       <div className="flex flex-wrap items-center gap-3 border-b border-border p-4"><div className="relative min-w-48 flex-1"><Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search documents or employees" placeholder="Search name, employee ID or document…" value={query} onChange={(event) => setQuery(event.target.value)} className="rounded-none pl-9" /></div>{scope !== "company" && <select aria-label="Filter document status" className={`${inputClass} max-w-48`} value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All statuses</option><option value="missing">Missing</option><option value="action">Awaiting signature</option><option value="signed">Signed</option><option value="rejected">Rejected</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="archived">Archived</option></select>}</div>
-      {scope === "company" ? <PolicyLibrary policies={policies} query={query} actorId={actorId} manager={manager} onOpen={openDoc} /> : scope === "employees" && !personal && !signaturesOnly && !currentFolderId && !query && filter === "all" ? <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">{folderEmployees.map((employee) => {
+      {scope === "company" ? <PolicyLibrary policies={policies} query={query} actorId={actorId} manager={manager} onOpen={openDoc} onEdit={(policy) => policy.id && (extras[policy.id]?.fileKey ? setUpload({ document: policy, company: true }) : setEditingPolicy(policy))} /> : scope === "employees" && !personal && !signaturesOnly && !currentFolderId && !query && filter === "all" ? <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">{folderEmployees.map((employee) => {
         const files = visible.filter((item) => item.employeeId === employee.id && item.status !== "archived"); const due = files.filter((item) => item.status === "missing").length;
         return <button key={employee.id} onClick={() => setFolderId(employee.id)} className="group border border-border p-4 text-left transition-colors hover:border-accent hover:bg-surface-2"><div className="mb-3 flex items-center justify-between"><Folder className="size-6 text-accent" /><span className="font-mono text-xs text-muted-foreground">{employee.id.toUpperCase()}</span></div><p className="font-medium">{employee.name}</p><p className="mt-1 text-xs text-muted-foreground">{employee.department} · {employee.title}</p><div className="mt-4 flex flex-wrap gap-2"><Badge variant="neutral">{files.length} documents</Badge>{due > 0 && <Badge variant="warning">{due} missing</Badge>}<span className="text-xs text-muted-foreground">{employee.status}</span></div></button>;
       })}{!folderEmployees.length && <p className="p-6 text-sm text-muted-foreground">No employee folders are assigned to your role.</p>}</div> : <>
@@ -117,36 +119,46 @@ function DocumentCentre({ role, actorId, personal = false, signaturesOnly = fals
     </div>
     <p className="flex items-start gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-4 shrink-0" />Only documents permitted for your role appear here. Demo uploads are stored in this browser, up to 10 MB per file. Use sample files, not real identity or bank records.</p>
     {upload && <UploadDialog role={role} actorId={actorId} personal={personal} initialEmployeeId={currentFolderId ?? actorId} document={upload.document} company={upload.company} onClose={() => setUpload(null)} />}
+    {editingPolicy && <PolicyEditor policy={editingPolicy === "new" ? undefined : editingPolicy} actorId={actorId} onClose={() => setEditingPolicy(null)} />}
     {templateOpen && <TemplateDialog actorId={actorId} initialEmployeeId={currentFolderId ?? ""} onClose={() => setTemplateOpen(false)} onCreated={(id) => { setTemplateOpen(false); openDoc(id); }} />}
     {selected && <DocumentDialog key={`${selected.id}:${actorId}:${role}:${selectedAction ?? ""}`} initialAction={selectedAction} document={selected} role={role} actorId={actorId} personal={personal} company={selected.employeeId === "company"} onClose={() => { setSelectedId(null); setSelectedAction(undefined); }} onUpload={() => { setSelectedId(null); setUpload({ document: selected, company: selected.employeeId === "company" }); }} />}
     {!actor && <p className="text-sm text-danger">This account is not linked to an employee record. Ask HR to link your account before signing.</p>}
   </div>;
 }
 
-function PolicyLibrary({ policies, query, actorId, manager, onOpen }: { policies: CompanyPolicy[]; query: string; actorId: string; manager: boolean; onOpen: (id: string, action?: "acknowledge") => void }) {
+function PolicyLibrary({ policies, query, actorId, manager, onOpen, onEdit }: { policies: CompanyPolicy[]; query: string; actorId: string; manager: boolean; onOpen: (id: string, action?: "acknowledge") => void; onEdit: (policy: CompanyPolicy) => void }) {
   const { employees } = useHrPeopleStore();
-  const { extras, acknowledgements } = useHrDocumentStore();
+  const { extras, acknowledgements, savePolicy, removePolicy, record } = useHrDocumentStore();
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [confirming, setConfirming] = React.useState<string | null>(null);
   const actor = employees.find((item) => item.id === actorId);
   const people = employees.filter((item) => item.status !== "archived");
-  const list = policies.filter((item) => item.status !== "archived" && `${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase()));
-  if (!list.length) return <div className="p-10 text-center"><FileText className="mx-auto mb-3 size-7 text-muted-foreground" /><h2 className="text-sm font-medium">{query ? "No policy matches your search" : "No company policies yet"}</h2><p className="mt-1 text-xs text-muted-foreground">{manager ? "Use Add policy to publish one." : "HR publishes policies here."}</p></div>;
-  return <ul className="grid gap-3 p-4 md:grid-cols-2">{list.map((policy) => {
+  const archivedCount = policies.filter((item) => item.status === "archived").length;
+  const list = policies.filter((item) => (showArchived || item.status !== "archived") && `${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase()));
+  const actorName = actor?.name ?? "HR";
+  const archivedToggle = manager && archivedCount > 0 ? <label className="flex items-center justify-end gap-2 px-4 pt-3 text-xs text-muted-foreground"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived ({archivedCount})</label> : null;
+  if (!list.length) return <>{archivedToggle}<div className="p-10 text-center"><FileText className="mx-auto mb-3 size-7 text-muted-foreground" /><h2 className="text-sm font-medium">{query ? "No policy matches your search" : "No company policies yet"}</h2><p className="mt-1 text-xs text-muted-foreground">{manager ? "Use Write a policy to publish one." : "HR publishes policies here."}</p></div></>;
+  return <>{archivedToggle}<ul className="grid gap-3 p-4 md:grid-cols-2">{list.map((policy) => {
     const file = extras[policy.id];
+    const archived = policy.status === "archived";
     const summary = file?.fileKey ? `Uploaded file: ${file.fileName ?? "document"}` : firstSentence(policy.body);
     const minutes = file?.fileKey ? null : readingMinutes(policy.body);
     const ackAt = acknowledgements[`${policy.id}:${policy.version}:${actorId}`];
     const count = people.filter((item) => acknowledgements[`${policy.id}:${policy.version}:${item.id}`]).length;
-    return <li key={policy.id} className="flex flex-col justify-between gap-4 border border-border p-4">
-      <div className="space-y-2"><div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><span className="border border-border px-1.5 py-0.5">{policy.category}</span><span>v{policy.version}</span><span>Issued {date(policy.issuedAt)}</span>{minutes !== null && <span>{minutes} min read</span>}</div>
+    return <li key={policy.id} className={`flex flex-col justify-between gap-4 border border-border p-4 ${archived ? "opacity-70" : ""}`}>
+      <div className="space-y-2"><div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><span className="border border-border px-1.5 py-0.5">{policy.category}</span><span>v{policy.version}</span><span>Issued {date(policy.issuedAt)}</span>{minutes !== null && <span>{minutes} min read</span>}{archived && <span className="border border-warning/40 bg-warning-muted px-1.5 py-0.5 text-warning">Archived</span>}</div>
         <h2 className="text-base font-semibold leading-snug">{policy.name}</h2>
         {summary && <p className="text-sm text-muted-foreground">{summary}</p>}</div>
       <div className="space-y-3">
-        {actor && (ackAt ? <p className="flex items-center gap-1.5 text-xs text-success"><CheckCheck className="size-3.5" />You acknowledged this on {date(ackAt)}</p> : <p className="text-xs text-warning">Needs your acknowledgement</p>)}
+        {actor && !archived && (ackAt ? <p className="flex items-center gap-1.5 text-xs text-success"><CheckCheck className="size-3.5" />You acknowledged this on {date(ackAt)}</p> : <p className="text-xs text-warning">Needs your acknowledgement</p>)}
         {manager && <div><div className="mb-1 flex justify-between text-[11px] text-muted-foreground"><span>Acknowledged</span><span>{count} of {people.length}</span></div><div className="h-1.5 bg-surface-2" role="progressbar" aria-label={`${policy.name} acknowledgements`} aria-valuemin={0} aria-valuemax={people.length} aria-valuenow={count}><div className="h-1.5 bg-accent" style={{ width: `${people.length ? (count / people.length) * 100 : 0}%` }} /></div></div>}
-        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => onOpen(policy.id)}>Read</Button>{actor && !ackAt && <Button size="sm" onClick={() => onOpen(policy.id, "acknowledge")}>Read &amp; acknowledge</Button>}</div>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => onOpen(policy.id)}>Read</Button>{actor && !ackAt && !archived && <Button size="sm" onClick={() => onOpen(policy.id, "acknowledge")}>Read &amp; acknowledge</Button>}
+          {manager && !archived && <Button size="sm" variant="outline" onClick={() => onEdit(policy)}>Edit</Button>}
+          {manager && <Button size="sm" variant="ghost" onClick={() => { savePolicy({ ...policy, status: archived ? "current" : "archived" }); record(policy.id, { actor: actorName, event: archived ? "Policy restored" : "Policy archived", version: policy.version }); toast.success(archived ? "Policy restored" : "Policy archived. Employees no longer see it."); }}>{archived ? "Restore" : "Archive"}</Button>}
+          {manager && (confirming === policy.id ? <span className="flex items-center gap-2 text-xs"><button type="button" className="text-danger underline" onClick={() => { removePolicy(policy.id); setConfirming(null); toast.success(`${policy.name} deleted`); }}>Delete for good</button><button type="button" className="text-muted-foreground underline" onClick={() => setConfirming(null)}>Keep</button></span> : <Button size="sm" variant="ghost" aria-label={`Delete ${policy.name}`} onClick={() => setConfirming(policy.id)}>Delete</Button>)}</div>
       </div>
     </li>;
-  })}</ul>;
+  })}</ul></>;
 }
 
 function UploadDialog({ role, actorId, personal, initialEmployeeId, document, company = false, onClose }: HrDocumentsProps & { initialEmployeeId: string; document?: HrDocument; company?: boolean; onClose: () => void }) {

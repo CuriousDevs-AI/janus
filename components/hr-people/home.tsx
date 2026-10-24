@@ -10,7 +10,8 @@ import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrEngageStore } from "@/lib/stores/hr-engage-store";
 import { derivedCelebrations, timeAgo } from "@/lib/hr-engage";
 import { useHolidays } from "@/lib/hr-holidays";
-import { canDecide, leaveTypeLabels } from "@/lib/hr-leave";
+import { canDecide } from "@/lib/hr-leave";
+import { useLeaveTypes } from "@/lib/hr-leave-hooks";
 import { buildPayslip } from "@/lib/hr-payroll";
 import { canDecideExpense } from "@/components/hr-people/expenses";
 import { HrEmpty, HrPanel, hrDate, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
@@ -31,6 +32,7 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
   const { settings, audit, regularisations, letterRequests, policyQuestions } = useHrOperationsStore();
   const { items, meta, react } = useHrEngageStore();
   const holidays = useHolidays();
+  const types = useLeaveTypes();
   const today = hrToday();
   const actor = employees.find((item) => item.id === actorId);
   const nameOf = (id: string) => employees.find((item) => item.id === id)?.name ?? "Someone";
@@ -81,11 +83,11 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
 
   // Updates about my own requests
   const mine = new Map<string, string>();
-  leaveRequests.filter((item) => item.employeeId === actorId).forEach((item) => mine.set(item.id, `${leaveTypeLabels[item.type]} leave on ${hrDate(item.from)}`));
+  leaveRequests.filter((item) => item.employeeId === actorId).forEach((item) => mine.set(item.id, `${types.name(item.type)} leave on ${hrDate(item.from)}`));
   expenseClaims.filter((item) => item.employeeId === actorId).forEach((item) => mine.set(item.id, `${hrMoney(item.amount)} expense claim`));
   regularisations.filter((item) => item.employeeId === actorId).forEach((item) => mine.set(item.id, `${item.kind === "permission" ? "permission" : "attendance correction"} for ${hrDate(item.date)}`));
   letterRequests.filter((item) => item.employeeId === actorId).forEach((item) => mine.set(item.id, item.type.toLowerCase()));
-  const verbs: Record<string, string> = { approved: "approved", approved_by_manager: "approved by your manager and sent to HR", rejected: "rejected", clarification_requested: "sent back with a question", marked_paid: "marked as paid", regularisation_approved: "approved", regularisation_rejected: "rejected", letter_issued: "issued. Open it in My documents", letter_declined: "declined" };
+  const verbs: Record<string, string> = { approved: "approved", approved_by_manager: "approved by your manager and sent to HR", rejected: "rejected", cancelled_by_hr: "cancelled by HR", clarification_requested: "sent back with a question", marked_paid: "marked as paid", regularisation_approved: "approved", regularisation_rejected: "rejected", letter_issued: "issued. Open it in My documents", letter_declined: "declined" };
   const updates = [
     ...audit.filter((item) => mine.has(item.recordId) && item.actorId !== actorId && verbs[item.action]).map((item) => ({ id: item.id, at: item.at, text: `Your ${mine.get(item.recordId)} was ${verbs[item.action]}.`, by: nameOf(item.actorId) })),
     ...policyQuestions.filter((item) => item.employeeId === actorId && item.status === "answered" && item.repliedAt).map((item) => ({ id: item.id, at: item.repliedAt!, text: `HR replied to your question: “${item.question}”`, by: nameOf(item.repliedBy ?? "") })),
