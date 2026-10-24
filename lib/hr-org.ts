@@ -1,4 +1,4 @@
-import type { HrEmployee } from "@/lib/types";
+import type { HrEmployee, HrLeaveRequest } from "@/lib/types";
 import type { HrDepartment, HrRoleDef, OrgPermission } from "@/lib/stores/hr-org-store";
 import type { HrPolicySettings } from "@/lib/stores/hr-operations-store";
 
@@ -44,7 +44,15 @@ export function descendants(departments: HrDepartment[], departmentId: string) {
 export const wouldLoop = (departments: HrDepartment[], departmentId: string, parentId: string | null) => parentId !== null && (parentId === departmentId || descendants(departments, departmentId).has(parentId));
 
 /** Who a new leave request goes to first, following the employee's department route. */
-export function approverFor(employee: HrEmployee, org: Org, employees: HrEmployee[]): { id: string | null; name: string | null } {
+export function approverFor(employee: HrEmployee, org: Org, employees: HrEmployee[], away?: { leaves: HrLeaveRequest[]; from: string }): { id: string | null; name: string | null; viaBackup?: boolean } {
+  const first = approverBeforeBackup(employee, org, employees);
+  const own = departmentByName(org.departments, employee.department);
+  const backup = employees.find((item) => item.id === own?.backupApproverId && item.status !== "archived" && item.id !== employee.id);
+  const gone = Boolean(away && first.id && away.leaves.some((item) => item.employeeId === first.id && item.status === "approved" && item.from <= away.from && item.to >= away.from));
+  return gone && backup && backup.id !== first.id ? { id: backup.id, name: backup.name, viaBackup: true } : first;
+}
+
+function approverBeforeBackup(employee: HrEmployee, org: Org, employees: HrEmployee[]): { id: string | null; name: string | null } {
   const manager = employees.find((item) => item.id === employee.managerId && item.status !== "archived");
   const own = departmentByName(org.departments, employee.department);
   const fallback = { id: manager?.id ?? null, name: manager?.name ?? null };

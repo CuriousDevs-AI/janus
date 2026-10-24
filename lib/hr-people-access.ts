@@ -1,4 +1,6 @@
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
+import { useHrOrgStore } from "@/lib/stores/hr-org-store";
+import { hasPermission } from "@/lib/hr-org";
 
 export const hrRoleLabels: Record<HrDemoRole, string> = {
   owner: "Owner",
@@ -17,8 +19,10 @@ export function canSeeBusinessSummary(role: HrDemoRole) {
   return role === "owner" || role === "business_manager";
 }
 
+/** The preview role must allow it, and the role HR gave this person must include "see pay". */
 export function canSeePayroll(role: HrDemoRole) {
-  return role === "owner" || role === "hr_manager" || role === "payroll_admin";
+  const { departments, roles, assignments } = useHrOrgStore.getState();
+  return (role === "owner" || role === "hr_manager" || role === "payroll_admin") && hasPermission({ departments, roles, assignments }, demoActorId(role), "payroll.view");
 }
 
 export function canApproveTeam(role: HrDemoRole) {
