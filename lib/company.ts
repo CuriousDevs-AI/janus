@@ -12,6 +12,10 @@ export interface CompanyRecord {
   /** Workspaces switched on for this company. */
   workspaces: string[];
   setupDone: boolean;
+  size?: string;
+  timezone?: string;
+  /** People added while setting the company up. They become its first employees. */
+  team?: { name: string; email: string; title: string; department: string }[];
   createdAt: string;
 }
 
@@ -61,4 +65,19 @@ export function subscribeCompanies(listener: () => void) {
   window.addEventListener(EVENT, listener);
   window.addEventListener("storage", listener);
   return () => { window.removeEventListener(EVENT, listener); window.removeEventListener("storage", listener); };
+}
+
+const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "company";
+/** A short unique id from the name, so two companies never share saved data. */
+export function newCompanyId(name: string, existing: CompanyRecord[]) {
+  let id = slug(name);
+  let n = 2;
+  while (existing.some((item) => item.id === id) || ["acme", "nimbus", "greenleaf"].includes(id)) id = `${slug(name)}-${n++}`;
+  return id;
+}
+export function updateCompany(id: string, patch: Partial<CompanyRecord>) {
+  saveCompanies(readCompanies().map((item) => item.id === id ? { ...item, ...patch } : item));
+}
+export function addCompany(record: CompanyRecord) {
+  saveCompanies([...readCompanies(), record]);
 }

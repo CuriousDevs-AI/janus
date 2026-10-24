@@ -5,6 +5,7 @@ import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
 import { canSeeOwner } from "@/lib/crm-scope";
 import { demoAccounts } from "@/lib/demo-accounts";
 import { readView } from "@/lib/demo-persona";
+import { activeCompany, updateCompany } from "@/lib/company";
 import { useDemoCrmStore } from "@/lib/demo-backend/crm-store";
 
 /** Returned for paths the preview backend does not implement, so callers fall back to their own handling. */
@@ -110,6 +111,24 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
       store.patchContact(contact.id, { whatsappOptIn: Boolean(data.whatsappOptIn), doNotContact: Boolean(data.doNotContact), consentSource: text(data.consentSource) || "customer_record", consentUpdatedAt: new Date().toISOString() });
       return useDemoCrmStore.getState().contacts.find((item) => item.id === contact.id);
     }
+  }
+
+  if (parts[0] === "workspaces" && parts.length === 1) {
+    const company = activeCompany();
+    const named = (id: string) => ({ id, type: id.replaceAll("-", "_"), name: id === "crm-sales" ? "CRM & Sales" : id === "hr-people" ? "HR & People" : id.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), description: "", status: "active" });
+    if (method === "GET") return company.workspaces.map(named);
+    if (method === "POST") {
+      const account = readView();
+      if (account?.hrRole !== "owner") throw forbidden("switch workspaces on");
+      const type = text(body(init).type).replaceAll("_", "-");
+      if (!type) throw invalid("Choose a workspace.");
+      if (!company.workspaces.includes(type)) updateCompany(company.id, { workspaces: [...company.workspaces, type] });
+      return { ...named(type), name: text(body(init).name) || named(type).name };
+    }
+  }
+  if (parts[0] === "business" && parts[1] === "setup" && parts.length === 2) {
+    const company = activeCompany();
+    return { businessName: company.name, industry: company.industry, companySize: company.size ?? "11–50 employees", timezone: company.timezone ?? "Asia/Kolkata", setupCompleted: company.setupDone, completedSteps: company.workspaces.length ? ["business_details", "workspaces"] : ["business_details"], nextStep: company.setupDone ? null : "workspaces" };
   }
   return NOT_HANDLED;
 }
