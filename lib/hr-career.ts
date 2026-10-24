@@ -5,6 +5,8 @@ import { useHrDocumentStore } from "@/lib/stores/hr-document-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrEngageStore } from "@/lib/stores/hr-engage-store";
 import { useHrCareerStore, type CareerChange, type ChangeFields, type ChangeKind, type ChangeSnapshot, type ChangeStatus } from "@/lib/stores/hr-career-store";
+import { useHrOrgStore } from "@/lib/stores/hr-org-store";
+import { hasPermission } from "@/lib/hr-org";
 import { sampleMarkup } from "@/lib/hr-document-content";
 import { todayIst } from "@/lib/hr-import";
 
@@ -28,7 +30,7 @@ export function startingStatus(proposerRole: HrDemoRole, needsOwner: boolean): C
 /** Whoever proposes a change, or is the subject of it, can never approve it. */
 export function canDecideChange(change: Pick<CareerChange, "employeeId" | "proposedBy" | "status">, actorId: string, role: HrDemoRole) {
   if (change.employeeId === actorId || change.proposedBy === actorId) return false;
-  if (change.status === "pending_hr") return role === "owner" || role === "hr_manager";
+  if (change.status === "pending_hr") return role === "owner" || (role === "hr_manager" && hasPermission(useHrOrgStore.getState(), actorId, "career.approve"));
   if (change.status === "pending_owner") return role === "owner";
   return false;
 }

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore, type HrLeaveTypeConfig, type HrPolicySettings } from "@/lib/stores/hr-operations-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { useCan } from "@/lib/hr-org-hooks";
 import { toMinutes } from "@/lib/hr-attendance";
 import { HrEmpty, HrField, HrPanel, HrTable, hrCell, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
@@ -31,7 +31,7 @@ export function HrPolicyPanel({ role, actorId }: { role: HrDemoRole; actorId: st
   const [pickManager, setPickManager] = React.useState("");
   const [pickDelegate, setPickDelegate] = React.useState("");
   const [until, setUntil] = React.useState("");
-  const editable = canManageHr(role);
+  const editable = useCan(role, "settings.manage");
   const current = { workWeek: settings.workWeek, shiftStart: settings.shiftStart, shiftEnd: settings.shiftEnd, graceMinutes: settings.graceMinutes, delegation: settings.delegation };
   const dirty = !same(draft, current);
   const people = employees.filter((item) => item.status !== "archived");
@@ -72,7 +72,7 @@ export function LeaveTypesPanel({ role, actorId }: { role: HrDemoRole; actorId: 
   const [yearStart, setYearStart] = React.useState(settings.yearStart);
   const [name, setName] = React.useState("");
   const [limit, setLimit] = React.useState("5");
-  const editable = canManageHr(role);
+  const editable = useCan(role, "settings.manage");
   const usedIds = new Set(leaveRequests.map((item) => item.type));
   const dirty = !same(types, settings.leaveTypes) || yearStart !== settings.yearStart;
   const month = Number(yearStart.split("-")[0]);
@@ -125,7 +125,7 @@ export function ApprovalAuthorityPanel({ role, actorId }: { role: HrDemoRole; ac
   const [chain, setChain] = React.useState(settings.approvalChain);
   const [escalate, setEscalate] = React.useState(settings.escalateAfterDays);
   const [ownerPay, setOwnerPay] = React.useState(settings.promotionOwnerApproval);
-  const editable = canManageHr(role);
+  const editable = useCan(role, "settings.manage");
   const dirty = chain !== settings.approvalChain || escalate !== settings.escalateAfterDays || ownerPay !== settings.promotionOwnerApproval;
   const error = !Number.isInteger(escalate) || escalate < 0 || escalate > 30 ? "Escalation must be 0 to 30 days." : "";
   const leaveChain = chain === "manager_hr" ? "Reporting manager → HR" : "Reporting manager";
