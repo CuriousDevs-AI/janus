@@ -13,7 +13,7 @@ import type {
   HrWhatsAppAction,
 } from "@/lib/types";
 
-export const hrEmployees: HrEmployee[] = [
+const baseEmployees: HrEmployee[] = [
   { id: "emp-001", name: "Pankaj Neema", email: "pankaj@acmetraders.in", phone: "+91 98765 43210", title: "Owner", department: "Management", branch: "Gurugram", managerId: null, managerName: null, status: "active", employmentType: "full_time", joiningDate: "2023-04-01", location: "Gurugram", avatarColor: "#2563eb", salaryMonthly: 220000, onboardingPercent: 100, documentsDue: 0 },
   { id: "emp-002", name: "Shaista Khan", email: "shaista@acmetraders.in", phone: "+91 98765 11223", title: "HR Manager", department: "People", branch: "Gurugram", managerId: "emp-001", managerName: "Pankaj Neema", status: "active", employmentType: "full_time", joiningDate: "2024-01-08", location: "Gurugram", avatarColor: "#7c3aed", salaryMonthly: 98000, onboardingPercent: 100, documentsDue: 1 },
   { id: "emp-003", name: "Arjun Mehta", email: "arjun@acmetraders.in", phone: "+91 98111 22334", title: "Sales Manager", department: "Sales", branch: "Gurugram", managerId: "emp-001", managerName: "Pankaj Neema", status: "active", employmentType: "full_time", joiningDate: "2023-09-12", location: "Gurugram", avatarColor: "#059669", salaryMonthly: 72000, onboardingPercent: 100, documentsDue: 0 },
@@ -24,6 +24,9 @@ export const hrEmployees: HrEmployee[] = [
   { id: "emp-008", name: "Karan Bhatt", email: "karan@acmetraders.in", phone: "+91 98880 99887", title: "Customer Support Lead", department: "Support", branch: "Gurugram", managerId: "emp-001", managerName: "Pankaj Neema", status: "notice", employmentType: "full_time", joiningDate: "2023-07-17", location: "Gurugram", avatarColor: "#dc2626", salaryMonthly: 68000, onboardingPercent: 100, documentsDue: 1 },
 ];
 
+const birthDates: Record<string, string> = { "emp-001": "1985-12-02", "emp-002": "1990-11-14", "emp-003": "1988-11-03", "emp-004": "1996-10-26", "emp-005": "1993-10-24", "emp-006": "1998-12-19", "emp-007": "1994-11-29", "emp-008": "1991-10-31" };
+export const hrEmployees: HrEmployee[] = baseEmployees.map((employee) => ({ ...employee, birthDate: birthDates[employee.id] }));
+
 export const hrCandidates: HrCandidate[] = [
   { id: "cand-001", name: "Meera Iyer", email: "meera@example.com", phone: "+91 99001 22110", role: "People Operations Executive", department: "People", stage: "interview", ownerName: "Shaista Khan", score: 88, updatedAt: "2026-10-21" },
   { id: "cand-002", name: "Rohit Malhotra", email: "rohit@example.com", phone: "+91 98100 33221", role: "Warehouse Associate", department: "Operations", stage: "offer", ownerName: "Neha Verma", score: 81, updatedAt: "2026-10-20" },
@@ -31,7 +34,7 @@ export const hrCandidates: HrCandidate[] = [
   { id: "cand-004", name: "Kabir Singh", email: "kabir@example.com", phone: "+91 98700 11552", role: "Finance Analyst", department: "Finance", stage: "accepted", ownerName: "Aman Verma", score: 92, updatedAt: "2026-10-16" },
 ];
 
-export const hrAttendance: HrAttendanceRecord[] = [
+const todayAttendance: HrAttendanceRecord[] = [
   { id: "att-001", employeeId: "emp-003", employeeName: "Arjun Mehta", date: "2026-10-23", status: "present", checkIn: "09:08", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
   { id: "att-002", employeeId: "emp-004", employeeName: "Riya Kapoor", date: "2026-10-23", status: "late", checkIn: "09:42", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: "Late by 42 minutes" },
   { id: "att-003", employeeId: "emp-005", employeeName: "Neha Verma", date: "2026-10-23", status: "present", checkIn: "08:57", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
@@ -39,6 +42,27 @@ export const hrAttendance: HrAttendanceRecord[] = [
   { id: "att-005", employeeId: "emp-007", employeeName: "Aman Verma", date: "2026-10-23", status: "present", checkIn: "09:01", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
   { id: "att-006", employeeId: "emp-008", employeeName: "Karan Bhatt", date: "2026-10-23", status: "on_leave", checkIn: null, checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
 ];
+
+/** Oct 1 to 22 for each person, so calendars and reports have real-looking history. Deterministic, so reloads match. */
+function attendanceHistory(): HrAttendanceRecord[] {
+  const closed = new Set(["2026-10-02", "2026-10-20"]);
+  const rows: HrAttendanceRecord[] = [];
+  baseEmployees.forEach((employee, index) => {
+    for (let day = 1; day <= 22; day += 1) {
+      const date = `2026-10-${String(day).padStart(2, "0")}`;
+      const weekday = new Date(`${date}T12:00:00`).getDay();
+      if (weekday === 0 || weekday === 6 || closed.has(date) || date < employee.joiningDate) continue;
+      const k = (index * 7 + day * 3) % 13;
+      const base = { id: `att-h-${employee.id}-${day}`, employeeId: employee.id, employeeName: employee.name, date, shift: "09:00–18:00", overtimeHours: 0 };
+      if (k === 4 && day % 2 === 0) rows.push({ ...base, status: "absent", checkIn: null, checkOut: null, anomaly: "No punch received" });
+      else if (k === 0) rows.push({ ...base, status: "late", checkIn: `09:${20 + (day % 4) * 7}`, checkOut: "18:10", anomaly: `Late by ${20 + (day % 4) * 7} minutes` });
+      else if (k === 7) rows.push({ ...base, status: "present", checkIn: "08:58", checkOut: null, anomaly: "Missing check-out" });
+      else rows.push({ ...base, status: "present", checkIn: `08:${50 + (day % 9)}`, checkOut: `18:${String(day % 3 * 5).padStart(2, "0")}`, anomaly: null });
+    }
+  });
+  return rows;
+}
+export const hrAttendance: HrAttendanceRecord[] = [...todayAttendance, ...attendanceHistory()];
 
 export const hrLeaveRequests: HrLeaveRequest[] = [
   { id: "leave-001", employeeId: "emp-004", employeeName: "Riya Kapoor", managerId: "emp-003", managerName: "Arjun Mehta", type: "earned", from: "2026-10-28", to: "2026-10-29", days: 2, reason: "Family function in Jaipur", status: "pending", step: "manager", createdAt: "2026-10-22" },

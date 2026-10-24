@@ -10,11 +10,11 @@ const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1)
 
 export const isWorkingDay = (date: string, workWeek: string[]) => workWeek.includes(weekdays[at(date).getDay()]);
 
-/** Working days between two dates (inclusive), skipping the configured weekly offs. */
-export function workingDays(from: string, to: string, workWeek: string[]) {
+/** Working days between two dates (inclusive), skipping weekly offs and, when given, company holidays. */
+export function workingDays(from: string, to: string, workWeek: string[], closed?: ReadonlySet<string>) {
   if (!from || !to || to < from) return 0;
   let count = 0;
-  for (let day = at(from); iso(day) <= to; day.setDate(day.getDate() + 1)) if (workWeek.includes(weekdays[day.getDay()])) count += 1;
+  for (let day = at(from); iso(day) <= to; day.setDate(day.getDate() + 1)) if (workWeek.includes(weekdays[day.getDay()]) && !closed?.has(iso(day))) count += 1;
   return count;
 }
 
