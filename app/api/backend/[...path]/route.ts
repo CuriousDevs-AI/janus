@@ -13,7 +13,7 @@ async function bridge(request: NextRequest, context: { params: Promise<{ path: s
   const { path } = await context.params;
   if (path.some(segment => !/^[A-Za-z0-9_-]+$/.test(segment))) return error("not_found", "Endpoint not found.", 404);
   const route = path.join("/");
-  const allowed = /^(auth\/(signup|login|refresh|logout|logout-all|forgot-password|reset-password|verify-email|resend-verification)|me|sources(\/presets|\/\d+(\/(events|embed|rotate-secret|keys(\/\d+)?|imports(\/\d+(\/rows)?)?))?)?|leads(\/\d+(\/deal)?)?|deals(\/\d+(\/events)?)?|contacts\/\d+|whatsapp\/(connection|templates|conversations(\/\d+(\/messages)?)?)|invitations\/[A-Za-z0-9_-]+(\/accept)?)$/;
+  const allowed = /^(auth\/(signup|login|refresh|logout|logout-all|forgot-password|reset-password|verify-email|resend-verification)|me|business\/(setup|reports\/summary|intelligence\/ask|agents(\/[A-Za-z0-9_-]+(\/test)?)?|automation-catalog|automation-templates|automation-folders(\/\d+)?|runs\/\d+(\/(retry|cancel))?|automations(\/executions(\/\d+\/approve)?|\/\d+(\/(run|draft|publish|test|on|off|archive|runs|versions|enrollment-preview)(\/\d+)?)?)?)|workspaces(\/\d+(\/members(\/\d+)?)?)?|sources(\/presets|\/\d+(\/(events|embed|rotate-secret|keys(\/\d+)?|imports(\/\d+(\/rows)?)?))?)?|leads(\/\d+(\/deal)?)?|deals(\/\d+(\/events)?)?|contacts\/\d+|whatsapp\/(connection|templates|conversations(\/\d+(\/messages)?)?)|invitations\/[A-Za-z0-9_-]+(\/accept)?)$/;
   if (!allowed.test(route)) return error("not_found", "Endpoint not found.", 404);
   const mutating = !["GET", "HEAD"].includes(request.method);
   if (mutating && request.headers.get("origin") !== (process.env.JANUS_APP_ORIGIN || new URL(request.url).origin)) {
@@ -57,7 +57,7 @@ async function bridge(request: NextRequest, context: { params: Promise<{ path: s
       body = bytes.buffer;
     }
     const upstream = await fetch(target, { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(45000) });
-    const data = upstream.status === 204 ? null : await upstream.json();
+    const data = upstream.status === 204 ? undefined : await upstream.json();
     const issuesTokens = route === "auth/login" || route === "auth/refresh" || route.endsWith("/accept");
     if (upstream.ok && issuesTokens) {
       if (typeof data?.access_token !== "string" || typeof data?.refresh_token !== "string") return error("backend_error", "Invalid session response.", 502);
@@ -76,7 +76,9 @@ async function bridge(request: NextRequest, context: { params: Promise<{ path: s
         }
       }
     }
-    const response = data === null ? new NextResponse(null, { status: upstream.status }) : NextResponse.json(data, { status: upstream.status });
+    const response = data === undefined
+      ? new NextResponse(null, { status: upstream.status })
+      : NextResponse.json(data, { status: upstream.status });
     response.headers.set("Cache-Control", "no-store");
     if ((upstream.ok && ["auth/logout", "auth/logout-all"].includes(route)) || (route === "auth/refresh" && [401, 403].includes(upstream.status))) {
       response.cookies.set(accessCookie, "", { ...cookieOptions, maxAge: 0 });

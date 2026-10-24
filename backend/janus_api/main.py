@@ -11,6 +11,7 @@ from starlette.responses import Response
 
 from janus_api.ai.router import router as ai_router
 from janus_api.auth.router import router as auth_router
+from janus_api.business.router import router as business_router
 from janus_api.core.db import check_database_role
 from janus_api.core.errors import install_errors
 from janus_api.crm.router import router as crm_router
@@ -36,6 +37,7 @@ app = FastAPI(title="Janus API", version="0.1.0", lifespan=lifespan)
 install_errors(app)
 app.include_router(auth_router)
 app.include_router(ai_router)
+app.include_router(business_router)
 app.include_router(org_router)
 app.include_router(sources_router)
 app.include_router(crm_router)

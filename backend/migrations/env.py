@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from janus_api.ai import models as ai_models
 from janus_api.audit import models as audit_models
 from janus_api.auth import models as auth_models
+from janus_api.business import models as business_models
 from janus_api.core.config import get_settings
 from janus_api.core.db import Base
 from janus_api.crm import models as crm_models
@@ -25,6 +26,7 @@ assert (
     and source_models
     and worker_models
     and whatsapp_models
+    and business_models
 )
 
 
