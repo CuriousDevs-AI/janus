@@ -7,7 +7,7 @@ export const hrRoleLabels: Record<HrDemoRole, string> = {
   business_manager: "Business Manager",
   hr_manager: "HR Manager",
   reporting_manager: "Reporting Manager",
-  payroll_admin: "Payroll Admin",
+  payroll_admin: "Finance",
   employee: "Employee",
 };
 
@@ -61,18 +61,18 @@ export function demoActorId(role: HrDemoRole) {
 
 const everyone: HrDemoRole[] = ["owner", "business_manager", "hr_manager", "reporting_manager", "payroll_admin", "employee"];
 const hrOnly: HrDemoRole[] = ["owner", "hr_manager"];
-const staff: HrDemoRole[] = ["owner", "hr_manager", "reporting_manager", "payroll_admin", "employee"];
 
 /** Which preview roles may open each HR view. Anything not listed is open only to HR and the owner. */
 const viewAccess: Record<string, HrDemoRole[]> = {
-  overview: everyone, "my-home": everyone, engage: everyone, "leave-apply": everyone, "leave-balances": everyone, "holiday-calendar": everyone, "attendance-info": everyone, "my-regularization": everyone, "document-center": everyone, "my-profile": everyone, "my-requests": everyone, "my-documents": everyone, "my-onboarding": everyone, "my-payslips": everyone, "policy-qa": everyone,
-  attendance: staff, leave: staff, "leave-calendar": staff, expenses: staff,
-  employees: ["owner", "hr_manager", "payroll_admin"], documents: ["owner", "hr_manager", "payroll_admin"], payroll: ["owner", "hr_manager", "payroll_admin"],
+  overview: ["owner", "hr_manager", "reporting_manager", "payroll_admin", "employee"], "my-home": everyone, engage: everyone, "leave-apply": everyone, "leave-balances": everyone, "holiday-calendar": everyone, "attendance-info": everyone, "my-regularization": everyone, "document-center": everyone, "my-profile": everyone, "my-requests": everyone, "my-documents": everyone, "my-onboarding": everyone, "my-payslips": everyone, "policy-qa": everyone,
+  // Finance sees money, not people: no leave, attendance, employee records or documents.
+  attendance: ["owner", "hr_manager", "reporting_manager"], leave: ["owner", "hr_manager", "reporting_manager"], "leave-calendar": ["owner", "hr_manager", "reporting_manager", "employee"], expenses: ["owner", "hr_manager", "reporting_manager", "payroll_admin", "employee"],
+  employees: hrOnly, documents: hrOnly, payroll: ["owner", "hr_manager", "payroll_admin"],
   compliance: ["owner", "hr_manager", "payroll_admin"],
   team: ["owner", "hr_manager", "reporting_manager"], approvals: ["owner", "hr_manager", "reporting_manager"],
   promotions: ["owner", "hr_manager", "reporting_manager"],
   performance: ["owner", "hr_manager", "reporting_manager", "employee"],
-  reports: ["owner", "business_manager", "hr_manager", "payroll_admin"],
+  reports: ["owner", "hr_manager"],
   organization: hrOnly, onboarding: hrOnly, offboarding: hrOnly, recruitment: hrOnly, signatures: hrOnly, settings: hrOnly,
 };
 

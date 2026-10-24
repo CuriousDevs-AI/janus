@@ -18,6 +18,7 @@ import { useSignOut, useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
+import { usePersona } from "@/lib/demo-persona";
 import { workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
@@ -58,7 +59,7 @@ export function SidebarNav({
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
-  const [hrDemoRole, setHrDemoRole] = React.useState<HrDemoRole>("owner");
+  const hrDemoRole: HrDemoRole = usePersona();
   React.useEffect(() => {
     const key = "janus.setup.active-workspace";
     const read = () => {
@@ -70,17 +71,6 @@ export function SidebarNav({
     window.addEventListener("storage", read);
     return () => { window.removeEventListener("janus:workspace-activation", read); window.removeEventListener("storage", read); };
   }, []);
-  React.useEffect(() => {
-    if (!demoMode || workspaceId !== "hr-people") return;
-    const readRole = () => {
-      const stored = window.localStorage.getItem("janus.hr-demo-role") as HrDemoRole | null;
-      if (stored) setHrDemoRole(stored);
-    };
-    readRole();
-    window.addEventListener("janus:hr-demo-role", readRole);
-    window.addEventListener("storage", readRole);
-    return () => { window.removeEventListener("janus:hr-demo-role", readRole); window.removeEventListener("storage", readRole); };
-  }, [workspaceId]);
   const setupWorkspaceChosen = setupApi.data?.completedSteps?.includes("workspaces") ?? false;
   const catalogHasActiveWorkspace = workspaceDefinitions.some((item) => item.id === "crm-sales" && item.status === "active");
   const apiHasActiveWorkspace = Boolean(workspacesApi.data?.some((item) => item.status === "active"));
@@ -113,7 +103,10 @@ export function SidebarNav({
     return true;
   }
 
+  const ownerView = !demoMode || hrDemoRole === "owner";
   const accessibleWorkspaces = React.useMemo(() => {
+    // Only the Owner moves between workspaces. Everyone else works inside HR & People.
+    if (!ownerView) return [{ id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." }];
     const fromApi = workspacesApi.data?.filter((item) => item.status === "active").map((item) => ({
       id: item.type.replaceAll("_", "-"),
       name: item.name,
@@ -128,7 +121,7 @@ export function SidebarNav({
       ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
     ];
     return [];
-  }, [hasActiveWorkspace, workspacesApi.data]);
+  }, [hasActiveWorkspace, workspacesApi.data, ownerView]);
 
   function workspaceHref(id: string) {
     if (id === "crm-sales") return "/dashboard?workspace=crm-sales";
@@ -172,7 +165,7 @@ export function SidebarNav({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>Business</DropdownMenuLabel>
+            {ownerView && <><DropdownMenuLabel>Business</DropdownMenuLabel>
             <DropdownMenuItem asChild>
               <Link
                 href="/settings?tab=workspace&view=overview&workspace=business"
@@ -185,21 +178,21 @@ export function SidebarNav({
                 </span>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Created workspaces</DropdownMenuLabel>
+            <DropdownMenuSeparator /></>}
+            <DropdownMenuLabel>{ownerView ? "Created workspaces" : "Your workspace"}</DropdownMenuLabel>
             {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>
               <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
                 <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{item.description}</span></span>
                 {workspaceId === item.id && <Circle className="size-2 shrink-0 fill-accent text-accent" />}
               </Link>
             </DropdownMenuItem>) : <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">No active workspace yet</span></DropdownMenuItem>}
-            <DropdownMenuSeparator />
+            {ownerView && <><DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings?tab=workspace&view=workspaces&create=1&workspace=business">
                 <Plus className="size-3.5" />
                 Create workspace
               </Link>
-            </DropdownMenuItem>
+            </DropdownMenuItem></>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -317,13 +310,11 @@ export function SidebarNav({
 
 function hrNavVisible(label: string, role: HrDemoRole) {
   if (role === "owner" || role === "hr_manager") return true;
-  // Everyone is also an employee, so every role gets the personal pages.
+  // Everyone is also an employee, so every preview gets the personal pages.
   const mySelfService = ["Home", "Engage", "My profile", "My onboarding", "Document Center", "My documents", "Ask about policy", "Payslips", "Reimbursements", "Leave Apply", "Leave Balances", "Leave Calendar", "Holiday Calendar", "My requests", "Attendance Info", "Regularization & Permission"];
-  if (role === "employee") return mySelfService.includes(label);
-  if (role === "reporting_manager") return mySelfService.includes(label) || ["HR Overview", "Attendance", "Leave Management", "My Team", "Pending Approvals", "Promotions & changes", "Documents", "HR Reports"].includes(label);
-  if (role === "payroll_admin") return mySelfService.includes(label) || ["HR Overview", "Documents", "Payroll", "HR Reports"].includes(label);
-  if (role === "business_manager") return mySelfService.includes(label) || ["HR Overview", "HR Reports"].includes(label);
-  return true;
+  // Finance handles money only: no leave, attendance or employee records.
+  if (role === "payroll_admin") return (mySelfService.includes(label) && label !== "Leave Calendar") || ["Payroll", "Expenses & Reimbursements", "HR Compliance"].includes(label);
+  return mySelfService.includes(label);
 }
 
 export function Sidebar() {
