@@ -17,31 +17,31 @@ export const at = (daysAgo: number, time = "11:00") => {
 
 export const company = { name: "Acme Traders Pvt Ltd", short: "Acme Traders", domain: "acmetraders.in", industry: "FMCG & household goods distribution", city: "Gurugram, Haryana", gstin: "06AABCA1234F1Z5" };
 
-/** Sales and support people. Ids match the HR employee ids. */
+/** Sales people. Ids are the CRM user ids, the same ones the signed-in session carries. */
 export const owners = {
-  owner: { id: "demo-owner", name: "Pankaj Neema" },
-  arjun: { id: "emp-003", name: "Arjun Mehta" },
-  riya: { id: "emp-004", name: "Riya Kapoor" },
-  meera: { id: "emp-009", name: "Meera Singh" },
+  owner: { id: "u-1", name: "Pankaj Neema" },
+  arjun: { id: "u-4", name: "Arjun Mehta" },
+  riya: { id: "u-3", name: "Riya Kapoor" },
+  meera: { id: "u-2", name: "Meera Singh" },
 } as const;
 type OwnerKey = keyof typeof owners;
 
 /** Trade customers. None share a name with an Acme employee. */
 export const buyers = [
-  { id: "demo-customer-1", company: "Northstar Retail", contact: "Kavita Rao", phone: "+91 98765 43210", email: "kavita@northstarretail.in", city: "Delhi", kind: "Retail chain, 6 stores" },
-  { id: "demo-customer-2", company: "Orbit Canteen Services", contact: "Amit Shah", phone: "+91 98100 11223", email: "amit@orbitcanteen.in", city: "Gurugram", kind: "Institutional canteens" },
-  { id: "demo-customer-3", company: "Annapurna Foods", contact: "Neelam Bansal", phone: "+91 99200 77881", email: "neelam@annapurnafoods.in", city: "Jaipur", kind: "Regional distributor" },
-  { id: "demo-customer-4", company: "Shree Balaji Kirana Stores", contact: "Mahesh Agarwal", phone: "+91 98290 44120", email: "mahesh@shreebalaji.in", city: "Alwar", kind: "Kirana" },
-  { id: "demo-customer-5", company: "Green Basket Supermarket", contact: "Farah Siddiqui", phone: "+91 98110 55231", email: "farah@greenbasket.in", city: "Noida", kind: "Supermarket" },
-  { id: "demo-customer-6", company: "Hotel Aravali Grand", contact: "Pradeep Chauhan", phone: "+91 94140 22871", email: "purchase@aravaligrand.in", city: "Udaipur", kind: "Hotel" },
-  { id: "demo-customer-7", company: "Metro Value Mart", contact: "Suresh Nair", phone: "+91 98999 30412", email: "suresh@metrovaluemart.in", city: "Faridabad", kind: "Retail, 4 outlets" },
-  { id: "demo-customer-8", company: "Sunrise Pharmacy Chain", contact: "Anjali Mehra", phone: "+91 98104 66782", email: "anjali@sunrisepharmacy.in", city: "Delhi", kind: "Pharmacy chain" },
-  { id: "demo-customer-9", company: "Rajputana Wholesale Co-op", contact: "Bhanwar Singh", phone: "+91 94133 90125", email: "bhanwar@rajputanacoop.in", city: "Jodhpur", kind: "Co-operative, 40 shops" },
-  { id: "demo-customer-10", company: "FreshKart Quick Commerce", contact: "Siddharth Jain", phone: "+91 98731 88204", email: "sid@freshkart.in", city: "Gurugram", kind: "Dark stores" },
-  { id: "demo-customer-11", company: "Delhi Valley Schools Trust", contact: "Ritu Malhotra", phone: "+91 98111 20938", email: "ritu@dvschools.in", city: "Delhi", kind: "School canteens" },
-  { id: "demo-customer-12", company: "Kumar & Sons General Merchants", contact: "Rakesh Kumar", phone: "+91 98963 17745", email: "rakesh@kumarandsons.in", city: "Rewari", kind: "General merchant" },
-  { id: "demo-customer-13", company: "Lotus Cash & Carry", contact: "Vandana Pillai", phone: "+91 98100 73345", email: "vandana@lotuscarry.in", city: "Gurugram", kind: "Cash & carry" },
-  { id: "demo-customer-14", company: "Shiv Shakti Bakery", contact: "Dinesh Prajapat", phone: "+91 94140 56012", email: "dinesh@shivshaktibakery.in", city: "Kota", kind: "Bakery" },
+  { id: "cus-1", company: "Northstar Retail", contact: "Kavita Rao", phone: "+91 98765 43210", email: "kavita@northstarretail.in", city: "Delhi", kind: "Retail chain, 6 stores" },
+  { id: "cus-2", company: "Orbit Canteen Services", contact: "Amit Shah", phone: "+91 98100 11223", email: "amit@orbitcanteen.in", city: "Gurugram", kind: "Institutional canteens" },
+  { id: "cus-3", company: "Annapurna Foods", contact: "Neelam Bansal", phone: "+91 99200 77881", email: "neelam@annapurnafoods.in", city: "Jaipur", kind: "Regional distributor" },
+  { id: "cus-4", company: "Shree Balaji Kirana Stores", contact: "Mahesh Agarwal", phone: "+91 98290 44120", email: "mahesh@shreebalaji.in", city: "Alwar", kind: "Kirana" },
+  { id: "cus-5", company: "Green Basket Supermarket", contact: "Farah Siddiqui", phone: "+91 98110 55231", email: "farah@greenbasket.in", city: "Noida", kind: "Supermarket" },
+  { id: "cus-6", company: "Hotel Aravali Grand", contact: "Pradeep Chauhan", phone: "+91 94140 22871", email: "purchase@aravaligrand.in", city: "Udaipur", kind: "Hotel" },
+  { id: "cus-7", company: "Metro Value Mart", contact: "Suresh Nair", phone: "+91 98999 30412", email: "suresh@metrovaluemart.in", city: "Faridabad", kind: "Retail, 4 outlets" },
+  { id: "cus-8", company: "Sunrise Pharmacy Chain", contact: "Anjali Mehra", phone: "+91 98104 66782", email: "anjali@sunrisepharmacy.in", city: "Delhi", kind: "Pharmacy chain" },
+  { id: "cus-9", company: "Rajputana Wholesale Co-op", contact: "Bhanwar Singh", phone: "+91 94133 90125", email: "bhanwar@rajputanacoop.in", city: "Jodhpur", kind: "Co-operative, 40 shops" },
+  { id: "cus-10", company: "FreshKart Quick Commerce", contact: "Siddharth Jain", phone: "+91 98731 88204", email: "sid@freshkart.in", city: "Gurugram", kind: "Dark stores" },
+  { id: "cus-11", company: "Delhi Valley Schools Trust", contact: "Ritu Malhotra", phone: "+91 98111 20938", email: "ritu@dvschools.in", city: "Delhi", kind: "School canteens" },
+  { id: "cus-12", company: "Kumar & Sons General Merchants", contact: "Rakesh Kumar", phone: "+91 98963 17745", email: "rakesh@kumarandsons.in", city: "Rewari", kind: "General merchant" },
+  { id: "cus-13", company: "Lotus Cash & Carry", contact: "Vandana Pillai", phone: "+91 98100 73345", email: "vandana@lotuscarry.in", city: "Gurugram", kind: "Cash & carry" },
+  { id: "cus-14", company: "Shiv Shakti Bakery", contact: "Dinesh Prajapat", phone: "+91 94140 56012", email: "dinesh@shivshaktibakery.in", city: "Kota", kind: "Bakery" },
 ] as const;
 
 type Source = "website" | "whatsapp" | "phone_call";
@@ -79,10 +79,10 @@ export const leadRows: Lead[] = rows.map((row, index) => {
   const [n, source, stage, age, last, ownerKey, campaign, requirement, deal] = row;
   const who = buyer(n);
   const owner = owners[ownerKey];
-  const id = `demo-lead-${1060 - index}`;
+  const id = `lead-${index + 1}`;
   const whatsapp = source === "whatsapp";
   return {
-    dealId: deal ? `demo-deal-${index + 1}` : null, id, customerId: who.id, contactName: who.contact, phone: who.phone, email: who.email, company: who.company,
+    dealId: deal ? `deal-${index + 1}` : null, id, customerId: who.id, contactName: who.contact, phone: who.phone, email: who.email, company: who.company,
     whatsappOptIn: whatsapp || source === "website", doNotContact: false,
     consentSource: whatsapp ? "whatsapp_inbound" : source === "website" ? "website_form" : null, consentUpdatedAt: whatsapp || source === "website" ? at(age, "10:20") : null,
     source, stage, ownerId: owner.id, ownerName: owner.name, requirement, campaign,
@@ -96,7 +96,7 @@ export const dealRows: Deal[] = rows.flatMap((row, index) => {
   const who = buyer(n);
   const owner = owners[ownerKey];
   return [{
-    id: `demo-deal-${index + 1}`, leadId: leadRows[index].id, customerId: who.id, customerName: who.contact, company: who.company, phone: who.phone,
+    id: `deal-${index + 1}`, leadId: leadRows[index].id, customerId: who.id, customerName: who.contact, company: who.company, phone: who.phone,
     ownerId: owner.id, ownerName: owner.name, name: deal[0], amount: `${deal[1]}.00`, stage: stage as DealStage,
     expectedCloseAt: at(-deal[2], "00:00").replace(/T\d\d:\d\d/, "T00:00"), lostReason: stage === "lost" ? "Price and delivery distance" : "", version: 1, createdAt: at(age - 0, "10:30"), updatedAt: at(last, "15:40"),
   } satisfies Deal];
@@ -134,14 +134,14 @@ export const monthlyLeads = [{ label: "May", leads: 11, deals: 6 }, { label: "Ju
 const chatLeads = leadRows.filter((item) => item.source === "whatsapp" && item.stage !== "lost").slice(0, 6);
 const opening = (lead: Lead) => lead.requirement.replace(/^Wants/, "We want").replace(/^Asking/, "We are asking").replace(/^Negotiating/, "We are negotiating");
 export const conversations: WhatsAppConversation[] = chatLeads.map((lead, index) => ({
-  id: `demo-conversation-${index + 1}`, contactId: lead.customerId, name: lead.contactName, phone: lead.phone ?? "", company: lead.company,
+  id: `wa-${index + 1}`, contactId: lead.customerId, name: lead.contactName, phone: lead.phone ?? "", company: lead.company,
   whatsappOptIn: true, doNotContact: false, consentSource: "whatsapp_inbound", consentUpdatedAt: lead.consentUpdatedAt,
   lastMessageAt: lead.lastActivityAt, lastInboundAt: lead.lastActivityAt, replyWindowEndsAt: new Date(new Date(lead.lastActivityAt).getTime() + 86400000).toISOString().replace("Z", "+00:00"),
 }));
 export const messagesByConversation: Record<string, WhatsAppMessage[]> = Object.fromEntries(chatLeads.map((lead, index) => {
   const first = lead.lastActivityAt;
-  return [`demo-conversation-${index + 1}`, [
-    { id: `demo-message-${index * 2 + 1}`, direction: "inbound", kind: "text", body: opening(lead), status: "received", errorCode: null, createdAt: first },
-    ...(index % 2 === 0 ? [{ id: `demo-message-${index * 2 + 2}`, direction: "outbound" as const, kind: "template", body: `Hi ${lead.contactName.split(" ")[0]}, thanks for reaching out to Acme Traders. ${lead.ownerName} will share rates and delivery slots today.`, status: "accepted", errorCode: null, createdAt: new Date(new Date(first).getTime() + 120000).toISOString().replace("Z", "+00:00") }] : []),
+  return [`wa-${index + 1}`, [
+    { id: `wamsg-${index * 2 + 1}`, direction: "inbound", kind: "text", body: opening(lead), status: "received", errorCode: null, createdAt: first },
+    ...(index % 2 === 0 ? [{ id: `wamsg-${index * 2 + 2}`, direction: "outbound" as const, kind: "template", body: `Hi ${lead.contactName.split(" ")[0]}, thanks for reaching out to Acme Traders. ${lead.ownerName} will share rates and delivery slots today.`, status: "accepted", errorCode: null, createdAt: new Date(new Date(first).getTime() + 120000).toISOString().replace("Z", "+00:00") }] : []),
   ]];
 }));

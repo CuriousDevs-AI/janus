@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import { use } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -17,7 +18,9 @@ import { Badge } from "@/components/ui/badge";
 
 export default function ApprovalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const approval = useAppStore((s) => s.approvals.find((a) => a.id === id));
+  const access = useCrmAccess();
+  const foundApproval = useAppStore((s) => s.approvals.find((a) => a.id === id));
+  const approval = foundApproval && access.approvalVisible(foundApproval) ? foundApproval : undefined;
   const decideApproval = useAppStore((s) => s.decideApproval);
 
   if (!approval) {

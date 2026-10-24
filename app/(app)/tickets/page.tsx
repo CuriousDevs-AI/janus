@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -46,7 +47,9 @@ const ticketSchema = z.object({
 type TicketFormValues = z.infer<typeof ticketSchema>;
 
 export default function TicketsPage() {
-  const tickets = useAppStore((s) => s.tickets);
+  const allTickets = useAppStore((s) => s.tickets);
+  const access = useCrmAccess();
+  const tickets = React.useMemo(() => access.tickets(allTickets), [access, allTickets]);
   const customers = useAppStore((s) => s.customers);
   const createTicket = useAppStore((s) => s.createTicket);
   const router = useRouter();

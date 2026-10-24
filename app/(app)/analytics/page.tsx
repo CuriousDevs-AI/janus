@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSession } from "@/components/auth/session-provider";
 import { lakh, stats as crm } from "@/lib/demo-universe";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import type { HrEmployee, HrLeaveRequest } from "@/lib/types";
@@ -46,18 +47,20 @@ const demoScheduledReports: ScheduledReport[] = [
 export default function AnalyticsPage() {
   const { workspaceId } = useWorkspace();
   const businessReports = workspaceId === "business";
+  // AI and automation figures cover the whole company, so only people with company-wide access see them.
+  const companyWide = useSession().permissions.includes("*");
   if (businessReports) return <BusinessReports />;
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader title="Analytics" description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days." />
       <Tabs defaultValue="acquisition" className="px-6 pb-8">
-        <TabsList><TabsTrigger value="acquisition">Acquisition</TabsTrigger><TabsTrigger value="sales">Sales</TabsTrigger><TabsTrigger value="ai">AI</TabsTrigger><TabsTrigger value="support">Support</TabsTrigger><TabsTrigger value="customer">Customer</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="acquisition">Acquisition</TabsTrigger><TabsTrigger value="sales">Sales</TabsTrigger>{companyWide && <TabsTrigger value="ai">AI</TabsTrigger>}<TabsTrigger value="support">Support</TabsTrigger><TabsTrigger value="customer">Customer</TabsTrigger>{companyWide && <TabsTrigger value="automation">Automation</TabsTrigger>}</TabsList>
         <TabsContent value="acquisition" className="pt-5"><AcquisitionSection /></TabsContent>
         <TabsContent value="sales" className="pt-5"><SalesSection /></TabsContent>
-        <TabsContent value="ai" className="pt-5"><AiSection /></TabsContent>
+        {companyWide && <TabsContent value="ai" className="pt-5"><AiSection /></TabsContent>}
         <TabsContent value="support" className="pt-5"><SupportSection /></TabsContent>
         <TabsContent value="customer" className="pt-5"><CustomerSection /></TabsContent>
-        <TabsContent value="automation" className="pt-5"><AutomationSection /></TabsContent>
+        {companyWide && <TabsContent value="automation" className="pt-5"><AutomationSection /></TabsContent>}
       </Tabs>
     </div>
   );

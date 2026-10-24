@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { demoMode } from "@/lib/demo-mode";
+import { demoAccounts } from "@/lib/demo-accounts";
+import { canSeeOwner } from "@/lib/crm-scope";
+import { useDemoAccount } from "@/lib/demo-persona";
 import Link from "next/link";
 import {
   Eye,
@@ -61,6 +65,7 @@ type EditForm = {
   company: string;
   requirement: string;
   stage: string;
+  ownerId: string;
 };
 
 type OptionalColumn = "email" | "company" | "source" | "owner" | "created";
@@ -117,6 +122,7 @@ function blankEditForm(row: Row): EditForm {
     company: row.lead.company,
     requirement: row.lead.requirement,
     stage: row.lead.stage,
+    ownerId: row.lead.ownerId ?? "",
   };
 }
 
@@ -144,6 +150,7 @@ function EditableValue({
 
 export default function LeadsPage() {
   const session = useSession();
+  const viewer = useDemoAccount();
   const canWrite = session.permissions.includes("leads:write");
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
@@ -196,6 +203,8 @@ export default function LeadsPage() {
   const loaded = result?.after === after ? result : null;
   const usingDemo = Boolean(loaded?.error);
   const canEditRows = canWrite && !usingDemo;
+  // Owners and managers can hand a lead to someone they manage.
+  const assignees = demoMode && (session.permissions.includes("*") || session.permissions.includes("leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
   const sources = useMemo(
     () => [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])],
     [loaded],
@@ -261,7 +270,7 @@ export default function LeadsPage() {
       await api<Lead>(`/leads/${editing.lead.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          ...editForm,
+          ...(demoMode ? editForm : { ...editForm, ownerId: undefined }),
           phone: editForm.phone.trim() || null,
           email: editForm.email.trim() || null,
         }),
@@ -536,6 +545,7 @@ export default function LeadsPage() {
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-name">Name</Label><Input id="lead-edit-name" value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-phone">Mobile</Label><Input id="lead-edit-phone" placeholder="+91 99999 99999" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} /></div></div>
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-email">Email</Label><Input id="lead-edit-email" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-company">Company</Label><Input id="lead-edit-company" value={editForm.company} onChange={(event) => setEditForm({ ...editForm, company: event.target.value })} /></div></div>
             <div className="flex flex-col gap-1.5"><Label>Stage</Label><Select value={editForm.stage} onValueChange={(stage) => setEditForm({ ...editForm, stage })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{stages.map((stage) => <SelectItem key={stage} value={stage}>{label(stage)}</SelectItem>)}</SelectContent></Select></div>
+            {assignees.length > 1 && <div className="flex flex-col gap-1.5"><Label>Owner</Label><Select value={editForm.ownerId} onValueChange={(ownerId) => setEditForm({ ...editForm, ownerId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignees.map((item) => <SelectItem key={item.crmUserId} value={item.crmUserId}>{item.name} · {item.title}</SelectItem>)}</SelectContent></Select></div>}
             <div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-requirement">Requirement</Label><Textarea id="lead-edit-requirement" value={editForm.requirement} onChange={(event) => setEditForm({ ...editForm, requirement: event.target.value })} /></div>
             {actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}
             <DialogFooter><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button></DialogFooter>
