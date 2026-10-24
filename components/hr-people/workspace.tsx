@@ -55,7 +55,7 @@ import { HrPayrollView } from "@/components/hr-people/payroll";
 import { HrRecruitmentView } from "@/components/hr-people/recruitment";
 import { HrOffboardingView } from "@/components/hr-people/offboarding";
 import { HrDocumentsView, HrSignaturesView } from "@/components/hr-people/documents";
-import { canOpenHrView, canManageHr, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, visibleEmployees } from "@/lib/hr-people-access";
+import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, visibleEmployees } from "@/lib/hr-people-access";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";

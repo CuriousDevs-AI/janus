@@ -65,20 +65,32 @@ export function findOverlap(requests: HrLeaveRequest[], employeeId: string, from
 export type Decider = { allowed: boolean; mode?: "manager" | "delegate" | "hr"; reason?: string };
 
 /** Who may decide a request at its current step. Nobody decides their own request. */
-export function canDecide(request: Pick<HrLeaveRequest, "employeeId" | "managerId" | "step" | "status">, actorId: string, role: string, settings: HrPolicySettings, today: string): Decider {
+export function canDecide(request: Pick<HrLeaveRequest, "employeeId" | "managerId" | "step" | "status"> & Partial<Pick<HrLeaveRequest, "route" | "level">>, actorId: string, role: string, settings: HrPolicySettings, today: string): Decider {
   if (request.employeeId === actorId) return { allowed: false, reason: "You can't decide your own request." };
   if (request.status !== "pending") return { allowed: false };
   const org = useHrOrgStore.getState();
   const hr = role === "owner" || role === "hr_manager" || hasPermission(org, actorId, "leave.approve_all");
   if (request.step === "hr") return hr ? { allowed: true, mode: "hr" } : { allowed: false, reason: "Waiting for HR." };
   if (request.step !== "manager") return { allowed: false };
-  if (request.managerId === actorId) return { allowed: true, mode: "manager" };
-  const delegation = request.managerId ? settings.delegation[request.managerId] : undefined;
+  // After a manager change the request's current approver is updated, so honour that as well as the original route.
+  const current = request.route?.[request.level ?? 0];
+  const approverId = request.managerId ?? current?.id;
+  if (approverId === actorId || current?.id === actorId) return { allowed: true, mode: "manager" };
+  const delegation = approverId ? settings.delegation[approverId] : undefined;
   if (delegation && delegation.employeeId === actorId && delegation.until >= today) return { allowed: true, mode: "delegate" };
   // A department head or a backup approver can step in without being the employee's direct manager.
   const requester = useHrPeopleStore.getState().employees.find((item) => item.id === request.employeeId);
   if (requester && (approvesForDepartment(org, actorId, requester) || isBackupFor(org, actorId, requester))) return { allowed: true, mode: "delegate" };
-  return hr ? { allowed: true, mode: "hr" } : { allowed: false, reason: "Waiting for the reporting manager." };
+  return hr ? { allowed: true, mode: "hr" } : { allowed: false, reason: `Waiting for ${current?.name ?? "the reporting manager"}.` };
+}
+
+/** What happens to a request after someone approves it: the next level, or done. HR stepping in for an approver ends it. */
+export function afterApproval(request: HrLeaveRequest, mode: NonNullable<Decider["mode"]>, settings: HrPolicySettings, departmentName?: string): { status: HrLeaveRequest["status"]; step: HrLeaveRequest["step"]; patch?: Partial<HrLeaveRequest> } {
+  if (!request.route) return nextAfterApproval(mode, settings, request.type, departmentName);
+  const level = (request.level ?? 0) + 1;
+  const next = request.route[level];
+  if (mode === "hr" || !next) return { status: "approved", step: "complete" };
+  return { status: "pending", step: next.kind === "hr" ? "hr" : "manager", patch: { level, managerId: next.id ?? null, managerName: next.name } };
 }
 
 /** Where an approval goes next: with the two-step chain a manager's approval still needs HR. */
@@ -87,6 +99,6 @@ export function nextAfterApproval(mode: NonNullable<Decider["mode"]>, settings: 
   return { status: "approved", step: "complete" };
 }
 
-export const stepLabel = (request: Pick<HrLeaveRequest, "status" | "step">) => request.status === "pending" ? `Pending · ${request.step === "hr" ? "HR" : "manager"}` : request.status === "needs_clarification" ? "Needs clarification" : request.status === "approved" ? "Approved" : "Rejected";
+export const stepLabel = (request: Pick<HrLeaveRequest, "status" | "step"> & Partial<Pick<HrLeaveRequest, "route" | "level">>) => request.status === "pending" ? (request.route && request.route.length > 1 ? `Pending · ${request.route[request.level ?? 0]?.label ?? "approver"} (step ${(request.level ?? 0) + 1} of ${request.route.length})` : `Pending · ${request.step === "hr" ? "HR" : "manager"}`) : request.status === "needs_clarification" ? "Needs clarification" : request.status === "approved" ? "Approved" : "Rejected";
 
 export const isTeamOf = (employee: HrEmployee, actorId: string) => employee.managerId === actorId || employee.id === actorId;

@@ -11,8 +11,8 @@ import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { canManageHr } from "@/lib/hr-people-access";
 import { useCompanyHolidayDates } from "@/lib/hr-holidays";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
-import { approverFor } from "@/lib/hr-org";
-import { canDecide, chainFor, findOverlap, isTeamOf, nextAfterApproval, stepLabel, workingDays, type LeaveType } from "@/lib/hr-leave";
+import { resolveRoute } from "@/lib/hr-org";
+import { afterApproval, canDecide, findOverlap, isTeamOf, stepLabel, workingDays, type LeaveType } from "@/lib/hr-leave";
 import { useLeaveTypes } from "@/lib/hr-leave-hooks";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, HrTable, hrCell, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrLeaveRequest } from "@/lib/types";
@@ -44,10 +44,10 @@ export function HrLeaveView({ role, actorId, personal = false }: { role: HrDemoR
 
   function decide(request: HrLeaveRequest, kind: Decision["kind"], mode: Decision["mode"], reason: string) {
     if (kind === "approve") {
-      const next = nextAfterApproval(mode, settings, request.type, employees.find((item) => item.id === request.employeeId)?.department);
-      updateLeave(request.id, next.status, next.step);
-      log({ recordId: request.id, actorId, action: next.step === "hr" ? "approved_by_manager" : "approved", reason: reason || (mode === "delegate" ? "Approved as delegate" : mode === "hr" && request.step === "manager" ? "Approved by HR on the manager's behalf" : "") });
-      toast.success(next.step === "hr" ? "Approved. Sent to HR for final approval." : "Leave approved");
+      const next = afterApproval(request, mode, settings, employees.find((item) => item.id === request.employeeId)?.department);
+      updateLeave(request.id, next.status, next.step, next.patch);
+      log({ recordId: request.id, actorId, action: next.status === "pending" ? "approved_by_manager" : "approved", reason: reason || (mode === "delegate" ? "Approved as delegate" : mode === "hr" && request.step === "manager" ? "Approved by HR on the manager's behalf" : "") });
+      toast.success(next.status === "approved" ? "Leave approved" : next.step === "hr" ? "Approved. Sent to HR for final approval." : `Approved. Sent to ${next.patch?.managerName ?? "the next approver"}.`);
     } else if (kind === "reject") {
       updateLeave(request.id, "rejected", request.step);
       log({ recordId: request.id, actorId, action: "rejected", reason });
@@ -116,13 +116,11 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
   const [from, setFrom] = React.useState(initial?.from ?? today);
   const [to, setTo] = React.useState(initial?.from ?? today);
   const [reason, setReason] = React.useState("");
-  const route = approverFor(employee, org, employees, { leaves: leaveRequests, from });
-  const manager = employees.find((item) => item.id === route.id);
   const config = settings.leaveTypes.find((item) => item.id === type);
   const limited = config ? config.days !== null : false;
   const days = workingDays(from, to, settings.workWeek, closed);
+  const route = resolveRoute(employee, org, employees, settings, { typeApproval: config?.approval ?? "default", days, away: { leaves: leaveRequests, from } });
   const balance = types.balance(employeeId, type);
-  const chain = chainFor(settings, type, employee.department);
   const oldest = new Date(`${today}T12:00:00`); oldest.setDate(oldest.getDate() - 30);
   const overlap = from && to && to >= from ? findOverlap(leaveRequests, employeeId, from, to) : undefined;
   const error = !config ? "No leave types are available. Ask HR." : !from || !to ? "Choose the dates." : to < from ? "The end date can't be before the start date." : from < oldest.toLocaleDateString("en-CA") ? "Leave can be backdated by 30 days at most." : days === 0 ? "Those dates are weekly offs or company holidays, so no leave is needed." : overlap ? `This overlaps your ${types.name(overlap.type).toLowerCase()} on ${hrDate(overlap.from)}.` : limited && days > balance.remaining ? `You have ${balance.remaining} ${config.name.toLowerCase()} day${balance.remaining === 1 ? "" : "s"} left. Choose fewer days or another leave type.` : reason.trim().length < 5 ? "Give a short reason (at least 5 characters)." : "";
@@ -130,11 +128,11 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (error) return;
-    const request: HrLeaveRequest = { id: `leave-${crypto.randomUUID()}`, employeeId, employeeName: employee.name, managerId: route.id, managerName: route.name ?? "HR", type, from, to, days, reason: reason.trim(), status: "pending", step: route.id && chain !== "hr" ? "manager" : "hr", createdAt: today };
+    const request: HrLeaveRequest = { id: `leave-${crypto.randomUUID()}`, employeeId, employeeName: employee.name, managerId: route[0].id ?? null, managerName: route[0].name, type, from, to, days, reason: reason.trim(), status: "pending", step: route[0].kind === "hr" ? "hr" : "manager", route, level: 0, createdAt: today };
     addLeave(request);
     log({ recordId: request.id, actorId: employeeId, action: "requested", reason: request.reason });
     if (onCreated) onCreated(request);
-    else toast.success(`Leave requested. ${request.step === "manager" && manager ? `${manager.name} will review it${route.viaBackup ? " (covering for the usual approver, who is away)" : ""}.` : "HR will review it."}`);
+    else toast.success(`Leave requested. ${route[0].kind === "hr" ? "HR will review it." : `${route[0].name} will review it${route[0].viaBackup ? " (covering for the usual approver, who is away)" : ""}.`}`);
     onDone();
   }
   return <form onSubmit={submit} className="space-y-4">
@@ -146,7 +144,7 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
     <p className="text-sm">{days > 0 ? <><strong>{dayText(days)}</strong> of leave</> : "No working days selected"}{limited && <span className="text-muted-foreground"> · {balance.remaining} {config?.name.toLowerCase()} {balance.remaining === 1 ? "day" : "days"} available{days > 0 && days <= balance.remaining ? `, ${balance.remaining - days} after this` : ""}</span>}{config && !config.paid && <span className="text-muted-foreground"> · unpaid</span>}</p>
     {config?.documentAfterDays && days > config.documentAfterDays && <p className="border border-warning/40 bg-warning-muted px-3 py-2 text-xs text-warning">{config.name} longer than {config.documentAfterDays} days needs a supporting document. Share it with HR after you apply.</p>}
     <HrField label="Reason"><Textarea required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-none" /></HrField>
-    <p className="text-xs text-muted-foreground">{chain === "hr" ? "Goes straight to HR." : manager ? `Goes to ${manager.name}${chain === "manager_hr" ? ", then HR" : ""}.` : "Goes to HR."} Weekly offs and company holidays aren&apos;t counted.</p>
+    <p className="text-xs text-muted-foreground">Goes to {route.map((step) => step.kind === "hr" ? "HR" : `${step.name} (${step.label.toLowerCase()})`).join(", then ")}. Weekly offs and company holidays aren&apos;t counted.</p>
     {showError && <p role="alert" className="text-sm text-danger">{error}</p>}
     <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onDone}>Cancel</Button><Button disabled={Boolean(error)}>Submit request</Button></div>
   </form>;
