@@ -145,7 +145,18 @@ export const useHrPeopleStore = create<HrPeopleState>()(
     }),
     {
       name: "janus.hr-people-demo",
+      version: 2,
       storage: createJSONStorage(() => localStorage),
+      // Version 2 added birthdays and October attendance history. Older saved data gets both without losing edits.
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<HrPeopleState>;
+        if (version < 2) {
+          const have = new Set((state.attendance ?? []).map((item) => item.id));
+          state.attendance = [...(state.attendance ?? []), ...hrAttendance.filter((item) => !have.has(item.id))];
+          state.employees = (state.employees ?? []).map((item) => ({ ...item, birthDate: item.birthDate ?? hrEmployees.find((seedItem) => seedItem.id === item.id)?.birthDate }));
+        }
+        return state as HrPeopleState;
+      },
       partialize: (state) => ({
         demoRole: state.demoRole,
         employees: state.employees,

@@ -11,11 +11,13 @@ export interface HrPolicySettings {
   notifications: boolean; delegation: Record<string, { employeeId: string; until: string }>;
 }
 export interface HrReview { id: string; employeeId: string; cycle: string; goal: string; dueAt: string; progress: number; rating: number | null; feedback: string; status: "draft" | "in_review" | "completed" }
-export interface HrRegularisation { id: string; employeeId: string; date: string; checkIn: string | null; checkOut: string | null; reason: string; status: "pending" | "approved" | "rejected"; requestedAt: string; decidedBy?: string; decidedAt?: string; decisionReason?: string }
+export interface HrRegularisation { id: string; employeeId: string; date: string; checkIn: string | null; checkOut: string | null; /** "permission" is a short, approved absence during a worked day (for example a bank visit). */ kind?: "regularisation" | "permission"; fromTime?: string; toTime?: string; reason: string; status: "pending" | "approved" | "rejected"; requestedAt: string; decidedBy?: string; decidedAt?: string; decisionReason?: string }
 export interface HrPolicyQuestion { id: string; employeeId: string; question: string; note: string; answerGiven: string | null; sources: string[]; gap: boolean; status: "open" | "answered"; createdAt: string; reply?: string; repliedBy?: string; repliedAt?: string }
+export interface HrLetterRequest { id: string; employeeId: string; type: string; purpose: string; addressedTo: string; note: string; status: "pending" | "completed" | "declined"; createdAt: string; decidedBy?: string; decidedAt?: string; reply?: string; documentId?: string }
+export interface HrHoliday { id: string; date: string; name: string; kind: "company" | "optional" }
 export interface ExpenseEvidence { description: string; date: string; filename?: string; mime?: string; dataUrl?: string }
 interface HrOperationsState {
-  settings: HrPolicySettings; audit: HrOperationAudit[]; evidence: Record<string, ExpenseEvidence>; filingReferences: Record<string, string>; reviews: HrReview[]; regularisations: HrRegularisation[]; policyQuestions: HrPolicyQuestion[];
+  settings: HrPolicySettings; audit: HrOperationAudit[]; evidence: Record<string, ExpenseEvidence>; filingReferences: Record<string, string>; reviews: HrReview[]; regularisations: HrRegularisation[]; policyQuestions: HrPolicyQuestion[]; customHolidays: HrHoliday[]; removedHolidays: string[]; letterRequests: HrLetterRequest[];
   saveSettings: (settings: HrPolicySettings) => void;
   log: (entry: Omit<HrOperationAudit, "id" | "at">) => void;
   saveEvidence: (id: string, evidence: ExpenseEvidence) => void;
@@ -23,6 +25,11 @@ interface HrOperationsState {
   saveReview: (review: HrReview) => void;
   addRegularisation: (request: HrRegularisation) => void;
   addPolicyQuestion: (question: HrPolicyQuestion) => void;
+  addHoliday: (holiday: HrHoliday) => void;
+  addLetterRequest: (request: HrLetterRequest) => void;
+  decideLetterRequest: (id: string, patch: Pick<HrLetterRequest, "status" | "decidedBy" | "reply" | "documentId">) => void;
+  withdrawRegularisation: (id: string) => void;
+  removeHoliday: (id: string) => void;
   replyPolicyQuestion: (id: string, reply: string, repliedBy: string) => void;
   decideRegularisation: (id: string, patch: Pick<HrRegularisation, "status" | "decidedBy" | "decisionReason">) => void;
 }
@@ -42,6 +49,14 @@ export const useHrOperationsStore = create<HrOperationsState>()(persist((set) =>
   ],
   regularisations: [],
   policyQuestions: [],
+  customHolidays: [],
+  letterRequests: [],
+  addLetterRequest: (request) => set((state) => ({ letterRequests: [request, ...state.letterRequests] })),
+  decideLetterRequest: (id, patch) => set((state) => ({ letterRequests: state.letterRequests.map((item) => item.id === id ? { ...item, ...patch, decidedAt: new Date().toISOString() } : item) })),
+  withdrawRegularisation: (id) => set((state) => ({ regularisations: state.regularisations.filter((item) => item.id !== id) })),
+  removedHolidays: [],
+  addHoliday: (holiday) => set((state) => ({ customHolidays: [...state.customHolidays.filter((item) => item.id !== holiday.id), holiday] })),
+  removeHoliday: (id) => set((state) => state.customHolidays.some((item) => item.id === id) ? { customHolidays: state.customHolidays.filter((item) => item.id !== id) } : { removedHolidays: [...state.removedHolidays, id] }),
   addPolicyQuestion: (question) => set((state) => ({ policyQuestions: [question, ...state.policyQuestions] })),
   replyPolicyQuestion: (id, reply, repliedBy) => set((state) => ({ policyQuestions: state.policyQuestions.map((item) => item.id === id ? { ...item, status: "answered", reply, repliedBy, repliedAt: new Date().toISOString() } : item) })),
   saveSettings: (settings) => set({ settings }),

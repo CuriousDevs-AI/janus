@@ -225,6 +225,8 @@ export interface HrEmployee {
   joiningDate: string;
   location: string;
   avatarColor: string;
+  /** YYYY-MM-DD. Optional so older records keep working. */
+  birthDate?: string;
   salaryMonthly: number;
   onboardingPercent: number;
   documentsDue: number;
