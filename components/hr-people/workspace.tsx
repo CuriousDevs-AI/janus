@@ -36,7 +36,7 @@ import { HrApprovalsView } from "@/components/hr-people/approvals";
 import { ArchiveEmployeeDialog, CareerHistory, EmployeeFormDialog } from "@/components/hr-people/employee-forms";
 import { applyDueChanges } from "@/lib/hr-career";
 import { HrCareerView } from "@/components/hr-people/career";
-import { usePersona } from "@/lib/demo-persona";
+import { useDemoAccount, useLoginAccount, usePersona } from "@/lib/demo-persona";
 import { useCan } from "@/lib/hr-org-hooks";
 import { HrOrganizationView } from "@/components/hr-people/organization";
 import { HrEmployeeImport } from "@/components/hr-people/employee-import";
@@ -90,6 +90,9 @@ export function HrPeopleWorkspace() {
   const title = viewTitle(shown);
 
   const persona = usePersona();
+  const viewer = useDemoAccount();
+  const loginAccount = useLoginAccount();
+  const viewingOther = Boolean(viewer && loginAccount && viewer.id !== loginAccount.id);
   React.useEffect(() => { if (demoMode && persona !== role) setDemoRole(persona); }, [persona, role, setDemoRole]);
 
   const blocked = !canOpenHrView(role, view);
@@ -104,7 +107,7 @@ export function HrPeopleWorkspace() {
         actions={<div className="flex flex-wrap items-center gap-2"></div>}
       />
       <div className="px-6 pb-10">
-        {demoMode && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />Viewing as {hrRoleLabels[role]}. {role === "payroll_admin" ? "Finance sees pay and reimbursements, not leave or employee records." : role === "employee" ? "Employees see only their own records." : "Use Viewing as in the top bar to switch."}</div>}
+        {demoMode && viewingOther && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />You are viewing as {viewer?.name}. Everything on screen is what they can see. Pick Myself in the top bar to go back.</div>}
         {blocked ? <AccessNotice role={role} /> : (
           <>
             {shown === "my-home" && <HrHomeView role={role} actorId={demoActorId(role)} />}

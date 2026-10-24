@@ -1,4 +1,5 @@
 import type { AppNotification, NotificationCategory } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 type Row = [NotificationCategory, string, string, number, string, boolean, string?, boolean?];
@@ -21,7 +22,9 @@ const rows: Row[] = [
   ["system", "Weekly report ready", "The weekly sales and collections report was sent to the owners.", 2, "08:30", true, "/analytics"],
 ];
 
-export const notifications: AppNotification[] = rows.map(([category, title, description, daysAgo, time, read, href, high], index) => ({ id: `notif-${index + 1}`, category, title, description, createdAt: at(daysAgo, time), read, href, priority: high ? "high" : "normal" }));
+const acme_notifications: AppNotification[] = rows.map(([category, title, description, daysAgo, time, read, href, high], index) => ({ id: `notif-${index + 1}`, category, title, description, createdAt: at(daysAgo, time), read, href, priority: high ? "high" : "normal" }));
+
+export const notifications: AppNotification[] = isFirstCompany ? acme_notifications : [];
 
 export function unreadCount(list: AppNotification[] = notifications): number {
   return list.filter((n) => !n.read).length;

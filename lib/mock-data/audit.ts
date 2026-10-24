@@ -1,4 +1,5 @@
 import type { ActivityActor, AuditEvent } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 const SALES: ActivityActor = { type: "ai", agentId: "agent-sales", agentName: "Sales Agent" };
@@ -32,9 +33,11 @@ const rows: Row[] = [
   [1, "09:00", SALES, "apply_discount(15%)", 7, "Metro personal-care range", "approval", "denied", true, "Blocked: 15% is above the staples limit.", "Discount limits"],
 ];
 
-export const auditEvents: AuditEvent[] = rows.map(([daysAgo, time, actor, action, customer, objectLabel, objectKind, result, approvalRequired, reason, policy], index) => ({
+const acme_auditEvents: AuditEvent[] = rows.map(([daysAgo, time, actor, action, customer, objectLabel, objectKind, result, approvalRequired, reason, policy], index) => ({
   id: `aud-${index + 1}`, at: at(daysAgo, time), actor, action, customerId: customer ? `cus-${customer}` : undefined, objectLabel, objectKind, result, reason, policy, approvalRequired,
 })).sort((x, y) => (x.at < y.at ? 1 : -1));
+
+export const auditEvents: AuditEvent[] = isFirstCompany ? acme_auditEvents : [];
 
 export function getAuditForCustomer(customerId: string): AuditEvent[] {
   return auditEvents.filter((a) => a.customerId === customerId);

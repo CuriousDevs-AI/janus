@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { scoped } from "@/lib/company";
 import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/settings/section-ui";
@@ -100,7 +101,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
   const workspacesApi = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const [storedWorkspace, setStoredWorkspace] = React.useState<string | null>(null);
   React.useEffect(() => {
-    const readActivation = () => setStoredWorkspace(window.localStorage.getItem("janus.setup.active-workspace"));
+    const readActivation = () => setStoredWorkspace(window.localStorage.getItem(scoped("janus.setup.active-workspace")));
     readActivation();
     window.addEventListener("storage", readActivation);
     window.addEventListener("janus:workspace-activation", readActivation);

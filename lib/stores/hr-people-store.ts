@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
   hrAttendance,
@@ -155,7 +156,7 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       reset: () => set({ demoRole: "owner", ...seed() }),
     }),
     {
-      name: "janus.hr-people-demo",
+      name: scoped("janus.hr-people-demo"),
       version: 3,
       storage: createJSONStorage(() => localStorage),
       // Version 2 added birthdays and October attendance history. Older saved data gets both without losing edits.

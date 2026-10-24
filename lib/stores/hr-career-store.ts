@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { HrDemoRole } from "@/lib/types";
 
@@ -25,4 +26,4 @@ export const useHrCareerStore = create<CareerState>()(persist((set) => ({
   changes: [],
   propose: (change) => set((state) => ({ changes: [change, ...state.changes] })),
   step: (id, step, status, extra) => set((state) => ({ changes: state.changes.map((item) => item.id === id ? { ...item, ...extra, status, steps: [...item.steps, { ...step, id: crypto.randomUUID(), at: new Date().toISOString() }] } : item) })),
-}), { name: "janus.hr-career-demo.v1", storage: createJSONStorage(() => localStorage) }));
+}), { name: scoped("janus.hr-career-demo.v1"), storage: createJSONStorage(() => localStorage) }));

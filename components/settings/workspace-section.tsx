@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { activeCompany } from "@/lib/company";
+import { isFirstCompany } from "@/lib/companies";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bell, CreditCard, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
@@ -24,7 +27,7 @@ import { workspaceDefinitions } from "@/lib/workspace-config";
 import { api, message } from "@/lib/api/client";
 import { useApi as apiUse } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
-import { buyers, lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo-universe";
+import { lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { useSession } from "@/components/auth/session-provider";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
 import { BillingSection } from "@/components/settings/billing-section";
@@ -217,6 +220,11 @@ function BusinessOverviewPanel() {
   const wonDeals = data?.wonDeals ?? 0;
   const pipeline = data?.pipelineValue ?? "—";
   const unavailable = loading ? "Loading verified CRM records…" : error ? "CRM summary is unavailable right now." : null;
+  const company = activeCompany();
+  const crmOn = !demoMode || company.workspaces.includes("crm-sales");
+  // The finance-flavoured panels below are written for the first company only.
+  const rich = demoMode && isFirstCompany;
+  const people = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
   return (
     <div className="mt-3 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-1 sm:mt-4 sm:p-2">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -239,26 +247,30 @@ function BusinessOverviewPanel() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Janus brief</p>
-            <p className="mt-1 text-sm leading-6 text-foreground">{unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
+            <p className="mt-1 text-sm leading-6 text-foreground">{!crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
           </div>
         </div>
         <Link href="/ai?workspace=business" className="shrink-0 text-sm font-medium text-accent hover:underline">Ask Janus →</Link>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      {crmOn ? <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
-      </div>
+      </div> : <div className="grid gap-3 sm:grid-cols-3">
+        <OverviewKpi label="People" value={String(people.length)} detail="In HR & People" />
+        <OverviewKpi label="Departments" value={String(new Set(people.map((item) => item.department)).size)} detail="Teams on record" />
+        <OverviewKpi label="CRM & Sales" value="Off" detail="Switch it on under Workspaces" />
+      </div>}
 
-      {demoMode && <OverviewPulse />}
+      {demoMode && crmOn && leads > 0 && <OverviewPulse />}
 
-      <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+      {rich && <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <OverviewChart metric={metric} onMetricChange={setMetric} loading={loading} error={error} demoMode={demoMode} leads={leads} openDeals={openDeals} wonDeals={wonDeals} />
         {demoMode ? <AttentionPanel /> : <SectionCard title="Owner attention" description="Only verified alerts and approvals appear here."><UnavailableMessage text={unavailable ?? "No verified alerts or pending approvals yet."} /></SectionCard>}
-      </div>
+      </div>}
 
-      {demoMode && <>
+      {rich && <>
         <div className="grid gap-4 xl:grid-cols-2">
           <PipelineSnapshot />
           <TargetSnapshot />
@@ -273,9 +285,9 @@ function BusinessOverviewPanel() {
 
       <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={demoMode ? "neutral" : error ? "neutral" : "success"}>{demoMode ? "Demo CRM records" : "CRM & Sales connected"}</Badge>
-          <Badge variant="neutral">{demoMode ? "Finance connected" : "Finance awaiting data"}</Badge>
-          <Badge variant="neutral">{demoMode ? "HR connected" : "Other workspaces awaiting data"}</Badge>
+          <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
+          <Badge variant="success">HR & People connected</Badge>
+          <Badge variant="neutral">Finance not connected</Badge>
         </div>
       </SectionCard>
     </div>
@@ -412,12 +424,9 @@ function WorkspacesPanel() {
   const [createdWorkspaces, setCreatedWorkspaces] = React.useState<{ id: string; type: string; name: string; description: string }[]>([]);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const created = workspaceDefinitions.filter(
-    (workspace) => workspace.status === "active" && workspace.id !== "business",
-  );
-  const available = workspaceDefinitions.filter(
-    (workspace) => workspace.status === "planned",
-  );
+  const switchedOn = demoMode ? activeCompany().workspaces : null;
+  const created = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && (switchedOn ? switchedOn.includes(workspace.id) : workspace.status === "active"));
+  const available = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && (switchedOn ? !switchedOn.includes(workspace.id) : workspace.status === "planned"));
 
   React.useEffect(() => {
     api<{ id: string; type: string; name: string; description: string }[]>("/workspaces")

@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
 import { buyers, dealRows, leadRows } from "@/lib/demo-universe";
@@ -40,4 +41,4 @@ export const useDemoCrmStore = create<CrmState>()(persist((set) => ({
   putDeal: (id, patch, event) => set((state) => ({ deals: state.deals.map((item) => item.id === id ? { ...item, ...patch, version: item.version + 1, updatedAt: event.createdAt } : item), events: { ...state.events, [id]: [event, ...(state.events[id] ?? [])] } })),
   patchContact: (id, patch) => set((state) => ({ contacts: state.contacts.map((item) => item.id === id ? { ...item, ...patch } : item) })),
   reset: () => set(seed()),
-}), { name: "janus.demo-crm.v2", version: 1, storage: createJSONStorage(() => localStorage) }));
+}), { name: scoped("janus.demo-crm.v2"), version: 1, storage: createJSONStorage(() => localStorage) }));

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { scoped } from "@/lib/company";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Building2, Check, CircleHelp, Mail, SkipForward, UsersRound, Waypoints } from "lucide-react";
 import { toast } from "sonner";
@@ -24,8 +25,8 @@ const steps: Array<{ id: WizardStep; apiId: string; label: string; description: 
   { id: "members", apiId: "members", label: "Invite your team", description: "Add teammates now or skip and invite them later from People & Access." },
   { id: "connections", apiId: "data_connections", label: "Connect data", description: "Connect a source when you are ready. This step is optional for the first session." },
 ];
-const profileStorageKey = "janus.setup.profile";
-const activationStorageKey = "janus.setup.active-workspace";
+const profileStorageKey = scoped("janus.setup.profile");
+const activationStorageKey = scoped("janus.setup.active-workspace");
 
 export default function SetupPage() {
   const router = useRouter();

@@ -13,6 +13,8 @@ import type {
   HrWhatsAppAction,
 } from "@/lib/types";
 
+import { activeSpec, isFirstCompany } from "@/lib/companies";
+
 const baseEmployees: HrEmployee[] = [
   { id: "emp-001", name: "Pankaj Neema", email: "pankaj@acmetraders.in", phone: "+91 98765 43210", title: "Owner", department: "Management", branch: "Gurugram", managerId: null, managerName: null, status: "active", employmentType: "full_time", joiningDate: "2023-04-01", location: "Gurugram", avatarColor: "#2563eb", salaryMonthly: 220000, onboardingPercent: 100, documentsDue: 0 },
   { id: "emp-002", name: "Shaista Khan", email: "shaista@acmetraders.in", phone: "+91 98765 11223", title: "HR Manager", department: "People", branch: "Gurugram", managerId: "emp-001", managerName: "Pankaj Neema", status: "active", employmentType: "full_time", joiningDate: "2024-01-08", location: "Gurugram", avatarColor: "#7c3aed", salaryMonthly: 98000, onboardingPercent: 100, documentsDue: 1 },
@@ -26,16 +28,18 @@ const baseEmployees: HrEmployee[] = [
 ];
 
 const birthDates: Record<string, string> = { "emp-001": "1985-12-02", "emp-002": "1990-11-14", "emp-003": "1988-11-03", "emp-004": "1996-10-26", "emp-005": "1993-10-24", "emp-006": "1998-12-19", "emp-007": "1994-11-29", "emp-008": "1991-10-31", "emp-009": "1997-03-18" };
-export const hrEmployees: HrEmployee[] = baseEmployees.map((employee) => ({ ...employee, birthDate: birthDates[employee.id] }));
+const acmeEmployees: HrEmployee[] = baseEmployees.map((employee) => ({ ...employee, birthDate: birthDates[employee.id] }));
+export const hrEmployees: HrEmployee[] = isFirstCompany ? acmeEmployees : activeSpec.employees ?? [];
 
-export const hrCandidates: HrCandidate[] = [
+const acme_hrCandidates: HrCandidate[] = [
   { id: "cand-001", name: "Meera Iyer", email: "meera@example.com", phone: "+91 99001 22110", role: "People Operations Executive", department: "People", stage: "interview", ownerName: "Shaista Khan", score: 88, updatedAt: "2026-10-21" },
   { id: "cand-002", name: "Rohit Malhotra", email: "rohit@example.com", phone: "+91 98100 33221", role: "Warehouse Associate", department: "Operations", stage: "offer", ownerName: "Neha Verma", score: 81, updatedAt: "2026-10-20" },
   { id: "cand-003", name: "Divya Nair", email: "divya@example.com", phone: "+91 98990 22331", role: "Account Executive", department: "Sales", stage: "screening", ownerName: "Arjun Mehta", score: 76, updatedAt: "2026-10-18" },
   { id: "cand-004", name: "Kabir Singh", email: "kabir@example.com", phone: "+91 98700 11552", role: "Finance Analyst", department: "Finance", stage: "accepted", ownerName: "Aman Verma", score: 92, updatedAt: "2026-10-16" },
 ];
+export const hrCandidates: HrCandidate[] = isFirstCompany ? acme_hrCandidates : [];
 
-const todayAttendance: HrAttendanceRecord[] = [
+const acmeTodayAttendance: HrAttendanceRecord[] = [
   { id: "att-001", employeeId: "emp-003", employeeName: "Arjun Mehta", date: "2026-10-23", status: "present", checkIn: "09:08", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
   { id: "att-002", employeeId: "emp-004", employeeName: "Riya Kapoor", date: "2026-10-23", status: "late", checkIn: "09:42", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: "Late by 42 minutes" },
   { id: "att-003", employeeId: "emp-005", employeeName: "Neha Verma", date: "2026-10-23", status: "present", checkIn: "08:57", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
@@ -44,11 +48,13 @@ const todayAttendance: HrAttendanceRecord[] = [
   { id: "att-006", employeeId: "emp-008", employeeName: "Karan Bhatt", date: "2026-10-23", status: "on_leave", checkIn: null, checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
 ];
 
+const todayAttendance: HrAttendanceRecord[] = isFirstCompany ? acmeTodayAttendance : [];
+
 /** Oct 1 to 22 for each person, so calendars and reports have real-looking history. Deterministic, so reloads match. */
 function attendanceHistory(): HrAttendanceRecord[] {
   const closed = new Set(["2026-10-02", "2026-10-20"]);
   const rows: HrAttendanceRecord[] = [];
-  baseEmployees.forEach((employee, index) => {
+  hrEmployees.forEach((employee, index) => {
     for (let day = 1; day <= 22; day += 1) {
       const date = `2026-10-${String(day).padStart(2, "0")}`;
       const weekday = new Date(`${date}T12:00:00`).getDay();
@@ -65,13 +71,14 @@ function attendanceHistory(): HrAttendanceRecord[] {
 }
 export const hrAttendance: HrAttendanceRecord[] = [...todayAttendance, ...attendanceHistory()];
 
-export const hrLeaveRequests: HrLeaveRequest[] = [
+const acme_hrLeaveRequests: HrLeaveRequest[] = [
   { id: "leave-001", employeeId: "emp-004", employeeName: "Riya Kapoor", managerId: "emp-003", managerName: "Arjun Mehta", type: "earned", from: "2026-10-28", to: "2026-10-29", days: 2, reason: "Family function in Jaipur", status: "pending", step: "manager", createdAt: "2026-10-22" },
   { id: "leave-002", employeeId: "emp-006", employeeName: "Vikas Jain", managerId: "emp-005", managerName: "Neha Verma", type: "sick", from: "2026-10-23", to: "2026-10-23", days: 1, reason: "Not feeling well", status: "needs_clarification", step: "manager", createdAt: "2026-10-23" },
   { id: "leave-003", employeeId: "emp-005", employeeName: "Neha Verma", managerId: "emp-001", managerName: "Pankaj Neema", type: "casual", from: "2026-11-04", to: "2026-11-05", days: 2, reason: "Personal work", status: "approved", step: "complete", createdAt: "2026-10-18" },
 ];
+export const hrLeaveRequests: HrLeaveRequest[] = isFirstCompany ? acme_hrLeaveRequests : [];
 
-export const hrDocuments: HrDocument[] = [
+const acme_hrDocuments: HrDocument[] = [
   { id: "doc-001", employeeId: "emp-004", employeeName: "Riya Kapoor", name: "Employment agreement", category: "Employment", visibility: "employee_manager", version: 2, status: "current", signatureStatus: "signed", issuedAt: "2025-02-03", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: "2025-02-03" },
   { id: "doc-002", employeeId: "emp-004", employeeName: "Riya Kapoor", name: "NDA and confidentiality", category: "NDA", visibility: "employee", version: 1, status: "current", signatureStatus: "signed", issuedAt: "2025-02-03", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: "2025-02-03" },
   { id: "doc-003", employeeId: "emp-006", employeeName: "Vikas Jain", name: "Bank account proof", category: "Statutory", visibility: "payroll", version: 1, status: "missing", signatureStatus: "draft", issuedAt: null, expiresAt: null, ownerName: "Aman Verma", acknowledgedAt: null },
@@ -81,51 +88,70 @@ export const hrDocuments: HrDocument[] = [
   { id: "doc-007", employeeId: "emp-008", employeeName: "Karan Bhatt", name: "Exit clearance checklist", category: "Exit", visibility: "hr", version: 1, status: "current", signatureStatus: "signed", issuedAt: "2026-10-18", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: "2026-10-22" },
   { id: "doc-008", employeeId: "emp-006", employeeName: "Vikas Jain", name: "Handbook acknowledgement", category: "Policy", visibility: "employee", version: 1, status: "current", signatureStatus: "sent", issuedAt: "2026-10-14", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: null },
 ];
+export const hrDocuments: HrDocument[] = isFirstCompany ? acme_hrDocuments : [];
 
-export const hrOnboardingTasks: HrOnboardingTask[] = [
+const acme_hrOnboardingTasks: HrOnboardingTask[] = [
   { id: "onb-001", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Upload bank account proof", ownerRole: "employee", status: "todo", dueAt: "2026-10-25" },
   { id: "onb-002", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Sign NDA and offer letter", ownerRole: "employee", status: "in_progress", dueAt: "2026-10-24" },
   { id: "onb-003", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Confirm first-day shift", ownerRole: "manager", status: "done", dueAt: "2026-10-20" },
   { id: "onb-004", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Create payroll profile", ownerRole: "finance", status: "todo", dueAt: "2026-10-27" },
 ];
+export const hrOnboardingTasks: HrOnboardingTask[] = isFirstCompany ? acme_hrOnboardingTasks : [];
 
-export const hrPayrollRuns: HrPayrollRun[] = [
+const acmePayrollRuns: HrPayrollRun[] = [
   { id: "pay-2026-10", month: "October 2026", status: "review", employeeCount: 8, gross: 615000, deductions: 68500, net: 546500, deltaPercent: 4.8, issueCount: 2, updatedAt: "2026-10-23T09:10:00+05:30" },
   { id: "pay-2026-09", month: "September 2026", status: "locked", employeeCount: 7, gross: 587000, deductions: 64500, net: 522500, deltaPercent: 2.1, issueCount: 0, updatedAt: "2026-09-30T18:20:00+05:30" },
 ];
+const grossPay = hrEmployees.reduce((sum, item) => sum + item.salaryMonthly, 0);
+const otherPayrollRuns: HrPayrollRun[] = [
+  { id: "pay-2026-10", month: "October 2026", status: "review", employeeCount: hrEmployees.length, gross: grossPay, deductions: Math.round(grossPay * 0.11), net: grossPay - Math.round(grossPay * 0.11), deltaPercent: 0, issueCount: 0, updatedAt: "2026-10-23T10:00:00+05:30" },
+  { id: "pay-2026-09", month: "September 2026", status: "locked", employeeCount: hrEmployees.length, gross: grossPay, deductions: Math.round(grossPay * 0.11), net: grossPay - Math.round(grossPay * 0.11), deltaPercent: 0, issueCount: 0, updatedAt: "2026-09-28T10:00:00+05:30" },
+];
+export const hrPayrollRuns: HrPayrollRun[] = isFirstCompany ? acmePayrollRuns : otherPayrollRuns;
 
-export const hrPayrollIssues: HrPayrollIssue[] = [
+const acme_hrPayrollIssues: HrPayrollIssue[] = [
   { id: "issue-001", employeeId: "emp-006", employeeName: "Vikas Jain", severity: "high", title: "Bank account proof missing", detail: "Payroll profile cannot be released until the employee uploads a verified account proof.", status: "open", amountDelta: 0 },
   { id: "issue-002", employeeId: "emp-008", employeeName: "Karan Bhatt", severity: "medium", title: "Notice-period leave adjustment", detail: "Two leave days overlap with the recorded notice period and need HR review.", status: "open", amountDelta: -5200 },
   { id: "issue-003", employeeId: "emp-004", employeeName: "Riya Kapoor", severity: "low", title: "Variable commission changed", detail: "Commission is ₹3,500 higher than September based on approved CRM deals.", status: "resolved", amountDelta: 3500 },
 ];
+export const hrPayrollIssues: HrPayrollIssue[] = isFirstCompany ? acme_hrPayrollIssues : [];
 
-export const hrWhatsAppActions: HrWhatsAppAction[] = [
+const acme_hrWhatsAppActions: HrWhatsAppAction[] = [
   { id: "wa-001", employeeId: "emp-004", employeeName: "Riya Kapoor", action: "leave", status: "delivered", createdAt: "2026-10-22T16:30:00+05:30" },
   { id: "wa-002", employeeId: "emp-006", employeeName: "Vikas Jain", action: "onboarding", status: "sent", createdAt: "2026-10-22T10:10:00+05:30" },
   { id: "wa-003", employeeId: "emp-005", employeeName: "Neha Verma", action: "payslip", status: "approved", createdAt: "2026-10-01T11:20:00+05:30" },
 ];
+export const hrWhatsAppActions: HrWhatsAppAction[] = isFirstCompany ? acme_hrWhatsAppActions : [];
 
-export const hrExpenseClaims: HrExpenseClaim[] = [
+const acme_hrExpenseClaims: HrExpenseClaim[] = [
   { id: "expense-001", employeeId: "emp-006", employeeName: "Vikas Jain", category: "travel", amount: 1840, submittedAt: "2026-10-22", status: "manager_review", approverName: "Neha Verma", receiptAttached: true },
   { id: "expense-002", employeeId: "emp-004", employeeName: "Riya Kapoor", category: "meals", amount: 1260, submittedAt: "2026-10-21", status: "hr_review", approverName: "Shaista Khan", receiptAttached: true },
   { id: "expense-003", employeeId: "emp-005", employeeName: "Neha Verma", category: "phone", amount: 899, submittedAt: "2026-10-18", status: "paid", approverName: "Pankaj Neema", receiptAttached: true },
 ];
+export const hrExpenseClaims: HrExpenseClaim[] = isFirstCompany ? acme_hrExpenseClaims : [];
 
-export const hrSignatureAudits: HrSignatureAudit[] = [
+const acme_hrSignatureAudits: HrSignatureAudit[] = [
   { id: "sig-001", documentId: "doc-001", documentName: "Employment agreement", employeeName: "Riya Kapoor", event: "signed", actorName: "Riya Kapoor", occurredAt: "2026-10-21T16:20:00+05:30", device: "Chrome · Delhi" },
   { id: "sig-002", documentId: "doc-004", documentName: "Offer letter", employeeName: "Vikas Jain", event: "viewed", actorName: "Vikas Jain", occurredAt: "2026-10-22T11:05:00+05:30", device: "Android · Jaipur" },
   { id: "sig-003", documentId: "doc-005", documentName: "Experience letter", employeeName: "Karan Bhatt", event: "sent", actorName: "Shaista Khan", occurredAt: "2026-10-20T09:15:00+05:30", device: "Janus · Gurugram" },
 ];
+export const hrSignatureAudits: HrSignatureAudit[] = isFirstCompany ? acme_hrSignatureAudits : [];
 
-export const hrComplianceItems: HrComplianceItem[] = [
+const acmeComplianceItems: HrComplianceItem[] = [
   { id: "compliance-001", title: "PF / ECR filing", jurisdiction: "EPFO · All states", dueAt: "2026-11-15", ownerName: "Aman Verma", status: "upcoming", detail: "October contribution file is ready for review." },
   { id: "compliance-002", title: "ESI contribution", jurisdiction: "ESIC · Haryana / Rajasthan", dueAt: "2026-11-15", ownerName: "Aman Verma", status: "attention", detail: "One employee bank/ESI detail needs verification." },
   { id: "compliance-003", title: "Professional Tax return", jurisdiction: "Haryana", dueAt: "2026-11-10", ownerName: "Shaista Khan", status: "due", detail: "Review the state return before submission." },
   { id: "compliance-004", title: "TDS Form 24Q preparation", jurisdiction: "Income Tax · Q2", dueAt: "2026-10-31", ownerName: "Aman Verma", status: "filed", detail: "Draft prepared from the approved payroll run." },
 ];
+const hrOwner = hrEmployees.find((item) => item.department === "People")?.name ?? hrEmployees[0]?.name ?? "HR";
+const otherComplianceItems: HrComplianceItem[] = [
+  { id: "compliance-001", title: "PF / ECR filing", jurisdiction: "EPFO", dueAt: "2026-11-15", ownerName: hrOwner, status: "upcoming", detail: "Monthly provident fund return for October." },
+  { id: "compliance-002", title: "Professional Tax return", jurisdiction: "State PT office", dueAt: "2026-11-10", ownerName: hrOwner, status: "upcoming", detail: "Monthly professional tax payment." },
+  { id: "compliance-003", title: "TDS Form 24Q preparation", jurisdiction: "Income Tax · Q2", dueAt: "2026-10-31", ownerName: hrOwner, status: "due", detail: "Quarterly TDS return on salaries." },
+];
+export const hrComplianceItems: HrComplianceItem[] = isFirstCompany ? acmeComplianceItems : otherComplianceItems;
 
-export const hrAttendanceTrend = [
+const acmeAttendanceTrend = [
   { label: "Mon", present: 7, absent: 1 },
   { label: "Tue", present: 8, absent: 0 },
   { label: "Wed", present: 7, absent: 1 },
@@ -133,8 +159,9 @@ export const hrAttendanceTrend = [
   { label: "Fri", present: 7, absent: 1 },
   { label: "Sat", present: 5, absent: 3 },
 ];
+export const hrAttendanceTrend = isFirstCompany ? acmeAttendanceTrend : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, index) => ({ label, present: Math.max(1, hrEmployees.length - (index % 3 === 0 ? 1 : 0) - (label === "Sat" ? 2 : 0)), absent: (index % 3 === 0 ? 1 : 0) + (label === "Sat" ? 2 : 0) }));
 
-export const hrDepartmentCounts = [
+const acmeDepartmentCounts = [
   { label: "Sales", value: 2 },
   { label: "Operations", value: 2 },
   { label: "People", value: 1 },
@@ -142,3 +169,4 @@ export const hrDepartmentCounts = [
   { label: "Support", value: 1 },
   { label: "Management", value: 1 },
 ];
+export const hrDepartmentCounts = isFirstCompany ? acmeDepartmentCounts : [...new Set(hrEmployees.map((item) => item.department))].map((label) => ({ label, value: hrEmployees.filter((item) => item.department === label).length }));
