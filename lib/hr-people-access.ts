@@ -61,7 +61,7 @@ const staff: HrDemoRole[] = ["owner", "hr_manager", "reporting_manager", "payrol
 
 /** Which preview roles may open each HR view. Anything not listed is open only to HR and the owner. */
 const viewAccess: Record<string, HrDemoRole[]> = {
-  overview: everyone, "my-profile": everyone, "my-requests": everyone, "my-documents": everyone, "my-onboarding": everyone, "my-payslips": everyone, "policy-qa": everyone,
+  overview: everyone, "my-home": everyone, engage: everyone, "leave-apply": everyone, "leave-balances": everyone, "holiday-calendar": everyone, "attendance-info": everyone, "my-regularization": everyone, "document-center": everyone, "my-profile": everyone, "my-requests": everyone, "my-documents": everyone, "my-onboarding": everyone, "my-payslips": everyone, "policy-qa": everyone,
   attendance: staff, leave: staff, "leave-calendar": staff, expenses: staff,
   employees: ["owner", "hr_manager", "payroll_admin"], documents: ["owner", "hr_manager", "payroll_admin"], payroll: ["owner", "hr_manager", "payroll_admin"],
   compliance: ["owner", "hr_manager", "payroll_admin"],

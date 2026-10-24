@@ -129,19 +129,34 @@ export const businessNavSections: NavSection[] = [
 const moduleNavSections: Record<Exclude<WorkspaceId, "business" | "crm-sales">, NavSection[]> = {
   "hr-people": [
     { title: "My HR", items: [
+      { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard },
+      { label: "Engage", href: "/workspace/hr-people?view=engage", icon: Sparkles },
       { label: "My profile", href: "/workspace/hr-people?view=my-profile", icon: UserRoundPlus },
-      { label: "My requests", href: "/workspace/hr-people?view=my-requests", icon: ClipboardList },
+      { label: "My onboarding", href: "/workspace/hr-people?view=my-onboarding", icon: UserRoundPlus },
+      { label: "Document Center", href: "/workspace/hr-people?view=document-center", icon: FileText },
       { label: "My documents", href: "/workspace/hr-people?view=my-documents", icon: FileText },
       { label: "Ask about policy", href: "/workspace/hr-people?view=policy-qa", icon: Sparkles },
-      { label: "My onboarding", href: "/workspace/hr-people?view=my-onboarding", icon: UserRoundPlus },
-      { label: "My payslips", href: "/workspace/hr-people?view=my-payslips", icon: Receipt, requiredPermission: "hr:payroll:read" },
+    ] },
+    { title: "Salary", items: [
+      { label: "Payslips", href: "/workspace/hr-people?view=my-payslips", icon: Receipt },
+      { label: "Reimbursements", href: "/workspace/hr-people?view=my-payslips&tab=reimbursements", icon: WalletCards },
+    ] },
+    { title: "Leave", items: [
+      { label: "Leave Apply", href: "/workspace/hr-people?view=leave-apply", icon: ClipboardList },
+      { label: "Leave Balances", href: "/workspace/hr-people?view=leave-balances", icon: CalendarClock },
+      { label: "Leave Calendar", href: "/workspace/hr-people?view=leave-calendar", icon: CalendarClock },
+      { label: "Holiday Calendar", href: "/workspace/hr-people?view=holiday-calendar", icon: CalendarClock },
+      { label: "My requests", href: "/workspace/hr-people?view=my-requests", icon: ClipboardList },
+    ] },
+    { title: "Attendance", items: [
+      { label: "Attendance Info", href: "/workspace/hr-people?view=attendance-info", icon: CalendarClock },
+      { label: "Regularization & Permission", href: "/workspace/hr-people?view=my-regularization", icon: ClipboardList },
     ] },
     { title: "HR & People", items: [
       { label: "HR Overview", href: "/workspace/hr-people", icon: LayoutDashboard, requiredPermission: "hr:read" },
       { label: "Employees", href: "/workspace/hr-people?view=employees", icon: Users, requiredPermission: "hr:read" },
       { label: "Attendance", href: "/workspace/hr-people?view=attendance", icon: CalendarClock, requiredPermission: "hr:read" },
       { label: "Leave Management", href: "/workspace/hr-people?view=leave", icon: CalendarClock, requiredPermission: "hr:read" },
-      { label: "Leave Calendar", href: "/workspace/hr-people?view=leave-calendar", icon: CalendarClock, requiredPermission: "hr:read" },
       { label: "Recruitment", href: "/workspace/hr-people?view=recruitment", icon: UserRoundPlus, requiredPermission: "hr:manage" },
       { label: "Payroll", href: "/workspace/hr-people?view=payroll", icon: Receipt, requiredPermission: "hr:payroll:read" },
       { label: "Performance & Reviews", href: "/workspace/hr-people?view=performance", icon: BarChart3, requiredPermission: "hr:read" },

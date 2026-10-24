@@ -34,16 +34,17 @@ export function nextExpenseStatus(mode: "manager" | "hr" | "finance", settings: 
 }
 const statusText: Record<HrExpenseClaim["status"], string> = { submitted: "submitted", manager_review: "manager review", hr_review: "HR review", approved: "approved", rejected: "rejected", paid: "paid" };
 
-export function HrExpensesView({ role, actorId }: { role: HrDemoRole; actorId: string }) {
+export function HrExpensesView({ role, actorId, personal = false }: { role: HrDemoRole; actorId: string; personal?: boolean }) {
   const { employees, expenseClaims, updateExpense } = useHrPeopleStore();
   const { settings, evidence, audit, log } = useHrOperationsStore();
   const [submitting, setSubmitting] = React.useState(false);
   const [detail, setDetail] = React.useState<HrExpenseClaim | null>(null);
   const [rejecting, setRejecting] = React.useState<HrExpenseClaim | null>(null);
-  const wide = canManageHr(role) || role === "payroll_admin";
+  // Personal mode is the employee's own reimbursements: only their claims, whatever their role.
+  const wide = !personal && (canManageHr(role) || role === "payroll_admin");
   const actor = employees.find((item) => item.id === actorId);
   const managesAny = employees.some((item) => item.managerId === actorId);
-  const scopeIds = new Set(employees.filter((item) => wide || (role === "reporting_manager" ? isTeamOf(item, actorId) : item.id === actorId)).map((item) => item.id));
+  const scopeIds = new Set(employees.filter((item) => wide || (!personal && role === "reporting_manager" ? isTeamOf(item, actorId) : item.id === actorId)).map((item) => item.id));
   const claims = expenseClaims.filter((item) => scopeIds.has(item.employeeId)).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const verdict = (claim: HrExpenseClaim) => canDecideExpense(claim, employees.find((item) => item.id === claim.employeeId), actorId, role, managesAny);
   const month = hrToday().slice(0, 7);
@@ -57,7 +58,7 @@ export function HrExpensesView({ role, actorId }: { role: HrDemoRole; actorId: s
   }
 
   return <div className="space-y-5">
-    <HrStats items={[{ label: "Claims in view", value: claims.length, hint: wide ? "Everyone" : role === "reporting_manager" ? "You and your team" : "Yours" }, { label: "Waiting for you", value: claims.filter((item) => verdict(item).allowed).length, hint: "Claims you can decide" }, { label: "Claimed this month", value: hrMoney(monthTotal), hint: "Excluding rejected" }, { label: "Receipt rule", value: `Above ${hrMoney(RECEIPT_ABOVE)}`, hint: "A receipt is required" }]} />
+    <HrStats items={[{ label: "Claims in view", value: claims.length, hint: wide ? "Everyone" : !personal && role === "reporting_manager" ? "You and your team" : "Yours" }, { label: "Waiting for you", value: claims.filter((item) => verdict(item).allowed).length, hint: "Claims you can decide" }, { label: "Claimed this month", value: hrMoney(monthTotal), hint: "Excluding rejected" }, { label: "Receipt rule", value: `Above ${hrMoney(RECEIPT_ABOVE)}`, hint: "A receipt is required" }]} />
     <HrPanel title="Expenses & reimbursements" description={`Claims go to the reporting manager${settings.approvalChain === "manager_hr" ? ", then HR" : ""}. Finance marks them paid once approved. No money moves from this screen.`} actions={actor ? <Button size="sm" onClick={() => setSubmitting(true)}><Plus className="mr-1 size-3.5" />Submit expense</Button> : undefined}>
       {claims.length ? <HrTable headings={["Employee", "Category", "Amount", "Submitted", "Status", "Actions"]}>{claims.map((claim) => { const v = verdict(claim); return <tr key={claim.id}>
         <td className={hrCell}><p className="font-medium">{claim.employeeName}</p><p className="text-xs text-muted-foreground">Approver: {claim.approverName}</p></td>
