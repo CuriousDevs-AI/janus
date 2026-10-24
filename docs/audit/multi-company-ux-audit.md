@@ -31,9 +31,9 @@ It is **not yet a believable end-to-end prototype** because of five things, in t
 
 ### P0 — blocks the demo
 
-**P0-1. `/ai` crashes for every company and every role that can open it.**
+**P0-1. `/ai` crashes for every company (verified as Owner; other roles have no AI link).**
 `/ai`, `/ai?workspace=business`, `/ai?workspace=crm-sales` and the HR AI Chat link all render "This page couldn't load" (`Cannot read properties of undefined (reading 'subject')`).
-Cause: `lib/services/business-ai.ts:97,265` builds a canned answer at module load using `urgentTickets[0]` and `urgentTickets[1]`. The unified Acme data has fewer than two urgent tickets, and Nimbus and GreenLeaf have none, so importing the module throws.
+Cause (confirmed): `lib/services/business-ai.ts:97,265` builds a canned answer at module load using `urgentTickets[0]` and `urgentTickets[1]`. Acme's data has exactly one urgent ticket and Nimbus and GreenLeaf have none, so importing the module throws.
 Impact: Janus Intelligence, AI Assistant and "Ask Janus →" on Business Overview are dead. This is the product's headline feature.
 Fix direction: build those answers lazily and tolerate missing tickets. Also have the page answer from the active company's records, not Acme's.
 
@@ -62,7 +62,7 @@ After the wizard with "Start empty":
 Nothing tells the owner what to do first. There is no checklist for a company with `setupDone` false except the Portfolio alert for GreenLeaf.
 
 **P1-4. Lead Sources tells the owner to ask the owner.**
-`app/(app)/lead-sources/page.tsx:53` shows "Ask an owner or admin to configure lead sources." while signed in as the Owner.
+`app/(app)/lead-sources/page.tsx:53` shows "Ask an owner or admin to configure lead sources." while signed in as the Owner. Likely cause: the page checks `session.permissions.includes("sources:manage")` without honouring the `*` wildcard that the sidebar honours, so the Owner's demo session fails the check. The same check gates buttons in `leads/page.tsx:362`, `dashboard/page.tsx:28` and `lead-sources/new/page.tsx:37` (not yet confirmed there).
 
 **P1-5. No way to add a lead or customer by hand.**
 Leads, Customers and Deals have no "Add lead / Add customer" action (only "Create deal" from an existing lead). A new company therefore has no path to its first record in a no-backend prototype. The README already lists manual entry as not wired. For a prototype built on demo data it is the biggest CRM gap.
@@ -71,7 +71,7 @@ Leads, Customers and Deals have no "Add lead / Add customer" action (only "Creat
 
 ### P2 — confusing or inconsistent
 
-**P2-1. Two different "today"s.** The CRM uses a fixed `DEMO_TODAY = 2026-10-24` (`lib/demo-universe.ts:11`). HR uses the live clock ("Sunday, 25 October", "My day 25 Oct · weekly off") while its attendance and leave seeds are dated 23 Oct. In a live demo the days drift apart, and on a weekend HR shows "weekly off" with 0 on leave.
+**P2-1. Two different "today"s.** The CRM uses a fixed `DEMO_TODAY = 2026-10-24` (`lib/demo-universe.ts:11`). HR uses the live clock (`todayIst()` in `lib/hr-import.ts:97`; it showed "Sunday, 25 October", "My day 25 Oct · weekly off") while its attendance and leave seeds are dated 23 Oct. In a live demo the days drift apart, and on a weekend HR shows "weekly off" with 0 on leave.
 
 **P2-2. Counts that should match don't.** Acme HR Overview "Pending approvals 2" vs Pending Approvals page "Waiting for you 3" vs Leave Management "Waiting for you 1" vs Portfolio "2 leave requests waiting". Each may be correct for its scope, but none says what its scope is. Usage & Cost shows "Total this month ₹1.9K" next to "₹9.9K total, last 7 days".
 
