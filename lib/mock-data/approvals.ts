@@ -1,4 +1,5 @@
 import type { Approval } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 type Spec = Omit<Approval, "requestedAt" | "decidedAt"> & { daysAgo: number; time: string; decidedAfterHours?: number };
@@ -15,11 +16,13 @@ const specs: Spec[] = [
   { id: "appr-10", customerId: "cus-5", actionLabel: "Reopen Green Basket with a 12% discount", actionKind: "discount", risk: "high", requestedById: "u-3", requestedByType: "human", status: "rejected", decidedById: "u-1", decidedAfterHours: 4, daysAgo: 20, time: "17:00", reasoning: "The account chose a nearer distributor on price. Riya proposed a deep discount to win it back.", policy: "Discounts above 10% are not allowed on staples.", amount: 14400, expectedImpact: "Could win back a ₹1.2L account at a thin margin." },
 ];
 
-export const approvals: Approval[] = specs.map(({ daysAgo, time, decidedAfterHours, ...rest }) => {
+const acme_approvals: Approval[] = specs.map(({ daysAgo, time, decidedAfterHours, ...rest }) => {
   const requestedAt = at(daysAgo, time);
   const decidedAt = rest.status === "pending" ? undefined : new Date(new Date(requestedAt).getTime() + (decidedAfterHours ?? 1) * 3600000).toISOString().replace("Z", "+00:00");
   return { ...rest, requestedAt, decidedAt };
 });
+
+export const approvals: Approval[] = isFirstCompany ? acme_approvals : [];
 
 export function getApprovalById(id?: string): Approval | undefined {
   if (!id) return undefined;

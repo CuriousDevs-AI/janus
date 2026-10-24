@@ -1,4 +1,5 @@
 import type { Activity, ActivityActor, ActivityType } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 const AI = {
@@ -23,7 +24,7 @@ function a(customer: number, type: ActivityType, actor: ActivityActor, title: st
   return { id: `act-${counter}`, customerId: `cus-${customer}`, type, actor, title, createdAt: at(daysAgo, time), ...extra };
 }
 
-export const activities: Activity[] = [
+const acme_activities: Activity[] = [
   // Northstar Retail: a first order, then a festive range that is still moving
   a(1, "lead_created", SYS, "New website lead: festive range enquiry", 35, "10:15", { relatedKind: "lead" }),
   a(1, "deal_won", H.pankaj, "First order won: ₹3.1L, 6 stores", 22, "16:00", { relatedKind: "deal" }),
@@ -67,6 +68,8 @@ export const activities: Activity[] = [
   a(8, "proposal_sent", H.riya, "Proposal sent: pharmacy essentials (₹1.4L)", 6, "16:00", { relatedId: "deal-8", relatedKind: "deal" }),
   a(6, "stage_changed", H.arjun, "Moved to Qualified", 4, "12:00", { relatedId: "deal-6", relatedKind: "deal" }),
 ];
+
+export const activities: Activity[] = isFirstCompany ? acme_activities : [];
 
 export function getActivitiesForCustomer(customerId: string): Activity[] {
   return activities.filter((a) => a.customerId === customerId).sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1));

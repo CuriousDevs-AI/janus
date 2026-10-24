@@ -1,4 +1,5 @@
 import type { KnowledgeDocument, KnowledgeSourceType } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 type Doc = { id: string; title: string; type: KnowledgeSourceType; category: KnowledgeDocument["category"]; status: KnowledgeDocument["status"]; chunks: number; agents: string[]; size: string; retrievals: number; updatedDaysAgo: number; createdDaysAgo: number; excerpt: string; history: [number, string, string][] };
@@ -11,11 +12,13 @@ const docs: Doc[] = [
   { id: "kb-6", title: "Delivery slots and cut-off times", type: "faq", category: "support", status: "draft", chunks: 12, agents: ["agent-sales", "agent-support"], size: "44 KB", retrievals: 41, updatedDaysAgo: 3, createdDaysAgo: 5, excerpt: "Orders placed before 6pm are dispatched next day from Gurugram. Rajasthan routes run Monday, Wednesday and Friday. Dark-store slots start at 5:30am and need a day's notice...", history: [[1, "Neha Verma", "First draft from the warehouse schedule"]] },
 ];
 
-export const knowledgeDocuments: KnowledgeDocument[] = docs.map((doc) => ({
+const acme_knowledgeDocuments: KnowledgeDocument[] = docs.map((doc) => ({
   id: doc.id, title: doc.title, type: doc.type, category: doc.category, status: doc.status, version: doc.history.length, chunkCount: doc.chunks, usedByAgentIds: doc.agents,
   updatedAt: at(doc.updatedDaysAgo, "10:00"), createdAt: at(doc.createdDaysAgo, "10:00"), sizeLabel: doc.size, retrievalCount30d: doc.retrievals, excerpt: doc.excerpt,
   versions: doc.history.map(([version, updatedBy, changeSummary], index) => ({ version, updatedAt: at(doc.updatedDaysAgo + index * 45, "10:00"), updatedBy, changeSummary })).sort((a, b) => b.version - a.version),
 }));
+
+export const knowledgeDocuments: KnowledgeDocument[] = isFirstCompany ? acme_knowledgeDocuments : [];
 
 export function getKnowledgeDocById(id?: string): KnowledgeDocument | undefined {
   if (!id) return undefined;

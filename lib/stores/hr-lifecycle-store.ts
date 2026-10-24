@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export interface HrLifecycleEvent {
@@ -112,4 +113,4 @@ export const useHrLifecycleStore = create<HrLifecycleState>()(persist((set) => (
     return { ...exit, tasks: exit.tasks.map((item) => item.id === taskId ? { ...item, done, note, completedAt: done ? new Date().toISOString() : undefined } : item), events: [lifecycleEvent(actor, `${done ? "Completed" : "Reopened"}: ${task?.title ?? taskId}. ${note}`), ...exit.events] };
   }) })),
   addOnboardingNote: (id, event) => set((state) => ({ onboardingNotes: { ...state.onboardingNotes, [id]: [event, ...(state.onboardingNotes[id] ?? [])] } })),
-}), { name: "janus.hr-lifecycle-demo.v1", storage: createJSONStorage(() => localStorage) }));
+}), { name: scoped("janus.hr-lifecycle-demo.v1"), storage: createJSONStorage(() => localStorage) }));

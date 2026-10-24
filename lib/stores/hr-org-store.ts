@@ -1,6 +1,8 @@
 "use client";
 
 import { create } from "zustand";
+import { activeSpec, isFirstCompany } from "@/lib/companies";
+import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type OrgPermission =
@@ -30,7 +32,21 @@ interface HrOrgState {
   assignRole: (employeeId: string, roleId: string | null) => void;
 }
 
+/** Departments for a company other than the first: one per department its people belong to, headed by whoever has no manager inside it. */
+function derivedDepartments(): HrDepartment[] {
+  const people = activeSpec.employees ?? [];
+  const names = [...new Set(people.map((item) => item.department))];
+  const headOf = (name: string) => people.find((item) => item.department === name && !people.some((other) => other.id === item.managerId && other.department === name));
+  const ids = new Map(names.map((name) => [name, `dept-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`]));
+  return names.map((name) => {
+    const head = headOf(name);
+    const parent = people.find((item) => item.id === head?.managerId)?.department;
+    return { id: ids.get(name)!, name, description: "", headId: head?.id ?? null, parentId: parent && parent !== name ? ids.get(parent) ?? null : null, steps: null, longLeave: null, backupApproverId: null, active: true };
+  });
+}
+
 export const defaultDepartments = (): HrDepartment[] => {
+  if (!isFirstCompany) return derivedDepartments();
   const base = { description: "", steps: null, longLeave: null, backupApproverId: null, active: true };
   return [
     { ...base, id: "dept-management", name: "Management", headId: "emp-001", parentId: null, description: "Owner and leadership" },
@@ -51,7 +67,7 @@ export const defaultRoles = (): HrRoleDef[] => [
 ];
 
 /** Who holds which role today. Anyone not listed here gets the plain Employee role. */
-export const defaultAssignments = (): Record<string, string> => ({ "emp-001": "role-owner", "emp-002": "role-hr", "emp-003": "role-department-head", "emp-007": "role-payroll" });
+export const defaultAssignments = (): Record<string, string> => !isFirstCompany ? Object.fromEntries((activeSpec.accounts ?? []).flatMap((item) => item.hrRole === "owner" ? [[item.employeeId, "role-owner"]] : item.hrRole === "hr_manager" ? [[item.employeeId, "role-hr"]] : item.hrRole === "payroll_admin" ? [[item.employeeId, "role-payroll"]] : item.crm === "team" ? [[item.employeeId, "role-department-head"]] : [])) : ({ "emp-001": "role-owner", "emp-002": "role-hr", "emp-003": "role-department-head", "emp-007": "role-payroll" });
 
 export const useHrOrgStore = create<HrOrgState>()(persist((set) => ({
   departments: defaultDepartments(), roles: defaultRoles(), assignments: defaultAssignments(),
@@ -62,7 +78,7 @@ export const useHrOrgStore = create<HrOrgState>()(persist((set) => ({
   removeRole: (id) => set((state) => ({ roles: state.roles.filter((item) => item.id !== id), assignments: Object.fromEntries(Object.entries(state.assignments).filter(([, roleId]) => roleId !== id)) })),
   assignRole: (employeeId, roleId) => set((state) => { const next = { ...state.assignments }; if (roleId) next[employeeId] = roleId; else delete next[employeeId]; return { assignments: next }; }),
 }), {
-  name: "janus.hr-org-demo.v1", version: 3, storage: createJSONStorage(() => localStorage),
+  name: scoped("janus.hr-org-demo.v1"), version: 3, storage: createJSONStorage(() => localStorage),
   // Version 2 replaced "route + steps" with an ordered list of approval levels.
   migrate: (persisted) => {
     const state = persisted as { departments?: (Partial<HrDepartment> & { leaveRoute?: string; chain?: string })[] };

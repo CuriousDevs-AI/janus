@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { HrDemoRole } from "@/lib/types";
 import { accountById, type DemoAccount } from "@/lib/demo-accounts";
+import { activeCompany } from "@/lib/company";
 
 /** The HR role of whoever is signed in (or being viewed). */
 export type Persona = HrDemoRole;
@@ -74,7 +75,11 @@ const supportRoutes = ["/tickets", "/inbox", "/customers", "/notifications"];
 /** Where a person may go. HR pages are open to everyone signed in; the rest depends on their CRM scope and permissions. */
 export function personaMayOpen(account: DemoAccount | undefined, pathname: string) {
   if (!account) return false;
-  if (account.hrRole === "owner" || pathname.startsWith("/workspace/hr-people")) return true;
+  if (pathname.startsWith("/workspace/hr-people")) return true;
+  const crmCore = ["/dashboard", "/leads", "/deals", "/customers", "/inbox", "/tickets", "/lead-sources"];
+  // A company that has not switched on CRM has no CRM pages for anyone, including the Owner.
+  if (crmCore.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) && !activeCompany().workspaces.includes("crm-sales")) return false;
+  if (account.hrRole === "owner") return true;
   if (account.crm === "none") return false;
   const needed = routePermission.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1];
   if (needed) return personaPermissions(account).includes(needed);

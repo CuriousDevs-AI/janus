@@ -1,4 +1,5 @@
 import type { ChannelType, Conversation, ConversationCategory, Message } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 /** Who says a line: c = the customer, ai = a Janus agent, h = a person at Acme (user id), s = a system note. */
@@ -53,7 +54,7 @@ const when = (chat: Chat, minutes: number) => {
   return at(chat.daysAgo, `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`);
 };
 
-export const messages: Message[] = chats.flatMap((chat) => chat.lines.map((line, index): Message => {
+const acme_messages: Message[] = chats.flatMap((chat) => chat.lines.map((line, index): Message => {
   const base = { id: `msg-${chat.id.slice(5)}-${index + 1}`, conversationId: chat.id, channel: chat.channel, createdAt: when(chat, line[2]), externalMessageId: `${chat.thread}_${index + 1}` };
   if (line[0] === "c") return { ...base, sender: { type: "customer", customerId: `cus-${chat.customer}` }, direction: "inbound", content: line[1] };
   if (line[0] === "ai") return { ...base, sender: { type: "ai", agentId: chat.category === "support" ? "agent-support" : "agent-sales" }, direction: "outbound", content: line[1], aiMeta: line[3] ? { confidence: line[3].confidence, toolCalls: line[3].tools, knowledgeUsed: line[3].knowledge } : undefined };
@@ -61,10 +62,14 @@ export const messages: Message[] = chats.flatMap((chat) => chat.lines.map((line,
   return { ...base, sender: { type: "system" }, direction: "outbound", content: line[1], systemMeta: { kind: line[3] === "Ticket created" ? "ticket_created" : line[3] === "Approval requested" ? "deal_updated" : "note", label: line[3] } };
 }));
 
-export const conversations: Conversation[] = chats.map((chat) => {
-  const last = messages.filter((item) => item.conversationId === chat.id).at(-1)!;
+const acme_conversations: Conversation[] = chats.map((chat) => {
+  const last = acme_messages.filter((item) => item.conversationId === chat.id).at(-1)!;
   return { id: chat.id, customerId: `cus-${chat.customer}`, channel: chat.channel, category: chat.category, subject: chat.subject, unreadCount: chat.unread, priority: chat.priority, lastMessageAt: last.createdAt, lastMessagePreview: last.content.length > 80 ? `${last.content.slice(0, 77)}…` : last.content, assignedToId: chat.assignedTo, aiActive: chat.aiActive, status: chat.status, externalThreadId: chat.thread };
 });
+
+export const messages: Message[] = isFirstCompany ? acme_messages : [];
+
+export const conversations: Conversation[] = isFirstCompany ? acme_conversations : [];
 
 export function getConversationById(id?: string): Conversation | undefined {
   if (!id) return undefined;

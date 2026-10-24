@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { activeCompany, activeCompanyId, readCompanies, scoped, seedCompanies, subscribeCompanies, switchCompany, type CompanyRecord } from "@/lib/company";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
   Circle,
@@ -55,14 +56,17 @@ export function SidebarNav({
     role: session.role,
     avatarColor: "#2563eb",
   };
+  const router = useRouter();
   const tenant = session.tenant;
+  const companies = React.useSyncExternalStore(subscribeCompanies, () => JSON.stringify(readCompanies()), () => JSON.stringify(seedCompanies));
+  const companyList = JSON.parse(companies) as CompanyRecord[];
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
   const account = useDemoAccount();
   const hrDemoRole: HrDemoRole = account?.hrRole ?? "owner";
   React.useEffect(() => {
-    const key = "janus.setup.active-workspace";
+    const key = scoped("janus.setup.active-workspace");
     const read = () => {
       const stored = window.localStorage.getItem(key);
       setActivationOverride(stored === null ? null : stored !== "none");
@@ -106,8 +110,11 @@ export function SidebarNav({
 
   const ownerView = !demoMode || hrDemoRole === "owner";
   const accessibleWorkspaces = React.useMemo(() => {
+    const catalogue: Record<string, { id: string; name: string; description: string }> = { "crm-sales": { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }, "hr-people": { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." } };
+    const switchedOn = demoMode ? activeCompany().workspaces : ["crm-sales", "hr-people"];
     // Only the Owner moves between workspaces. Everyone else works inside HR & People.
-    if (!ownerView) return [...(account && account.crm !== "none" ? [{ id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }] : []), { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." }];
+    if (demoMode && ownerView) return switchedOn.map((id) => catalogue[id]).filter(Boolean);
+    if (!ownerView) return [...(account && account.crm !== "none" && switchedOn.includes("crm-sales") ? [catalogue["crm-sales"]] : []), catalogue["hr-people"]];
     const fromApi = workspacesApi.data?.filter((item) => item.status === "active").map((item) => ({
       id: item.type.replaceAll("_", "-"),
       name: item.name,
@@ -166,19 +173,16 @@ export function SidebarNav({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            {ownerView && <><DropdownMenuLabel>Business</DropdownMenuLabel>
-            <DropdownMenuItem asChild>
-              <Link
-                href="/settings?tab=workspace&view=overview&workspace=business"
-                className={cn("flex items-center gap-2", workspaceId === "business" && "bg-accent-muted")}
-              >
-                <Building2 className="size-3.5 text-muted-foreground" />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate font-medium">{tenant.name}</span>
-                  <span className="text-[11px] text-muted-foreground">Business account</span>
-                </span>
-              </Link>
-            </DropdownMenuItem>
+            {ownerView && <><DropdownMenuLabel>{companyList.length > 1 ? "Your companies" : "Business"}</DropdownMenuLabel>
+            {companyList.map((item) => <DropdownMenuItem key={item.id} onSelect={() => item.id === activeCompanyId() ? router.push("/settings?tab=workspace&view=overview&workspace=business") : switchCompany(item.id)} className={cn(item.id === activeCompanyId() && "bg-accent-muted")}>
+              <Building2 className="size-3.5 text-muted-foreground" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate font-medium">{item.name}</span>
+                <span className="text-[11px] text-muted-foreground">{item.setupDone ? item.city : "Setup in progress"}</span>
+              </span>
+              {item.id === activeCompanyId() && <Circle className="size-2 shrink-0 fill-accent text-accent" />}
+            </DropdownMenuItem>)}
+            {demoMode && <DropdownMenuItem asChild><Link href="/setup?new=1"><Plus className="size-3.5" />Add a company</Link></DropdownMenuItem>}
             <DropdownMenuSeparator /></>}
             <DropdownMenuLabel>{ownerView ? "Created workspaces" : "Your workspace"}</DropdownMenuLabel>
             {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>

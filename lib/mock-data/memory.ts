@@ -1,4 +1,5 @@
 import type { MemoryItem } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 type Row = [number, MemoryItem["kind"], string, string, string, number, MemoryItem["status"], number?];
@@ -23,7 +24,9 @@ const rows: Row[] = [
   [2, "conversation", "Current requirement", "Monthly rates for edible oil and pulses, plus delivery to the Manesar plant canteen.", "Phone call", 3, "pending"],
 ];
 
-export const memoryItems: MemoryItem[] = rows.map(([customer, kind, label, value, source, daysAgo, status, confidence], index) => ({ id: `mem-${index + 1}`, customerId: `cus-${customer}`, kind, label, value, confidence, source, createdAt: at(daysAgo, "10:30"), status }));
+const acme_memoryItems: MemoryItem[] = rows.map(([customer, kind, label, value, source, daysAgo, status, confidence], index) => ({ id: `mem-${index + 1}`, customerId: `cus-${customer}`, kind, label, value, confidence, source, createdAt: at(daysAgo, "10:30"), status }));
+
+export const memoryItems: MemoryItem[] = isFirstCompany ? acme_memoryItems : [];
 
 export function getMemoryForCustomer(customerId: string): MemoryItem[] {
   return memoryItems.filter((m) => m.customerId === customerId);

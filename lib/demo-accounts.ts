@@ -1,4 +1,5 @@
 import type { HrDemoRole } from "@/lib/types";
+import { activeSpec } from "@/lib/companies";
 
 /**
  * How much of the CRM a person may see.
@@ -24,7 +25,7 @@ export interface DemoAccount {
   blurb: string;
 }
 
-export const demoAccounts: DemoAccount[] = [
+const acmeAccounts: DemoAccount[] = [
   { id: "owner", email: "pankaj@acmetraders.in", password: "Owner@123", name: "Pankaj Neema", title: "Owner", employeeId: "emp-001", crmUserId: "u-1", hrRole: "owner", crm: "all", blurb: "Everything: Business Management, CRM, HR, every company." },
   { id: "sales-manager", email: "arjun@acmetraders.in", password: "Manager@123", name: "Arjun Mehta", title: "Sales Manager", employeeId: "emp-003", crmUserId: "u-4", hrRole: "reporting_manager", crm: "team", blurb: "CRM for the whole sales team, approvals, and his own team's leave." },
   { id: "sales-rep-1", email: "meera@acmetraders.in", password: "Sales@123", name: "Meera Singh", title: "Sales Executive", employeeId: "emp-009", crmUserId: "u-2", hrRole: "employee", crm: "own", blurb: "Only her own leads, deals and customers." },
@@ -35,6 +36,9 @@ export const demoAccounts: DemoAccount[] = [
   { id: "team-lead", email: "neha@acmetraders.in", password: "Lead@12345", name: "Neha Verma", title: "Operations Executive", employeeId: "emp-005", crmUserId: "u-8", hrRole: "reporting_manager", crm: "none", blurb: "An employee with a team: approves leave and expenses for Vikas." },
   { id: "employee", email: "vikas@acmetraders.in", password: "Employee@123", name: "Vikas Jain", title: "Warehouse Associate", employeeId: "emp-006", crmUserId: "u-9", hrRole: "employee", crm: "none", blurb: "Own leave, pay, documents and requests only." },
 ];
+
+/** The people who can sign in to the company on show. */
+export const demoAccounts: DemoAccount[] = activeSpec.accounts ?? acmeAccounts;
 
 export const accountById = (id: string | null | undefined) => demoAccounts.find((item) => item.id === id);
 export const accountByEmployee = (employeeId: string) => demoAccounts.find((item) => item.employeeId === employeeId);

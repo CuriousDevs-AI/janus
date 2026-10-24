@@ -1,4 +1,5 @@
 import type { ActivityActor, Ticket, TicketAction, TicketPriority, TicketStatus } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { at } from "@/lib/demo-universe";
 
 const AI: ActivityActor = { type: "ai", agentId: "agent-support", agentName: "Support Agent" };
@@ -25,7 +26,7 @@ const specs: Spec[] = [
   { number: 1009, customer: 2, subject: "Delivery window for the Manesar plant", description: "The canteen contractor asked whether trucks can enter the plant before 7am.", priority: "low", status: "ai_handling", confidence: 0.82, knowledge: ["Delivery slots and cut-off times"], conversation: "conv-7", daysAgo: 1, time: "16:00", sla: 400, actions: [[AI, "Shared the standard slots and asked for the gate pass rules", 4]] },
 ];
 
-export const tickets: Ticket[] = specs.map((spec): Ticket => {
+const acme_tickets: Ticket[] = specs.map((spec): Ticket => {
   const createdAt = at(spec.daysAgo, spec.time);
   const actions: TicketAction[] = spec.actions.map(([actor, label, minutes], index) => ({ id: `act-${spec.number}-${index + 1}`, actor, label, createdAt: at(spec.daysAgo, clock(spec.time, minutes % 1440)) }));
   const updatedAt = actions.at(-1)!.createdAt;
@@ -34,6 +35,8 @@ export const tickets: Ticket[] = specs.map((spec): Ticket => {
     knowledgeUsed: spec.knowledge, actions, slaMinutesRemaining: spec.sla, createdAt, updatedAt, resolvedAt: spec.resolved ? updatedAt : undefined, conversationId: spec.conversation, handoff: spec.handoff,
   };
 });
+
+export const tickets: Ticket[] = isFirstCompany ? acme_tickets : [];
 
 export function getTicketById(id?: string): Ticket | undefined {
   if (!id) return undefined;

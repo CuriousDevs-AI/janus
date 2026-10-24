@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { HrEmployee } from "@/lib/types";
 
@@ -27,4 +28,4 @@ export const useHrImportStore = create<HrImportState>()(persist((set) => ({
   batches: [],
   addBatch: (batch) => set((state) => ({ batches: [batch, ...state.batches] })),
   markRolledBack: (id, actorId) => set((state) => ({ batches: state.batches.map((batch) => batch.id === id ? { ...batch, rolledBackAt: new Date().toISOString(), rolledBackBy: actorId } : batch) })),
-}), { name: "janus.hr-import-demo.v1", storage: createJSONStorage(() => localStorage) }));
+}), { name: scoped("janus.hr-import-demo.v1"), storage: createJSONStorage(() => localStorage) }));

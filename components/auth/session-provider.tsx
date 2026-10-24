@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { api, APIError, message } from "@/lib/api/client";
 import type { Me } from "@/lib/api/types";
 import { demoMode } from "@/lib/demo-mode";
+import { activeCompany, activeCompanyId, readCompanies } from "@/lib/company";
 import { personaPermissions, signOut as demoSignOut, useDemoAccount } from "@/lib/demo-persona";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const SessionContext = createContext<Me | null>(null);
-const demoSession: Me = {
+const demoSession = (): Me => ({
   user: {
     id: "demo-owner",
     name: "Pankaj Neema",
@@ -21,11 +22,11 @@ const demoSession: Me = {
     language: "English",
     avatar_url: null,
   },
-  tenant: { id: "demo-tenant", name: "Acme Traders Pvt Ltd", role: "Owner", status: "active", timezone: "Asia/Kolkata" },
+  tenant: { id: activeCompanyId(), name: activeCompany().name, role: "Owner", status: "active", timezone: "Asia/Kolkata" },
   role: "Owner",
   permissions: ["*"],
-  tenants: [{ id: "demo-tenant", name: "Acme Traders Pvt Ltd", role: "Owner", status: "active", timezone: "Asia/Kolkata" }],
-};
+  tenants: readCompanies().map((item) => ({ id: item.id, name: item.name, role: "Owner", status: "active", timezone: "Asia/Kolkata" })),
+});
 export function useSession() {
   const value = useContext(SessionContext);
   if (!value) throw new Error("Session unavailable");
@@ -48,7 +49,7 @@ export function useSignOut() {
   };
 }
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession : null);
+  const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession() : null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const account = useDemoAccount();
