@@ -90,7 +90,7 @@ export function afterApproval(request: HrLeaveRequest, mode: NonNullable<Decider
   const level = (request.level ?? 0) + 1;
   const next = request.route[level];
   if (mode === "hr" || !next) return { status: "approved", step: "complete" };
-  return { status: "pending", step: next.kind === "hr" ? "hr" : "manager", patch: { level, managerId: next.id ?? null, managerName: next.name } };
+  return { status: "pending", step: next.kind === "hr" ? "hr" : "manager", patch: { level, managerId: next.id ?? null, managerName: next.name, levelAt: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) } };
 }
 
 /** Where an approval goes next: with the two-step chain a manager's approval still needs HR. */
