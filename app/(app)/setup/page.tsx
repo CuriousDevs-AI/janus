@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { scoped } from "@/lib/company";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CompanyWizard } from "@/components/setup/company-wizard";
 import { ArrowRight, Building2, Check, CircleHelp, Mail, SkipForward, UsersRound, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
@@ -28,7 +29,7 @@ const steps: Array<{ id: WizardStep; apiId: string; label: string; description: 
 const profileStorageKey = scoped("janus.setup.profile");
 const activationStorageKey = scoped("janus.setup.active-workspace");
 
-export default function SetupPage() {
+function LegacySetupPage() {
   const router = useRouter();
   const [setup, setSetup] = React.useState<Setup | null>(null);
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
@@ -166,4 +167,11 @@ function MembersStep({ inviteEmail, setInviteEmail, invited, onInvite, onSkip, s
 
 function ConnectionsStep({ onConnect, onSkip }: { onConnect: () => void; onSkip: () => void }) {
   return <div className="grid gap-4"><div className="flex items-start gap-3 rounded-lg border border-border bg-surface-2 p-4"><Waypoints className="mt-0.5 size-4 text-accent" /><div><p className="text-sm font-medium">Connect your first source</p><p className="mt-1 text-xs text-muted-foreground">Website forms, WhatsApp, phone calls, webhooks, API and CSV imports are available from Lead Sources.</p></div></div><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onConnect}>Open Lead Sources <ArrowRight className="size-3.5" /></Button><Button variant="ghost" onClick={onSkip}><SkipForward className="size-3.5" />Skip for now</Button></div></div>;
+}
+
+/** The preview adds and finishes companies with its own wizard. The live product keeps the API-driven setup. */
+export default function SetupPage() {
+  const params = useSearchParams();
+  if (demoMode) return <CompanyWizard key={params.get("finish") ?? "new"} finishId={params.get("finish") ?? undefined} />;
+  return <LegacySetupPage />;
 }
