@@ -10,6 +10,8 @@ import type { Integration } from "@/lib/types";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 import { formatRelativeTime, formatNumber, cn } from "@/lib/utils";
 import {
   integrationCategoryMeta,
@@ -77,6 +79,7 @@ export default function IntegrationsPage() {
       <PageHeader
         title="Integrations"
         description={`${connected.length} connected · ${items.length} total · other business tools, not customer channels`}
+        actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined}
       />
 
       <div className="flex flex-col gap-6 px-6 pb-6">

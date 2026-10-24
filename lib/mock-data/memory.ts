@@ -17,6 +17,8 @@ export const memoryItems: MemoryItem[] = [
   { id: "mem-14", customerId: "cus-24", kind: "stable_fact", label: "Preferred channel", value: "Email", source: "Consent settings", createdAt: "2025-04-17T09:00:00-04:00", status: "approved" },
   { id: "mem-15", customerId: "cus-16", kind: "derived_insight", label: "Buying process", value: "Security review must complete before procurement engages — CISO is the gatekeeper.", confidence: 0.79, source: "Conversation #355 (email)", createdAt: "2026-08-16T10:21:00+03:00", status: "pending" },
   { id: "mem-16", customerId: "cus-19", kind: "derived_insight", label: "Risk driver", value: "Billing accuracy complaints are the primary driver of dissatisfaction.", confidence: 0.87, source: "Ticket #1009", createdAt: "2026-08-16T14:31:00+05:30", status: "approved" },
+  { id: "mem-17", customerId: "cus-1", kind: "conversation", label: "Current requirement", value: "Evaluating a multi-store support rollout and wants a clear implementation timeline.", source: "WhatsApp conversation", createdAt: "2026-10-22T15:38:00+05:30", status: "approved" },
+  { id: "mem-18", customerId: "cus-8", kind: "conversation", label: "Follow-up preference", value: "Prefers a concise WhatsApp update before a phone call is scheduled.", source: "WhatsApp conversation", createdAt: "2026-10-21T11:10:00+05:30", confidence: 0.84, status: "pending" },
 ];
 
 export function getMemoryForCustomer(customerId: string): MemoryItem[] {
