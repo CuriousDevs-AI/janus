@@ -15,6 +15,7 @@ import { DealForm } from "@/components/deals/deal-form";
 import { formatCurrencyINR, formatRelativeTime, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { demoDealRows } from "@/lib/api/demo-data";
 import {
   Dialog,
   DialogContent,
@@ -25,14 +26,16 @@ import {
 
 export default function DealsPage() {
   const session = useSession();
-  const writable = session.permissions.includes("leads:write");
+  const canWrite = session.permissions.includes("leads:write");
   const [cursors, setCursors] = useState(["0"]);
   const result = useApi<Deal[]>(`/deals?after_id=${cursors.at(-1)}&limit=100`);
+  const usingDemo = Boolean(result.error);
+  const writable = canWrite && !usingDemo;
   const [query, setQuery] = useState("");
   const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
   const [editing, setEditing] = useState<Deal | null>(null);
   const [busy, setBusy] = useState(false);
-  const deals = result.data ?? [];
+  const deals = result.data ?? (usingDemo ? demoDealRows : []);
   const filtered = deals.filter((deal) =>
     `${deal.name} ${deal.customerName} ${deal.company}`
       .toLowerCase()
@@ -76,10 +79,11 @@ export default function DealsPage() {
         description={
           result.data
             ? `${filtered.length} ${filtered.length === 1 ? "deal" : "deals"} on this page · ${formatCurrencyINR(openValue)} open value`
-            : "Your sales pipeline"
+            : usingDemo ? "Demo sales pipeline" : "Your sales pipeline"
         }
         actions={
           <>
+            {usingDemo && <span className="rounded-none border border-warning/30 bg-warning-muted px-2.5 py-1 text-[11px] font-medium text-warning">Demo data</span>}
             <Button
               size="sm"
               variant="secondary"
@@ -128,17 +132,13 @@ export default function DealsPage() {
           </Button>
         </div>
       </div>
-      {result.error && (
-        <p role="alert" className="px-6 py-4 text-sm text-danger">
-          {result.error}
-        </p>
-      )}
+      {usingDemo && <p role="status" className="border-b border-warning/20 bg-warning-muted px-6 py-2 text-xs text-warning">Showing demo deals while the API is unavailable. Editing and drag-and-drop are disabled.</p>}
       {!result.data && !result.error && (
         <p role="status" className="px-6 py-4 text-sm">
           Loading deals…
         </p>
       )}
-      {result.data && (
+      {(result.data || usingDemo) && (
         <>
           {deals.length === 0 && (
             <p className="px-6 pt-4 text-sm text-muted-foreground">
@@ -206,12 +206,7 @@ export default function DealsPage() {
                           className="flex flex-col gap-2 rounded-md border border-border bg-surface p-2.5 shadow-sm hover:border-border-strong"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <Link
-                              className="text-[13px] font-medium hover:text-accent"
-                              href={`/deals/${deal.id}`}
-                            >
-                              {deal.name}
-                            </Link>
+                            {usingDemo ? <span className="text-[13px] font-medium">{deal.name}</span> : <Link className="text-[13px] font-medium hover:text-accent" href={`/deals/${deal.id}`}>{deal.name}</Link>}
                             {writable && (
                               <GripVertical
                                 aria-hidden
@@ -231,7 +226,7 @@ export default function DealsPage() {
                               {deal.ownerId === session.user.id
                                 ? session.user.name
                                 : deal.ownerId
-                                  ? `Member #${deal.ownerId}`
+                                  ? deal.ownerName || `Member #${deal.ownerId}`
                                   : "Unassigned"}
                             </span>
                             <span>{formatRelativeTime(deal.updatedAt)}</span>

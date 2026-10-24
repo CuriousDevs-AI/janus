@@ -1,3 +1,5 @@
+import type { LeadSource } from "@/lib/types";
+
 export interface Me {
   user: {
     id: string;
@@ -66,9 +68,18 @@ export interface Lead {
   dealId: string | null;
   id: string;
   customerId: string;
-  source: string;
+  contactName: string;
+  phone: string | null;
+  email: string | null;
+  company: string;
+  whatsappOptIn: boolean;
+  doNotContact: boolean;
+  consentSource: string | null;
+  consentUpdatedAt: string | null;
+  source: LeadSource;
   stage: string;
   ownerId: string | null;
+  ownerName: string | null;
   requirement: string;
   campaign: string | null;
   recordingUrl: string | null;
@@ -82,6 +93,10 @@ export interface Contact {
   phone: string | null;
   email: string | null;
   company: string;
+  whatsappOptIn: boolean;
+  doNotContact: boolean;
+  consentSource: string | null;
+  consentUpdatedAt: string | null;
 }
 export interface IngestEvent {
   id: string;
@@ -144,6 +159,10 @@ export interface WhatsAppConversation {
   name: string;
   phone: string | null;
   company: string;
+  whatsappOptIn: boolean;
+  doNotContact: boolean;
+  consentSource: string | null;
+  consentUpdatedAt: string | null;
   lastMessageAt: string;
   lastInboundAt: string | null;
   replyWindowEndsAt: string | null;
@@ -166,6 +185,7 @@ export interface Deal {
   company: string;
   phone: string | null;
   ownerId: string | null;
+  ownerName: string | null;
   name: string;
   amount: string;
   stage: import("@/lib/types").DealStage;

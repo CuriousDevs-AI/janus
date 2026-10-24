@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSession } from "@/components/auth/session-provider";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
@@ -10,9 +11,135 @@ import { useApi } from "@/lib/api/use-api";
 import type { Deal, Lead, Source } from "@/lib/api/types";
 import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
 
+const demoLeadRows: Lead[] = [
+  {
+    dealId: "demo-deal-1",
+    id: "demo-lead-1042",
+    customerId: "demo-customer-1",
+    contactName: "Riya Kapoor",
+    phone: "+91 98765 43210",
+    email: "riya@northstar.in",
+    company: "Northstar Retail",
+    whatsappOptIn: true,
+    doNotContact: false,
+    consentSource: "website_form",
+    consentUpdatedAt: "2026-10-22T10:20:00+05:30",
+    source: "website",
+    stage: "qualified",
+    ownerId: "demo-owner",
+    ownerName: "Pankaj Neema",
+    requirement: "WhatsApp follow-up for a multi-store support rollout.",
+    campaign: "Diwali retail readiness",
+    recordingUrl: null,
+    recordingReference: null,
+    createdAt: "2026-10-22T10:15:00+05:30",
+    lastActivityAt: "2026-10-22T15:40:00+05:30",
+  },
+  {
+    dealId: null,
+    id: "demo-lead-1041",
+    customerId: "demo-customer-2",
+    contactName: "Amit Shah",
+    phone: "+91 98100 11223",
+    email: "amit@orbitlogistics.in",
+    company: "Orbit Logistics",
+    whatsappOptIn: false,
+    doNotContact: false,
+    consentSource: null,
+    consentUpdatedAt: null,
+    source: "phone_call",
+    stage: "new",
+    ownerId: "demo-owner",
+    ownerName: "Pankaj Neema",
+    requirement: "Missed call from a fleet operations team.",
+    campaign: null,
+    recordingUrl: null,
+    recordingReference: "call-demo-882",
+    createdAt: "2026-10-21T12:05:00+05:30",
+    lastActivityAt: "2026-10-21T12:05:00+05:30",
+  },
+  {
+    dealId: "demo-deal-2",
+    id: "demo-lead-1039",
+    customerId: "demo-customer-3",
+    contactName: "Neha Verma",
+    phone: "+91 99200 77881",
+    email: "neha@acmefoods.in",
+    company: "Acme Foods",
+    whatsappOptIn: true,
+    doNotContact: false,
+    consentSource: "whatsapp_inbound",
+    consentUpdatedAt: "2026-10-19T09:00:00+05:30",
+    source: "whatsapp",
+    stage: "proposal",
+    ownerId: "demo-owner",
+    ownerName: "Pankaj Neema",
+    requirement: "Centralise distributor enquiries and payment reminders.",
+    campaign: "Distributor operations",
+    recordingUrl: null,
+    recordingReference: null,
+    createdAt: "2026-10-19T08:45:00+05:30",
+    lastActivityAt: "2026-10-22T11:10:00+05:30",
+  },
+];
+
+const demoDealRows: Deal[] = [
+  {
+    id: "demo-deal-1",
+    leadId: "demo-lead-1042",
+    customerId: "demo-customer-1",
+    customerName: "Riya Kapoor",
+    company: "Northstar Retail",
+    phone: "+91 98765 43210",
+    ownerId: "demo-owner",
+    ownerName: "Pankaj Neema",
+    name: "Northstar support rollout",
+    amount: "480000.00",
+    stage: "qualified",
+    expectedCloseAt: "2026-11-08T00:00:00+05:30",
+    lostReason: "",
+    version: 1,
+    createdAt: "2026-10-22T10:30:00+05:30",
+    updatedAt: "2026-10-22T15:40:00+05:30",
+  },
+  {
+    id: "demo-deal-2",
+    leadId: "demo-lead-1039",
+    customerId: "demo-customer-3",
+    customerName: "Neha Verma",
+    company: "Acme Foods",
+    phone: "+91 99200 77881",
+    ownerId: "demo-owner",
+    ownerName: "Pankaj Neema",
+    name: "Acme distributor operations",
+    amount: "275000.00",
+    stage: "proposal",
+    expectedCloseAt: "2026-11-15T00:00:00+05:30",
+    lostReason: "",
+    version: 1,
+    createdAt: "2026-10-19T09:00:00+05:30",
+    updatedAt: "2026-10-22T11:10:00+05:30",
+  },
+];
+
+const demoConnectedSources: Pick<Source, "status">[] = [
+  { status: "connected" },
+  { status: "connected" },
+  { status: "connected" },
+];
+
 function sourceLabel(source: string) {
   return source.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+
+const demoGrowthTrend = [
+  { month: "May", leads: 12, pipeline: 180000 },
+  { month: "Jun", leads: 16, pipeline: 245000 },
+  { month: "Jul", leads: 19, pipeline: 310000 },
+  { month: "Aug", leads: 23, pipeline: 410000 },
+  { month: "Sep", leads: 28, pipeline: 560000 },
+  { month: "Oct", leads: 34, pipeline: 755000 },
+];
 
 export default function DashboardPage() {
   const session = useSession();
@@ -25,11 +152,15 @@ export default function DashboardPage() {
     canViewSources ? "/sources?limit=50&after_id=0" : null,
   );
 
-  const leadRows = leads.data ?? [];
-  const dealRows = deals.data ?? [];
+  const usingDemoLeads = Boolean(leads.error);
+  const usingDemoDeals = Boolean(deals.error);
+  const usingDemoSources = !canViewSources || Boolean(sources.error);
+  const usingDemo = usingDemoLeads || usingDemoDeals || usingDemoSources;
+  const leadRows = leads.data ?? (usingDemoLeads ? demoLeadRows : []);
+  const dealRows = deals.data ?? (usingDemoDeals ? demoDealRows : []);
   const openDeals = dealRows.filter((deal) => !["won", "lost"].includes(deal.stage));
   const openValue = openDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
-  const connectedSources = (sources.data ?? []).filter(
+  const connectedSources = (sources.data ?? (usingDemoSources ? demoConnectedSources : [])).filter(
     (source) => source.status === "connected",
   );
   const refresh = () => {
@@ -38,6 +169,7 @@ export default function DashboardPage() {
     sources.reload();
   };
   const loading = leads.loading || deals.loading || sources.loading;
+  const growthTrend = usingDemo ? demoGrowthTrend : [];
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-6 py-6">
@@ -45,24 +177,21 @@ export default function DashboardPage() {
         title="CRM Overview"
         description={`Live CRM & Sales workspace for ${session.tenant.name}.`}
         actions={
-          <Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
-            <RefreshCw className="size-3.5" />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {usingDemo && <span className="rounded-none border border-warning/30 bg-warning-muted px-2.5 py-1 text-[11px] font-medium text-warning">Demo data</span>}
+            <Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
+              <RefreshCw className="size-3.5" />
+              Refresh
+            </Button>
+          </div>
         }
       />
-
-      {(leads.error || deals.error || sources.error) && (
-        <p role="alert" className="text-sm text-danger">
-          {leads.error || deals.error || sources.error}
-        </p>
-      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Leads captured" value={loading ? "…" : String(leadRows.length)} />
         <MetricCard label="Open deals" value={loading ? "…" : String(openDeals.length)} />
         <MetricCard label="Open pipeline" value={loading ? "…" : formatCurrencyINR(openValue)} />
-        <MetricCard label="Connected sources" value={canViewSources && !sources.loading ? String(connectedSources.length) : "—"} />
+        <MetricCard label="Connected sources" value={!sources.loading ? String(connectedSources.length) : "—"} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
@@ -84,15 +213,16 @@ export default function DashboardPage() {
           )}
           {!loading && leadRows.length > 0 && (
             <div className="divide-y divide-border">
-              {leadRows.slice(0, 6).map((lead) => (
-                <Link key={lead.id} href={`/leads/${lead.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">
+              {leadRows.slice(0, 6).map((lead) => {
+                const content = (
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">Lead #{lead.id}</p>
+                    <p className="truncate text-sm font-medium">{lead.contactName || `Lead #${lead.id}`}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{sourceLabel(lead.source)} · {lead.stage}</p>
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">{formatRelativeTime(lead.lastActivityAt)}</span>
-                </Link>
-              ))}
+                );
+                const row = <>{content}<span className="shrink-0 text-xs text-muted-foreground">{formatRelativeTime(lead.lastActivityAt)}</span></>;
+                return usingDemoLeads ? <div key={lead.id} className="flex items-center justify-between gap-4 px-4 py-3">{row}</div> : <Link key={lead.id} href={`/leads/${lead.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">{row}</Link>;
+              })}
             </div>
           )}
         </section>
@@ -112,20 +242,61 @@ export default function DashboardPage() {
           )}
           {!loading && openDeals.length > 0 && (
             <div className="divide-y divide-border">
-              {openDeals.slice(0, 6).map((deal) => (
-                <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{deal.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{deal.customerName} · {deal.stage}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold">{formatCurrencyINR(Number(deal.amount))}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{deal.expectedCloseAt ? formatDateTime(deal.expectedCloseAt) : "No close date"}</p>
-                  </div>
-                </Link>
-              ))}
+              {openDeals.slice(0, 6).map((deal) => {
+                const row = (
+                  <>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{deal.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{deal.customerName} · {deal.stage}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-semibold">{formatCurrencyINR(Number(deal.amount))}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{deal.expectedCloseAt ? formatDateTime(deal.expectedCloseAt) : "No close date"}</p>
+                    </div>
+                  </>
+                );
+                return usingDemoDeals ? <div key={deal.id} className="flex items-center justify-between gap-4 px-4 py-3">{row}</div> : <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">{row}</Link>;
+              })}
             </div>
           )}
+        </section>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
+        <section className="rounded-lg border border-border bg-surface p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2"><TrendingUp className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">Growth snapshot</h2></div>
+              <p className="mt-1 text-[11px] text-muted-foreground">Lead volume and open pipeline movement over the last six months.</p>
+            </div>
+            {usingDemo && <span className="text-[11px] text-warning">Demo trend</span>}
+          </div>
+          {growthTrend.length > 0 ? (
+            <div className="mt-5 h-64" role="img" aria-label="Six month lead and pipeline growth trend">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={growthTrend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                  <defs><linearGradient id="dashboardPipeline" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.28} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} /></linearGradient></defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                  <YAxis yAxisId="pipeline" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={(value) => `₹${Math.round(value / 100000)}L`} />
+                  <YAxis yAxisId="leads" orientation="right" hide />
+                  <Tooltip formatter={(value, name) => [name === "pipeline" ? formatCurrencyINR(Number(value)) : value, name === "pipeline" ? "Pipeline" : "Leads"]} contentStyle={{ borderRadius: 8, borderColor: "var(--border)", background: "var(--surface)", fontSize: 12 }} />
+                  <Area yAxisId="pipeline" type="monotone" dataKey="pipeline" stroke="var(--accent)" strokeWidth={2.5} fill="url(#dashboardPipeline)" />
+                  <Area yAxisId="leads" type="monotone" dataKey="leads" stroke="var(--success)" strokeWidth={2} fill="none" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <div className="mt-5 flex h-64 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">Trend charts will populate from connected CRM records.</div>}
+        </section>
+
+        <section className="rounded-lg border border-border bg-surface p-5">
+          <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">AI operating insights</h2></div>
+          <p className="mt-1 text-[11px] text-muted-foreground">The next actions Janus would surface for the sales owner.</p>
+          <div className="mt-4 space-y-3">
+            <div className="rounded-md border border-accent/20 bg-accent-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Follow up with Riya Kapoor</p><ArrowUpRight className="size-3.5 text-accent" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Qualified website lead with ₹4.8L potential. Next best action: send the approved WhatsApp follow-up.</p></div>
+            <div className="rounded-md border border-warning/30 bg-warning-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Respond to the missed call</p><AlertTriangle className="size-3.5 text-warning" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Amit Shah is a new phone lead with no first response recorded yet.</p></div>
+            <div className="rounded-md border border-border bg-surface-2 p-3"><p className="text-xs font-semibold">Pipeline focus</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Two open deals total ₹7.5L. Keep proposal follow-ups within two business days.</p></div>
+          </div>
         </section>
       </div>
     </div>
