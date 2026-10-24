@@ -1,6 +1,7 @@
 import type { HrPolicySettings } from "@/lib/stores/hr-operations-store";
+import { parseBlocks, stripInline } from "@/lib/hr-document-content";
 
-export interface PolicyParagraph { id: string; text: string }
+export interface PolicyParagraph { id: string; text: string; heading?: string }
 export interface PolicySource { id: string; title: string; version: number | null; issuedAt: string | null; kind: "policy" | "settings"; paragraphs: PolicyParagraph[] }
 export interface Citation { n: number; sourceId: string; title: string; version: number | null; paragraphIndex: number; paragraphId: string; confidence: "high" | "medium" }
 export interface AnswerLine { text: string; cite: number }
@@ -8,6 +9,7 @@ export type Answer =
   | { kind: "answer"; lines: AnswerLine[]; citations: Citation[] }
   | { kind: "none"; reason: string }
   | { kind: "refused"; reason: string };
+
 
 const stop = new Set("a an the is are was were be been am i me my we our you your it its of to in on at for from by with and or but if then so as do does did can could should would will shall may might must how what when where which who whom why that this these those there here about into than not no any some get got have has had need want please tell us".split(" "));
 const groups = [["leave", "vacation", "pto", "absence", "timeoff", "holiday"], ["sick", "ill", "illness", "unwell", "fever"], ["reimbursement", "reimburse", "expense", "claim", "refund"], ["receipt", "bill", "invoice"], ["password", "credential", "login"], ["device", "laptop", "phone", "equipment", "asset"], ["harassment", "safety", "security", "concern", "complaint", "report"], ["manager", "supervisor", "boss"], ["attendance", "punch", "checkin", "clock"], ["late", "grace", "delay"], ["salary", "pay", "payment", "paid"], ["resign", "resignation", "quit", "exit", "notice"], ["lose", "lost", "stolen", "missing", "theft", "misplaced"], ["approve", "approval", "approver", "sanction"], ["day", "days"], ["work", "working", "shift", "hours"]];
@@ -44,7 +46,14 @@ export function settingsSource(settings: HrPolicySettings): PolicySource {
 }
 
 export function policySource(policy: { id: string; name: string; version: number; issuedAt: string | null }, body: string): PolicySource {
-  const paragraphs = body.split(/\n{2,}/).map((text) => text.trim()).filter((text) => text && !/^SAMPLE COMPANY POLICY/i.test(text)).map((text, index) => ({ id: `${policy.id}-p${index + 1}`, text }));
+  // Titles, notes and rules are layout. Only paragraphs and list items are searchable passages.
+  const paragraphs: PolicyParagraph[] = [];
+  let heading: string | undefined;
+  for (const block of parseBlocks(body)) {
+    if (block.type === "h2") heading = stripInline(block.text);
+    else if ("items" in block) block.items.forEach((item) => paragraphs.push({ id: `${policy.id}-p${paragraphs.length + 1}`, text: stripInline(item), heading }));
+    else if (block.type === "p" && !/^SAMPLE COMPANY POLICY/i.test(block.text)) paragraphs.push({ id: `${policy.id}-p${paragraphs.length + 1}`, text: stripInline(block.text).replace(/\s+/g, " "), heading });
+  }
   return { id: policy.id, title: policy.name, version: policy.version, issuedAt: policy.issuedAt, kind: "policy", paragraphs };
 }
 
