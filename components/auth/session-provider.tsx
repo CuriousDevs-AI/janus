@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, APIError, message } from "@/lib/api/client";
@@ -53,8 +53,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   const account = useDemoAccount();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
-  useEffect(() => setReady(true), []);
+  // False while the page renders on the server, true once it is in the browser.
+  const ready = useSyncExternalStore(() => () => {}, () => true, () => false);
   // Without a backend the preview signs in against the demo accounts. Nobody is signed in until they do.
   useEffect(() => { if (demoMode && ready && !account) router.replace("/login"); }, [ready, account, router]);
   // Permissions, name and role follow whoever is signed in (or the person the Owner is viewing as), so menus and pages narrow the way they would for them.
