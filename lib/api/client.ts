@@ -1,5 +1,8 @@
 "use client";
 
+import { demoMode } from "@/lib/demo-mode";
+import { demoRequest, NOT_HANDLED } from "@/lib/demo-backend/handler";
+
 export class APIError extends Error {
   constructor(
     message: string,
@@ -11,7 +14,13 @@ export class APIError extends Error {
 }
 
 let refreshing: Promise<void> | undefined;
+let refreshFailure: { at: number; error: unknown } | undefined;
+const REFRESH_RETRY_MS = 30_000;
 async function refreshSession() {
+  // After a failed refresh, fail fast instead of re-running /me + /auth/refresh
+  // for every queued request, so screens can show their offline state at once.
+  if (refreshFailure && Date.now() - refreshFailure.at < REFRESH_RETRY_MS)
+    throw refreshFailure.error;
   if (!refreshing) {
     const refresh = async () => {
       const check = await fetch("/api/backend/me", { cache: "no-store" });
@@ -27,9 +36,17 @@ async function refreshSession() {
         await navigator.locks.request("janus-session", refresh);
       else await refresh();
     };
-    refreshing = run().finally(() => {
-      refreshing = undefined;
-    });
+    refreshing = run()
+      .then(() => {
+        refreshFailure = undefined;
+      })
+      .catch((error) => {
+        refreshFailure = { at: Date.now(), error };
+        throw error;
+      })
+      .finally(() => {
+        refreshing = undefined;
+      });
   }
   return refreshing;
 }
@@ -44,6 +61,11 @@ async function responseError(response: Response) {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // The preview has no server. The leads, deals and customers routes are answered here, with the same visibility rules the API applies.
+  if (demoMode) {
+    const answer = await demoRequest(path, init);
+    if (answer !== NOT_HANDLED) return answer as T;
+  }
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");

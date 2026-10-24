@@ -1,4 +1,5 @@
 export type WorkspaceId =
+  | "portfolio"
   | "business"
   | "crm-sales"
   | "hr-people"
@@ -18,11 +19,17 @@ export interface WorkspaceDefinition {
 }
 
 /**
- * UI-only workspace catalogue. CRM & Sales is the only active workspace in
- * this phase; the other entries make the future platform shape visible
- * without pretending those modules are implemented.
+ * UI workspace catalogue. CRM & Sales remains the production CRM workspace;
+ * HR & People is activated for the UI/demo lifecycle flow. Other entries stay
+ * planned until their records and permissions are connected.
  */
 export const workspaceDefinitions: WorkspaceDefinition[] = [
+  {
+    id: "portfolio",
+    name: "Portfolio",
+    description: "Every company you run, in one place.",
+    status: "active",
+  },
   {
     id: "business",
     name: "Business Management",
@@ -39,7 +46,7 @@ export const workspaceDefinitions: WorkspaceDefinition[] = [
     id: "hr-people",
     name: "HR & People",
     description: "People, teams and employee operations.",
-    status: "planned",
+    status: "active",
   },
   {
     id: "finance-accounting",

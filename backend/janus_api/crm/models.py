@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -31,6 +32,10 @@ class Contact(Base):
     phone_e164: Mapped[str | None] = mapped_column(String(16))
     email: Mapped[str | None] = mapped_column(String(320))
     company: Mapped[str] = mapped_column(String(200), default="")
+    whatsapp_opt_in: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    consent_source: Mapped[str | None] = mapped_column(String(80))
+    consent_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

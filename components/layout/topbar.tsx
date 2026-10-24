@@ -1,36 +1,23 @@
 "use client";
-import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, Search, LogOut } from "lucide-react";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
-import { getNavSectionsForWorkspace } from "@/lib/nav-config";
+import { usePageTitle } from "@/components/layout/use-page-title";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { Button } from "@/components/ui/button";
+import { demoMode } from "@/lib/demo-mode";
+import { demoAccounts } from "@/lib/demo-accounts";
+import { useDemoAccount, useLoginAccount, viewAs } from "@/lib/demo-persona";
+import { toast } from "sonner";
 export function Topbar() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const { workspaceId, workspace } = useWorkspace();
+  const { workspace } = useWorkspace();
   const session = useSession();
   const signOut = useSignOut();
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const setMobile = useUIStore((s) => s.setMobileNavOpen);
-  const title =
-    getNavSectionsForWorkspace(workspaceId)
-      .flatMap((s) => s.items)
-      .find(
-        (item) => {
-          const [itemPath, itemQuery] = item.href.split("?");
-          if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
-          const itemParams = new URLSearchParams(itemQuery ?? "");
-          for (const [key, value] of itemParams.entries()) {
-            if (searchParams.get(key) !== value) return false;
-          }
-          for (const [key] of searchParams.entries()) {
-            if (key !== "workspace" && !itemParams.has(key)) return false;
-          }
-          return true;
-        },
-      )?.label || "Janus";
+  const title = usePageTitle();
+  const account = useDemoAccount();
+  const login = useLoginAccount();
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -55,7 +42,8 @@ export function Topbar() {
           <Search className="size-3.5" />
           <span className="hidden sm:inline">Go to… ⌘K</span>
         </Button>
-        <span className="hidden text-xs text-muted-foreground sm:inline">
+        {demoMode && login?.hrRole === "owner" && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="hidden sm:inline">View as</span><select aria-label="View as" title="See the app the way another person sees it" value={account?.id ?? ""} onChange={(event) => { viewAs(event.target.value); const next = demoAccounts.find((item) => item.id === event.target.value); toast.success(next?.id === "owner" ? "Back to your own view" : `Viewing as ${next?.name}`); }} className="h-8 max-w-[150px] border border-border bg-surface px-2 text-xs text-foreground">{demoAccounts.map((item) => <option key={item.id} value={item.id}>{item.id === "owner" ? "Myself (Owner)" : `${item.name} · ${item.title}`}</option>)}</select></label>}
+        <span className="hidden text-xs text-muted-foreground lg:inline">
           {session.user.name}
         </span>
         <Button

@@ -19,7 +19,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
-import type { Contact, Lead } from "@/lib/api/types";
+import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
 import { LeadDeal } from "@/components/deals/deal-form";
 import { WhatsAppButton } from "@/components/inbox/whatsapp-button";
@@ -115,34 +115,44 @@ function FollowUpActions({ contact }: { contact: Contact }) {
           </p>
         </div>
         <div className="space-y-1.5 p-3">
-          {phone && (
+          {contact.doNotContact && (
+            <p className="rounded-md border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-800">
+              Outbound communication is suppressed for this customer.
+            </p>
+          )}
+          {phone && !contact.doNotContact && (
             <WhatsAppButton
               contactId={contact.id}
-              label="Add to chat · WhatsApp"
+              label="Open WhatsApp conversation"
               className="w-full justify-start bg-[#128C7E] text-white hover:bg-[#0f7b6f]"
             />
           )}
-          {email && (
+          {phone && !contact.doNotContact && !contact.whatsappOptIn && (
+            <p className="px-1 text-[11px] text-muted-foreground">
+              WhatsApp templates stay blocked until opt-in is recorded on the customer record.
+            </p>
+          )}
+          {email && !contact.doNotContact && (
             <Button asChild size="sm" variant="secondary" className="w-full justify-start">
               <a href={`mailto:${encodeURIComponent(email)}`}>
                 <Mail className="size-3.5" />
-                Email {email}
+                Email externally · {email}
               </a>
             </Button>
           )}
-          {phone && (
+          {phone && !contact.doNotContact && (
             <Button asChild size="sm" variant="secondary" className="w-full justify-start">
               <a href={`tel:${phone}`}>
                 <Phone className="size-3.5" />
-                Call {contact.phone}
+                Call externally · {contact.phone}
               </a>
             </Button>
           )}
-          {phone && (
+          {phone && !contact.doNotContact && (
             <Button asChild size="sm" variant="secondary" className="w-full justify-start">
               <a href={`sms:${phone}`}>
                 <MessageSquareText className="size-3.5" />
-                SMS {contact.phone}
+                SMS externally · {contact.phone}
               </a>
             </Button>
           )}
@@ -154,7 +164,7 @@ function FollowUpActions({ contact }: { contact: Contact }) {
         </div>
         <div className="flex items-center gap-2 border-t border-border px-3 py-2.5 text-[11px] text-muted-foreground">
           <MessageCircle className="size-3.5" />
-          WhatsApp opens the unified inbox and keeps replies on this lead.
+          WhatsApp opens the connected inbox. Email, call and SMS open your device apps and are not tracked by Janus yet.
         </div>
       </PopoverContent>
     </Popover>
@@ -165,11 +175,10 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const session = useSession();
   const lead = useApi<Lead>(`/leads/${encodeURIComponent(id)}`);
-  const contact = useApi<Contact>(
-    lead.data ? `/contacts/${lead.data.customerId}` : null,
-  );
+  const deal = useApi<Deal>(lead.data?.dealId ? `/deals/${encodeURIComponent(lead.data.dealId)}` : null);
+  const dealEvents = useApi<DealEvent[]>(deal.data ? `/deals/${encodeURIComponent(deal.data.id)}/events?limit=50` : null);
 
-  if (!lead.data || !contact.data) {
+  if (!lead.data) {
     return (
       <div className="mx-auto max-w-6xl p-6">
         <Link href="/leads" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
@@ -177,19 +186,29 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           Leads
         </Link>
         <p role="status" className="mt-8 text-sm">
-          {lead.error || contact.error || "Loading lead…"}
+          {lead.error || "Loading lead…"}
         </p>
       </div>
     );
   }
 
   const leadData = lead.data;
-  const contactData = contact.data;
+  const contactData: Contact = {
+    id: leadData.customerId,
+    name: leadData.contactName,
+    phone: leadData.phone,
+    email: leadData.email,
+    company: leadData.company,
+    whatsappOptIn: leadData.whatsappOptIn,
+    doNotContact: leadData.doNotContact,
+    consentSource: leadData.consentSource,
+    consentUpdatedAt: leadData.consentUpdatedAt,
+  };
   const displayName = contactData.name || contactData.phone || contactData.email || `Lead #${leadData.id}`;
   const owner = leadData.ownerId === session.user.id
     ? session.user.name
     : leadData.ownerId
-      ? `Member #${leadData.ownerId}`
+      ? leadData.ownerName || `Member #${leadData.ownerId}`
       : "Unassigned";
   const currentStage = stages.indexOf(leadData.stage as (typeof stages)[number]);
   const sourceLabel = label(leadData.source);
@@ -281,6 +300,22 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
                   tone="info"
                 />
               )}
+              {dealEvents.data?.map((event) => (
+                <TimelineItem
+                  key={event.id}
+                  icon={<CalendarClock className="size-4" />}
+                  title={event.action === "deal.created" ? "Deal created" : "Deal updated"}
+                  detail={
+                    event.details.to_stage
+                      ? `Deal moved to ${label(String(event.details.to_stage))}.`
+                      : "Deal details changed."
+                  }
+                  time={formatDateTime(event.createdAt)}
+                  tone="accent"
+                />
+              ))}
+              {dealEvents.loading && <p className="pl-11 text-xs text-muted-foreground">Loading deal history…</p>}
+              {dealEvents.error && <p role="alert" className="pl-11 text-xs text-danger">Unable to load deal history: {dealEvents.error}</p>}
               {leadData.recordingUrl && /^https?:\/\//.test(leadData.recordingUrl) && (
                 <TimelineItem
                   icon={<Phone className="size-4" />}

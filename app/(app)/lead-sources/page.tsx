@@ -5,6 +5,7 @@ import { FileSpreadsheet, Globe, Key, MessageCircle, Phone, Plus, Settings2, Web
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
+import { demoSourceRows } from "@/lib/api/demo-data";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,27 +19,32 @@ export default function LeadSourcesPage() {
   const sources = useApi<Source[]>(
     allowed ? `/sources?limit=50&after_id=${after}` : null,
   );
-  const enabledSources =
-    sources.data?.filter((source) => source.status === "connected") ?? [];
+  const usingDemo = !allowed || Boolean(sources.error);
+  const sourceRows = sources.data ?? (usingDemo ? demoSourceRows : []);
+  const enabledSources = sourceRows.filter((source) => source.status === "connected");
+  const availableSources = sourceRows.filter((source) => source.status === "available");
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader
         title="Lead Sources"
         description="Connect the places your enquiries already come from."
         actions={
-          allowed ? (
-            <Button asChild>
-              <Link href="/lead-sources/new">
+          <div className="flex items-center gap-2">
+            
+            {allowed ? (
+              <Button asChild>
+                <Link href="/lead-sources/new">
+                  <Plus />
+                  Add a new lead source
+                </Link>
+              </Button>
+            ) : (
+              <Button disabled>
                 <Plus />
                 Add a new lead source
-              </Link>
-            </Button>
-          ) : (
-            <Button disabled>
-              <Plus />
-              Add a new lead source
-            </Button>
-          )
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="flex flex-col gap-6 px-6 pb-6">
@@ -51,14 +57,7 @@ export default function LeadSourcesPage() {
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Enabled sources ({enabledSources.length})
           </h2>
-          {sources.error && (
-            <p role="alert" className="mb-3 text-sm text-danger">
-              {sources.error}{" "}
-              <button className="underline" onClick={sources.reload}>
-                Retry
-              </button>
-            </p>
-          )}
+          
           {allowed && sources.loading && (
             <p role="status" className="text-sm">
               Loading connections…
@@ -116,6 +115,38 @@ export default function LeadSourcesPage() {
               >
                 Next page
               </Button>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Available sources ({availableSources.length})
+            </h2>
+            <p className="text-xs text-muted-foreground">Connect when you are ready to capture more enquiries.</p>
+          </div>
+          {availableSources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">All currently supported sources are connected.</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {availableSources.map((source) => (
+                <article key={source.id} className="flex min-h-[150px] flex-col gap-3 border border-border bg-surface p-5 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2">
+                        {source.source === "api" ? <Key className="size-5 text-accent" /> : source.source === "csv_import" ? <FileSpreadsheet className="size-5 text-accent" /> : <Webhook className="size-5 text-accent" />}
+                      </span>
+                      <p className="text-sm font-semibold">{source.name}</p>
+                    </div>
+                    <Badge variant="neutral">Available</Badge>
+                  </div>
+                  <p className="text-sm leading-6 text-muted-foreground">{source.description}</p>
+                  <Button size="sm" variant="secondary" className="mt-auto w-fit" disabled={!allowed}>
+                    Configure source
+                  </Button>
+                </article>
+              ))}
             </div>
           )}
         </section>

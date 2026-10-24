@@ -27,6 +27,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatCurrencyINR, formatNumber } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 
 const CATEGORY_ORDER: UsageRecord["category"][] = ["llm", "embedding", "voice", "whatsapp", "email"];
 

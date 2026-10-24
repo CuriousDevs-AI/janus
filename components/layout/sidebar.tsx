@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { activeCompany, activeCompanyId, portfolioHome, scoped } from "@/lib/company";
+import { CompanyLogo } from "@/components/shared/company-logo";
+import { CompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   ChevronsUpDown,
   Circle,
-  Building2,
   Plus,
 } from "lucide-react";
 import {
@@ -18,8 +20,11 @@ import { useSignOut, useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
+import { useDemoAccount } from "@/lib/demo-persona";
 import { workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
+import { demoMode } from "@/lib/demo-mode";
+import type { HrDemoRole } from "@/lib/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,8 +61,10 @@ export function SidebarNav({
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
+  const account = useDemoAccount();
+  const hrDemoRole: HrDemoRole = account?.hrRole ?? "owner";
   React.useEffect(() => {
-    const key = "janus.setup.active-workspace";
+    const key = scoped("janus.setup.active-workspace");
     const read = () => {
       const stored = window.localStorage.getItem(key);
       setActivationOverride(stored === null ? null : stored !== "none");
@@ -79,7 +86,8 @@ export function SidebarNav({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission),
+        (item) => (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) &&
+          (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, hrDemoRole)),
       ),
     }))
     .filter((section) => section.items.length > 0);
@@ -98,16 +106,28 @@ export function SidebarNav({
     return true;
   }
 
+  const ownerView = !demoMode || hrDemoRole === "owner";
   const accessibleWorkspaces = React.useMemo(() => {
+    const catalogue: Record<string, { id: string; name: string; description: string }> = { "crm-sales": { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }, "hr-people": { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." } };
+    const switchedOn = demoMode ? activeCompany().workspaces : ["crm-sales", "hr-people"];
+    // Only the Owner moves between workspaces. Everyone else works inside HR & People.
+    if (demoMode && ownerView) return switchedOn.map((id) => catalogue[id]).filter(Boolean);
+    if (!ownerView) return [...(account && account.crm !== "none" && switchedOn.includes("crm-sales") ? [catalogue["crm-sales"]] : []), catalogue["hr-people"]];
     const fromApi = workspacesApi.data?.filter((item) => item.status === "active").map((item) => ({
       id: item.type.replaceAll("_", "-"),
       name: item.name,
       description: item.description,
     }));
-    if (hasActiveWorkspace && fromApi?.length) return fromApi;
-    if (hasActiveWorkspace) return [{ id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." }];
+    if (hasActiveWorkspace && fromApi?.length) {
+      if (!demoMode || fromApi.some((item) => item.id === "hr-people")) return fromApi;
+      return [...fromApi, { id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }];
+    }
+    if (hasActiveWorkspace) return [
+      { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." },
+      ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
+    ];
     return [];
-  }, [hasActiveWorkspace, workspacesApi.data]);
+  }, [hasActiveWorkspace, workspacesApi.data, ownerView, account]);
 
   function workspaceHref(id: string) {
     if (id === "crm-sales") return "/dashboard?workspace=crm-sales";
@@ -117,14 +137,21 @@ export function SidebarNav({
 
   return (
     <>
-      {/* Business and active workspace selector */}
+      {/* Top of the sidebar. In a company it is the company itself; in the Portfolio it is the Janus brand. */}
+      {workspaceId === "portfolio" && <div className="flex h-14 items-center border-b border-border px-4">
+        <Link href={portfolioHome} className="flex items-center gap-2 overflow-hidden">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">C</span>
+          <span className="flex flex-col leading-none"><span className="text-[13px] font-semibold text-foreground">Curious<span className="text-accent">Devs</span></span><span className="text-[10px] text-muted-foreground">Janus</span></span>
+        </Link>
+      </div>}
       <div
         className={cn(
-          "border-b border-border py-2",
+          "border-b border-border",
+          workspaceId === "portfolio" ? "py-2" : "flex h-14 items-center",
           collapsed ? "px-2" : "px-3",
         )}
       >
-        <DropdownMenu>
+        {workspaceId === "portfolio" ? <div className={cn("flex items-center gap-2 px-2 py-1.5", collapsed && "justify-center px-0")}><span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-col leading-tight"><span className="truncate text-[12px] font-medium text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</div> : <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
@@ -132,13 +159,11 @@ export function SidebarNav({
                 collapsed && "justify-center px-0",
               )}
             >
-              <span className="flex size-5 shrink-0 items-center justify-center rounded bg-surface-3 text-[10px] font-semibold text-foreground">
-                {tenant.name[0]}
-              </span>
+              <CompanyLogo company={{ id: activeCompanyId(), name: tenant.name, logo: activeCompany().logo }} size={32} />
               {!collapsed && (
                 <>
                   <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
-                    <span className="max-w-full truncate text-[12px] font-medium text-foreground">
+                    <span className="max-w-full truncate text-[13px] font-semibold text-foreground">
                       {tenant.name}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
@@ -151,36 +176,23 @@ export function SidebarNav({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>Business</DropdownMenuLabel>
-            <DropdownMenuItem asChild>
-              <Link
-                href="/settings?tab=workspace&view=overview&workspace=business"
-                className={cn("flex items-center gap-2", workspaceId === "business" && "bg-accent-muted")}
-              >
-                <Building2 className="size-3.5 text-muted-foreground" />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate font-medium">{tenant.name}</span>
-                  <span className="text-[11px] text-muted-foreground">Business account</span>
-                </span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Created workspaces</DropdownMenuLabel>
+
+            <DropdownMenuLabel>{ownerView ? "Created workspaces" : "Your workspace"}</DropdownMenuLabel>
             {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>
               <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
                 <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{item.description}</span></span>
                 {workspaceId === item.id && <Circle className="size-2 shrink-0 fill-accent text-accent" />}
               </Link>
             </DropdownMenuItem>) : <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">No active workspace yet</span></DropdownMenuItem>}
-            <DropdownMenuSeparator />
+            {ownerView && <><DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings?tab=workspace&view=workspaces&create=1&workspace=business">
                 <Plus className="size-3.5" />
                 Create workspace
               </Link>
-            </DropdownMenuItem>
+            </DropdownMenuItem></>}
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
       </div>
 
       {/* Nav */}
@@ -242,6 +254,8 @@ export function SidebarNav({
         ))}
       </nav>
 
+      {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
+
       {/* Footer */}
       <div
         className={cn(
@@ -294,6 +308,17 @@ export function SidebarNav({
   );
 }
 
+function hrNavVisible(label: string, role: HrDemoRole) {
+  if (role === "owner" || role === "hr_manager") return true;
+  // Everyone is also an employee, so every preview gets the personal pages.
+  const mySelfService = ["Home", "Engage", "My profile", "My onboarding", "Document Center", "My documents", "Ask about policy", "Payslips", "Reimbursements", "Leave Apply", "Leave Balances", "Leave Calendar", "Holiday Calendar", "My requests", "Attendance Info", "Regularization & Permission"];
+  // A manager works with their own team: leave, attendance, approvals, promotions and reviews.
+  if (role === "reporting_manager") return mySelfService.includes(label) || ["My Team", "Pending Approvals", "Leave Management", "Attendance", "Promotions & changes", "Performance & Reviews", "Expenses & Reimbursements"].includes(label);
+  // Finance handles money only: no leave, attendance or employee records.
+  if (role === "payroll_admin") return (mySelfService.includes(label) && label !== "Leave Calendar") || ["Payroll", "Expenses & Reimbursements", "HR Compliance"].includes(label);
+  return mySelfService.includes(label);
+}
+
 export function Sidebar() {
   return (
     <TooltipProvider delayDuration={200}>
@@ -302,23 +327,6 @@ export function Sidebar() {
           "hidden w-[258px] shrink-0 flex-col border-r border-border bg-surface md:flex",
         )}
       >
-        <div className="flex h-14 items-center border-b border-border px-4">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 overflow-hidden"
-          >
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">
-              C
-            </span>
-            <span className="flex flex-col leading-none">
-              <span className="text-[13px] font-semibold text-foreground">
-                Curious<span className="text-accent">Devs</span>
-              </span>
-              <span className="text-[10px] text-muted-foreground">Janus</span>
-            </span>
-          </Link>
-        </div>
-
         <SidebarNav />
       </aside>
     </TooltipProvider>
