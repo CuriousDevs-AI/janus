@@ -53,10 +53,13 @@ function CrmAutomationsPage() {
         title="Automations"
         description={`${automations.length} automations · ${activeCount} active`}
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-3.5" />
-            New Automation
-          </Button>
+          <div className="flex items-center gap-2">
+            <Badge variant="neutral">Demo data</Badge>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="size-3.5" />
+              New Automation
+            </Button>
+          </div>
         }
       />
 

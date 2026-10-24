@@ -215,6 +215,10 @@ async def conversations(
             name=p.name,
             phone=p.phone_e164,
             company=p.company,
+            whatsappOptIn=p.whatsapp_opt_in,
+            doNotContact=p.do_not_contact,
+            consentSource=p.consent_source,
+            consentUpdatedAt=p.consent_updated_at,
             lastMessageAt=c.last_message_at,
             lastInboundAt=c.last_inbound_at,
             replyWindowEndsAt=c.last_inbound_at + timedelta(hours=24)
@@ -284,6 +288,18 @@ async def queue_message(
     assert contact is not None
     if not contact.phone_e164:
         raise ApiError("phone_required", "The customer has no phone number.", 422)
+    if contact.do_not_contact:
+        raise ApiError(
+            "do_not_contact",
+            "This customer is suppressed from outbound communication.",
+            409,
+        )
+    if data.kind == "template" and not contact.whatsapp_opt_in:
+        raise ApiError(
+            "whatsapp_opt_in_required",
+            "Record WhatsApp opt-in before sending a template message.",
+            409,
+        )
     body = data.body.strip()
     payload: dict[str, object] = {
         "messaging_product": "whatsapp",

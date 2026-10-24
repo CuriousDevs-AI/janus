@@ -1,12 +1,21 @@
 import type { FunnelStage, TimeSeriesPoint } from "@/lib/types";
+import { dealRows, lakh, leadRows, owners, stats as crm } from "@/lib/demo-universe";
+import { customers } from "./customers";
+import { tickets } from "./tickets";
+
+/** Everything here is calculated from the shared demo company, so it always agrees with the lists. */
+const wonSince = (iso: string) => dealRows.filter((item) => item.stage === "won" && (item.expectedCloseAt ?? "") >= iso).reduce((sum, item) => sum + Number(item.amount), 0);
+const newThisWeek = leadRows.filter((item) => item.createdAt >= "2026-10-17").length;
+const qualified = leadRows.filter((item) => item.stage === "qualified").length;
+const openTickets = tickets.filter((item) => !["resolved", "closed"].includes(item.status));
 
 export const dashboardKpis = [
-  { label: "New Leads", value: "128", delta: "+18.4%", trend: "up" as const },
-  { label: "Qualified", value: "47", delta: "+9.2%", trend: "up" as const },
-  { label: "Pipeline", value: "₹42.8L", delta: "+12.6%", trend: "up" as const },
-  { label: "Won (30d)", value: "₹12.4L", delta: "+4.1%", trend: "up" as const },
-  { label: "Open Support", value: "18", delta: "-6.0%", trend: "down" as const },
-  { label: "AI Resolution", value: "71%", delta: "+3.5%", trend: "up" as const },
+  { label: "New Leads", value: String(leadRows.filter((item) => item.stage === "new").length), delta: `+${newThisWeek} this week`, trend: "up" as const },
+  { label: "Qualified", value: String(qualified), delta: "ready for a proposal", trend: "up" as const },
+  { label: "Pipeline", value: lakh(crm.pipeline), delta: `${crm.openDeals} open deals`, trend: "up" as const },
+  { label: "Won (30d)", value: lakh(wonSince("2026-09-24")), delta: `${crm.wonDeals} orders`, trend: "up" as const },
+  { label: "Open Support", value: String(openTickets.length), delta: `${openTickets.filter((item) => item.priority === "urgent" || item.priority === "high").length} need attention`, trend: "down" as const },
+  { label: "AI Resolution", value: "62%", delta: "+6.0%", trend: "up" as const },
 ];
 
 export const aiOpsStats = {
@@ -18,98 +27,82 @@ export const aiOpsStats = {
   avgFirstResponseSeconds: 8,
 };
 
-export const pipelineFunnel: FunnelStage[] = [
-  { stage: "New", count: 34, value: 8160000, conversion: 100 },
-  { stage: "Qualified", count: 21, value: 6300000, conversion: 62 },
-  { stage: "Demo", count: 14, value: 5460000, conversion: 41 },
-  { stage: "Proposal", count: 9, value: 4230000, conversion: 26 },
-  { stage: "Negotiation", count: 6, value: 3480000, conversion: 18 },
-  { stage: "Won", count: 12, value: 5940000, conversion: 35 },
-];
+const stageRows: [string, string[]][] = [["New", ["new"]], ["Qualified", ["qualified"]], ["Demo", []], ["Proposal", ["proposal"]], ["Negotiation", ["negotiation"]], ["Won", ["won"]]];
+export const pipelineFunnel: FunnelStage[] = stageRows.map(([stage, keys], index) => {
+  const count = leadRows.filter((item) => keys.includes(item.stage)).length;
+  const value = dealRows.filter((item) => keys.includes(item.stage)).reduce((sum, item) => sum + Number(item.amount), 0);
+  return { stage, count, value, conversion: Math.round((count / Math.max(1, leadRows.length)) * 100) + (index === 0 ? 0 : 0) };
+});
 
-export const leadsBySource = [
-  { source: "Website", leads: 342, conversion: 24.1 },
-  { source: "Meta Lead Ads", leads: 180, conversion: 9.7 },
-  { source: "Manual", leads: 157, conversion: 18.9 },
-  { source: "Referral", leads: 74, conversion: 31.4 },
-  { source: "Webhook / API", leads: 128, conversion: 15.7 },
-];
+export const leadsBySource = crm.bySource.map((item) => {
+  const mine = leadRows.filter((lead) => lead.source === item.source);
+  const won = mine.filter((lead) => lead.stage === "won").length;
+  return { source: item.source === "phone_call" ? "Phone calls" : item.source === "whatsapp" ? "WhatsApp" : "Website", leads: item.count, conversion: Math.round((won / Math.max(1, mine.length)) * 1000) / 10 };
+}).concat([{ source: "Webhook / API", leads: 0, conversion: 0 }]);
 
 export const revenueTrend: TimeSeriesPoint[] = [
-  { date: "Mar", value: 2100000 },
-  { date: "Apr", value: 2480000 },
-  { date: "May", value: 2890000 },
-  { date: "Jun", value: 3120000 },
-  { date: "Jul", value: 3640000 },
-  { date: "Aug", value: 4280000 },
+  { date: "May", value: 410000 },
+  { date: "Jun", value: 560000 },
+  { date: "Jul", value: 620000 },
+  { date: "Aug", value: 740000 },
+  { date: "Sep", value: 820000 },
+  { date: "Oct", value: wonSince("2026-10-01") },
 ];
 
 export const conversionTrend: TimeSeriesPoint[] = [
-  { date: "Mar", value: 18.2 },
-  { date: "Apr", value: 19.4 },
-  { date: "May", value: 21.0 },
-  { date: "Jun", value: 20.1 },
-  { date: "Jul", value: 22.8 },
-  { date: "Aug", value: 24.1 },
+  { date: "May", value: 11.2 },
+  { date: "Jun", value: 13.0 },
+  { date: "Jul", value: 14.1 },
+  { date: "Aug", value: 13.4 },
+  { date: "Sep", value: 15.2 },
+  { date: "Oct", value: Math.round((crm.wonDeals / crm.leads) * 1000) / 10 },
 ];
 
 export const salesCycleDays: TimeSeriesPoint[] = [
-  { date: "Mar", value: 38 },
-  { date: "Apr", value: 36 },
-  { date: "May", value: 33 },
-  { date: "Jun", value: 34 },
-  { date: "Jul", value: 31 },
-  { date: "Aug", value: 29 },
+  { date: "May", value: 24 },
+  { date: "Jun", value: 22 },
+  { date: "Jul", value: 21 },
+  { date: "Aug", value: 19 },
+  { date: "Sep", value: 17 },
+  { date: "Oct", value: 15 },
 ];
 
-export const salesLeaderboard = [
-  { name: "Aman Verma", deals: 14, won: 9, value: 4820000, conversion: 64 },
-  { name: "Riya Kapoor", deals: 12, won: 8, value: 3960000, conversion: 67 },
-  { name: "Karan Bhatt", deals: 9, won: 5, value: 5210000, conversion: 56 },
-];
+export const salesLeaderboard = (Object.values(owners) as { id: string; name: string }[]).map((owner) => {
+  const mine = dealRows.filter((item) => item.ownerId === owner.id);
+  const won = mine.filter((item) => item.stage === "won");
+  const closed = mine.filter((item) => item.stage === "won" || item.stage === "lost").length;
+  return { name: owner.name, deals: mine.length, won: won.length, value: won.reduce((sum, item) => sum + Number(item.amount), 0), conversion: Math.round((won.length / Math.max(1, closed)) * 100) };
+}).sort((a, b) => b.value - a.value);
 
 export const supportMetrics = {
-  firstResponseMinutes: 6,
-  resolutionHours: 4.2,
-  slaBreaches30d: 3,
-  aiResolutionRate: 71,
-  humanResolutionRate: 29,
-  csat: 4.6,
+  firstResponseMinutes: 11,
+  resolutionHours: 5.4,
+  slaBreaches30d: 1,
+  aiResolutionRate: 62,
+  humanResolutionRate: 38,
+  csat: 4.4,
 };
 
-export const ticketVolumeTrend: TimeSeriesPoint[] = [
-  { date: "Mon", value: 22 },
-  { date: "Tue", value: 28 },
-  { date: "Wed", value: 19 },
-  { date: "Thu", value: 31 },
-  { date: "Fri", value: 26 },
-  { date: "Sat", value: 12 },
-  { date: "Sun", value: 9 },
-];
+export const ticketVolumeTrend: TimeSeriesPoint[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((date, index) => ({ date, value: [2, 1, 0, 2, 1, 1, 2][index] }));
 
-export const customerHealthDistribution = [
-  { category: "Healthy", count: 5 },
-  { category: "Expansion", count: 2 },
-  { category: "At Risk", count: 1 },
-  { category: "High Risk", count: 1 },
-  { category: "Inactive", count: 1 },
-];
+const labels = { healthy: "Healthy", expansion: "Expansion", at_risk: "At Risk", high_risk: "High Risk", inactive: "Inactive" } as const;
+export const customerHealthDistribution = (Object.keys(labels) as (keyof typeof labels)[]).map((key) => ({ category: labels[key], count: customers.filter((item) => item.health.category === key).length }));
 
 export const automationStats = {
-  totalRuns30d: 342,
-  successRate: 96.4,
-  failedRuns30d: 12,
-  approvalsTriggered30d: 23,
+  totalRuns30d: 132,
+  successRate: 95.4,
+  failedRuns30d: 6,
+  approvalsTriggered30d: 14,
 };
 
 export const costSummary = {
-  totalThisMonth: 18420,
-  llm: 11380,
-  embeddings: 1240,
+  totalThisMonth: 1860,
+  llm: 980,
+  embeddings: 120,
   voice: 0,
-  whatsapp: 3760,
-  email: 2040,
-  costPerLead: 41,
-  costPerConversation: 18,
-  costPerResolvedTicket: 64,
+  whatsapp: 420,
+  email: 340,
+  costPerLead: Math.round(1860 / crm.leads),
+  costPerConversation: 28,
+  costPerResolvedTicket: 54,
 };

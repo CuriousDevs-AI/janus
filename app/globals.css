@@ -159,6 +159,11 @@ body {
   overscroll-behavior-y: contain;
 }
 
+/* The CRM assistant owns its own message scroll area; keep the surrounding shell fixed. */
+.app-main:has(.crm-assistant-shell) {
+  overflow: hidden;
+}
+
 .page-header {
   border-bottom: 1px solid var(--border);
 }

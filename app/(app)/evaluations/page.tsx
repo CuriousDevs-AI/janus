@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { VerdictBadge } from "@/components/agents/agent-meta";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDate } from "@/lib/utils";
@@ -31,7 +32,7 @@ export default function EvaluationsPage() {
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-6 pb-6">
-      <PageHeader title="Evaluations" description={`${evaluationRuns.length} runs across ${agents.length} agents`} />
+      <PageHeader title="Evaluations" description={`${evaluationRuns.length} runs across ${agents.length} agents`} actions={<Badge variant="neutral">Demo data</Badge>} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard label="Avg accuracy (latest)" value={`${avgAccuracy}%`} />

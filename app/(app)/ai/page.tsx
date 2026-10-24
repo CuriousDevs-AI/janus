@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { conversations, dealRows, lakh, leadRows, stats as crm } from "@/lib/demo-universe";
+import { tickets } from "@/lib/mock-data/tickets";
 import { useSearchParams } from "next/navigation";
 import { Bookmark, Check, Globe2, Link2, Loader2, MessageSquare, MessageSquarePlus, Pencil, Plus, Search, Send, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
@@ -38,6 +40,49 @@ type Turn = {
   result?: BusinessAnswer | null;
 };
 
+function demoCrmAnswer(question: string): BusinessAnswer {
+  const normalized = question.toLowerCase();
+  const open = dealRows.filter((item) => !["won", "lost"].includes(item.stage));
+  const top = [...open].sort((x, y) => Number(y.amount) - Number(x.amount)).slice(0, 2);
+  const quietLeads = leadRows.filter((item) => item.stage === "new").slice(0, 3);
+  const openTickets = tickets.filter((item) => !["resolved", "closed"].includes(item.status));
+  const urgent = openTickets.filter((item) => item.priority === "urgent" || item.status === "escalated");
+  if (normalized.includes("lead") || normalized.includes("attention")) {
+    return {
+      question,
+      answer: `${top[0]?.company} has the biggest open deal at ${lakh(Number(top[0]?.amount))} and is waiting on a reply. ${quietLeads.map((item) => `${item.contactName} (${item.company})`).join(", ")} are new enquiries with no first response yet.`,
+      dataUsed: [`${crm.leads} demo leads`, `${crm.deals} demo deals`, "Unified chat activity"],
+      calculation: { metric: "Lead priority and next action", period: "Current CRM snapshot", filters: "open leads sorted by deal value and age", sources: "Demo leads, deals and conversations" },
+      followups: ["Show the open deals", `Draft a WhatsApp follow-up for ${top[0]?.customerName}`, `Create a callback task for ${quietLeads[0]?.contactName}`],
+    };
+  }
+  if (normalized.includes("pipeline") || normalized.includes("deal") || normalized.includes("revenue")) {
+    return {
+      question,
+      answer: `The open pipeline is ${lakh(crm.pipeline)} across ${crm.openDeals} active deals. The largest are ${top.map((item) => `${item.name} at ${lakh(Number(item.amount))} in ${item.stage}`).join(" and ")}. ${crm.wonDeals} deals are won, worth ${lakh(crm.wonValue)}.`,
+      dataUsed: [`${crm.deals} demo deals`, `${crm.buyers} demo customers`, "Pipeline stages"],
+      calculation: { metric: "Open pipeline value", period: "Current CRM snapshot", filters: "stages excluding Won and Lost", sources: "Demo deals" },
+      followups: ["Which deal should I follow up first?", "Show proposal-stage activity", "Create a next-step task"],
+    };
+  }
+  if (normalized.includes("support") || normalized.includes("ticket")) {
+    return {
+      question,
+      answer: `There are ${tickets.length} support tickets and ${openTickets.length} are still open, ${urgent.length} urgent or escalated. Start with ${urgent[0]?.number}: ${urgent[0]?.subject}.`,
+      dataUsed: [`${tickets.length} demo tickets`, "Customer timeline", "SLA status"],
+      calculation: { metric: "Open support workload", period: "Current CRM snapshot", filters: "open, escalated and AI-handling tickets", sources: "Demo tickets" },
+      followups: ["Show escalated tickets", "Which customers are at risk?", "Draft a customer update"],
+    };
+  }
+  return {
+    question,
+    answer: `Janus is using the connected demo records for Acme Traders: ${crm.leads} leads, ${crm.openDeals} open deals worth ${lakh(crm.pipeline)}, ${crm.buyers} customers, ${tickets.length} support tickets and ${conversations.length} conversations. Ask about leads, pipeline, customer risk or support to see a grounded answer.`,
+    dataUsed: ["Leads", "Deals", "Customers", "Tickets", "Chats"],
+    calculation: { metric: "Connected CRM snapshot", period: "Current demo records", filters: "CRM & Sales workspace", sources: "Local demo data" },
+    followups: ["Which leads need attention today?", "What is our open pipeline?", "What support needs attention?"],
+  };
+}
+
 let turnSeq = 0;
 
 export default function AskYourBusinessPage() {
@@ -52,6 +97,7 @@ function AskYourBusinessPageInner() {
   const searchParams = useSearchParams();
   const { workspaceId, workspace } = useWorkspace();
   const departmentChat = workspaceId !== "business" && workspaceId !== "crm-sales";
+  const crmAssistant = workspaceId === "crm-sales";
   const requestedIntelligenceView = searchParams.get("view");
   const intelligenceView = requestedIntelligenceView === "history" ? "insights" : requestedIntelligenceView === "forecasts" || requestedIntelligenceView === "recommendations" ? "planning" : requestedIntelligenceView ?? (workspaceId === "business" ? "knowledge" : "chat");
   const reportSummary = useApi<{
@@ -62,7 +108,23 @@ function AskYourBusinessPageInner() {
     unavailable: string[];
   }>(workspaceId === "business" && intelligenceView === "performance" ? "/business/reports/summary" : null);
 
-  const [turns, setTurns] = React.useState<Turn[]>([]);
+  const [turns, setTurns] = React.useState<Turn[]>(() => {
+    if (!demoMode || (!departmentChat && !crmAssistant)) return [];
+    return [
+      {
+        id: "demo-assistant-turn-1",
+        question: "Which leads need attention today?",
+        status: "done",
+        result: demoCrmAnswer("Which leads need attention today?"),
+      },
+      {
+        id: "demo-assistant-turn-2",
+        question: "What is our open pipeline?",
+        status: "done",
+        result: demoCrmAnswer("What is our open pipeline?"),
+      },
+    ];
+  });
   const [inputValue, setInputValue] = React.useState("");
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
@@ -78,6 +140,15 @@ function AskYourBusinessPageInner() {
     const id = `turn-${turnSeq}`;
     setTurns((prev) => [...prev, { id, question: trimmed, status: "thinking" }]);
     setInputValue("");
+
+    if (demoMode && (departmentChat || crmAssistant)) {
+      setTurns((prev) => prev.map((t) => t.id === id ? {
+        ...t,
+        status: "done",
+        result: demoCrmAnswer(trimmed),
+      } : t));
+      return;
+    }
 
     void api<{ answer: string; sources: string[] }>("/business/intelligence/ask", {
       method: "POST",
@@ -98,7 +169,7 @@ function AskYourBusinessPageInner() {
         followups: [],
       },
     } : t))).catch(() => setTurns((prev) => prev.map((t) => t.id === id ? { ...t, status: "done", result: null } : t)));
-  }, [searchParams, workspaceId]);
+  }, [crmAssistant, departmentChat, searchParams, workspaceId]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -121,19 +192,26 @@ function AskYourBusinessPageInner() {
     return <BusinessIntelligenceView view={intelligenceView} reportSummary={reportSummary} />;
   }
 
+  if (crmAssistant) {
+    return <CrmAssistantView />;
+  }
+
   return (
     <div className="mx-auto flex max-w-[820px] flex-col gap-6 px-6 py-8">
       <div className="flex flex-col items-center gap-2 text-center">
         <div className="inline-flex items-center gap-1.5 border border-accent-border bg-accent-muted px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-accent">
           <Sparkles className="size-3" />
-          {departmentChat ? `${workspace.name} AI Chat` : "Janus Intelligence"}
+          {departmentChat ? `${workspace.name} AI Chat` : crmAssistant ? "CRM & Sales AI Assistant" : "Janus Intelligence"}
+          {demoMode && <Badge variant="neutral">Demo data</Badge>}
         </div>
         <h1 className="text-[26px] font-semibold tracking-tight text-foreground">
-          {departmentChat ? `Ask ${workspace.name}` : "Understand your business"}
+          {departmentChat ? `Ask ${workspace.name}` : crmAssistant ? "CRM & Sales AI Assistant" : "Understand your business"}
         </h1>
         <p className="max-w-lg text-[13px] text-muted-foreground">
           {departmentChat
             ? `Ask questions about authorized ${workspace.name} data. The answer will identify which records are available.`
+            : crmAssistant
+              ? "Ask about leads, deals, customers, chats and tickets. Answers are grounded in the CRM demo records."
             : "Ask natural-language questions about your business. Answers are grounded in connected records and identify unavailable data."}
         </p>
       </div>
@@ -212,6 +290,153 @@ const initialChatThreads: ChatThread[] = [
     messages: [],
   },
 ];
+
+const initialCrmChatThreads: ChatThread[] = [
+  {
+    id: "crm-chat-priority",
+    title: "Lead follow-up priorities",
+    date: "Today",
+    stored: true,
+    ownerId: AI_VIEWER_ID,
+    messages: [
+      { id: "crm-m-1", role: "user", text: "Which leads need attention today?", day: "Today", time: "09:42" },
+      { id: "crm-m-2", role: "assistant", text: demoCrmAnswer("Which leads need attention today?").answer, day: "Today", time: "09:42" },
+    ],
+  },
+  {
+    id: "crm-chat-pipeline",
+    title: "Open pipeline review",
+    date: "Yesterday",
+    stored: true,
+    ownerId: AI_VIEWER_ID,
+    messages: [
+      { id: "crm-m-3", role: "user", text: "What is our open pipeline?", day: "Yesterday", time: "16:18" },
+      { id: "crm-m-4", role: "assistant", text: demoCrmAnswer("What is our open pipeline?").answer, day: "Yesterday", time: "16:18" },
+    ],
+  },
+  {
+    id: "crm-chat-support",
+    title: "Support triage",
+    date: "22 Oct",
+    stored: true,
+    ownerId: AI_VIEWER_ID,
+    messages: [
+      { id: "crm-m-5", role: "user", text: "What support needs attention?", day: "22 Oct", time: "11:06" },
+      { id: "crm-m-6", role: "assistant", text: demoCrmAnswer("What support needs attention?").answer, day: "22 Oct", time: "11:06" },
+    ],
+  },
+  {
+    id: "crm-chat-new",
+    title: "New conversation",
+    date: "Just now",
+    stored: false,
+    ownerId: AI_VIEWER_ID,
+    messages: [],
+  },
+];
+
+function CrmAssistantView() {
+  const blankThread: ChatThread = { id: "crm-chat-new", title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
+  const [threads, setThreads] = React.useState<ChatThread[]>(() => demoMode ? initialCrmChatThreads : [blankThread]);
+  const [activeThreadId, setActiveThreadId] = React.useState(() => demoMode ? initialCrmChatThreads[0].id : blankThread.id);
+  const [question, setQuestion] = React.useState("");
+  const [search, setSearch] = React.useState("");
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const visibleThreads = threads.filter((thread) => thread.ownerId === AI_VIEWER_ID);
+  const filteredThreads = visibleThreads.filter((thread) => {
+    const query = search.trim().toLowerCase();
+    return !query || `${thread.title} ${thread.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(query);
+  });
+  const activeThread = visibleThreads.find((thread) => thread.id === activeThreadId) ?? visibleThreads[0];
+
+  function newChat() {
+    const thread: ChatThread = { id: `crm-chat-${Date.now()}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
+    setThreads((current) => [thread, ...current]);
+    setActiveThreadId(thread.id);
+    setQuestion("");
+    setNotice(null);
+  }
+
+  function storeChat() {
+    if (!demoMode) {
+      setNotice("Chat storage is not connected yet. This conversation remains on this page until storage is enabled.");
+      return;
+    }
+    setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, stored: true } : thread));
+    setNotice("Conversation stored privately for your account. Other members cannot see it.");
+  }
+
+  async function ask(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmed = question.trim();
+    if (!trimmed || !activeThread) return;
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const userMessage: ChatMessage = { id: `crm-m-${Date.now()}`, role: "user", text: trimmed, day: "Today", time };
+    const activeId = activeThread.id;
+    setThreads((current) => current.map((thread) => thread.id === activeId ? { ...thread, title: thread.messages.length === 0 ? trimmed.slice(0, 42) : thread.title, date: "Today", messages: [...thread.messages, userMessage] } : thread));
+    setQuestion("");
+
+    if (demoMode) {
+      const result = demoCrmAnswer(trimmed);
+      const assistantMessage: ChatMessage = { id: `crm-m-${Date.now()}-answer`, role: "assistant", text: result.answer, day: "Today", time };
+      setThreads((current) => current.map((thread) => thread.id === activeId ? { ...thread, messages: [...thread.messages, assistantMessage] } : thread));
+      setNotice("Answer grounded in demo CRM records · 3 leads · 2 deals · 8 tickets.");
+      return;
+    }
+
+    try {
+      const result = await api<{ answer: string; sources: string[]; unavailable?: string[] }>("/business/intelligence/ask", {
+        method: "POST",
+        body: JSON.stringify({ question: trimmed, workspaceId: "crm-sales" }),
+      });
+      const assistantMessage: ChatMessage = { id: `crm-m-${Date.now()}-answer`, role: "assistant", text: result.answer, day: "Today", time: "Just now" };
+      setThreads((current) => current.map((thread) => thread.id === activeId ? { ...thread, messages: [...thread.messages, assistantMessage] } : thread));
+      setNotice(result.unavailable?.length ? `Answer grounded in connected records. Unavailable: ${result.unavailable.join(", ")}.` : "Answer grounded in connected CRM records.");
+    } catch {
+      setNotice("Janus could not load a verified answer. Check the connected CRM data and try again.");
+    }
+  }
+
+  if (!activeThread) return null;
+
+  return (
+    <div className="crm-assistant-shell mx-auto flex h-full min-h-0 max-w-[1240px] flex-col gap-5 overflow-hidden px-4 py-6 sm:px-6 sm:py-7">
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />CRM &amp; Sales AI</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">CRM Assistant</h1><Badge variant="neutral">{demoMode ? "Demo data" : "Connected records"}</Badge></div>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Ask about leads, deals, customers, chats and tickets. Every answer stays scoped to CRM &amp; Sales.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2"><Badge variant="success">CRM scope</Badge><Badge variant="outline">Private to you</Badge></div>
+      </header>
+
+      {notice && <DemoNotice>{notice}</DemoNotice>}
+
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:grid-rows-1">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface p-3">
+          <div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your chats</p><p className="mt-1 text-[10px] text-muted-foreground">Private to your account</p></div><Button size="sm" variant="secondary" onClick={newChat}><Plus className="size-3.5" />New chat</Button></div>
+          <div className="relative mb-3"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search chats" className="h-8 pl-8 text-xs" aria-label="Search CRM assistant chats" /></div>
+          <div className="min-h-0 max-h-[180px] flex-1 overflow-y-auto pr-1 md:max-h-none">{filteredThreads.map((thread) => <button key={thread.id} type="button" onClick={() => { setActiveThreadId(thread.id); setNotice(null); }} className={`flex items-start gap-2 rounded-md px-2.5 py-2.5 text-left transition-colors ${thread.id === activeThreadId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"}`}><MessageSquare className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{thread.title}</span><span className="mt-0.5 block text-[10px] opacity-70">{thread.date}{thread.stored ? " · Stored privately" : ""}</span></span></button>)}{filteredThreads.length === 0 && <p className="px-2 py-4 text-center text-xs text-muted-foreground">No chats match your search.</p>}</div>
+        </aside>
+
+        <main className="flex min-h-0 min-w-0 flex-col">
+          <SectionCard className="crm-assistant-card flex min-h-0 flex-1 flex-col" title={activeThread.title} description={`${activeThread.date} · ${activeThread.stored ? "Stored privately" : "Not stored yet"}`}>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                {activeThread.messages.length === 0 ? <div className="flex min-h-[340px] flex-col items-center justify-center text-center"><span className="mb-3 flex size-11 items-center justify-center rounded-full bg-accent-muted text-accent"><Sparkles className="size-5" /></span><p className="text-sm font-medium">Start a CRM conversation</p><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">Ask for a lead priority list, pipeline review, customer risk or a suggested follow-up.</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((message, index) => <React.Fragment key={message.id}>{(index === 0 || activeThread.messages[index - 1].day !== message.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{message.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{message.role === "user" ? "You" : "Janus"}</span><span>{message.time}</span></div>{message.text}</div></div></React.Fragment>)}</div>}
+              </div>
+              <form onSubmit={ask} className="mt-5 border-t border-border pt-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about leads, pipeline, customers or support…" aria-label="Ask the CRM assistant" rows={2} className="min-h-[70px] resize-none text-sm" /><Button type="submit" className="h-10 shrink-0" disabled={!question.trim()}><Send className="size-3.5" />Ask Janus</Button></div><p className="mt-2 text-[10px] text-muted-foreground">Answers use CRM records only. Consequential actions still require your approval.</p></form>
+            </div>
+          </SectionCard>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["Which leads need attention?", "What is our open pipeline?", "What support needs attention?", "Draft a follow-up for Riya"].map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div>
+        </main>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="CRM records" value="3 leads" detail="Ready for assistant questions" tone="success" /><KnowledgeStat label="Open pipeline" value="₹7.55L" detail="Across 2 active deals" tone="neutral" /><KnowledgeStat label="Support queue" value="8 tickets" detail="4 currently need attention" tone="warning" /></div>
+    </div>
+  );
+}
 
 function BusinessChatView() {
   const blankThread: ChatThread = { id: "chat-new", title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
@@ -418,7 +643,7 @@ function BusinessMemoryView() {
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div>
-        <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Memory</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Your private memory"}</Badge></div>
+        <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">Memory</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Your private memory"}</Badge></div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Preferences and context that Janus remembers for your work. Memory is personal to your account and separate from shared business knowledge.</p>
       </div>
       <div className="flex items-center gap-2"><Badge variant="success">Owner scope</Badge><Badge variant="outline">Private to you</Badge></div>

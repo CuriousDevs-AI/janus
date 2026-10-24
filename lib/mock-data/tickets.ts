@@ -1,182 +1,39 @@
-import type { Ticket } from "@/lib/types";
+import type { ActivityActor, Ticket, TicketAction, TicketPriority, TicketStatus } from "@/lib/types";
+import { at } from "@/lib/demo-universe";
 
-export const tickets: Ticket[] = [
-  {
-    id: "tck-1023",
-    number: "#1023",
-    customerId: "cus-1",
-    subject: "API integration issue — authentication failing",
-    description: "Customer's production API requests began failing authentication this morning after a token reset.",
-    priority: "urgent",
-    status: "escalated",
-    assigneeId: "u-5",
-    aiConfidence: 0.92,
-    knowledgeUsed: ["Authentication Guide", "API Documentation"],
-    actions: [
-      { id: "act-1", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Authentication guide sent", createdAt: "2026-08-17T09:08:00+05:30" },
-      { id: "act-2", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Token reset attempted", createdAt: "2026-08-17T09:35:00+05:30" },
-      { id: "act-3", actor: { type: "customer" }, label: "Issue persists — customer requested human support", createdAt: "2026-08-17T15:40:00+05:30" },
-    ],
-    slaMinutesRemaining: 42,
-    createdAt: "2026-08-17T09:05:00+05:30",
-    updatedAt: "2026-08-17T15:40:00+05:30",
-    conversationId: "conv-4",
-    handoff: {
-      requestedAt: "2026-08-17T15:40:00+05:30",
-      reason: "Customer explicitly requested human support.",
-      summary: "Customer is unable to authenticate API requests. Production integrations are affected.",
-      previousActions: [
-        "Authentication guide sent",
-        "Token reset attempted",
-        "Issue persists",
-      ],
-      suggestedNextAction: "Assign to Technical Support.",
-    },
-  },
-  {
-    id: "tck-1018",
-    number: "#1018",
-    customerId: "cus-8",
-    subject: "Order sync failing silently — third occurrence",
-    description: "Repeated order sync failures ahead of a high-traffic sale weekend. Customer is frustrated and at risk.",
-    priority: "urgent",
-    status: "escalated",
-    assigneeId: "u-5",
-    aiConfidence: 0.4,
-    knowledgeUsed: ["API Documentation"],
-    actions: [
-      { id: "act-4", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Escalated to support lead", createdAt: "2026-08-17T08:42:00+05:30" },
-    ],
-    slaMinutesRemaining: 18,
-    createdAt: "2026-08-17T08:40:00+05:30",
-    updatedAt: "2026-08-17T08:55:00+05:30",
-    conversationId: "conv-9",
-    handoff: {
-      requestedAt: "2026-08-17T08:42:00+05:30",
-      reason: "Low AI confidence on a repeat, high-severity issue.",
-      summary: "Third silent order-sync failure this month for an at-risk customer ahead of peak traffic.",
-      previousActions: ["Escalated to support lead", "Root cause investigation opened"],
-      suggestedNextAction: "Assign to a senior engineer and notify account manager (at-risk customer).",
-    },
-  },
-  {
-    id: "tck-1015",
-    number: "#1015",
-    customerId: "cus-3",
-    subject: "Webhook retries failing",
-    description: "Inbound webhooks were retrying and failing for roughly 40 minutes due to a deploy on the customer's endpoint.",
-    priority: "medium",
-    status: "resolved",
-    assigneeId: undefined,
-    aiConfidence: 0.9,
-    knowledgeUsed: ["API Documentation"],
-    actions: [
-      { id: "act-5", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Diagnosed 500 responses on customer endpoint", createdAt: "2026-08-16T17:52:00+02:00" },
-      { id: "act-6", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Resent 46 failed webhook events", createdAt: "2026-08-16T17:58:00+02:00" },
-    ],
-    slaMinutesRemaining: null,
-    createdAt: "2026-08-16T17:40:00+02:00",
-    updatedAt: "2026-08-16T18:05:00+02:00",
-    resolvedAt: "2026-08-16T18:05:00+02:00",
-    conversationId: "conv-6",
-  },
-  {
-    id: "tck-1009",
-    number: "#1009",
-    customerId: "cus-19",
-    subject: "Billing discrepancy on last invoice",
-    description: "Customer reports being charged for 40 seats but only 32 are active.",
-    priority: "high",
-    status: "in_progress",
-    assigneeId: "u-6",
-    aiConfidence: 0.63,
-    knowledgeUsed: ["Refund Policy"],
-    actions: [
-      { id: "act-7", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Pulled seat usage report", createdAt: "2026-08-16T11:00:00+05:30" },
-      { id: "act-8", actor: { type: "human", userId: "u-6", userName: "Neha Joshi" }, label: "Confirmed discrepancy, filing credit request", createdAt: "2026-08-16T14:30:00+05:30" },
-    ],
-    slaMinutesRemaining: 260,
-    createdAt: "2026-08-16T10:50:00+05:30",
-    updatedAt: "2026-08-16T14:30:00+05:30",
-    conversationId: "conv-9",
-  },
-  {
-    id: "tck-1002",
-    number: "#1002",
-    customerId: "cus-17",
-    subject: "SSO login intermittently failing",
-    description: "A subset of users report SSO redirect loops since yesterday's IdP config change.",
-    priority: "medium",
-    status: "waiting_customer",
-    assigneeId: "u-5",
-    aiConfidence: 0.77,
-    knowledgeUsed: ["Authentication Guide"],
-    actions: [
-      { id: "act-9", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Requested IdP metadata XML from customer", createdAt: "2026-08-15T16:00:00-08:00" },
-    ],
-    slaMinutesRemaining: 480,
-    createdAt: "2026-08-15T15:40:00-08:00",
-    updatedAt: "2026-08-15T16:00:00-08:00",
-    conversationId: "conv-5",
-  },
-  {
-    id: "tck-0995",
-    number: "#995",
-    customerId: "cus-10",
-    subject: "Data export request for audit",
-    description: "Customer requested a full data export for an internal compliance audit.",
-    priority: "low",
-    status: "closed",
-    assigneeId: "u-6",
-    aiConfidence: 0.95,
-    knowledgeUsed: ["Product Docs"],
-    actions: [
-      { id: "act-10", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Generated export and shared secure link", createdAt: "2026-08-10T09:20:00-05:00" },
-      { id: "act-11", actor: { type: "customer" }, label: "Confirmed receipt, no further support needed", createdAt: "2026-08-10T10:00:00-05:00" },
-    ],
-    slaMinutesRemaining: null,
-    createdAt: "2026-08-10T09:00:00-05:00",
-    updatedAt: "2026-08-10T10:05:00-05:00",
-    resolvedAt: "2026-08-10T10:00:00-05:00",
-    closedReason: "Customer confirmed no further support required.",
-    conversationId: "conv-6",
-  },
-  {
-    id: "tck-0988",
-    number: "#988",
-    customerId: "cus-12",
-    subject: "Dashboard slow to load with 50k+ records",
-    description: "Customer reports the analytics dashboard takes 8-10s to load for large accounts.",
-    priority: "medium",
-    status: "ai_handling",
-    assigneeId: undefined,
-    aiConfidence: 0.58,
-    knowledgeUsed: ["Product Docs"],
-    actions: [
-      { id: "act-12", actor: { type: "ai", agentId: "agent-support", agentName: "Support Agent" }, label: "Gathered account size and browser details", createdAt: "2026-08-16T09:00:00+01:00" },
-    ],
-    slaMinutesRemaining: 340,
-    createdAt: "2026-08-16T08:40:00+01:00",
-    updatedAt: "2026-08-16T09:00:00+01:00",
-    conversationId: "conv-7",
-  },
-  {
-    id: "tck-0980",
-    number: "#980",
-    customerId: "cus-6",
-    subject: "Feature request: custom SLA tiers per segment",
-    description: "Customer wants to configure different SLA targets per customer segment.",
-    priority: "low",
-    status: "open",
-    assigneeId: undefined,
-    knowledgeUsed: [],
-    actions: [],
-    slaMinutesRemaining: 1200,
-    createdAt: "2026-08-14T10:00:00+08:00",
-    updatedAt: "2026-08-14T10:00:00+08:00",
-    conversationId: "conv-6",
-  },
+const AI: ActivityActor = { type: "ai", agentId: "agent-support", agentName: "Support Agent" };
+const CUSTOMER: ActivityActor = { type: "customer" };
+const human = (id: string, name: string): ActivityActor => ({ type: "human", userId: id, userName: name });
+const KARAN = human("u-5", "Karan Bhatt");
+const AMAN = human("u-7", "Aman Verma");
+
+interface Spec {
+  number: number; customer: number; subject: string; description: string; priority: TicketPriority; status: TicketStatus; assignee?: string; confidence: number; knowledge: string[];
+  conversation: string; daysAgo: number; time: string; sla: number | null; actions: [ActivityActor, string, number][]; resolved?: boolean; handoff?: Ticket["handoff"];
+}
+const clock = (time: string, minutes: number) => { const [h, m] = time.split(":").map(Number); const total = h * 60 + m + minutes; return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`; };
+
+const specs: Spec[] = [
+  { number: 1031, customer: 12, subject: "Short delivery: 114 of 120 detergent cartons", description: "Kumar & Sons received 114 cartons against an invoice for 120. The loading sheet at the Jaipur warehouse shows 120 left the dock.", priority: "urgent", status: "escalated", assignee: "u-5", confidence: 0.88, knowledge: ["Delivery and short-supply policy"], conversation: "conv-5", daysAgo: 0, time: "09:05", sla: 55, actions: [[AI, "Ticket created from WhatsApp and the warehouse flagged", 3], [CUSTOMER, "Customer sent a photo of the delivery challan", 20], [KARAN, "Checking the loading sheet with the driver", 35]], handoff: { requestedAt: at(0, "09:30"), reason: "Stock discrepancy needs a warehouse check, outside what the agent can resolve.", summary: "6 cartons short on a 120-carton invoice. Customer is a repeat buyer and wants the cartons or a credit note.", previousActions: ["Ticket created", "Warehouse flagged", "Challan photo received"], suggestedNextAction: "Confirm with the driver, then send the 6 cartons tomorrow or issue a credit note." } },
+  { number: 1029, customer: 9, subject: "September invoice shows 480 units of rice, 456 received", description: "The co-op's GST invoice for September does not match the delivery challans. They need a corrected invoice before releasing payment.", priority: "high", status: "in_progress", assignee: "u-7", confidence: 0.9, knowledge: ["GST invoicing and credit notes"], conversation: "conv-6", daysAgo: 1, time: "12:30", sla: 190, actions: [[AI, "Ticket opened with the delivery challan attached", 3], [AMAN, "Reconciling challans against the invoice", 90]] },
+  { number: 1027, customer: 1, subject: "Wrong biscuit variant in two cartons", description: "Northstar's first order included two cartons of the wrong biscuit variant at the Saket store.", priority: "medium", status: "resolved", assignee: "u-5", confidence: 0.84, knowledge: ["Returns and replacements"], conversation: "conv-1", daysAgo: 8, time: "14:10", sla: null, resolved: true, actions: [[AI, "Replacement cartons scheduled with the next truck", 6], [KARAN, "Confirmed the swap on delivery", 1500]] },
+  { number: 1024, customer: 7, subject: "Damaged cartons: credit note requested", description: "Four cartons of floor cleaner arrived crushed. Metro Value Mart asked for a credit note of ₹8,500.", priority: "high", status: "waiting_customer", assignee: "u-5", confidence: 0.79, knowledge: ["Returns and replacements", "GST invoicing and credit notes"], conversation: "conv-4", daysAgo: 3, time: "11:40", sla: null, actions: [[AI, "Requested photos of the damage", 4], [CUSTOMER, "Photos sent", 160], [KARAN, "Credit note sent for approval", 200]] },
+  { number: 1022, customer: 3, subject: "Payment reminder disputed", description: "Annapurna says the ₹1.2L reminder includes an invoice already paid on 12 October.", priority: "medium", status: "open", assignee: "u-7", confidence: 0.7, knowledge: ["Credit and payment terms"], conversation: "conv-3", daysAgo: 2, time: "17:20", sla: 300, actions: [[AI, "Payment record requested from finance", 5]] },
+  { number: 1019, customer: 14, subject: "Flour bags with a short shelf life", description: "Shiv Shakti received flour bags with under four weeks to expiry and wants a replacement batch.", priority: "medium", status: "resolved", assignee: "u-5", confidence: 0.83, knowledge: ["Returns and replacements"], conversation: "conv-8", daysAgo: 12, time: "10:15", sla: null, resolved: true, actions: [[AI, "Batch details checked and replacement approved", 8], [KARAN, "Fresh batch dispatched", 1200]] },
+  { number: 1015, customer: 10, subject: "6am dispatch missed twice this week", description: "FreshKart's dark stores received stock after 8am on two days. They need a fixed dispatch slot.", priority: "high", status: "in_progress", assignee: "u-5", confidence: 0.76, knowledge: ["Delivery slots and cut-off times"], conversation: "conv-8", daysAgo: 4, time: "08:30", sla: 120, actions: [[AI, "Dispatch log reviewed: truck loaded late on 20 and 22 Oct", 6], [KARAN, "Agreed a 5:30am loading slot with the warehouse", 240]] },
+  { number: 1012, customer: 6, subject: "Copy of GST invoice for August", description: "Hotel Aravali Grand needs a duplicate GST invoice for its accountant.", priority: "low", status: "closed", confidence: 0.96, knowledge: ["GST invoicing and credit notes"], conversation: "conv-7", daysAgo: 14, time: "13:00", sla: null, resolved: true, actions: [[AI, "Invoice copy emailed", 2]] },
+  { number: 1009, customer: 2, subject: "Delivery window for the Manesar plant", description: "The canteen contractor asked whether trucks can enter the plant before 7am.", priority: "low", status: "ai_handling", confidence: 0.82, knowledge: ["Delivery slots and cut-off times"], conversation: "conv-7", daysAgo: 1, time: "16:00", sla: 400, actions: [[AI, "Shared the standard slots and asked for the gate pass rules", 4]] },
 ];
+
+export const tickets: Ticket[] = specs.map((spec): Ticket => {
+  const createdAt = at(spec.daysAgo, spec.time);
+  const actions: TicketAction[] = spec.actions.map(([actor, label, minutes], index) => ({ id: `act-${spec.number}-${index + 1}`, actor, label, createdAt: at(spec.daysAgo, clock(spec.time, minutes % 1440)) }));
+  const updatedAt = actions.at(-1)!.createdAt;
+  return {
+    id: `tck-${spec.number}`, number: `#${spec.number}`, customerId: `cus-${spec.customer}`, subject: spec.subject, description: spec.description, priority: spec.priority, status: spec.status, assigneeId: spec.assignee, aiConfidence: spec.confidence,
+    knowledgeUsed: spec.knowledge, actions, slaMinutesRemaining: spec.sla, createdAt, updatedAt, resolvedAt: spec.resolved ? updatedAt : undefined, conversationId: spec.conversation, handoff: spec.handoff,
+  };
+});
 
 export function getTicketById(id?: string): Ticket | undefined {
   if (!id) return undefined;

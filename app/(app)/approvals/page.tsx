@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import type { Approval } from "@/lib/types";
+import { demoMode } from "@/lib/demo-mode";
 
 type FilterValue = "pending" | "approved" | "rejected" | "all";
 
@@ -54,6 +55,7 @@ export default function ApprovalsPage() {
       <PageHeader
         title="Approvals"
         description={`${pendingCount} pending approval${pendingCount === 1 ? "" : "s"}`}
+        actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined}
       />
 
       <div className="border-b border-border px-6">

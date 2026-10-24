@@ -9,6 +9,9 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { MobileSidebar } from "@/components/layout/mobile-sidebar";
+import { usePathname, useRouter } from "next/navigation";
+import { demoMode } from "@/lib/demo-mode";
+import { personaHome, personaMayOpen, usePersona } from "@/lib/demo-persona";
 import { WorkspaceProvider } from "@/components/layout/workspace-context";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -24,6 +27,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function AppShellContent({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const [sending, setSending] = React.useState(false);
+  const persona = usePersona();
+  const pathname = usePathname();
+  const router = useRouter();
+  const allowed = !demoMode || personaMayOpen(persona, pathname);
+  // HR, Finance and Employee previews have no business in CRM or Business Management. Send them home.
+  React.useEffect(() => { if (!allowed) router.replace(personaHome); }, [allowed, router]);
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
       <Sidebar />
@@ -69,7 +78,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           )}
-          {children}
+          {allowed ? children : <div className="p-8 text-sm text-muted-foreground" role="status">This area is only for the Owner. Taking you to your home…</div>}
         </main>
       </div>
       <CommandPalette />

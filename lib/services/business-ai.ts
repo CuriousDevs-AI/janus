@@ -51,22 +51,22 @@ type CannedEntry = {
 // ---------------------------------------------------------------------------
 
 function sourceByName(name: string) {
-  return leadsBySource.find((s) => s.source === name)!;
+  return leadsBySource.find((s) => s.source === name) ?? leadsBySource[0];
 }
 
 const bySourceLeadsDesc = [...leadsBySource].sort((a, b) => b.leads - a.leads);
 const bySourceConversionDesc = [...leadsBySource].sort((a, b) => b.conversion - a.conversion);
 
 const website = sourceByName("Website");
-const metaLeadAds = sourceByName("Meta Lead Ads");
-const referral = sourceByName("Referral");
+const metaLeadAds = sourceByName("Meta Lead Ads") ?? sourceByName("Phone calls");
+const referral = sourceByName("Referral") ?? sourceByName("WhatsApp");
 const secondBySourceVolume = bySourceLeadsDesc.find((s) => s.source !== website.source)!;
 const websiteVsSecondRatio = +(website.leads / secondBySourceVolume.leads).toFixed(1);
 
 const repsByConversionDesc = [...salesLeaderboard].sort((a, b) => b.conversion - a.conversion);
 const topRep = repsByConversionDesc[0];
-const secondRep = repsByConversionDesc[1];
-const thirdRep = repsByConversionDesc[2];
+const secondRep = repsByConversionDesc[1] ?? topRep;
+const thirdRep = repsByConversionDesc[2] ?? secondRep;
 
 const firstConv = conversionTrend[0];
 const lastConv = conversionTrend[conversionTrend.length - 1];

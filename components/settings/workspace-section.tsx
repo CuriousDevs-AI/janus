@@ -24,6 +24,7 @@ import { workspaceDefinitions } from "@/lib/workspace-config";
 import { api, message } from "@/lib/api/client";
 import { useApi as apiUse } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
+import { buyers, lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { useSession } from "@/components/auth/session-provider";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
 import { BillingSection } from "@/components/settings/billing-section";
@@ -101,7 +102,7 @@ export function WorkspaceSection() {
   const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-2xl font-semibold tracking-tight">Business Settings</h1>
+      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
@@ -285,12 +286,18 @@ function OverviewKpi({ label, value, detail }: { label: string; value: string; d
   return <div className="rounded-xl border border-[#e4e4df] bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
+/** Open leads and deals that have gone quiet. Derived from the same records the CRM shows. */
+const openFollowUps = (() => {
+  const quiet = [...leadRows.filter((item) => !["won", "lost"].includes(item.stage))].map((item) => Math.round((Date.parse("2026-10-24T12:00:00+05:30") - Date.parse(item.lastActivityAt)) / 86400000));
+  return { due: quiet.filter((days) => days <= 1).length, overdue: quiet.filter((days) => days >= 4).length };
+})();
+
 function OverviewPulse() {
   const metrics = [
-    ["Lead to deal", "51.6%", "161 of 312 leads qualified", "success"],
-    ["Win rate", "16.8%", "27 won from active deals", "success"],
-    ["Follow-up SLA", "94%", "Replies handled within 2 hours", "success"],
-    ["Owner workload", "17", "12 due today · 5 overdue", "warning"],
+    ["Lead to deal", `${crm.leadToDeal}%`, `${crm.deals} of ${crm.leads} leads became deals`, "success"],
+    ["Win rate", `${crm.winRate}%`, `${crm.wonDeals} won, ${crm.lostDeals} lost of closed deals`, "success"],
+    ["Follow-up SLA", "91%", "Replies handled within 2 hours", "success"],
+    ["Owner workload", String(openFollowUps.due + openFollowUps.overdue), `${openFollowUps.due} due today · ${openFollowUps.overdue} overdue`, openFollowUps.overdue > 2 ? "warning" : "success"],
   ] as const;
   return <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Business pulse"><div className="sm:col-span-2 xl:col-span-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business pulse</p><p className="mt-1 text-xs text-muted-foreground">A quick read of conversion, response quality and work waiting for attention.</p></div>{metrics.map(([label, value, detail, tone]) => <div key={label} className="rounded-lg border border-[#e4e4df] bg-white px-4 py-3"><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><span className={`size-2 rounded-full ${tone === "warning" ? "bg-warning" : "bg-success"}`} /></div><p className="mt-2 text-xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>)}</section>;
 }
@@ -305,11 +312,15 @@ function OverviewChart({ metric, onMetricChange, loading, error, demoMode, leads
   </SectionCard>;
 }
 
+const change = (trend: { leads: number; deals: number }[], key: "leads" | "deals") => { const last = trend.at(-1)?.[key] ?? 0; const before = trend.at(-2)?.[key] ?? 0; if (!before) return "—"; const value = Math.round(((last - before) / before) * 100); return `${value >= 0 ? "+" : ""}${value}%`; };
+
 function GrowthChart({ bars, loading }: { bars: Array<{ label: string; value: number }>; loading: boolean }) {
-  const trend = [{ label: "May", leads: 188, deals: 79 }, { label: "Jun", leads: 214, deals: 92 }, { label: "Jul", leads: 231, deals: 104 }, { label: "Aug", leads: 247, deals: 119 }, { label: "Sep", leads: 264, deals: 142 }, { label: "Oct", leads: 312, deals: 161 }];
-  const funnel = [{ label: "Captured", value: 312, color: "bg-accent" }, { label: "Qualified", value: 161, color: "bg-info" }, { label: "Proposal", value: 68, color: "bg-violet-500" }, { label: "Won", value: 27, color: "bg-success" }];
+  const trend = monthlyLeads;
+  const ceiling = Math.max(...trend.map((item) => item.leads), 1) * 1.15;
+  const stage = (names: string[]) => crm.byStage.filter((item) => names.includes(item.stage)).reduce((sum, item) => sum + item.count, 0);
+  const funnel = [{ label: "Captured", value: crm.leads, color: "bg-accent" }, { label: "Qualified or further", value: crm.leads - stage(["new", "lost"]), color: "bg-info" }, { label: "Proposal or further", value: stage(["proposal", "negotiation", "won"]), color: "bg-violet-500" }, { label: "Won", value: stage(["won"]), color: "bg-success" }];
   const smoothPath = (key: "leads" | "deals") => {
-    const points = trend.map((item, index) => [48 + index * 92, 178 - (item[key] / 340) * 145] as const);
+    const points = trend.map((item, index) => [48 + index * 92, 178 - (item[key] / ceiling) * 145] as const);
     return points.reduce((path, [x, y], index) => {
       if (index === 0) return `M ${x} ${y}`;
       const [previousX, previousY] = points[index - 1];
@@ -317,42 +328,45 @@ function GrowthChart({ bars, loading }: { bars: Array<{ label: string; value: nu
       return `${path} C ${midpoint} ${previousY}, ${midpoint} ${y}, ${x} ${y}`;
     }, "");
   };
-  return <div className="flex flex-col gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-accent" />Leads</span><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-info" />Open deals</span></div><div className="flex gap-3 text-xs"><span className="font-medium text-success">+18% leads</span><span className="font-medium text-info">+11% deals</span></div></div><svg viewBox="0 0 540 218" role="img" aria-label="Six month lead and deal growth" className="h-auto w-full"><g stroke="#efefea" strokeWidth="1"><line x1="40" y1="178" x2="520" y2="178" /><line x1="40" y1="130" x2="520" y2="130" /><line x1="40" y1="82" x2="520" y2="82" /><line x1="40" y1="34" x2="520" y2="34" /></g><g fill="#7a7f87" fontSize="10" textAnchor="end"><text x="34" y="182">0</text><text x="34" y="134">110</text><text x="34" y="86">220</text><text x="34" y="38">330</text></g>{!loading && <><path d={smoothPath("leads")} fill="none" stroke="var(--accent)" strokeWidth="3.5" strokeLinecap="round" /><path d={smoothPath("deals")} fill="none" stroke="var(--info)" strokeWidth="3.5" strokeLinecap="round" />{trend.map((item, index) => <text key={item.label} x={48 + index * 92} y="202" fill="#7a7f87" fontSize="10" textAnchor="middle">{item.label}</text>)}</>}</svg><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Qualified this month</p><p className="mt-1 text-sm font-semibold">46 leads</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Pipeline added</p><p className="mt-1 text-sm font-semibold">₹12.4L</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Current snapshot</p><p className="mt-1 text-sm font-semibold">{loading ? "Loading" : `${bars[0].value} leads`}</p></div></div><div className="rounded-lg border border-border bg-surface-2 p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">Lead-to-deal funnel</p><p className="mt-1 text-[11px] text-muted-foreground">How opportunities move through the current CRM snapshot.</p></div><Badge variant="neutral">{loading ? "Loading" : "Current"}</Badge></div><div className="mt-3 grid gap-2.5" role="img" aria-label="Lead conversion funnel"><div className="sr-only">{funnel.map((item) => `${item.label}: ${item.value}`).join(", ")}</div>{funnel.map((item) => <div key={item.label} className="flex items-center gap-3"><span className="w-20 text-xs text-muted-foreground">{item.label}</span><div className="h-2.5 flex-1 rounded-full bg-white"><div className={`h-2.5 rounded-full ${item.color}`} style={{ width: `${Math.max((item.value / funnel[0].value) * 100, 8)}%` }} /></div><span className="w-8 text-right text-xs font-semibold tabular-nums">{item.value}</span></div>)}</div></div><p className="text-xs text-muted-foreground">Demo trend · Janus compares the current CRM snapshot with the previous five months.</p></div>;
+  return <div className="flex flex-col gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-accent" />Leads</span><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-info" />Open deals</span></div><div className="flex gap-3 text-xs"><span className="font-medium text-success">{change(trend, "leads")} leads</span><span className="font-medium text-info">{change(trend, "deals")} deals</span></div></div><svg viewBox="0 0 540 218" role="img" aria-label="Six month lead and deal growth" className="h-auto w-full"><g stroke="#efefea" strokeWidth="1"><line x1="40" y1="178" x2="520" y2="178" /><line x1="40" y1="130" x2="520" y2="130" /><line x1="40" y1="82" x2="520" y2="82" /><line x1="40" y1="34" x2="520" y2="34" /></g><g fill="#7a7f87" fontSize="10" textAnchor="end"><text x="34" y="182">0</text><text x="34" y="134">{Math.round(ceiling / 3)}</text><text x="34" y="86">{Math.round((ceiling * 2) / 3)}</text><text x="34" y="38">{Math.round(ceiling)}</text></g>{!loading && <><path d={smoothPath("leads")} fill="none" stroke="var(--accent)" strokeWidth="3.5" strokeLinecap="round" /><path d={smoothPath("deals")} fill="none" stroke="var(--info)" strokeWidth="3.5" strokeLinecap="round" />{trend.map((item, index) => <text key={item.label} x={48 + index * 92} y="202" fill="#7a7f87" fontSize="10" textAnchor="middle">{item.label}</text>)}</>}</svg><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Qualified this month</p><p className="mt-1 text-sm font-semibold">{leadRows.filter((item) => item.createdAt >= "2026-10-01" && !["new", "lost"].includes(item.stage)).length} leads</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Pipeline added</p><p className="mt-1 text-sm font-semibold">{lakh(dealRows.filter((item) => item.createdAt >= "2026-10-01").reduce((sum, item) => sum + Number(item.amount), 0))}</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Current snapshot</p><p className="mt-1 text-sm font-semibold">{loading ? "Loading" : `${bars[0].value} leads`}</p></div></div><div className="rounded-lg border border-border bg-surface-2 p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">Lead-to-deal funnel</p><p className="mt-1 text-[11px] text-muted-foreground">How opportunities move through the current CRM snapshot.</p></div><Badge variant="neutral">{loading ? "Loading" : "Current"}</Badge></div><div className="mt-3 grid gap-2.5" role="img" aria-label="Lead conversion funnel"><div className="sr-only">{funnel.map((item) => `${item.label}: ${item.value}`).join(", ")}</div>{funnel.map((item) => <div key={item.label} className="flex items-center gap-3"><span className="w-36 text-xs text-muted-foreground">{item.label}</span><div className="h-2.5 flex-1 rounded-full bg-white"><div className={`h-2.5 rounded-full ${item.color}`} style={{ width: `${Math.max((item.value / funnel[0].value) * 100, 8)}%` }} /></div><span className="w-8 text-right text-xs font-semibold tabular-nums">{item.value}</span></div>)}</div></div><p className="text-xs text-muted-foreground">Demo trend · Janus compares the current CRM snapshot with the previous five months.</p></div>;
 }
 
-const demoOverview = { leads: 312, openDeals: 161, wonDeals: 27, pipelineValue: "₹84L", unavailable: [] as string[] };
+const demoOverview = { leads: crm.leads, openDeals: crm.openDeals, wonDeals: crm.wonDeals, pipelineValue: lakh(crm.pipeline), unavailable: [] as string[] };
 
 function RevenueChart() {
   return <div className="flex flex-col gap-3"><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-accent" />Revenue</span><span className="flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-muted-foreground" />Target</span></div><svg viewBox="0 0 540 210" role="img" aria-label="Demo revenue trend" className="h-auto w-full"><g stroke="#efefea" strokeWidth="1"><line x1="40" y1="180" x2="520" y2="180" /><line x1="40" y1="123" x2="520" y2="123" /><line x1="40" y1="66" x2="520" y2="66" /><line x1="40" y1="10" x2="520" y2="10" /></g><g fill="#5b616e" fontSize="11" textAnchor="end"><text x="32" y="184">0</text><text x="32" y="127">₹20L</text><text x="32" y="70">₹40L</text><text x="32" y="14">₹60L</text></g><polyline points="40,66 136,61 232,56 328,50 424,44 520,38" fill="none" stroke="#8a8f99" strokeWidth="2" strokeDasharray="5 5" /><polyline points="40,92 136,84 232,87 328,75 424,72 520,59" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /><g fill="var(--accent)"><circle cx="40" cy="92" r="3.5" /><circle cx="136" cy="84" r="3.5" /><circle cx="232" cy="87" r="3.5" /><circle cx="328" cy="75" r="3.5" /><circle cx="424" cy="72" r="3.5" /><circle cx="520" cy="59" r="5" /></g><g fill="#5b616e" fontSize="11" textAnchor="middle"><text x="40" y="202">May</text><text x="136" y="202">Jun</text><text x="232" y="202">Jul</text><text x="328" y="202">Aug</text><text x="424" y="202">Sep</text><text x="520" y="202">Oct</text></g></svg><p className="text-xs text-muted-foreground">Demo data · ₹42.8L revenue against a ₹50L target.</p></div>;
 }
 
 function AttentionPanel() {
-  const items = [["High", "6 deals stuck in Proposal for 10+ days", "₹14.2L"], ["High", "4 invoices overdue by 30+ days", "₹3.1L"], ["Medium", "12 follow-ups due today, 5 overdue", "17"], ["Medium", "3 approvals waiting for you", "3"], ["Due", "GSTR-3B filing deadline is approaching", "20 Nov"], ["Low", "1 automation failed overnight", "1"]];
+  const waiting = dealRows.filter((item) => ["proposal", "negotiation"].includes(item.stage));
+  const items = [["High", `${waiting.length} deals in proposal or negotiation are waiting for a decision`, lakh(waiting.reduce((sum, item) => sum + Number(item.amount), 0))], ["High", "4 invoices overdue by 30+ days", "₹3.1L"], ["Medium", `${openFollowUps.due} follow-ups due today, ${openFollowUps.overdue} overdue`, String(openFollowUps.due + openFollowUps.overdue)], ["Medium", "3 approvals waiting for you", "3"], ["Due", "GSTR-3B filing deadline is approaching", "20 Nov"], ["Low", "1 automation failed overnight", "1"]];
   return <SectionCard title="Needs your attention" description="Demo items showing how Janus prioritises owner actions."><div className="flex flex-col divide-y divide-border">{items.map(([severity, title, value]) => <div key={title} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"><Badge variant={severity === "High" ? "danger" : severity === "Medium" ? "warning" : "neutral"}>{severity}</Badge><span className="min-w-0 flex-1 text-sm font-medium">{title}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div></SectionCard>;
 }
 
 function PipelineSnapshot() {
-  const stages = [["New", 84, "₹31L"], ["Qualified", 46, "₹24L"], ["Proposal", 22, "₹18L"], ["Negotiation", 9, "₹11L"], ["Won", 27, "₹21.5L"]];
-  return <SectionCard title="Pipeline by stage" description="Demo CRM pipeline distribution."><div className="flex flex-col gap-4">{stages.map(([stage, count, value], index) => <div key={stage} className="flex flex-col gap-1.5"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{stage}</span><span className="text-muted-foreground">{count} · {value}</span></div><div className="h-2 rounded-full bg-[#efefea]"><div className={`h-2 rounded-full ${index === 2 ? "bg-orange-600" : index === 4 ? "bg-green-700" : "bg-accent"}`} style={{ width: `${Math.max(Number(count) / 84 * 100, 8)}%` }} /></div></div>)}</div></SectionCard>;
+  const count = (stage: string) => crm.byStage.find((item) => item.stage === stage)?.count ?? 0;
+  const value = (stage: string) => lakh(dealRows.filter((item) => item.stage === stage).reduce((sum, item) => sum + Number(item.amount), 0));
+  const stages = [["New", count("new"), "no deal yet"], ["Qualified", count("qualified"), value("qualified")], ["Proposal", count("proposal"), value("proposal")], ["Negotiation", count("negotiation"), value("negotiation")], ["Won", count("won"), value("won")]];
+  return <SectionCard title="Pipeline by stage" description="Leads by stage, with the value of their deals."><div className="flex flex-col gap-4">{stages.map(([stage, count, value], index) => <div key={stage} className="flex flex-col gap-1.5"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{stage}</span><span className="text-muted-foreground">{count} · {value}</span></div><div className="h-2 rounded-full bg-[#efefea]"><div className={`h-2 rounded-full ${index === 2 ? "bg-orange-600" : index === 4 ? "bg-green-700" : "bg-accent"}`} style={{ width: `${Math.max(Number(count) / Math.max(1, ...stages.map((row) => Number(row[1]))) * 100, 8)}%` }} /></div></div>)}</div></SectionCard>;
 }
 
 function TargetSnapshot() {
-  const targets = [["Revenue", "₹42.8L of ₹50L", 86], ["New customers", "23 of 30", 77], ["Collections", "₹28.4L of ₹31.5L", 90], ["Hiring", "2 of 3", 67]];
+  const targets = [["Revenue", "₹42.8L of ₹50L", 86], ["New customers", `${crm.wonDeals} of 6`, Math.round((crm.wonDeals / 6) * 100)], ["Collections", "₹28.4L of ₹31.5L", 90], ["Hiring", "2 of 3", 67]];
   return <SectionCard title="Monthly targets" description="Demo targets for the owner dashboard preview."><div className="flex flex-col gap-4">{targets.map(([name, progress, percentage]) => <div key={name} className="flex flex-col gap-1.5"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{name}</span><span className="text-muted-foreground">{progress} · {percentage}%</span></div><div className="h-2 rounded-full bg-[#efefea]"><div className="h-2 rounded-full bg-accent" style={{ width: `${percentage}%` }} /></div></div>)}</div></SectionCard>;
 }
 
 function ApprovalSnapshot() {
-  const approvals = [["15% discount for Nova Clinics", "Requested by Arjun Mehta · ₹42,000 off"], ["Refund for order #4471", "Requested by Support · ₹8,500"], ["Send overdue reminders to 4 customers", "Collections agent · WhatsApp + email"]];
-  return <SectionCard title="Approvals" description="Demo approval queue for the owner preview."><div className="flex flex-col divide-y divide-border">{approvals.map(([title, detail]) => <div key={title} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-medium">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary">Review</Button></div>)}</div></SectionCard>;
+  const approvals = [["45-day credit for Metro Value Mart", "Requested by Arjun Mehta · ₹3.1L order"], ["Credit note for damaged cartons, order #4471", "Requested by Support · ₹8,500"], ["Send overdue reminders to 4 customers", "Collections agent · WhatsApp + email"]];
+  return <SectionCard title="Approvals" description="Demo approval queue for the owner preview."><div className="flex flex-col divide-y divide-border">{approvals.map(([title, detail]) => <div key={title} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-medium">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" asChild><Link href="/approvals" aria-label={`Review ${title}`}>Review</Link></Button></div>)}</div></SectionCard>;
 }
 
 function ActivitySnapshot() {
-  const activity = [["Riya won the Sharma Logistics renewal · ₹3.6L", "2h ago"], ["Meera imported 14 leads from IndiaMART", "4h ago"], ["HR & People workspace created", "Yesterday"], ["Weekly sales report sent to owners", "Yesterday"]];
+  const activity = [["Arjun closed Rajputana monthly dry goods · ₹5.2L", "6 days ago"], ["Meera logged a rate enquiry from Shiv Shakti Bakery", "4h ago"], ["HR & People workspace created", "Yesterday"], ["Weekly sales report sent to owners", "Yesterday"]];
   return <SectionCard title="Recent activity" description="Demo activity showing how owner history will read."><div className="flex flex-col divide-y divide-border">{activity.map(([text, time]) => <div key={text} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><span className="text-sm">{text}</span><span className="shrink-0 text-xs text-muted-foreground">{time}</span></div>)}</div></SectionCard>;
 }
 
 function BusinessInsights() {
-  const insights = [["Positive", "Lead quality is improving", "Website and referral leads now make up 42% of qualified opportunities, up from 35% last month.", "Keep the current qualification rules"], ["Watch", "Proposal follow-ups are slowing", "Six proposals have been waiting for more than 10 days and represent ₹14.2L in potential value.", "Review the proposal queue"], ["Action", "Collections can release cash", "Four invoices are over 30 days overdue. A focused reminder sequence could unlock ₹3.1L this week.", "Open collection approvals"]];
+  const insights = [["Positive", "WhatsApp is the strongest channel", `${crm.bySource.find((item) => item.source === "whatsapp")?.count} of ${crm.leads} leads came in on WhatsApp and ${leadRows.filter((item) => item.source === "whatsapp" && item.stage === "won").length} of them are already won.`, "Keep WhatsApp replies under two hours"], ["Watch", "Proposals are waiting on buyers", `${dealRows.filter((item) => item.stage === "proposal").length} proposals worth ${lakh(dealRows.filter((item) => item.stage === "proposal").reduce((sum, item) => sum + Number(item.amount), 0))} have had no decision yet.`, "Review the proposal queue"], ["Action", "Collections can release cash", "Four invoices are over 30 days overdue. A focused reminder sequence could unlock ₹3.1L this week.", "Open collection approvals"]];
   return <SectionCard title="Janus insights" description="Sample recommendations based on the connected CRM, finance and activity records."><div className="grid gap-3 lg:grid-cols-3">{insights.map(([tone, title, detail, action]) => <div key={title} className="flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-4"><div className="flex items-center justify-between gap-2"><Badge variant={tone === "Positive" ? "success" : tone === "Watch" ? "warning" : "info"}>{tone}</Badge><Sparkles className="size-3.5 text-accent" /></div><div><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" className="mt-auto w-fit">{action}<ArrowRight className="size-3.5" /></Button></div>)}</div></SectionCard>;
 }
 
@@ -378,7 +392,7 @@ function FinancialPerformance({ data, loading, error }: { data?: { leads: number
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function WorkspacePerformance({ data, loading, error }: { data?: { leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }; loading: boolean; error?: string }) {
-  return <SectionCard title="Workspace performance" description="Workspace-specific metrics are shown only when verified records are available."><div className="flex flex-col gap-2"><WorkspaceRow name="CRM & Sales" type="Active" metric={loading || error ? "Unavailable" : (data?.leads ?? 0) + " leads · " + (data?.openDeals ?? 0) + " open deals"} /><WorkspaceRow name="HR & People" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Finance & Accounting" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Projects & Delivery" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Customer Support & Success" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Operations & Inventory" type="Planned" metric="Awaiting data" /></div></SectionCard>;
+  return <SectionCard title="Workspace performance" description="Workspace-specific metrics are shown only when verified records are available."><div className="flex flex-col gap-2"><WorkspaceRow name="CRM & Sales" type="Active" metric={loading || error ? "Unavailable" : (data?.leads ?? 0) + " leads · " + (data?.openDeals ?? 0) + " open deals"} /><WorkspaceRow name="HR & People" type="Active · demo" metric="8 people · 93% attendance" /><WorkspaceRow name="Finance & Accounting" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Projects & Delivery" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Customer Support & Success" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Operations & Inventory" type="Planned" metric="Awaiting data" /></div></SectionCard>;
 }
 
 function WorkspaceSummary({ name, detail }: { name: string; detail: string }) { return <div className="rounded-md border border-border bg-surface-2 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{name}</span><span className="size-2 rounded-full bg-muted-foreground/50" /></div><p className="mt-2 text-xs text-muted-foreground">{detail}</p></div>; }
@@ -399,7 +413,7 @@ function WorkspacesPanel() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const created = workspaceDefinitions.filter(
-    (workspace) => workspace.id === "crm-sales",
+    (workspace) => workspace.status === "active" && workspace.id !== "business",
   );
   const available = workspaceDefinitions.filter(
     (workspace) => workspace.status === "planned",
@@ -430,7 +444,7 @@ function WorkspacesPanel() {
       <SectionCard title="Active workspaces" description="These are the workspaces currently enabled for this business. Open one to enter its workflow.">
         <div className="grid gap-3 lg:grid-cols-2">
           {created.map((workspace) => (
-            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description} href="/dashboard?workspace=crm-sales" primary />
+            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description} href={workspace.id === "crm-sales" ? "/dashboard?workspace=crm-sales" : `/workspace/${workspace.id}?workspace=${workspace.id}`} primary />
           ))}
           {createdWorkspaces.map((workspace) => (
             <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description || "Ready for manager and access configuration."} href={`/workspace/${workspace.type.replaceAll("_", "-")}?workspace=${workspace.type.replaceAll("_", "-")}`} />
