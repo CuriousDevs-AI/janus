@@ -101,7 +101,7 @@ export function WorkspaceSection() {
   const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-2xl font-semibold tracking-tight">Business Settings</h1>
+      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
@@ -343,7 +343,7 @@ function TargetSnapshot() {
 
 function ApprovalSnapshot() {
   const approvals = [["15% discount for Nova Clinics", "Requested by Arjun Mehta · ₹42,000 off"], ["Refund for order #4471", "Requested by Support · ₹8,500"], ["Send overdue reminders to 4 customers", "Collections agent · WhatsApp + email"]];
-  return <SectionCard title="Approvals" description="Demo approval queue for the owner preview."><div className="flex flex-col divide-y divide-border">{approvals.map(([title, detail]) => <div key={title} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-medium">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary">Review</Button></div>)}</div></SectionCard>;
+  return <SectionCard title="Approvals" description="Demo approval queue for the owner preview."><div className="flex flex-col divide-y divide-border">{approvals.map(([title, detail]) => <div key={title} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-medium">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" asChild><Link href="/approvals" aria-label={`Review ${title}`}>Review</Link></Button></div>)}</div></SectionCard>;
 }
 
 function ActivitySnapshot() {
@@ -378,7 +378,7 @@ function FinancialPerformance({ data, loading, error }: { data?: { leads: number
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function WorkspacePerformance({ data, loading, error }: { data?: { leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }; loading: boolean; error?: string }) {
-  return <SectionCard title="Workspace performance" description="Workspace-specific metrics are shown only when verified records are available."><div className="flex flex-col gap-2"><WorkspaceRow name="CRM & Sales" type="Active" metric={loading || error ? "Unavailable" : (data?.leads ?? 0) + " leads · " + (data?.openDeals ?? 0) + " open deals"} /><WorkspaceRow name="HR & People" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Finance & Accounting" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Projects & Delivery" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Customer Support & Success" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Operations & Inventory" type="Planned" metric="Awaiting data" /></div></SectionCard>;
+  return <SectionCard title="Workspace performance" description="Workspace-specific metrics are shown only when verified records are available."><div className="flex flex-col gap-2"><WorkspaceRow name="CRM & Sales" type="Active" metric={loading || error ? "Unavailable" : (data?.leads ?? 0) + " leads · " + (data?.openDeals ?? 0) + " open deals"} /><WorkspaceRow name="HR & People" type="Active · demo" metric="8 people · 93% attendance" /><WorkspaceRow name="Finance & Accounting" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Projects & Delivery" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Customer Support & Success" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Operations & Inventory" type="Planned" metric="Awaiting data" /></div></SectionCard>;
 }
 
 function WorkspaceSummary({ name, detail }: { name: string; detail: string }) { return <div className="rounded-md border border-border bg-surface-2 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{name}</span><span className="size-2 rounded-full bg-muted-foreground/50" /></div><p className="mt-2 text-xs text-muted-foreground">{detail}</p></div>; }
@@ -399,7 +399,7 @@ function WorkspacesPanel() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const created = workspaceDefinitions.filter(
-    (workspace) => workspace.id === "crm-sales",
+    (workspace) => workspace.status === "active" && workspace.id !== "business",
   );
   const available = workspaceDefinitions.filter(
     (workspace) => workspace.status === "planned",
@@ -430,7 +430,7 @@ function WorkspacesPanel() {
       <SectionCard title="Active workspaces" description="These are the workspaces currently enabled for this business. Open one to enter its workflow.">
         <div className="grid gap-3 lg:grid-cols-2">
           {created.map((workspace) => (
-            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description} href="/dashboard?workspace=crm-sales" primary />
+            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description} href={workspace.id === "crm-sales" ? "/dashboard?workspace=crm-sales" : `/workspace/${workspace.id}?workspace=${workspace.id}`} primary />
           ))}
           {createdWorkspaces.map((workspace) => (
             <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description || "Ready for manager and access configuration."} href={`/workspace/${workspace.type.replaceAll("_", "-")}?workspace=${workspace.type.replaceAll("_", "-")}`} />

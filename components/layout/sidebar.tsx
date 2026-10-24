@@ -20,6 +20,8 @@ import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
 import { workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
+import { demoMode } from "@/lib/demo-mode";
+import type { HrDemoRole } from "@/lib/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +58,7 @@ export function SidebarNav({
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
+  const [hrDemoRole, setHrDemoRole] = React.useState<HrDemoRole>("owner");
   React.useEffect(() => {
     const key = "janus.setup.active-workspace";
     const read = () => {
@@ -67,6 +70,17 @@ export function SidebarNav({
     window.addEventListener("storage", read);
     return () => { window.removeEventListener("janus:workspace-activation", read); window.removeEventListener("storage", read); };
   }, []);
+  React.useEffect(() => {
+    if (!demoMode || workspaceId !== "hr-people") return;
+    const readRole = () => {
+      const stored = window.localStorage.getItem("janus.hr-demo-role") as HrDemoRole | null;
+      if (stored) setHrDemoRole(stored);
+    };
+    readRole();
+    window.addEventListener("janus:hr-demo-role", readRole);
+    window.addEventListener("storage", readRole);
+    return () => { window.removeEventListener("janus:hr-demo-role", readRole); window.removeEventListener("storage", readRole); };
+  }, [workspaceId]);
   const setupWorkspaceChosen = setupApi.data?.completedSteps?.includes("workspaces") ?? false;
   const catalogHasActiveWorkspace = workspaceDefinitions.some((item) => item.id === "crm-sales" && item.status === "active");
   const apiHasActiveWorkspace = Boolean(workspacesApi.data?.some((item) => item.status === "active"));
@@ -79,7 +93,8 @@ export function SidebarNav({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission),
+        (item) => (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) &&
+          (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, hrDemoRole)),
       ),
     }))
     .filter((section) => section.items.length > 0);
@@ -104,8 +119,14 @@ export function SidebarNav({
       name: item.name,
       description: item.description,
     }));
-    if (hasActiveWorkspace && fromApi?.length) return fromApi;
-    if (hasActiveWorkspace) return [{ id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." }];
+    if (hasActiveWorkspace && fromApi?.length) {
+      if (!demoMode || fromApi.some((item) => item.id === "hr-people")) return fromApi;
+      return [...fromApi, { id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }];
+    }
+    if (hasActiveWorkspace) return [
+      { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." },
+      ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
+    ];
     return [];
   }, [hasActiveWorkspace, workspacesApi.data]);
 
@@ -292,6 +313,16 @@ export function SidebarNav({
       </div>
     </>
   );
+}
+
+function hrNavVisible(label: string, role: HrDemoRole) {
+  if (role === "owner" || role === "hr_manager") return true;
+  const mySelfService = ["My profile", "My documents", "My requests", "My onboarding", "My payslips"];
+  if (role === "employee") return mySelfService.includes(label);
+  if (role === "reporting_manager") return mySelfService.includes(label) || ["HR Overview", "Attendance", "Leave Management", "My Team", "Pending Approvals", "Documents", "HR Reports"].includes(label);
+  if (role === "payroll_admin") return mySelfService.includes(label) || ["HR Overview", "Documents", "Payroll", "HR Reports"].includes(label);
+  if (role === "business_manager") return ["HR Overview", "HR Reports", "My profile", "My documents"].includes(label);
+  return true;
 }
 
 export function Sidebar() {
