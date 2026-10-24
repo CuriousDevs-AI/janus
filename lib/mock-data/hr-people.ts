@@ -123,7 +123,7 @@ const acme_hrWhatsAppActions: HrWhatsAppAction[] = [
 ];
 export const hrWhatsAppActions: HrWhatsAppAction[] = isFirstCompany ? acme_hrWhatsAppActions : [];
 
-const acme_hrExpenseClaims: HrExpenseClaim[] = [
+export const acme_hrExpenseClaims: HrExpenseClaim[] = [
   { id: "expense-001", employeeId: "emp-006", employeeName: "Vikas Jain", category: "travel", amount: 1840, submittedAt: "2026-10-22", status: "manager_review", approverName: "Neha Verma", receiptAttached: true },
   { id: "expense-002", employeeId: "emp-004", employeeName: "Riya Kapoor", category: "meals", amount: 1260, submittedAt: "2026-10-21", status: "hr_review", approverName: "Shaista Khan", receiptAttached: true },
   { id: "expense-003", employeeId: "emp-005", employeeName: "Neha Verma", category: "phone", amount: 899, submittedAt: "2026-10-18", status: "paid", approverName: "Pankaj Neema", receiptAttached: true },

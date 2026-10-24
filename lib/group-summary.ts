@@ -1,15 +1,15 @@
-import type { HrEmployee, HrLeaveRequest } from "@/lib/types";
+import type { HrEmployee, HrExpenseClaim, HrLeaveRequest } from "@/lib/types";
 import type { Deal, Lead } from "@/lib/api/types";
 import { scoped, type CompanyRecord } from "@/lib/company";
 import { specForRecord } from "@/lib/companies";
 import { buildDealRows, buildLeadRows, DEMO_TODAY } from "@/lib/demo-universe";
-import { acme_hrLeaveRequests, acmeEmployees } from "@/lib/mock-data/hr-people";
+import { acme_hrExpenseClaims, acme_hrLeaveRequests, acmeEmployees } from "@/lib/mock-data/hr-people";
 
 export interface AttentionItem { severity: "high" | "medium" | "low"; text: string; to: string }
 export interface CompanySummary {
   company: CompanyRecord;
-  crm: { leads: number; openDeals: number; pipeline: number; wonValue: number; winRate: number; quiet: number } | null;
-  hr: { people: number; departments: number; onLeaveToday: number; pendingLeave: number; monthlyPay: number };
+  crm: { leads: number; openDeals: number; pipeline: number; wonValue: number; winRate: number; quiet: number; byStage: { stage: string; count: number; value: number }[]; bySource: { source: string; count: number; won: number }[]; monthly: { label: string; leads: number }[] } | null;
+  hr: { people: number; departments: number; onLeaveToday: number; pendingLeave: number; monthlyPay: number; claimsPending: number; claimsValue: number };
   attention: AttentionItem[];
 }
 
@@ -19,6 +19,12 @@ function saved<T>(key: string, id: string): Partial<T> | null {
     const raw = window.localStorage.getItem(scoped(key, id));
     return raw ? (JSON.parse(raw).state as Partial<T>) : null;
   } catch { return null; }
+}
+/** Leads captured per month. Earlier months are history scaled to the company's size; the last is this month's real count. */
+function monthly(leads: Lead[]) {
+  const scale = Math.min(1, leads.length / 24);
+  const base = [["May", 11], ["Jun", 14], ["Jul", 15], ["Aug", 13], ["Sep", 17]] as const;
+  return [...base.map(([label, value]) => ({ label, leads: Math.round(value * scale) })), { label: "Oct", leads: leads.filter((item) => item.createdAt >= "2026-10-01").length }];
 }
 const open = new Set(["new", "qualified", "demo", "proposal", "negotiation", "approval"]);
 
@@ -32,7 +38,8 @@ export function summarise(record: CompanyRecord): CompanySummary {
   const store = saved<{ leads: Lead[]; deals: Deal[] }>("janus.demo-crm.v2", record.id);
   const leads = store?.leads ?? buildLeadRows(spec);
   const deals = store?.deals ?? buildDealRows(spec, buildLeadRows(spec));
-  const people = saved<{ employees: HrEmployee[]; leaveRequests: HrLeaveRequest[] }>("janus.hr-people-demo", record.id);
+  const people = saved<{ employees: HrEmployee[]; leaveRequests: HrLeaveRequest[]; expenseClaims: HrExpenseClaim[] }>("janus.hr-people-demo", record.id);
+  const claims = (people?.expenseClaims ?? (record.id === "acme" ? acme_hrExpenseClaims : [])).filter((item) => ["submitted", "manager_review", "hr_review"].includes(item.status));
   const employees = (people?.employees ?? (record.id === "acme" ? acmeEmployees : spec.employees ?? [])).filter((item) => item.status !== "archived");
   const leave = people?.leaveRequests ?? (record.id === "acme" ? acme_hrLeaveRequests : []);
   const openDeals = deals.filter((item) => open.has(item.stage));
@@ -42,8 +49,8 @@ export function summarise(record: CompanyRecord): CompanySummary {
   const pendingLeave = leave.filter((item) => item.status === "pending" || item.status === "needs_clarification").length;
   const summary: CompanySummary = {
     company: record,
-    crm: crmOn ? { leads: leads.length, openDeals: openDeals.length, pipeline: openDeals.reduce((sum, item) => sum + Number(item.amount), 0), wonValue: won.reduce((sum, item) => sum + Number(item.amount), 0), winRate: Math.round((won.length / Math.max(1, won.length + lost.length)) * 100), quiet } : null,
-    hr: { people: employees.length, departments: new Set(employees.map((item) => item.department)).size, onLeaveToday: leave.filter((item) => item.status === "approved" && item.from <= DEMO_TODAY && item.to >= DEMO_TODAY).length, pendingLeave, monthlyPay: employees.reduce((sum, item) => sum + item.salaryMonthly, 0) },
+    crm: crmOn ? { leads: leads.length, openDeals: openDeals.length, pipeline: openDeals.reduce((sum, item) => sum + Number(item.amount), 0), wonValue: won.reduce((sum, item) => sum + Number(item.amount), 0), winRate: Math.round((won.length / Math.max(1, won.length + lost.length)) * 100), quiet, byStage: ["new", "qualified", "proposal", "negotiation", "won", "lost"].map((stage) => ({ stage, count: leads.filter((item) => item.stage === stage).length, value: deals.filter((item) => item.stage === stage).reduce((sum, item) => sum + Number(item.amount), 0) })), bySource: (["whatsapp", "website", "phone_call"] as const).map((source) => ({ source, count: leads.filter((item) => item.source === source).length, won: leads.filter((item) => item.source === source && item.stage === "won").length })), monthly: monthly(leads) } : null,
+    hr: { people: employees.length, departments: new Set(employees.map((item) => item.department)).size, onLeaveToday: leave.filter((item) => item.status === "approved" && item.from <= DEMO_TODAY && item.to >= DEMO_TODAY).length, pendingLeave, monthlyPay: employees.reduce((sum, item) => sum + item.salaryMonthly, 0), claimsPending: claims.length, claimsValue: claims.reduce((sum, item) => sum + item.amount, 0) },
     attention: [],
   };
   const to = (path: string) => path;

@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { HrDemoRole } from "@/lib/types";
 import { accountById, type DemoAccount } from "@/lib/demo-accounts";
-import { activeCompany } from "@/lib/company";
+import { activeCompany, portfolioHome, readCompanies } from "@/lib/company";
 
 /** The HR role of whoever is signed in (or being viewed). */
 export type Persona = HrDemoRole;
@@ -75,6 +75,9 @@ const supportRoutes = ["/tickets", "/inbox", "/customers", "/notifications"];
 /** Where a person may go. HR pages are open to everyone signed in; the rest depends on their CRM scope and permissions. */
 export function personaMayOpen(account: DemoAccount | undefined, pathname: string) {
   if (!account) return false;
+  // The Portfolio spans companies, so it belongs to the Owner alone. With no company yet, the Owner can only set one up.
+  if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return account.hrRole === "owner";
+  if (account.hrRole === "owner" && readCompanies().length === 0) return pathname === "/setup" || pathname.startsWith("/setup/");
   if (pathname.startsWith("/workspace/hr-people")) return true;
   const crmCore = ["/dashboard", "/leads", "/deals", "/customers", "/inbox", "/tickets", "/lead-sources"];
   // A company that has not switched on CRM has no CRM pages for anyone, including the Owner.
@@ -89,4 +92,4 @@ export function personaMayOpen(account: DemoAccount | undefined, pathname: strin
 
 export const personaHome = "/workspace/hr-people?view=my-home&workspace=hr-people";
 /** The first screen after signing in. */
-export const homeFor = (account: DemoAccount) => account.hrRole === "owner" ? "/settings?tab=workspace&view=overview&workspace=business" : account.crm === "support" ? "/tickets?workspace=crm-sales" : account.crm !== "none" ? "/dashboard?workspace=crm-sales" : personaHome;
+export const homeFor = (account: DemoAccount) => account.hrRole === "owner" ? portfolioHome : account.crm === "support" ? "/tickets?workspace=crm-sales" : account.crm !== "none" ? "/dashboard?workspace=crm-sales" : personaHome;

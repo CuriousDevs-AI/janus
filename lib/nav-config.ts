@@ -86,7 +86,6 @@ export const businessNavSections: NavSection[] = [
     title: "Business",
     items: [
       { label: "Business Overview", href: "/settings?tab=workspace&view=overview", icon: LayoutDashboard, requiredPermission: "settings:manage" },
-      { label: "All companies", href: "/settings?tab=workspace&view=group", icon: Building2, requiredPermission: "workspaces:manage" },
       { label: "Janus Intelligence", href: "/ai", icon: Sparkles, requiredPermission: "ai:manage" },
     ],
   },
@@ -127,7 +126,24 @@ export const businessNavSections: NavSection[] = [
   },
 ];
 
-const moduleNavSections: Record<Exclude<WorkspaceId, "business" | "crm-sales">, NavSection[]> = {
+/** The Owner's view across every company. Each item is one page of /portfolio. */
+export const portfolioNavSections: NavSection[] = [
+  { title: "Portfolio", items: [
+    { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard },
+    { label: "Analytics", href: "/portfolio?view=analytics", icon: BarChart3 },
+    { label: "Finance", href: "/portfolio?view=finance", icon: WalletCards },
+  ] },
+  { title: "Manage", items: [
+    { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
+    { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
+    { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
+  ] },
+  { title: "Access", items: [
+    { label: "People & access", href: "/portfolio?view=people", icon: Users },
+  ] },
+];
+
+const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | "crm-sales">, NavSection[]> = {
   "hr-people": [
     { title: "My HR", items: [
       { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard },
@@ -263,6 +279,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "business" | "crm-sales">, 
 export function getNavSectionsForWorkspace(workspaceId: WorkspaceId): NavSection[] {
   if (workspaceId === "crm-sales") return crmNavSections;
   if (workspaceId === "business") return businessNavSections;
+  if (workspaceId === "portfolio") return portfolioNavSections;
   return moduleNavSections[workspaceId];
 }
 

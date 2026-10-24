@@ -35,8 +35,9 @@ function read(key: string) {
 export function readCompanies(): CompanyRecord[] {
   if (typeof window === "undefined") return seedCompanies;
   try {
+    // An empty list is a real state (every company removed). Only a missing key means "first visit".
     const stored = JSON.parse(read(REGISTRY_KEY) ?? "null") as CompanyRecord[] | null;
-    return stored?.length ? stored : seedCompanies;
+    return stored ?? seedCompanies;
   } catch { return seedCompanies; }
 }
 export function saveCompanies(list: CompanyRecord[]) {
@@ -48,11 +49,13 @@ export function saveCompanies(list: CompanyRecord[]) {
 export function activeCompanyId(): string {
   if (typeof window === "undefined") return "acme";
   const stored = read(ACTIVE_KEY);
-  return stored && readCompanies().some((item) => item.id === stored) ? stored : "acme";
+  const list = readCompanies();
+  // With nothing chosen (or the chosen company gone) fall back to the first company, so data-reading code always has one.
+  return stored && list.some((item) => item.id === stored) ? stored : list[0]?.id ?? "acme";
 }
 export const activeCompany = (): CompanyRecord => readCompanies().find((item) => item.id === activeCompanyId()) ?? seedCompanies[0];
 
-export function switchCompany(id: string, to = "/settings?tab=workspace&view=overview&workspace=business") {
+export function switchCompany(id: string, to = businessHome) {
   try { window.localStorage.setItem(ACTIVE_KEY, id); } catch { /* private mode */ }
   window.location.assign(to);
 }
@@ -81,3 +84,13 @@ export function updateCompany(id: string, patch: Partial<CompanyRecord>) {
 export function addCompany(record: CompanyRecord) {
   saveCompanies([...readCompanies(), record]);
 }
+
+/** Take a company out of the account. Its saved records stay in the browser but are no longer reachable. */
+export function removeCompany(id: string) {
+  saveCompanies(readCompanies().filter((item) => item.id !== id));
+  try { if (read(ACTIVE_KEY) === id) window.localStorage.removeItem(ACTIVE_KEY); } catch { /* private mode */ }
+}
+/** Where the Owner lands after signing in. */
+export const portfolioHome = "/portfolio?view=overview";
+/** Business Management for the company on show. */
+export const businessHome = "/settings?tab=workspace&view=overview&workspace=business";

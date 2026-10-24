@@ -108,7 +108,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     return () => { window.removeEventListener("storage", readActivation); window.removeEventListener("janus:workspace-activation", readActivation); };
   }, []);
   const activeWorkspaceOptions = React.useMemo(() => {
-    const active = new Set<WorkspaceKey>(workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.status === "active").map((workspace) => workspace.id as WorkspaceKey));
+    const active = new Set<WorkspaceKey>(workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio" && workspace.status === "active").map((workspace) => workspace.id as WorkspaceKey));
     if (storedWorkspace && storedWorkspace !== "none") active.add(storedWorkspace.replaceAll("_", "-") as WorkspaceKey);
     workspacesApi.data?.filter((workspace) => workspace.status === "active").forEach((workspace) => active.add(workspace.type.replaceAll("_", "-") as WorkspaceKey));
     return workspaceOptions.filter(([key]) => active.has(key));

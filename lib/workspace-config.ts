@@ -1,4 +1,5 @@
 export type WorkspaceId =
+  | "portfolio"
   | "business"
   | "crm-sales"
   | "hr-people"
@@ -23,6 +24,12 @@ export interface WorkspaceDefinition {
  * planned until their records and permissions are connected.
  */
 export const workspaceDefinitions: WorkspaceDefinition[] = [
+  {
+    id: "portfolio",
+    name: "Portfolio",
+    description: "Every company you run, in one place.",
+    status: "active",
+  },
   {
     id: "business",
     name: "Business Management",
