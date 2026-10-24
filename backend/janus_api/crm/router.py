@@ -61,6 +61,34 @@ async def contact(contact_id: Identifier, actor: Reader, db: Db) -> schemas.Cont
     )
 
 
+@router.patch("/contacts/{contact_id}", response_model=schemas.ContactOut)
+async def update_contact(
+    contact_id: Identifier, data: schemas.ContactUpdate, actor: Writer, db: Db
+) -> schemas.ContactOut:
+    return await service.update_contact(
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        contact_id,
+        data,
+    )
+
+
+@router.patch("/contacts/{contact_id}/consent", response_model=schemas.ContactOut)
+async def update_contact_consent(
+    contact_id: Identifier, data: schemas.ContactConsentUpdate, actor: Writer, db: Db
+) -> schemas.ContactOut:
+    return await service.update_contact_consent(
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        contact_id,
+        data,
+    )
+
+
 @router.get("/deals", response_model=list[schemas.DealOut])
 async def deals_list(
     actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 100

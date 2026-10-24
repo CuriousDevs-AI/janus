@@ -30,15 +30,59 @@ class ContactOut(BaseModel):
     phone: str | None
     email: str | None
     company: str
+    whatsappOptIn: bool
+    doNotContact: bool
+    consentSource: str | None
+    consentUpdatedAt: datetime | None
+
+
+class ContactUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default="", max_length=160)
+    phone: str | None = Field(default=None, max_length=64)
+    email: EmailStr | None = None
+    company: str = Field(default="", max_length=200)
+
+
+class ContactConsentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    whatsappOptIn: bool = False
+    doNotContact: bool = False
+    consentSource: str | None = Field(default=None, max_length=80)
+
+
+LeadSource = Literal[
+    "website",
+    "whatsapp",
+    "phone_call",
+    "webhook",
+    "api",
+    "csv_import",
+    "meta_lead_ads",
+    "indiamart",
+    "manual",
+    "referral",
+]
 
 
 class LeadOut(BaseModel):
     dealId: str | None = None
     id: str
     customerId: str
-    source: str
+    contactName: str
+    phone: str | None
+    email: str | None
+    company: str
+    whatsappOptIn: bool
+    doNotContact: bool
+    consentSource: str | None
+    consentUpdatedAt: datetime | None
+    source: LeadSource
     stage: str
     ownerId: str | None
+    ownerName: str | None
     requirement: str
     campaign: str | None
     recordingReference: str | None
@@ -105,6 +149,7 @@ class DealOut(BaseModel):
     company: str
     phone: str | None
     ownerId: str | None
+    ownerName: str | None
     name: str
     amount: str
     stage: DealStage

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.models import AuditLog
 from janus_api.audit.service import record
+from janus_api.auth.models import User
 from janus_api.auth.service import Actor
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
@@ -13,19 +14,22 @@ from janus_api.crm.models import Contact, Deal, Lead
 from janus_api.crm.service import visible_owners
 
 
-async def query_for(db: AsyncSession, actor: Actor) -> Select[tuple[Deal, Lead, Contact]]:
+async def query_for(
+    db: AsyncSession, actor: Actor
+) -> Select[tuple[Deal, Lead, Contact, User | None]]:
     tenant_id = actor.session.tenant_id
     owners = await visible_owners(db, tenant_id, actor.user.id, actor.permissions)
     query = (
-        select(Deal, Lead, Contact)
+        select(Deal, Lead, Contact, User)
         .join(Lead, (Lead.id == Deal.lead_id) & (Lead.tenant_id == Deal.tenant_id))
         .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+        .outerjoin(User, User.id == Lead.owner_id)
     )
     query = query.where(Deal.tenant_id == tenant_id)
     return query if owners is None else query.where(Lead.owner_id.in_(owners))
 
 
-def output(deal: Deal, lead: Lead, contact: Contact) -> schemas.DealOut:
+def output(deal: Deal, lead: Lead, contact: Contact, owner: User | None = None) -> schemas.DealOut:
     return schemas.DealOut.model_validate(
         dict(
             id=str(deal.id),
@@ -35,6 +39,7 @@ def output(deal: Deal, lead: Lead, contact: Contact) -> schemas.DealOut:
             company=contact.company,
             phone=contact.phone_e164,
             ownerId=str(lead.owner_id) if lead.owner_id else None,
+            ownerName=owner.name if owner else None,
             name=deal.name,
             amount=format(deal.amount, ".2f"),
             stage=deal.stage,
@@ -56,14 +61,14 @@ async def list_deals(
 
 async def get(
     db: AsyncSession, actor: Actor, deal_id: int, *, lock: bool = False
-) -> tuple[Deal, Lead, Contact]:
+) -> tuple[Deal, Lead, Contact, User | None]:
     query = (await query_for(db, actor)).where(Deal.id == deal_id)
     if lock:
         query = query.with_for_update(of=Deal)
     row = (await db.execute(query)).first()
     if row is None:
         raise ApiError("not_found", "Deal not found.", 404)
-    return row[0], row[1], row[2]
+    return row[0], row[1], row[2], row[3]
 
 
 async def create(
@@ -82,7 +87,8 @@ async def create(
     assert contact is not None
     deal = await db.scalar(select(Deal).where(Deal.tenant_id == tenant_id, Deal.lead_id == lead_id))
     if deal is not None:
-        return output(deal, lead, contact)
+        owner = await db.get(User, lead.owner_id) if lead.owner_id else None
+        return output(deal, lead, contact, owner)
     deal = Deal(
         tenant_id=tenant_id,
         lead_id=lead_id,
@@ -110,19 +116,20 @@ async def create(
             "amount": format(deal.amount, ".2f"),
         },
     )
-    return output(deal, lead, contact)
+    owner = await db.get(User, lead.owner_id) if lead.owner_id else None
+    return output(deal, lead, contact, owner)
 
 
 async def update(
     db: AsyncSession, actor: Actor, deal_id: int, data: schemas.DealUpdate
 ) -> schemas.DealOut:
-    deal, lead, contact = await get(db, actor, deal_id, lock=True)
+    deal, lead, contact, owner = await get(db, actor, deal_id, lock=True)
     if deal.version != data.version:
         raise ApiError("stale_deal", "This deal changed. Refresh it before saving again.", 409)
     before = (deal.name, deal.amount, deal.stage, deal.expected_close_at, deal.lost_reason)
     after = (data.name, data.amount, data.stage, data.expectedCloseAt, data.lostReason)
     if before == after:
-        return output(deal, lead, contact)
+        return output(deal, lead, contact, owner)
     old_stage = deal.stage
     deal.name, deal.amount, deal.stage, deal.expected_close_at, deal.lost_reason = after
     deal.version += 1
@@ -145,7 +152,7 @@ async def update(
         },
     )
     await db.flush()
-    return output(deal, lead, contact)
+    return output(deal, lead, contact, owner)
 
 
 async def events(
