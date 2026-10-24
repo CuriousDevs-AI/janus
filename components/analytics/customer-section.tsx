@@ -1,7 +1,7 @@
 "use client";
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { customerHealthDistribution } from "@/lib/mock-data";
+import { useCrmStats } from "@/lib/use-crm-stats";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   CHART_TOOLTIP_CONTENT_STYLE,
@@ -11,6 +11,7 @@ import {
 } from "./chart-theme";
 
 export function CustomerSection() {
+  const { customerHealthDistribution } = useCrmStats();
   const total = customerHealthDistribution.reduce((sum, d) => sum + d.count, 0);
 
   return (

@@ -31,14 +31,14 @@ export const leadSourceConnections: LeadSourceConnection[] = [
     description: "Capture enquiries from an embedded form or chat widget on your website.",
     connectionKind: "embed", status: "connected", connectedAccount: "Demo website",
     embedSnippet: '<script src="https://cdn.janus.example/widget.js" data-tenant="tenant_demo" async></script>',
-    leadsCaptured30d: 8, lastEventAt: "2026-08-17T11:20:00+05:30",
+    leadsCaptured30d: 8, lastEventAt: "2026-10-23T11:20:00+05:30",
   },
   {
     id: "ls-whatsapp", source: "whatsapp", name: "WhatsApp Business",
     description: "Capture first-time enquiries to your WhatsApp Business number through the Meta Cloud API.",
     connectionKind: "oauth", status: "connected", connectedAccount: "Demo WhatsApp Business account",
     webhookUrl: "https://ingest.janus.example/hooks/whatsapp/tenant_demo",
-    leadsCaptured30d: 12, lastEventAt: "2026-08-17T09:40:00+05:30",
+    leadsCaptured30d: 12, lastEventAt: "2026-10-23T09:40:00+05:30",
   },
   {
     id: "ls-webhook", source: "webhook", name: "Custom Webhook",
@@ -50,7 +50,7 @@ export const leadSourceConnections: LeadSourceConnection[] = [
     description: "Open Custom Webhook with Calls presets. Each new caller number becomes a lead, with a recording attached when provided.",
     connectionKind: "webhook", status: "connected", preset: "exotel", ...webhook,
     connectedAccount: "Exotel · demo call preset",
-    leadsCaptured30d: 4, lastEventAt: "2026-08-17T14:10:00+05:30",
+    leadsCaptured30d: 4, lastEventAt: "2026-10-23T14:10:00+05:30",
   },
   {
     id: "ls-api", source: "api", name: "REST API",

@@ -69,6 +69,10 @@ class ConversationOut(BaseModel):
     name: str
     phone: str | None
     company: str
+    whatsappOptIn: bool
+    doNotContact: bool
+    consentSource: str | None
+    consentUpdatedAt: datetime | None
     lastMessageAt: datetime
     lastInboundAt: datetime | None
     replyWindowEndsAt: datetime | None

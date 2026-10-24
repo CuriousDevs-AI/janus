@@ -1,15 +1,17 @@
 "use client";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, APIError, message } from "@/lib/api/client";
 import type { Me } from "@/lib/api/types";
 import { demoMode } from "@/lib/demo-mode";
+import { activeCompany, activeCompanyId, readCompanies } from "@/lib/company";
+import { personaPermissions, signOut as demoSignOut, useDemoAccount } from "@/lib/demo-persona";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const SessionContext = createContext<Me | null>(null);
-const demoSession: Me = {
+const demoSession = (): Me => ({
   user: {
     id: "demo-owner",
     name: "Pankaj Neema",
@@ -20,11 +22,11 @@ const demoSession: Me = {
     language: "English",
     avatar_url: null,
   },
-  tenant: { id: "demo-tenant", name: "Acme Traders Pvt Ltd", role: "Owner", status: "active", timezone: "Asia/Kolkata" },
+  tenant: { id: activeCompanyId(), name: activeCompany().name, role: "Owner", status: "active", timezone: "Asia/Kolkata" },
   role: "Owner",
   permissions: ["*"],
-  tenants: [{ id: "demo-tenant", name: "Acme Traders Pvt Ltd", role: "Owner", status: "active", timezone: "Asia/Kolkata" }],
-};
+  tenants: readCompanies().map((item) => ({ id: item.id, name: item.name, role: "Owner", status: "active", timezone: "Asia/Kolkata" })),
+});
 export function useSession() {
   const value = useContext(SessionContext);
   if (!value) throw new Error("Session unavailable");
@@ -33,6 +35,7 @@ export function useSession() {
 export function useSignOut() {
   const router = useRouter();
   return async () => {
+    if (demoMode) { demoSignOut(); router.replace("/login"); return; }
     try {
       await api("/auth/logout", { method: "POST" });
       router.replace("/login");
@@ -46,9 +49,22 @@ export function useSignOut() {
   };
 }
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession : null);
+  const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession() : null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const account = useDemoAccount();
+  const router = useRouter();
+  // False while the page renders on the server, true once it is in the browser.
+  const ready = useSyncExternalStore(() => () => {}, () => true, () => false);
+  // Without a backend the preview signs in against the demo accounts. Nobody is signed in until they do.
+  useEffect(() => { if (demoMode && ready && !account) router.replace("/login"); }, [ready, account, router]);
+  // Permissions, name and role follow whoever is signed in (or the person the Owner is viewing as), so menus and pages narrow the way they would for them.
+  const shown = useMemo(() => {
+    if (!session) return session;
+    if (!demoMode) return session;
+    if (!account) return null;
+    return { ...session, user: { ...session.user, id: account.crmUserId, name: account.name, email: account.email }, role: account.title, permissions: personaPermissions(account) };
+  }, [session, account]);
   useEffect(() => {
     let active = true;
     if (demoMode) {
@@ -73,7 +89,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [attempt]);
-  if (!session)
+  if (!session || !shown)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 text-sm">
         <p role="status">{error || "Opening your workspace…"}</p>
@@ -88,7 +104,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       </div>
     );
   return (
-    <SessionContext.Provider value={session}>
+    <SessionContext.Provider value={shown}>
       {children}
     </SessionContext.Provider>
   );

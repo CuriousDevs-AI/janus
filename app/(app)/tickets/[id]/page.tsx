@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -36,7 +37,9 @@ import {
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const ticket = useAppStore((s) => s.tickets.find((t) => t.id === id));
+  const access = useCrmAccess();
+  const found = useAppStore((s) => s.tickets.find((t) => t.id === id));
+  const ticket = found && access.ticketVisible(found) ? found : undefined;
   const customer = useAppStore((s) => s.customers.find((c) => c.id === ticket?.customerId));
   const ticketsStore = useAppStore((s) => s.tickets);
   const otherTickets = ticketsStore.filter((t) => t.customerId === ticket?.customerId && t.id !== ticket?.id);
@@ -214,7 +217,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   <Send className="size-3.5" />
                   Send
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => toast("Editing isn't wired up in this demo")}>
+                <Button size="sm" variant="secondary" onClick={() => toast("Editing isn't available yet")}>
                   <Edit3 className="size-3.5" />
                   Edit
                 </Button>

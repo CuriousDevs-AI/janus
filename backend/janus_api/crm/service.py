@@ -1,14 +1,17 @@
+from typing import cast
+
 import phonenumbers
 from pydantic import ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
+from janus_api.auth.models import User
 from janus_api.core.errors import ApiError, ProcessingError
 from janus_api.core.security import now
 from janus_api.crm import schemas
 from janus_api.crm.models import Contact, Deal, Lead
-from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut
+from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut, LeadSource
 from janus_api.org.service import active_member, teammate_user_ids
 
 
@@ -107,13 +110,53 @@ async def capture(
     return contact.id, lead.id, result
 
 
-def lead_out(lead: Lead) -> LeadOut:
+_LEGACY_SOURCE_MAP: dict[str, LeadSource] = {
+    "email": "manual",
+    "linkedin": "manual",
+    "meta_ads": "manual",
+    "facebook": "meta_lead_ads",
+    "instagram": "meta_lead_ads",
+}
+
+
+def canonical_source(value: str) -> LeadSource:
+    """Keep older captured values inside the current lead-source contract."""
+    if value in _LEGACY_SOURCE_MAP:
+        return _LEGACY_SOURCE_MAP[value]
+    if value in {
+        "website",
+        "whatsapp",
+        "phone_call",
+        "webhook",
+        "api",
+        "csv_import",
+        "meta_lead_ads",
+        "indiamart",
+        "manual",
+        "referral",
+    }:
+        return cast(LeadSource, value)
+    return "manual"
+
+
+def lead_out(
+    lead: Lead, contact: Contact | None = None, owner: User | None = None
+) -> LeadOut:
     return LeadOut(
         id=str(lead.id),
         customerId=str(lead.contact_id),
-        source=lead.source,
+        contactName=contact.name if contact else "",
+        phone=contact.phone_e164 if contact else None,
+        email=contact.email if contact else None,
+        company=contact.company if contact else "",
+        whatsappOptIn=contact.whatsapp_opt_in if contact else False,
+        doNotContact=contact.do_not_contact if contact else False,
+        consentSource=contact.consent_source if contact else None,
+        consentUpdatedAt=contact.consent_updated_at if contact else None,
+        source=canonical_source(lead.source),
         stage=lead.stage,
         ownerId=str(lead.owner_id) if lead.owner_id else None,
+        ownerName=owner.name if owner else None,
         requirement=lead.requirement,
         campaign=lead.campaign,
         recordingUrl=lead.recording_url,
@@ -149,7 +192,21 @@ async def list_leads(
         query = query.where(Lead.owner_id.in_(owners))
     if lead_id is not None:
         query = query.where(Lead.id == lead_id)
-    leads = list((await db.scalars(query.order_by(Lead.id).limit(limit))).all())
+    rows = (
+        await db.execute(
+            query.join(
+                Contact,
+                (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id),
+            )
+            .outerjoin(User, User.id == Lead.owner_id)
+            .with_only_columns(Lead, Contact, User)
+            .order_by(Lead.id)
+            .limit(limit)
+        )
+    ).all()
+    leads = [lead for lead, _contact, _owner in rows]
+    contacts = {lead.id: contact for lead, contact, _owner in rows}
+    owners_by_lead = {lead.id: owner for lead, _contact, owner in rows}
     deals = {
         lead_id: deal_id
         for lead_id, deal_id in (
@@ -161,7 +218,7 @@ async def list_leads(
         ).all()
     }
     return [
-        lead_out(lead).model_copy(
+        lead_out(lead, contacts[lead.id], owners_by_lead[lead.id]).model_copy(
             update={"dealId": str(deals[lead.id]) if lead.id in deals else None}
         )
         for lead in leads
@@ -253,7 +310,8 @@ async def update_lead(
         tenant_id=tenant_id,
         details={"lead_id": lead.id, "stage": lead.stage},
     )
-    return lead_out(lead)
+    owner = await db.get(User, lead.owner_id) if lead.owner_id else None
+    return lead_out(lead, contact, owner)
 
 
 async def delete_lead(
@@ -310,4 +368,142 @@ async def get_contact(
         phone=contact.phone_e164,
         email=contact.email,
         company=contact.company,
+        whatsappOptIn=contact.whatsapp_opt_in,
+        doNotContact=contact.do_not_contact,
+        consentSource=contact.consent_source,
+        consentUpdatedAt=contact.consent_updated_at,
+    )
+
+
+async def update_contact(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+    data: schemas.ContactUpdate,
+) -> ContactOut:
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    visible = select(Lead.id).where(Lead.contact_id == Contact.id, Lead.tenant_id == tenant_id)
+    if owners is not None:
+        visible = visible.where(Lead.owner_id.in_(owners))
+    contact = await db.scalar(
+        select(Contact)
+        .where(Contact.id == contact_id, Contact.tenant_id == tenant_id, visible.exists())
+        .with_for_update()
+    )
+    if contact is None:
+        raise ApiError("not_found", "Contact not found.", 404)
+    try:
+        phone = normalize_phone(data.phone)
+    except ProcessingError as error:
+        raise ApiError("invalid_phone", "Enter a valid phone number.", 422) from error
+    email = str(data.email).casefold() if data.email else None
+    if not phone and not email:
+        raise ApiError("missing_contact_identity", "Add a phone number or email.", 422)
+    if phone:
+        conflict = await db.scalar(
+            select(Contact.id).where(
+                Contact.tenant_id == tenant_id,
+                Contact.phone_e164 == phone,
+                Contact.id != contact.id,
+            )
+        )
+        if conflict is not None:
+            raise ApiError(
+                "contact_identity_conflict",
+                "That phone number belongs to another contact.",
+                409,
+            )
+    if email:
+        conflict = await db.scalar(
+            select(Contact.id).where(
+                Contact.tenant_id == tenant_id,
+                Contact.email == email,
+                Contact.id != contact.id,
+            )
+        )
+        if conflict is not None:
+            raise ApiError(
+                "contact_identity_conflict",
+                "That email belongs to another contact.",
+                409,
+            )
+    contact.name = data.name.strip()
+    contact.phone_e164 = phone
+    contact.email = email
+    contact.company = data.company.strip()
+    await db.flush()
+    record(
+        db,
+        "contact.updated",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"contact_id": contact.id},
+    )
+    return ContactOut(
+        id=str(contact.id),
+        name=contact.name,
+        phone=contact.phone_e164,
+        email=contact.email,
+        company=contact.company,
+        whatsappOptIn=contact.whatsapp_opt_in,
+        doNotContact=contact.do_not_contact,
+        consentSource=contact.consent_source,
+        consentUpdatedAt=contact.consent_updated_at,
+    )
+
+
+async def update_contact_consent(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+    data: schemas.ContactConsentUpdate,
+) -> ContactOut:
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    visible = select(Lead.id).where(Lead.contact_id == Contact.id, Lead.tenant_id == tenant_id)
+    if owners is not None:
+        visible = visible.where(Lead.owner_id.in_(owners))
+    contact = await db.scalar(
+        select(Contact)
+        .where(Contact.id == contact_id, Contact.tenant_id == tenant_id, visible.exists())
+        .with_for_update()
+    )
+    if contact is None:
+        raise ApiError("not_found", "Contact not found.", 404)
+    if data.doNotContact and data.whatsappOptIn:
+        raise ApiError(
+            "consent_conflict",
+            "A contact cannot be opted in and suppressed at the same time.",
+            422,
+        )
+    contact.whatsapp_opt_in = data.whatsappOptIn
+    contact.do_not_contact = data.doNotContact
+    contact.consent_source = data.consentSource.strip() if data.consentSource else None
+    contact.consent_updated_at = now()
+    await db.flush()
+    record(
+        db,
+        "contact.consent_updated",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={
+            "contact_id": contact.id,
+            "whatsapp_opt_in": contact.whatsapp_opt_in,
+            "do_not_contact": contact.do_not_contact,
+            "source": contact.consent_source or "",
+        },
+    )
+    return ContactOut(
+        id=str(contact.id),
+        name=contact.name,
+        phone=contact.phone_e164,
+        email=contact.email,
+        company=contact.company,
+        whatsappOptIn=contact.whatsapp_opt_in,
+        doNotContact=contact.do_not_contact,
+        consentSource=contact.consent_source,
+        consentUpdatedAt=contact.consent_updated_at,
     )

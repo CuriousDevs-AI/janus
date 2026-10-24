@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Database,
   FileText,
+  FileCheck2,
   FlaskConical,
   Gauge,
   Handshake,
@@ -47,16 +48,16 @@ export const crmNavSections: NavSection[] = [
   {
     title: "CRM & Sales",
     items: [
-      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard },
+      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write" },
       { label: "Chats", href: "/inbox", icon: MessageCircle },
-      { label: "Lead Sources", href: "/lead-sources", icon: Radio },
-      { label: "Leads", href: "/leads", icon: UserRoundPlus },
-      { label: "Deals", href: "/deals", icon: Handshake },
+      { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage" },
+      { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write" },
+      { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write" },
       { label: "Customers", href: "/customers", icon: Building2 },
       { label: "Tickets", href: "/tickets", icon: LifeBuoy },
-      { label: "Automations", href: "/automations", icon: Workflow },
-      { label: "Knowledge", href: "/knowledge", icon: Database },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      { label: "Automations", href: "/automations", icon: Workflow, requiredPermission: "automations:manage" },
+      { label: "Knowledge", href: "/knowledge", icon: Database, requiredPermission: "agents:manage" },
+      { label: "Analytics", href: "/analytics", icon: BarChart3, requiredPermission: "reports:read" },
     ],
   },
   {
@@ -71,11 +72,11 @@ export const crmNavSections: NavSection[] = [
   {
     title: "CRM Management",
     items: [
-      { label: "Integrations", href: "/integrations", icon: Plug },
-      { label: "Approvals", href: "/approvals", icon: ShieldCheck },
+      { label: "Integrations", href: "/integrations", icon: Plug, requiredPermission: "settings:manage" },
+      { label: "Approvals", href: "/approvals", icon: ShieldCheck, requiredPermission: "approvals:manage" },
       { label: "Notifications", href: "/notifications", icon: Bell },
-      { label: "Audit Logs", href: "/audit", icon: ScrollText },
-      { label: "Usage", href: "/usage", icon: Gauge },
+      { label: "Audit Logs", href: "/audit", icon: ScrollText, requiredPermission: "settings:manage" },
+      { label: "Usage", href: "/usage", icon: Gauge, requiredPermission: "billing:manage" },
     ],
   },
 ];
@@ -125,19 +126,74 @@ export const businessNavSections: NavSection[] = [
   },
 ];
 
-const moduleNavSections: Record<Exclude<WorkspaceId, "business" | "crm-sales">, NavSection[]> = {
+/** The Owner's view across every company. Each item is one page of /portfolio. */
+export const portfolioNavSections: NavSection[] = [
+  { title: "Portfolio", items: [
+    { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard },
+    { label: "Analytics", href: "/portfolio?view=analytics", icon: BarChart3 },
+    { label: "Finance", href: "/portfolio?view=finance", icon: WalletCards },
+  ] },
+  { title: "Manage", items: [
+    { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
+    { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
+    { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
+  ] },
+  { title: "Access", items: [
+    { label: "People & access", href: "/portfolio?view=people", icon: Users },
+  ] },
+];
+
+const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | "crm-sales">, NavSection[]> = {
   "hr-people": [
-    { title: "HR & People", items: [
-      { label: "HR Overview", href: "/workspace/hr-people", icon: LayoutDashboard },
-      { label: "Employees", href: "/workspace/hr-people?view=employees", icon: Users },
-      { label: "Attendance", href: "/workspace/hr-people?view=attendance", icon: CalendarClock },
-      { label: "Leave Management", href: "/workspace/hr-people?view=leave", icon: CalendarClock },
-      { label: "Recruitment", href: "/workspace/hr-people?view=recruitment", icon: UserRoundPlus },
-      { label: "Payroll", href: "/workspace/hr-people?view=payroll", icon: Receipt },
-      { label: "Performance & Reviews", href: "/workspace/hr-people?view=performance", icon: BarChart3 },
-      { label: "HR Reports", href: "/workspace/hr-people?view=reports", icon: FileText },
+    { title: "My HR", items: [
+      { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard },
+      { label: "Engage", href: "/workspace/hr-people?view=engage", icon: Sparkles },
+      { label: "My profile", href: "/workspace/hr-people?view=my-profile", icon: UserRoundPlus },
+      { label: "My onboarding", href: "/workspace/hr-people?view=my-onboarding", icon: UserRoundPlus },
+      { label: "Document Center", href: "/workspace/hr-people?view=document-center", icon: FileText },
+      { label: "My documents", href: "/workspace/hr-people?view=my-documents", icon: FileText },
+      { label: "Ask about policy", href: "/workspace/hr-people?view=policy-qa", icon: Sparkles },
+    ] },
+    { title: "Salary", items: [
+      { label: "Payslips", href: "/workspace/hr-people?view=my-payslips", icon: Receipt },
+      { label: "Reimbursements", href: "/workspace/hr-people?view=my-payslips&tab=reimbursements", icon: WalletCards },
+    ] },
+    { title: "Leave", items: [
+      { label: "Leave Apply", href: "/workspace/hr-people?view=leave-apply", icon: ClipboardList },
+      { label: "Leave Balances", href: "/workspace/hr-people?view=leave-balances", icon: CalendarClock },
+      { label: "Leave Calendar", href: "/workspace/hr-people?view=leave-calendar", icon: CalendarClock },
+      { label: "Holiday Calendar", href: "/workspace/hr-people?view=holiday-calendar", icon: CalendarClock },
+      { label: "My requests", href: "/workspace/hr-people?view=my-requests", icon: ClipboardList },
+    ] },
+    { title: "Attendance", items: [
+      { label: "Attendance Info", href: "/workspace/hr-people?view=attendance-info", icon: CalendarClock },
+      { label: "Regularization & Permission", href: "/workspace/hr-people?view=my-regularization", icon: ClipboardList },
+    ] },
+    { title: "Team", items: [
+      { label: "My Team", href: "/workspace/hr-people?view=team", icon: Users, requiredPermission: "hr:team" },
+      { label: "Pending Approvals", href: "/workspace/hr-people?view=approvals", icon: ShieldCheck, requiredPermission: "hr:approve" },
+      { label: "Leave Management", href: "/workspace/hr-people?view=leave", icon: CalendarClock, requiredPermission: "hr:read" },
+      { label: "Attendance", href: "/workspace/hr-people?view=attendance", icon: CalendarClock, requiredPermission: "hr:read" },
+      { label: "Promotions & changes", href: "/workspace/hr-people?view=promotions", icon: Users, requiredPermission: "hr:team" },
+      { label: "Performance & Reviews", href: "/workspace/hr-people?view=performance", icon: BarChart3, requiredPermission: "hr:read" },
+      { label: "Expenses & Reimbursements", href: "/workspace/hr-people?view=expenses", icon: WalletCards, requiredPermission: "hr:read" },
+    ] },
+    { title: "Company", items: [
+      { label: "HR Overview", href: "/workspace/hr-people", icon: LayoutDashboard, requiredPermission: "hr:read" },
+      { label: "Employees", href: "/workspace/hr-people?view=employees", icon: Users, requiredPermission: "hr:read" },
+      { label: "Recruitment", href: "/workspace/hr-people?view=recruitment", icon: UserRoundPlus, requiredPermission: "hr:manage" },
+      { label: "Onboarding", href: "/workspace/hr-people?view=onboarding", icon: UserRoundPlus, requiredPermission: "hr:manage" },
+      { label: "Offboarding", href: "/workspace/hr-people?view=offboarding", icon: ClipboardList, requiredPermission: "hr:manage" },
+      { label: "Documents", href: "/workspace/hr-people?view=documents", icon: FileText, requiredPermission: "hr:read" },
+      { label: "Signature & Audit", href: "/workspace/hr-people?view=signatures", icon: FileCheck2, requiredPermission: "hr:manage" },
+      { label: "Payroll", href: "/workspace/hr-people?view=payroll", icon: Receipt, requiredPermission: "hr:payroll:read" },
+      { label: "HR Reports", href: "/workspace/hr-people?view=reports", icon: FileText, requiredPermission: "hr:read" },
+      { label: "HR Compliance", href: "/workspace/hr-people?view=compliance", icon: ShieldCheck, requiredPermission: "hr:read" },
+    ] },
+    { title: "Admin", items: [
+      { label: "Departments & roles", href: "/workspace/hr-people?view=organization", icon: Users, requiredPermission: "hr:manage" },
+      { label: "HR Settings", href: "/workspace/hr-people?view=settings", icon: Settings2, requiredPermission: "hr:manage" },
       { label: "HR AI Chat", href: "/ai?workspace=hr-people", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "HR Settings", href: "/settings?tab=team", icon: Settings2, requiredPermission: "members:manage" },
     ] },
   ],
   "finance-accounting": [
@@ -223,6 +279,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "business" | "crm-sales">, 
 export function getNavSectionsForWorkspace(workspaceId: WorkspaceId): NavSection[] {
   if (workspaceId === "crm-sales") return crmNavSections;
   if (workspaceId === "business") return businessNavSections;
+  if (workspaceId === "portfolio") return portfolioNavSections;
   return moduleNavSections[workspaceId];
 }
 

@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatDateTime } from "@/lib/utils";
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 
 type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 

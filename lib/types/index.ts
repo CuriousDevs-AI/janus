@@ -179,6 +179,204 @@ export interface DealTask {
   dueAt?: string;
 }
 
+// ---------------------------------------------------------------------------
+// HR & People workspace (UI contract; backend-ready)
+// ---------------------------------------------------------------------------
+
+export type HrDemoRole =
+  | "owner"
+  | "business_manager"
+  | "hr_manager"
+  | "reporting_manager"
+  | "payroll_admin"
+  | "employee";
+
+export type EmployeeStatus = "active" | "onboarding" | "notice" | "archived";
+export type DocumentVisibility =
+  | "employee"
+  | "employee_manager"
+  | "hr"
+  | "payroll"
+  | "business_management"
+  | "selected_roles";
+export type SignatureStatus =
+  | "draft"
+  | "sent"
+  | "viewed"
+  | "partially_signed"
+  | "signed"
+  | "rejected"
+  | "expired"
+  | "cancelled";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "needs_clarification";
+
+export interface HrEmployee {
+  id: ID;
+  name: string;
+  email: string;
+  phone: string;
+  title: string;
+  department: string;
+  branch: string;
+  managerId: ID | null;
+  managerName: string | null;
+  status: EmployeeStatus;
+  employmentType: "full_time" | "part_time" | "contract";
+  joiningDate: string;
+  location: string;
+  avatarColor: string;
+  /** YYYY-MM-DD. Optional so older records keep working. */
+  birthDate?: string;
+  salaryMonthly: number;
+  /** Earlier pay, so old payslips stay correct after a revision. Each entry applies from the first month on or after `from`. */
+  salaryHistory?: { from: string; salaryMonthly: number }[];
+  onboardingPercent: number;
+  documentsDue: number;
+}
+
+export interface HrCandidate {
+  id: ID;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  department: string;
+  stage: "screening" | "interview" | "offer" | "accepted" | "rejected";
+  ownerName: string;
+  score: number;
+  updatedAt: string;
+  convertedEmployeeId?: ID;
+}
+
+export interface HrAttendanceRecord {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  date: string;
+  status: "present" | "late" | "absent" | "on_leave" | "holiday";
+  checkIn: string | null;
+  checkOut: string | null;
+  shift: string;
+  overtimeHours: number;
+  anomaly: string | null;
+}
+
+export interface HrLeaveRequest {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  managerId: ID | null;
+  managerName: string;
+  /** The id of a leave type HR has set up, for example "casual". */
+  type: string;
+  from: string;
+  to: string;
+  days: number;
+  reason: string;
+  status: ApprovalStatus;
+  step: "manager" | "hr" | "finance" | "complete";
+  /** The approval levels this request passes, fixed when it is made. Older requests have none. */
+  route?: { kind: "person" | "hr"; id?: string; name: string; label: string }[];
+  /** Which level of `route` is deciding now. */
+  level?: number;
+  /** The day the request reached its current level. Used to time escalation. */
+  levelAt?: string;
+  createdAt: string;
+}
+
+export interface HrDocument {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  name: string;
+  category: string;
+  visibility: DocumentVisibility;
+  version: number;
+  status: "current" | "expiring" | "missing" | "archived";
+  signatureStatus: SignatureStatus;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  ownerName: string;
+  acknowledgedAt: string | null;
+}
+
+export interface HrOnboardingTask {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  title: string;
+  ownerRole: "employee" | "manager" | "hr" | "finance" | "it";
+  status: "todo" | "in_progress" | "done";
+  dueAt: string;
+}
+
+export interface HrPayrollIssue {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  status: "open" | "resolved" | "deferred";
+  amountDelta: number;
+}
+
+export interface HrPayrollRun {
+  id: ID;
+  month: string;
+  status: "draft" | "review" | "approved" | "locked";
+  employeeCount: number;
+  gross: number;
+  deductions: number;
+  net: number;
+  deltaPercent: number;
+  issueCount: number;
+  updatedAt: string;
+}
+
+export interface HrWhatsAppAction {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  action: "leave" | "payslip" | "policy" | "announcement" | "onboarding";
+  status: "queued" | "sent" | "delivered" | "approved";
+  createdAt: string;
+}
+
+export type HrExpenseStatus = "submitted" | "manager_review" | "hr_review" | "approved" | "rejected" | "paid";
+export interface HrExpenseClaim {
+  id: ID;
+  employeeId: ID;
+  employeeName: string;
+  category: "travel" | "meals" | "phone" | "supplies" | "other";
+  amount: number;
+  submittedAt: string;
+  status: HrExpenseStatus;
+  approverName: string;
+  receiptAttached: boolean;
+}
+
+export interface HrSignatureAudit {
+  id: ID;
+  documentId: ID;
+  documentName: string;
+  employeeName: string;
+  event: "sent" | "viewed" | "signed" | "rejected" | "cancelled";
+  actorName: string;
+  occurredAt: string;
+  device: string;
+}
+
+export interface HrComplianceItem {
+  id: ID;
+  title: string;
+  jurisdiction: string;
+  dueAt: string;
+  ownerName: string;
+  status: "upcoming" | "due" | "filed" | "attention";
+  detail: string;
+}
+
 export interface Deal {
   id: ID;
   name: string;

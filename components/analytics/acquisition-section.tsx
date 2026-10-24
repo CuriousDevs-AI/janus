@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { leadsBySource } from "@/lib/mock-data";
+import { useCrmStats } from "@/lib/use-crm-stats";
 import { formatNumber } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,6 +17,7 @@ import {
 } from "./chart-theme";
 
 export function AcquisitionSection() {
+  const { leadsBySource } = useCrmStats();
   const sorted = [...leadsBySource].sort((a, b) => b.leads - a.leads);
 
   return (

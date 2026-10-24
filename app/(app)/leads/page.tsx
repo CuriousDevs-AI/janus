@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { demoMode } from "@/lib/demo-mode";
+import { demoAccounts } from "@/lib/demo-accounts";
+import { canSeeOwner } from "@/lib/crm-scope";
+import { useDemoAccount } from "@/lib/demo-persona";
 import Link from "next/link";
 import {
   Eye,
@@ -17,7 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
-import type { Contact, Lead } from "@/lib/api/types";
+import type { Lead } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
@@ -51,8 +55,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateTime } from "@/lib/utils";
+import { demoLeadRows } from "@/lib/api/demo-data";
 
-type Row = { lead: Lead; contact: Contact };
+type Row = { lead: Lead };
 type EditForm = {
   name: string;
   phone: string;
@@ -60,6 +65,7 @@ type EditForm = {
   company: string;
   requirement: string;
   stage: string;
+  ownerId: string;
 };
 
 type OptionalColumn = "email" | "company" | "source" | "owner" | "created";
@@ -110,12 +116,13 @@ function phoneParts(phone: string | null) {
 
 function blankEditForm(row: Row): EditForm {
   return {
-    name: row.contact.name,
-    phone: row.contact.phone || "",
-    email: row.contact.email || "",
-    company: row.contact.company,
+    name: row.lead.contactName,
+    phone: row.lead.phone || "",
+    email: row.lead.email || "",
+    company: row.lead.company,
     requirement: row.lead.requirement,
     stage: row.lead.stage,
+    ownerId: row.lead.ownerId ?? "",
   };
 }
 
@@ -143,6 +150,7 @@ function EditableValue({
 
 export default function LeadsPage() {
   const session = useSession();
+  const viewer = useDemoAccount();
   const canWrite = session.permissions.includes("leads:write");
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
@@ -179,29 +187,24 @@ export default function LeadsPage() {
       const leads = await api<Lead[]>(`/leads?limit=50&after_id=${after}`, {
         signal: controller.signal,
       });
-      const contacts = await Promise.all(
-        [...new Set(leads.map((lead) => lead.customerId))].map((id) =>
-          api<Contact>(`/contacts/${id}`, { signal: controller.signal }),
-        ),
-      );
-      const byId = new Map(contacts.map((contact) => [contact.id, contact]));
       if (!controller.signal.aborted)
         setResult({
           after,
-          rows: leads.flatMap((lead) => {
-            const contact = byId.get(lead.customerId);
-            return contact ? [{ lead, contact }] : [];
-          }),
+          rows: leads.map((lead) => ({ lead })),
         });
     };
     load().catch((error) => {
       if (!controller.signal.aborted)
-        setResult({ after, rows: [], error: message(error) });
+        setResult({ after, rows: demoLeadRows.map((lead) => ({ lead })), error: message(error) });
     });
     return () => controller.abort();
   }, [after, version]);
 
   const loaded = result?.after === after ? result : null;
+  const usingDemo = Boolean(loaded?.error);
+  const canEditRows = canWrite && !usingDemo;
+  // Owners and managers can hand a lead to someone they manage.
+  const assignees = demoMode && (session.permissions.includes("*") || session.permissions.includes("leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
   const sources = useMemo(
     () => [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])],
     [loaded],
@@ -209,12 +212,12 @@ export default function LeadsPage() {
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return (
-      loaded?.rows.filter(({ lead, contact }) => {
+      loaded?.rows.filter(({ lead }) => {
         const searchable = [
-          contact.name,
-          contact.email,
-          contact.phone,
-          contact.company,
+          lead.contactName,
+          lead.email,
+          lead.phone,
+          lead.company,
           lead.requirement,
           lead.source,
           lead.stage,
@@ -267,7 +270,7 @@ export default function LeadsPage() {
       await api<Lead>(`/leads/${editing.lead.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          ...editForm,
+          ...(demoMode ? editForm : { ...editForm, ownerId: undefined }),
           phone: editForm.phone.trim() || null,
           email: editForm.email.trim() || null,
         }),
@@ -431,7 +434,7 @@ export default function LeadsPage() {
             </div>
           </PopoverContent>
         </Popover>
-        {canWrite && (
+        {canEditRows && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" disabled={!selectedIds.length}>
@@ -458,6 +461,7 @@ export default function LeadsPage() {
         )}
         {filtersActive && <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setStageFilter("all"); setSourceFilter("all"); }}><X className="size-3.5" />Clear filters</Button>}
         {loaded && !loaded.error && <span className="ml-auto text-xs text-muted-foreground">Showing {rows.length} of {loaded.rows.length} loaded leads</span>}
+        
       </div>
       <div className="flex items-center gap-2 px-6 pt-3 text-[11px] text-muted-foreground">
         <Pencil className="size-3" />
@@ -466,8 +470,6 @@ export default function LeadsPage() {
 
       {!loaded ? (
         <p role="status" className="p-6 text-sm">Loading leads…</p>
-      ) : loaded.error ? (
-        <p role="alert" className="p-6 text-sm text-danger">{loaded.error}</p>
       ) : rows.length === 0 ? (
         <div className="flex flex-col gap-2 p-6">
           <h2 className="text-sm font-medium">{filtersActive ? "No leads match these filters" : after === "0" ? "No leads yet" : "No more leads"}</h2>
@@ -496,33 +498,33 @@ export default function LeadsPage() {
             </thead>
             <tbody>
               {rows.map((row, index) => {
-                const { lead, contact } = row;
-                const phone = phoneParts(contact.phone);
-                const displayName = contact.name?.trim() || phone.mobile || contact.email || `Contact #${contact.id}`;
+                const { lead } = row;
+                const phone = phoneParts(lead.phone);
+                const displayName = lead.contactName?.trim() || phone.mobile || lead.email || `Lead #${lead.id}`;
                 const selected = selectedIds.includes(lead.id);
                 return (
                   <tr key={lead.id} className={`group border-b border-border transition-colors hover:bg-surface-2/60 ${selected ? "bg-accent/5" : ""}`}>
                     <td className="w-12 min-w-12 px-3 py-4"><Checkbox checked={selected} aria-label={`Select ${displayName}`} onCheckedChange={(checked) => setSelectedIds((current) => checked ? [...new Set([...current, lead.id])] : current.filter((id) => id !== lead.id))} /></td>
                     <td className="w-16 min-w-16 whitespace-nowrap px-2 py-4"><span className="font-mono text-xs font-semibold text-foreground">#{String(index + 1).padStart(2, "0")}</span><span className="mt-1 block text-[10px] text-muted-foreground">ID {lead.id}</span></td>
-                    <td className="w-40 min-w-40 px-3 py-4"><div className="flex items-center gap-2"><Link href={`/leads/${lead.id}`} className="block truncate font-semibold text-foreground hover:text-accent">{displayName}</Link>{canWrite && <button type="button" title="Edit name" onClick={() => openEdit(row)} className="shrink-0 text-muted-foreground hover:text-accent"><Pencil className="size-3" /></button>}</div><span className="mt-1 block text-[11px] text-muted-foreground">{contact.name ? "Customer name" : "Using mobile as name"}</span></td>
+                    <td className="w-40 min-w-40 px-3 py-4"><div className="flex items-center gap-2">{usingDemo ? <span className="block truncate font-semibold text-foreground">{displayName}</span> : <Link href={`/leads/${lead.id}`} className="block truncate font-semibold text-foreground hover:text-accent">{displayName}</Link>}{canEditRows && <button type="button" title="Edit name" onClick={() => openEdit(row)} className="shrink-0 text-muted-foreground hover:text-accent"><Pencil className="size-3" /></button>}</div><span className="mt-1 block text-[11px] text-muted-foreground">{lead.contactName ? "Customer name" : "Using mobile as name"}</span></td>
                     <td className="w-28 min-w-28 whitespace-nowrap px-3 py-4"><span className="inline-flex whitespace-nowrap rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs font-medium text-foreground">{phone.countryCode}</span></td>
-                    <td className="w-32 min-w-32 whitespace-nowrap px-3 py-4 font-medium text-foreground">{canWrite ? <EditableValue onClick={() => openEdit(row)}>{phone.mobile}</EditableValue> : phone.mobile}</td>
-                    <td className="w-28 min-w-28 px-3 py-4">{canWrite ? <EditableValue onClick={() => openEdit(row)}><Badge variant="neutral">{label(lead.stage)}</Badge></EditableValue> : <Badge variant="neutral">{label(lead.stage)}</Badge>}</td>
+                    <td className="w-32 min-w-32 whitespace-nowrap px-3 py-4 font-medium text-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{phone.mobile}</EditableValue> : phone.mobile}</td>
+                    <td className="w-28 min-w-28 px-3 py-4">{canEditRows ? <EditableValue onClick={() => openEdit(row)}><Badge variant="neutral">{label(lead.stage)}</Badge></EditableValue> : <Badge variant="neutral">{label(lead.stage)}</Badge>}</td>
                     {orderedOptionalColumns.map(({ key }) => {
                       if (!visibleColumns[key]) return null;
-                      if (key === "email") return <td key={key} className="max-w-[220px] px-5 py-4 text-muted-foreground">{canWrite ? <EditableValue onClick={() => openEdit(row)}>{contact.email || "—"}</EditableValue> : <span className="block truncate">{contact.email || "—"}</span>}</td>;
-                      if (key === "company") return <td key={key} className="max-w-[180px] px-5 py-4 text-muted-foreground">{canWrite ? <EditableValue onClick={() => openEdit(row)}>{contact.company || "—"}</EditableValue> : <span className="block truncate">{contact.company || "—"}</span>}</td>;
+                      if (key === "email") return <td key={key} className="max-w-[220px] px-5 py-4 text-muted-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{lead.email || "—"}</EditableValue> : <span className="block truncate">{lead.email || "—"}</span>}</td>;
+                      if (key === "company") return <td key={key} className="max-w-[180px] px-5 py-4 text-muted-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{lead.company || "—"}</EditableValue> : <span className="block truncate">{lead.company || "—"}</span>}</td>;
                       if (key === "source") return <td key={key} className="whitespace-nowrap px-5 py-4 text-muted-foreground">{label(lead.source)}</td>;
-                      if (key === "owner") return <td key={key} className="max-w-[160px] truncate px-5 py-4 text-muted-foreground">{lead.ownerId === session.user.id ? session.user.name : lead.ownerId ? `Member #${lead.ownerId}` : "Unassigned"}</td>;
+                      if (key === "owner") return <td key={key} className="max-w-[160px] truncate px-5 py-4 text-muted-foreground">{lead.ownerId === session.user.id ? session.user.name : lead.ownerName || (lead.ownerId ? `Member #${lead.ownerId}` : "Unassigned")}</td>;
                       return <td key={key} className="whitespace-nowrap px-5 py-4 text-muted-foreground">{formatDateTime(lead.createdAt)}</td>;
                     })}
                     <td className="sticky right-0 z-30 w-14 min-w-14 border-l border-border bg-surface px-3 py-4 text-right shadow-[-2px_0_0_rgba(15,23,42,0.06)] group-hover:bg-surface-2/60" onClick={(event) => event.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${displayName}`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5" />View lead</Link></DropdownMenuItem>
-                          {canWrite && <DropdownMenuItem onSelect={() => openEdit(row)}><Pencil className="size-3.5" />Edit and update</DropdownMenuItem>}
-                          {canWrite && <><DropdownMenuSeparator /><DropdownMenuItem variant="destructive" onSelect={() => { setActionError(""); setDeleting(row); }}><Trash2 className="size-3.5" />Delete lead</DropdownMenuItem></>}
+                          {!usingDemo && <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5" />View lead</Link></DropdownMenuItem>}
+                          {canEditRows && <DropdownMenuItem onSelect={() => openEdit(row)}><Pencil className="size-3.5" />Edit and update</DropdownMenuItem>}
+                          {canEditRows && <><DropdownMenuSeparator /><DropdownMenuItem variant="destructive" onSelect={() => { setActionError(""); setDeleting(row); }}><Trash2 className="size-3.5" />Delete lead</DropdownMenuItem></>}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -543,6 +545,7 @@ export default function LeadsPage() {
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-name">Name</Label><Input id="lead-edit-name" value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-phone">Mobile</Label><Input id="lead-edit-phone" placeholder="+91 99999 99999" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} /></div></div>
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-email">Email</Label><Input id="lead-edit-email" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-company">Company</Label><Input id="lead-edit-company" value={editForm.company} onChange={(event) => setEditForm({ ...editForm, company: event.target.value })} /></div></div>
             <div className="flex flex-col gap-1.5"><Label>Stage</Label><Select value={editForm.stage} onValueChange={(stage) => setEditForm({ ...editForm, stage })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{stages.map((stage) => <SelectItem key={stage} value={stage}>{label(stage)}</SelectItem>)}</SelectContent></Select></div>
+            {assignees.length > 1 && <div className="flex flex-col gap-1.5"><Label>Owner</Label><Select value={editForm.ownerId} onValueChange={(ownerId) => setEditForm({ ...editForm, ownerId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignees.map((item) => <SelectItem key={item.crmUserId} value={item.crmUserId}>{item.name} · {item.title}</SelectItem>)}</SelectContent></Select></div>}
             <div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-requirement">Requirement</Label><Textarea id="lead-edit-requirement" value={editForm.requirement} onChange={(event) => setEditForm({ ...editForm, requirement: event.target.value })} /></div>
             {actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}
             <DialogFooter><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button></DialogFooter>

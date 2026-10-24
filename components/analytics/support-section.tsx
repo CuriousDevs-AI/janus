@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { supportMetrics, ticketVolumeTrend } from "@/lib/mock-data";
+import { useCrmStats } from "@/lib/use-crm-stats";
 import { formatNumber } from "@/lib/utils";
 import { MetricCard } from "@/components/shared/metric-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
 } from "./chart-theme";
 
 export function SupportSection() {
+  const { supportMetrics, ticketVolumeTrend } = useCrmStats();
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

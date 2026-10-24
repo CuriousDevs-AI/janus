@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -19,6 +20,7 @@ import { formatRelativeTime, cn } from "@/lib/utils";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,7 +47,9 @@ const ticketSchema = z.object({
 type TicketFormValues = z.infer<typeof ticketSchema>;
 
 export default function TicketsPage() {
-  const tickets = useAppStore((s) => s.tickets);
+  const allTickets = useAppStore((s) => s.tickets);
+  const access = useCrmAccess();
+  const tickets = React.useMemo(() => access.tickets(allTickets), [access, allTickets]);
   const customers = useAppStore((s) => s.customers);
   const createTicket = useAppStore((s) => s.createTicket);
   const router = useRouter();
@@ -93,10 +97,12 @@ export default function TicketsPage() {
         title="Tickets"
         description={`${rows.length} of ${tickets.length} tickets`}
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-3.5" />
-            New Ticket
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="size-3.5" />
+              New Ticket
+            </Button>
+          </div>
         }
       />
 

@@ -12,9 +12,10 @@ import { getNavSectionsForWorkspace } from "@/lib/nav-config";
 import { getWorkspaceDefinition, isWorkspaceId } from "@/lib/workspace-config";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { useSession } from "@/components/auth/session-provider";
+import { HrPeopleWorkspace } from "@/components/hr-people/workspace";
 
 const workspacePermissions: Record<string, string> = {
-  "hr-people": "members:manage",
+  "hr-people": "hr:self",
   "finance-accounting": "billing:manage",
   "projects-delivery": "settings:manage",
   "customer-support": "leads:read_team",
@@ -49,8 +50,12 @@ function WorkspacePageInner({
   }
 
   const requiredPermission = workspacePermissions[routeWorkspaceId];
-  if (requiredPermission && !session.permissions.includes(requiredPermission)) {
+  if (requiredPermission && !session.permissions.includes("*") && !session.permissions.includes(requiredPermission) && !(routeWorkspaceId === "hr-people" && session.permissions.includes("members:manage"))) {
     return <p className="p-6 text-sm text-muted-foreground">You do not have permission to open this workspace.</p>;
+  }
+
+  if (routeWorkspaceId === "hr-people") {
+    return <HrPeopleWorkspace />;
   }
 
   const selectedWorkspace = getWorkspaceDefinition(routeWorkspaceId);
