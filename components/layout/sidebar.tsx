@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { activeCompany, activeCompanyId, readCompanies, scoped, seedCompanies, subscribeCompanies, switchCompany, type CompanyRecord } from "@/lib/company";
+import { activeCompany, scoped } from "@/lib/company";
+import { CompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
-import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   ChevronsUpDown,
   Circle,
-  Building2,
   Plus,
 } from "lucide-react";
 import {
@@ -56,10 +56,7 @@ export function SidebarNav({
     role: session.role,
     avatarColor: "#2563eb",
   };
-  const router = useRouter();
   const tenant = session.tenant;
-  const companies = React.useSyncExternalStore(subscribeCompanies, () => JSON.stringify(readCompanies()), () => JSON.stringify(seedCompanies));
-  const companyList = JSON.parse(companies) as CompanyRecord[];
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
@@ -146,7 +143,7 @@ export function SidebarNav({
           collapsed ? "px-2" : "px-3",
         )}
       >
-        <DropdownMenu>
+        {workspaceId === "portfolio" ? <div className={cn("flex items-center gap-2 px-2 py-1.5", collapsed && "justify-center px-0")}><span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-col leading-tight"><span className="truncate text-[12px] font-medium text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</div> : <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
@@ -173,17 +170,7 @@ export function SidebarNav({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            {ownerView && <><DropdownMenuLabel>{companyList.length > 1 ? "Your companies" : "Business"}</DropdownMenuLabel>
-            {companyList.map((item) => <DropdownMenuItem key={item.id} onSelect={() => item.id === activeCompanyId() ? router.push("/settings?tab=workspace&view=overview&workspace=business") : switchCompany(item.id)} className={cn(item.id === activeCompanyId() && "bg-accent-muted")}>
-              <Building2 className="size-3.5 text-muted-foreground" />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate font-medium">{item.name}</span>
-                <span className="text-[11px] text-muted-foreground">{item.setupDone ? item.city : "Setup in progress"}</span>
-              </span>
-              {item.id === activeCompanyId() && <Circle className="size-2 shrink-0 fill-accent text-accent" />}
-            </DropdownMenuItem>)}
-            {demoMode && <DropdownMenuItem asChild><Link href="/setup?new=1"><Plus className="size-3.5" />Add a company</Link></DropdownMenuItem>}
-            <DropdownMenuSeparator /></>}
+
             <DropdownMenuLabel>{ownerView ? "Created workspaces" : "Your workspace"}</DropdownMenuLabel>
             {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>
               <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
@@ -199,7 +186,7 @@ export function SidebarNav({
               </Link>
             </DropdownMenuItem></>}
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
       </div>
 
       {/* Nav */}
@@ -260,6 +247,8 @@ export function SidebarNav({
           </div>
         ))}
       </nav>
+
+      {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
       {/* Footer */}
       <div

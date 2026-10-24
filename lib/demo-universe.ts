@@ -16,7 +16,7 @@ export const at = (daysAgo: number, time = "11:00") => {
 };
 
 import { activeSpec } from "@/lib/companies";
-import type { CompanySpec, Row } from "@/lib/companies/spec";
+import type { CompanySpec } from "@/lib/companies/spec";
 
 export const company = activeSpec.company;
 export const owners = activeSpec.owners;
