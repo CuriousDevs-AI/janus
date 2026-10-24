@@ -28,7 +28,7 @@ const baseEmployees: HrEmployee[] = [
 ];
 
 const birthDates: Record<string, string> = { "emp-001": "1985-12-02", "emp-002": "1990-11-14", "emp-003": "1988-11-03", "emp-004": "1996-10-26", "emp-005": "1993-10-24", "emp-006": "1998-12-19", "emp-007": "1994-11-29", "emp-008": "1991-10-31", "emp-009": "1997-03-18" };
-const acmeEmployees: HrEmployee[] = baseEmployees.map((employee) => ({ ...employee, birthDate: birthDates[employee.id] }));
+export const acmeEmployees: HrEmployee[] = baseEmployees.map((employee) => ({ ...employee, birthDate: birthDates[employee.id] }));
 export const hrEmployees: HrEmployee[] = isFirstCompany ? acmeEmployees : activeSpec.employees ?? [];
 
 const acme_hrCandidates: HrCandidate[] = [
@@ -71,7 +71,7 @@ function attendanceHistory(): HrAttendanceRecord[] {
 }
 export const hrAttendance: HrAttendanceRecord[] = [...todayAttendance, ...attendanceHistory()];
 
-const acme_hrLeaveRequests: HrLeaveRequest[] = [
+export const acme_hrLeaveRequests: HrLeaveRequest[] = [
   { id: "leave-001", employeeId: "emp-004", employeeName: "Riya Kapoor", managerId: "emp-003", managerName: "Arjun Mehta", type: "earned", from: "2026-10-28", to: "2026-10-29", days: 2, reason: "Family function in Jaipur", status: "pending", step: "manager", createdAt: "2026-10-22" },
   { id: "leave-002", employeeId: "emp-006", employeeName: "Vikas Jain", managerId: "emp-005", managerName: "Neha Verma", type: "sick", from: "2026-10-23", to: "2026-10-23", days: 1, reason: "Not feeling well", status: "needs_clarification", step: "manager", createdAt: "2026-10-23" },
   { id: "leave-003", employeeId: "emp-005", employeeName: "Neha Verma", managerId: "emp-001", managerName: "Pankaj Neema", type: "casual", from: "2026-11-04", to: "2026-11-05", days: 2, reason: "Personal work", status: "approved", step: "complete", createdAt: "2026-10-18" },

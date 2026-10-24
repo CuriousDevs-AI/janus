@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { GroupDashboard } from "@/components/business/group-dashboard";
 import { activeCompany } from "@/lib/company";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
@@ -97,6 +98,7 @@ export function WorkspaceSection() {
   }
 
   if (view === "overview") return <BusinessOverviewPanel />;
+  if (view === "group") return <GroupDashboard />;
   if (view === "workspaces") return <WorkspacesPanel />;
   if (view === "administration") return <AdministrationPanel section={requestedSection} session={session} name={profileName} phone={profilePhone} timezone={profileTimezone} language={profileLanguage} onNameChange={setProfileName} onPhoneChange={setProfilePhone} onTimezoneChange={setProfileTimezone} onLanguageChange={setProfileLanguage} onSave={handleProfileSave} />;
   // Keep old deep links working while Billing now lives under Administration.

@@ -16,18 +16,17 @@ export const at = (daysAgo: number, time = "11:00") => {
 };
 
 import { activeSpec } from "@/lib/companies";
-import type { Row } from "@/lib/companies/spec";
+import type { CompanySpec, Row } from "@/lib/companies/spec";
 
 export const company = activeSpec.company;
 export const owners = activeSpec.owners;
 export const buyers = activeSpec.buyers;
-const rows: Row[] = activeSpec.rows;
 
-const buyer = (n: number) => buyers[n - 1];
-export const leadRows: Lead[] = rows.map((row, index) => {
+/** Leads for any company, so the group view can total every company without opening each one. */
+export function buildLeadRows(spec: CompanySpec): Lead[] { return spec.rows.map((row, index) => {
   const [n, source, stage, age, last, ownerKey, campaign, requirement, deal] = row;
-  const who = buyer(n);
-  const owner = owners[ownerKey];
+  const who = spec.buyers[n - 1];
+  const owner = spec.owners[ownerKey];
   const id = `lead-${index + 1}`;
   const whatsapp = source === "whatsapp";
   return {
@@ -37,19 +36,21 @@ export const leadRows: Lead[] = rows.map((row, index) => {
     source, stage, ownerId: owner.id, ownerName: owner.name, requirement, campaign,
     recordingUrl: null, recordingReference: source === "phone_call" ? `call-demo-${880 + index}` : null, createdAt: at(age, "10:15"), lastActivityAt: at(last, "15:40"),
   };
-});
+}); }
+export const leadRows: Lead[] = buildLeadRows(activeSpec);
 
-export const dealRows: Deal[] = rows.flatMap((row, index) => {
+export function buildDealRows(spec: CompanySpec, leads: Lead[]): Deal[] { return spec.rows.flatMap((row, index) => {
   const [n, , stage, age, last, ownerKey, , , deal] = row;
   if (!deal) return [];
-  const who = buyer(n);
-  const owner = owners[ownerKey];
+  const who = spec.buyers[n - 1];
+  const owner = spec.owners[ownerKey];
   return [{
-    id: `deal-${index + 1}`, leadId: leadRows[index].id, customerId: who.id, customerName: who.contact, company: who.company, phone: who.phone,
+    id: `deal-${index + 1}`, leadId: leads[index].id, customerId: who.id, customerName: who.contact, company: who.company, phone: who.phone,
     ownerId: owner.id, ownerName: owner.name, name: deal[0], amount: `${deal[1]}.00`, stage: stage as DealStage,
     expectedCloseAt: at(-deal[2], "00:00").replace(/T\d\d:\d\d/, "T00:00"), lostReason: stage === "lost" ? "Price and delivery distance" : "", version: 1, createdAt: at(age - 0, "10:30"), updatedAt: at(last, "15:40"),
   } satisfies Deal];
-});
+}); }
+export const dealRows: Deal[] = buildDealRows(activeSpec, leadRows);
 
 /** Numbers the dashboards show. All of them come from the records above. */
 const openStages = new Set(["new", "qualified", "demo", "proposal", "negotiation", "approval"]);
