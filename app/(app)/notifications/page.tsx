@@ -58,7 +58,7 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         description={`${unreadCount} unread of ${notifications.length}`}
-        actions={<div className="flex items-center gap-2">{demoMode && <Badge variant="neutral">Demo data</Badge>}<Button size="sm" variant="secondary" onClick={markAllNotificationsRead} disabled={unreadCount === 0}><CheckCheck className="size-3.5" />Mark all read</Button></div>}
+        actions={<div className="flex items-center gap-2"><Button size="sm" variant="secondary" onClick={markAllNotificationsRead} disabled={unreadCount === 0}><CheckCheck className="size-3.5" />Mark all read</Button></div>}
       />
 
       <div className="border-b border-border px-6">

@@ -32,7 +32,7 @@ export default function EvaluationsPage() {
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-6 pb-6">
-      <PageHeader title="Evaluations" description={`${evaluationRuns.length} runs across ${agents.length} agents`} actions={<Badge variant="neutral">Demo data</Badge>} />
+      <PageHeader title="Evaluations" description={`${evaluationRuns.length} runs across ${agents.length} agents`} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard label="Avg accuracy (latest)" value={`${avgAccuracy}%`} />

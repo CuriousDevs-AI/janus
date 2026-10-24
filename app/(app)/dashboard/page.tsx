@@ -57,7 +57,7 @@ export default function DashboardPage() {
         description={`Live CRM & Sales workspace for ${session.tenant.name}.`}
         actions={
           <div className="flex items-center gap-2">
-            {usingDemo && <span className="rounded-none border border-warning/30 bg-warning-muted px-2.5 py-1 text-[11px] font-medium text-warning">Demo data</span>}
+            
             <Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
               <RefreshCw className="size-3.5" />
               Refresh
@@ -148,7 +148,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2"><TrendingUp className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">Growth snapshot</h2></div>
               <p className="mt-1 text-[11px] text-muted-foreground">Lead volume and open pipeline movement over the last six months.</p>
             </div>
-            {usingDemo && <span className="text-[11px] text-warning">Demo trend</span>}
+            
           </div>
           {growthTrend.length > 0 ? (
             <div className="mt-5 h-64" role="img" aria-label="Six month lead and pipeline growth trend">

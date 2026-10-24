@@ -22,9 +22,10 @@ const baseEmployees: HrEmployee[] = [
   { id: "emp-006", name: "Vikas Jain", email: "vikas@acmetraders.in", phone: "+91 97970 88776", title: "Warehouse Associate", department: "Operations", branch: "Jaipur", managerId: "emp-005", managerName: "Neha Verma", status: "onboarding", employmentType: "full_time", joiningDate: "2026-10-14", location: "Jaipur", avatarColor: "#0f766e", salaryMonthly: 28000, onboardingPercent: 68, documentsDue: 2 },
   { id: "emp-007", name: "Aman Verma", email: "aman@acmetraders.in", phone: "+91 99100 44556", title: "Finance Executive", department: "Finance", branch: "Gurugram", managerId: "emp-001", managerName: "Pankaj Neema", status: "active", employmentType: "full_time", joiningDate: "2024-05-06", location: "Gurugram", avatarColor: "#475569", salaryMonthly: 61000, onboardingPercent: 100, documentsDue: 0 },
   { id: "emp-008", name: "Karan Bhatt", email: "karan@acmetraders.in", phone: "+91 98880 99887", title: "Customer Support Lead", department: "Support", branch: "Gurugram", managerId: "emp-001", managerName: "Pankaj Neema", status: "notice", employmentType: "full_time", joiningDate: "2023-07-17", location: "Gurugram", avatarColor: "#dc2626", salaryMonthly: 68000, onboardingPercent: 100, documentsDue: 1 },
+  { id: "emp-009", name: "Meera Singh", email: "meera@acmetraders.in", phone: "+91 98720 33415", title: "Sales Executive", department: "Sales", branch: "Gurugram", managerId: "emp-003", managerName: "Arjun Mehta", status: "active", employmentType: "full_time", joiningDate: "2026-09-01", location: "Gurugram", avatarColor: "#7c3aed", salaryMonthly: 42000, onboardingPercent: 100, documentsDue: 0 },
 ];
 
-const birthDates: Record<string, string> = { "emp-001": "1985-12-02", "emp-002": "1990-11-14", "emp-003": "1988-11-03", "emp-004": "1996-10-26", "emp-005": "1993-10-24", "emp-006": "1998-12-19", "emp-007": "1994-11-29", "emp-008": "1991-10-31" };
+const birthDates: Record<string, string> = { "emp-001": "1985-12-02", "emp-002": "1990-11-14", "emp-003": "1988-11-03", "emp-004": "1996-10-26", "emp-005": "1993-10-24", "emp-006": "1998-12-19", "emp-007": "1994-11-29", "emp-008": "1991-10-31", "emp-009": "1997-03-18" };
 export const hrEmployees: HrEmployee[] = baseEmployees.map((employee) => ({ ...employee, birthDate: birthDates[employee.id] }));
 
 export const hrCandidates: HrCandidate[] = [

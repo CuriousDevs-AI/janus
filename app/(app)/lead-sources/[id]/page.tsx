@@ -142,7 +142,6 @@ function DemoSourceDetail({ source }: { source: Source }) {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{source.name}</h1>
-            <Badge variant="neutral">Demo data</Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{source.description}</p>
         </div>
@@ -161,8 +160,8 @@ function DemoSourceDetail({ source }: { source: Source }) {
           <Button size="sm" variant="secondary" className="w-fit" disabled>Configure source</Button>
         </section>
         <section className="border border-border bg-surface">
-          <div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Recent captured leads</h2><p className="mt-1 text-xs text-muted-foreground">Sample events from this connection.</p></div>
-          {leads.length ? leads.map((lead) => <div key={lead.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0"><div><p className="text-sm font-medium">{lead.contactName}</p><p className="text-xs text-muted-foreground">{lead.company} · {lead.stage}</p></div><div className="text-right"><Badge variant="success">Captured</Badge><p className="mt-1 text-[11px] text-muted-foreground">{formatDateTime(lead.lastActivityAt)}</p></div></div>) : <p className="p-4 text-sm text-muted-foreground">No sample events for this source yet.</p>}
+          <div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Recent captured leads</h2><p className="mt-1 text-xs text-muted-foreground">Recent events from this connection.</p></div>
+          {leads.length ? leads.map((lead) => <div key={lead.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0"><div><p className="text-sm font-medium">{lead.contactName}</p><p className="text-xs text-muted-foreground">{lead.company} · {lead.stage}</p></div><div className="text-right"><Badge variant="success">Captured</Badge><p className="mt-1 text-[11px] text-muted-foreground">{formatDateTime(lead.lastActivityAt)}</p></div></div>) : <p className="p-4 text-sm text-muted-foreground">No events from this source yet.</p>}
         </section>
       </div>
     </div>

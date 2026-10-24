@@ -55,7 +55,6 @@ export default function ApprovalsPage() {
       <PageHeader
         title="Approvals"
         description={`${pendingCount} pending approval${pendingCount === 1 ? "" : "s"}`}
-        actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined}
       />
 
       <div className="border-b border-border px-6">

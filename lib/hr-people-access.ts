@@ -1,6 +1,7 @@
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import { hasPermission } from "@/lib/hr-org";
+import { actorEmployeeId } from "@/lib/demo-persona";
 
 export const hrRoleLabels: Record<HrDemoRole, string> = {
   owner: "Owner",
@@ -30,15 +31,15 @@ export function canApproveTeam(role: HrDemoRole) {
 }
 
 export function visibleEmployees(role: HrDemoRole, employees: HrEmployee[]) {
-  if (role === "employee") return employees.filter((employee) => employee.id === "emp-006");
-  if (role === "reporting_manager") return employees.filter((employee) => employee.managerId === "emp-005");
+  if (role === "employee") return employees.filter((employee) => employee.id === demoActorId(role));
+  if (role === "reporting_manager") return employees.filter((employee) => employee.managerId === demoActorId(role));
   if (role === "payroll_admin") return employees;
   return employees.filter((employee) => employee.status !== "archived");
 }
 
 export function canSeeEmployee(role: HrDemoRole, employee: HrEmployee) {
-  if (role === "employee") return employee.id === "emp-006";
-  if (role === "reporting_manager") return employee.managerId === "emp-005";
+  if (role === "employee") return employee.id === demoActorId(role);
+  if (role === "reporting_manager") return employee.managerId === demoActorId(role);
   return true;
 }
 
@@ -48,6 +49,8 @@ export function salaryVisible(role: HrDemoRole) {
 
 /** Demo identity each preview role acts as, so documents and signatures resolve to one employee record. */
 export function demoActorId(role: HrDemoRole) {
+  const signedIn = actorEmployeeId(role);
+  if (signedIn) return signedIn;
   const actors: Record<HrDemoRole, string> = {
     owner: "emp-001",
     hr_manager: "emp-002",

@@ -57,7 +57,7 @@ export default function AuditLogPage() {
 
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col">
-      <PageHeader title="Audit Logs" description={`${rows.length} of ${auditEvents.length} events`} actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined} />
+      <PageHeader title="Audit Logs" description={`${rows.length} of ${auditEvents.length} events`} />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search action, object or actor…" className="w-72" />

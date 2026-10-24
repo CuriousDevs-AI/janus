@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, message } from "@/lib/api/client";
+import { demoMode } from "@/lib/demo-mode";
+import { demoAccounts, checkLogin } from "@/lib/demo-accounts";
+import { homeFor, signIn } from "@/lib/demo-persona";
 import type { Me } from "@/lib/api/types";
 
 const schema = z.object({
@@ -23,6 +26,7 @@ export default function LoginPage() {
   const router = useRouter();
   const {
     register,
+    setValue,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -31,6 +35,13 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: FormValues) {
+    if (demoMode) {
+      const account = checkLogin(values.email, values.password);
+      if (!account) { toast.error("That email and password don't match. Pick one of the accounts below."); return; }
+      signIn(account.id);
+      router.replace(homeFor(account));
+      return;
+    }
     try {
       await api("/auth/login", {
         method: "POST",
@@ -112,6 +123,24 @@ export default function LoginPage() {
           Create account
         </Link>
       </p>
+      {demoMode && (
+        <section aria-label="Test accounts" className="flex flex-col gap-2 border-t border-border pt-5">
+          <h2 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">Test accounts</h2>
+          <p className="text-[12px] text-muted-foreground">Each role sees a different slice of the same company. Pick one to fill the form.</p>
+          <ul className="flex flex-col divide-y divide-border border border-border">
+            {demoAccounts.map((account) => (
+              <li key={account.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium">{account.name} <span className="font-normal text-muted-foreground">· {account.title}</span></p>
+                  <p className="truncate text-[11px] text-muted-foreground">{account.email} · {account.password}</p>
+                  <p className="text-[11px] text-muted-foreground">{account.blurb}</p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => { setValue("email", account.email, { shouldValidate: true }); setValue("password", account.password, { shouldValidate: true }); }}>Use</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

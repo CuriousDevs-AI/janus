@@ -452,13 +452,12 @@ export default function LeadsPage() {
         )}
         {filtersActive && <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setStageFilter("all"); setSourceFilter("all"); }}><X className="size-3.5" />Clear filters</Button>}
         {loaded && !loaded.error && <span className="ml-auto text-xs text-muted-foreground">Showing {rows.length} of {loaded.rows.length} loaded leads</span>}
-        {usingDemo && <span className="ml-auto rounded-none border border-warning/30 bg-warning-muted px-2.5 py-1 text-[11px] font-medium text-warning">Demo data</span>}
+        
       </div>
       <div className="flex items-center gap-2 px-6 pt-3 text-[11px] text-muted-foreground">
         <Pencil className="size-3" />
         <span>Click a value with the pencil affordance to edit name, mobile, email, company, stage or requirement.</span>
       </div>
-      {usingDemo && <p role="status" className="mx-6 mt-3 rounded-md border border-warning/30 bg-warning-muted px-3 py-2 text-xs text-warning">Showing demo leads while the API is unavailable. Editing is disabled until live records are connected.</p>}
 
       {!loaded ? (
         <p role="status" className="p-6 text-sm">Loading leads…</p>
