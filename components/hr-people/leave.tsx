@@ -111,13 +111,13 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
   const closed = useCompanyHolidayDates();
   const employee = employees.find((item) => item.id === employeeId)!;
   const org = useHrOrgStore();
-  const route = approverFor(employee, org, employees);
-  const manager = employees.find((item) => item.id === route.id);
   const today = hrToday();
   const [type, setType] = React.useState<LeaveType>(types.active.find((item) => item.id === initial?.type)?.id ?? types.active.find((item) => item.id === "casual")?.id ?? types.active[0]?.id ?? "");
   const [from, setFrom] = React.useState(initial?.from ?? today);
   const [to, setTo] = React.useState(initial?.from ?? today);
   const [reason, setReason] = React.useState("");
+  const route = approverFor(employee, org, employees, { leaves: leaveRequests, from });
+  const manager = employees.find((item) => item.id === route.id);
   const config = settings.leaveTypes.find((item) => item.id === type);
   const limited = config ? config.days !== null : false;
   const days = workingDays(from, to, settings.workWeek, closed);
@@ -134,7 +134,7 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
     addLeave(request);
     log({ recordId: request.id, actorId: employeeId, action: "requested", reason: request.reason });
     if (onCreated) onCreated(request);
-    else toast.success(`Leave requested. ${request.step === "manager" && manager ? `${manager.name} will review it.` : "HR will review it."}`);
+    else toast.success(`Leave requested. ${request.step === "manager" && manager ? `${manager.name} will review it${route.viaBackup ? " (covering for the usual approver, who is away)" : ""}.` : "HR will review it."}`);
     onDone();
   }
   return <form onSubmit={submit} className="space-y-4">
