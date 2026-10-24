@@ -52,9 +52,9 @@ export function activeCompanyId(): string {
 }
 export const activeCompany = (): CompanyRecord => readCompanies().find((item) => item.id === activeCompanyId()) ?? seedCompanies[0];
 
-export function switchCompany(id: string) {
+export function switchCompany(id: string, to = "/settings?tab=workspace&view=overview&workspace=business") {
   try { window.localStorage.setItem(ACTIVE_KEY, id); } catch { /* private mode */ }
-  window.location.assign("/settings?tab=workspace&view=overview&workspace=business");
+  window.location.assign(to);
 }
 
 /** A storage key for the active company. The first company keeps its original keys, so nothing saved earlier is lost. */

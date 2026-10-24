@@ -86,6 +86,7 @@ export const businessNavSections: NavSection[] = [
     title: "Business",
     items: [
       { label: "Business Overview", href: "/settings?tab=workspace&view=overview", icon: LayoutDashboard, requiredPermission: "settings:manage" },
+      { label: "All companies", href: "/settings?tab=workspace&view=group", icon: Building2, requiredPermission: "workspaces:manage" },
       { label: "Janus Intelligence", href: "/ai", icon: Sparkles, requiredPermission: "ai:manage" },
     ],
   },

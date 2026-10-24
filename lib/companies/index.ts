@@ -21,8 +21,7 @@ function blankSpec(record: CompanyRecord): CompanySpec {
 }
 
 /** The spec for the company on show: a built-in one, or a sample/blank one carrying the owner's own name and city. */
-function resolve(): CompanySpec {
-  const record = activeCompany();
+export function specForRecord(record: CompanyRecord): CompanySpec {
   const base = specs[record.id];
   if (base) {
     // People added during setup join the built-in ones.
@@ -36,6 +35,6 @@ function resolve(): CompanySpec {
   return { ...template, id: record.id, company: { ...template.company, name: record.name, short: record.name.split(/\s+/)[0], industry: record.industry, city: record.city, domain: blank.company.domain }, employees: [...(template.employees ?? []), ...(blank.employees ?? []).slice(1)] };
 }
 /** The company on show, read once when the page loads. Switching company reloads the page. */
-export const activeSpec: CompanySpec = resolve();
+export const activeSpec: CompanySpec = specForRecord(activeCompany());
 export const isFirstCompany = activeSpec.id === "acme";
 export { initials };
