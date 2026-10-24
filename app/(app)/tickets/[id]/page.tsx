@@ -214,7 +214,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   <Send className="size-3.5" />
                   Send
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => toast("Editing isn't wired up in this demo")}>
+                <Button size="sm" variant="secondary" onClick={() => toast("Editing isn't available yet")}>
                   <Edit3 className="size-3.5" />
                   Edit
                 </Button>

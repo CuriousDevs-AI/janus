@@ -79,11 +79,11 @@ export default function DealsPage() {
         description={
           result.data
             ? `${filtered.length} ${filtered.length === 1 ? "deal" : "deals"} on this page · ${formatCurrencyINR(openValue)} open value`
-            : usingDemo ? "Demo sales pipeline" : "Your sales pipeline"
+            : usingDemo ? "Sales pipeline" : "Your sales pipeline"
         }
         actions={
           <>
-            {usingDemo && <span className="rounded-none border border-warning/30 bg-warning-muted px-2.5 py-1 text-[11px] font-medium text-warning">Demo data</span>}
+            
             <Button
               size="sm"
               variant="secondary"
@@ -132,7 +132,6 @@ export default function DealsPage() {
           </Button>
         </div>
       </div>
-      {usingDemo && <p role="status" className="border-b border-warning/20 bg-warning-muted px-6 py-2 text-xs text-warning">Showing demo deals while the API is unavailable. Editing and drag-and-drop are disabled.</p>}
       {!result.data && !result.error && (
         <p role="status" className="px-6 py-4 text-sm">
           Loading deals…

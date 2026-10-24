@@ -95,7 +95,6 @@ export default function TicketsPage() {
         description={`${rows.length} of ${tickets.length} tickets`}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant="neutral">Demo data</Badge>
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="size-3.5" />
               New Ticket

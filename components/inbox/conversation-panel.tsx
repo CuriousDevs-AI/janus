@@ -179,7 +179,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
           />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => toast("Attachments aren't wired up in this demo")}>
+              <Button variant="ghost" size="icon" onClick={() => toast("Attachments aren't available yet")}>
                 <Paperclip className="size-3.5" />
               </Button>
               <Button variant="ghost" size="sm" onClick={() => { setDraftIndex(0); setAiDraft(generateDraft(0)); }}>

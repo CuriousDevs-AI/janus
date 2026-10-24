@@ -30,7 +30,7 @@ export default function LeadSourcesPage() {
         description="Connect the places your enquiries already come from."
         actions={
           <div className="flex items-center gap-2">
-            {usingDemo && <Badge variant="neutral">Demo data</Badge>}
+            
             {allowed ? (
               <Button asChild>
                 <Link href="/lead-sources/new">
@@ -53,23 +53,11 @@ export default function LeadSourcesPage() {
             Ask an owner or admin to configure lead sources.
           </p>
         )}
-        {allowed === false && session.permissions.includes("sources:manage") && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Demo connections are shown for review. Verify the account email to connect a live source.
-          </p>
-        )}
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Enabled sources ({enabledSources.length})
           </h2>
-          {sources.error && (
-            <p role="status" className="mb-3 text-sm text-muted-foreground">
-              Showing clearly labelled demo connections while the live API is unavailable.{" "}
-              <button className="underline" onClick={sources.reload}>
-                Retry
-              </button>
-            </p>
-          )}
+          
           {allowed && sources.loading && (
             <p role="status" className="text-sm">
               Loading connections…

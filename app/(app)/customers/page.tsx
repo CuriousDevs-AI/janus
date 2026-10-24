@@ -115,7 +115,7 @@ export default function CustomersPage() {
         description={loading ? "Loading live CRM records…" : `${visibleRows.length} of ${rows.length} customer records`}
         actions={
           <div className="flex items-center gap-2">
-            {usingDemo && <span className="rounded-none border border-warning/30 bg-warning-muted px-2.5 py-1 text-[11px] font-medium text-warning">Demo data</span>}
+            
             <Button size="sm" variant="secondary" onClick={() => { leads.reload(); deals.reload(); }} disabled={loading}>
               <RefreshCw className="size-3.5" />
               Refresh
@@ -136,8 +136,6 @@ export default function CustomersPage() {
           </TabsList>
         </Tabs>
       </div>
-
-      {usingDemo && <p role="status" className="border-b border-warning/20 bg-warning-muted px-6 py-2 text-xs text-warning">Showing demo customers while the API is unavailable. Open live records after connecting the backend.</p>}
       {loading && !usingDemo && <p role="status" className="px-6 py-6 text-sm text-muted-foreground">Loading live leads and deals…</p>}
 
       {!loading && visibleRows.length === 0 ? (

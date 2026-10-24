@@ -106,7 +106,7 @@ function PayrollRuns({ role, actorId }: { role: HrDemoRole; actorId: string }) {
     <HrPanel title="Run history" description="Who prepared, approved and locked this run.">{history.length ? <ol className="divide-y divide-border text-sm">{history.map((item) => <li key={item.id} className="px-5 py-2"><p className="capitalize">{item.action.replaceAll("_", " ")}{item.reason ? ` — ${item.reason}` : ""}</p><p className="text-xs text-muted-foreground">{employees.find((person) => person.id === item.actorId)?.name ?? item.actorId} · {when(item.at)}</p></li>)}</ol> : <HrEmpty>No actions recorded yet.</HrEmpty>}</HrPanel>
     {slip && <PayslipDialog line={slip} published={locked || key < "2026-10"} onClose={() => setSlip(null)} />}
     {reason && <ReasonDialog title={reason.title} confirm={reason.confirm} onClose={() => setReason(null)} onSubmit={(text) => { reason.onSubmit(text); setReason(null); }} />}
-    <p className="text-[11px] text-muted-foreground">Acting as {actor}. Demo records stay in this browser; nothing is paid or filed.</p>
+    <p className="text-[11px] text-muted-foreground">Acting as {actor}.</p>
   </div>;
 }
 

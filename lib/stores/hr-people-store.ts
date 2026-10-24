@@ -156,7 +156,7 @@ export const useHrPeopleStore = create<HrPeopleState>()(
     }),
     {
       name: "janus.hr-people-demo",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       // Version 2 added birthdays and October attendance history. Older saved data gets both without losing edits.
       migrate: (persisted, version) => {
@@ -165,6 +165,13 @@ export const useHrPeopleStore = create<HrPeopleState>()(
           const have = new Set((state.attendance ?? []).map((item) => item.id));
           state.attendance = [...(state.attendance ?? []), ...hrAttendance.filter((item) => !have.has(item.id))];
           state.employees = (state.employees ?? []).map((item) => ({ ...item, birthDate: item.birthDate ?? hrEmployees.find((seedItem) => seedItem.id === item.id)?.birthDate }));
+        }
+        if (version < 3) {
+          // Version 3 added Meera Singh to the seed. Bring her (and her records) in without touching anything saved.
+          const ids = new Set((state.employees ?? []).map((item) => item.id));
+          state.employees = [...(state.employees ?? []), ...hrEmployees.filter((item) => !ids.has(item.id))];
+          const have = new Set((state.attendance ?? []).map((item) => item.id));
+          state.attendance = [...(state.attendance ?? []), ...hrAttendance.filter((item) => !have.has(item.id))];
         }
         return state as HrPeopleState;
       },

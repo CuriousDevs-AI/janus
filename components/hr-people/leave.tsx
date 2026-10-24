@@ -86,7 +86,7 @@ export function HrLeaveView({ role, actorId, personal = false }: { role: HrDemoR
     {decision && <DecisionDialog decision={decision} onClose={() => setDecision(null)} onSubmit={(reason) => { decide(decision.request, decision.kind, decision.mode, reason); setDecision(null); }} />}
     {responding && <ResponseDialog request={responding} onClose={() => setResponding(null)} onSubmit={(reply) => { updateLeave(responding.id, "pending", responding.step); log({ recordId: responding.id, actorId, action: "clarification_answered", reason: reply }); toast.success("Reply sent. The request is pending again."); setResponding(null); }} />}
     {history && <HistoryDialog request={history} entries={audit.filter((item) => item.recordId === history.id)} nameOf={(id) => employees.find((item) => item.id === id)?.name ?? id} onClose={() => setHistory(null)} />}
-    <p className="text-[11px] text-muted-foreground">Acting as {actorName}. Demo records stay in this browser; no emails or WhatsApp messages are sent.</p>
+    <p className="text-[11px] text-muted-foreground">Acting as {actorName}.</p>
   </div>;
 }
 

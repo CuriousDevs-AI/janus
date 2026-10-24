@@ -18,7 +18,7 @@ import { useSignOut, useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
-import { usePersona } from "@/lib/demo-persona";
+import { useDemoAccount } from "@/lib/demo-persona";
 import { workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
@@ -59,7 +59,8 @@ export function SidebarNav({
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
-  const hrDemoRole: HrDemoRole = usePersona();
+  const account = useDemoAccount();
+  const hrDemoRole: HrDemoRole = account?.hrRole ?? "owner";
   React.useEffect(() => {
     const key = "janus.setup.active-workspace";
     const read = () => {
@@ -106,7 +107,7 @@ export function SidebarNav({
   const ownerView = !demoMode || hrDemoRole === "owner";
   const accessibleWorkspaces = React.useMemo(() => {
     // Only the Owner moves between workspaces. Everyone else works inside HR & People.
-    if (!ownerView) return [{ id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." }];
+    if (!ownerView) return [...(account && account.crm !== "none" ? [{ id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }] : []), { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." }];
     const fromApi = workspacesApi.data?.filter((item) => item.status === "active").map((item) => ({
       id: item.type.replaceAll("_", "-"),
       name: item.name,
@@ -121,7 +122,7 @@ export function SidebarNav({
       ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
     ];
     return [];
-  }, [hasActiveWorkspace, workspacesApi.data, ownerView]);
+  }, [hasActiveWorkspace, workspacesApi.data, ownerView, account]);
 
   function workspaceHref(id: string) {
     if (id === "crm-sales") return "/dashboard?workspace=crm-sales";
@@ -312,6 +313,8 @@ function hrNavVisible(label: string, role: HrDemoRole) {
   if (role === "owner" || role === "hr_manager") return true;
   // Everyone is also an employee, so every preview gets the personal pages.
   const mySelfService = ["Home", "Engage", "My profile", "My onboarding", "Document Center", "My documents", "Ask about policy", "Payslips", "Reimbursements", "Leave Apply", "Leave Balances", "Leave Calendar", "Holiday Calendar", "My requests", "Attendance Info", "Regularization & Permission"];
+  // A manager works with their own team: leave, attendance, approvals, promotions and reviews.
+  if (role === "reporting_manager") return mySelfService.includes(label) || ["My Team", "Pending Approvals", "Leave Management", "Attendance", "Promotions & changes", "Performance & Reviews", "Expenses & Reimbursements"].includes(label);
   // Finance handles money only: no leave, attendance or employee records.
   if (role === "payroll_admin") return (mySelfService.includes(label) && label !== "Leave Calendar") || ["Payroll", "Expenses & Reimbursements", "HR Compliance"].includes(label);
   return mySelfService.includes(label);

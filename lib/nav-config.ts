@@ -48,16 +48,16 @@ export const crmNavSections: NavSection[] = [
   {
     title: "CRM & Sales",
     items: [
-      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard },
+      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write" },
       { label: "Chats", href: "/inbox", icon: MessageCircle },
-      { label: "Lead Sources", href: "/lead-sources", icon: Radio },
-      { label: "Leads", href: "/leads", icon: UserRoundPlus },
-      { label: "Deals", href: "/deals", icon: Handshake },
+      { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage" },
+      { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write" },
+      { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write" },
       { label: "Customers", href: "/customers", icon: Building2 },
       { label: "Tickets", href: "/tickets", icon: LifeBuoy },
-      { label: "Automations", href: "/automations", icon: Workflow },
-      { label: "Knowledge", href: "/knowledge", icon: Database },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      { label: "Automations", href: "/automations", icon: Workflow, requiredPermission: "automations:manage" },
+      { label: "Knowledge", href: "/knowledge", icon: Database, requiredPermission: "agents:manage" },
+      { label: "Analytics", href: "/analytics", icon: BarChart3, requiredPermission: "reports:read" },
     ],
   },
   {
@@ -72,11 +72,11 @@ export const crmNavSections: NavSection[] = [
   {
     title: "CRM Management",
     items: [
-      { label: "Integrations", href: "/integrations", icon: Plug },
-      { label: "Approvals", href: "/approvals", icon: ShieldCheck },
+      { label: "Integrations", href: "/integrations", icon: Plug, requiredPermission: "settings:manage" },
+      { label: "Approvals", href: "/approvals", icon: ShieldCheck, requiredPermission: "approvals:manage" },
       { label: "Notifications", href: "/notifications", icon: Bell },
-      { label: "Audit Logs", href: "/audit", icon: ScrollText },
-      { label: "Usage", href: "/usage", icon: Gauge },
+      { label: "Audit Logs", href: "/audit", icon: ScrollText, requiredPermission: "settings:manage" },
+      { label: "Usage", href: "/usage", icon: Gauge, requiredPermission: "billing:manage" },
     ],
   },
 ];

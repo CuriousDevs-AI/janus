@@ -60,7 +60,7 @@ export function HrSalaryView({ role, actorId }: { role: HrDemoRole; actorId: str
           <HrPanel title="Earnings"><HrTable headings={["Component", "Year to date"]}>{components("earnings").map(([label, amount]) => <tr key={label}><td className={hrCell}>{label}</td><td className={hrCell}>{hrMoney(amount)}</td></tr>)}</HrTable></HrPanel>
           <HrPanel title="Deductions"><HrTable headings={["Component", "Year to date"]}>{components("deductions").map(([label, amount]) => <tr key={label}><td className={hrCell}>{label}</td><td className={hrCell}>{hrMoney(amount)}</td></tr>)}</HrTable></HrPanel>
         </div> : <HrPanel title="Year to date"><HrEmpty>Your statement is ready once a month&apos;s payroll is published.</HrEmpty></HrPanel>}
-        <p className="text-xs text-muted-foreground">Illustrative figures from the demo payroll. Statutory PF, ESI and TDS aren&apos;t calculated, so this isn&apos;t a tax statement.</p>
+        <p className="text-xs text-muted-foreground">Figures from payroll. Statutory PF, ESI and TDS aren&apos;t calculated, so this isn&apos;t a tax statement.</p>
       </>}
       {tab === "reimbursements" && <HrExpensesView role={role} actorId={actorId} personal />}
     </div>

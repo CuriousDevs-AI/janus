@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api, APIError, message } from "@/lib/api/client";
 import type { Me } from "@/lib/api/types";
 import { demoMode } from "@/lib/demo-mode";
-import { personaOptions, personaPermissions, usePersona } from "@/lib/demo-persona";
+import { personaPermissions, signOut as demoSignOut, useDemoAccount } from "@/lib/demo-persona";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -34,6 +34,7 @@ export function useSession() {
 export function useSignOut() {
   const router = useRouter();
   return async () => {
+    if (demoMode) { demoSignOut(); router.replace("/login"); return; }
     try {
       await api("/auth/logout", { method: "POST" });
       router.replace("/login");
@@ -50,9 +51,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession : null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const persona = usePersona();
-  // In the demo the permissions follow the person being previewed, so menus and pages narrow the same way they would for them.
-  const shown = useMemo(() => session && demoMode ? { ...session, role: personaOptions.find((item) => item.id === persona)?.label ?? session.role, permissions: personaPermissions(persona) } : session, [session, persona]);
+  const account = useDemoAccount();
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  // Without a backend the preview signs in against the demo accounts. Nobody is signed in until they do.
+  useEffect(() => { if (demoMode && ready && !account) router.replace("/login"); }, [ready, account, router]);
+  // Permissions, name and role follow whoever is signed in (or the person the Owner is viewing as), so menus and pages narrow the way they would for them.
+  const shown = useMemo(() => {
+    if (!session) return session;
+    if (!demoMode) return session;
+    if (!account) return null;
+    return { ...session, user: { ...session.user, id: account.crmUserId, name: account.name, email: account.email }, role: account.title, permissions: personaPermissions(account) };
+  }, [session, account]);
   useEffect(() => {
     let active = true;
     if (demoMode) {

@@ -88,7 +88,7 @@ function Inbox() {
       >
         <div className="flex flex-col gap-3 border-b border-border p-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><h1 className="sr-only">Chats</h1>{usingDemo && <span className="rounded-none border border-warning/30 bg-warning-muted px-2 py-0.5 text-[10px] font-medium text-warning">Demo</span>}</div>
+            <div className="flex items-center gap-2"><h1 className="sr-only">Chats</h1></div>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" aria-label="Refresh inbox" onClick={reload}>
                 <RefreshCw className="size-3.5" />
@@ -118,7 +118,6 @@ function Inbox() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {usingDemo && <p role="status" className="border-b border-warning/20 bg-warning-muted p-3 text-xs text-warning">Showing demo conversations while the API is unavailable.</p>}
           {list.loading && (
             <p role="status" className="p-3 text-sm">
               Loading conversations…
@@ -224,13 +223,13 @@ function DemoContextPanel({ conversationId }: { conversationId: string }) {
   return (
     <aside className="hidden w-[240px] shrink-0 overflow-y-auto border-l border-border bg-surface lg:flex lg:flex-col">
       <div className="border-b border-border p-4">
-        <div className="flex items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">{conversation.name || conversation.phone}</h2><p className="text-xs text-muted-foreground">{conversation.company || "Customer"}</p></div><span className="rounded-none border border-warning/30 bg-warning-muted px-2 py-0.5 text-[10px] text-warning">Demo</span></div>
+        <div className="flex items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">{conversation.name || conversation.phone}</h2><p className="text-xs text-muted-foreground">{conversation.company || "Customer"}</p></div></div>
         <dl className="mt-4 grid gap-2 text-xs"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Phone</dt><dd>{conversation.phone}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Email</dt><dd>{conversation.contactId === "demo-customer-1" ? "riya@northstar.in" : "neha@acmefoods.in"}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd>WhatsApp</dd></div></dl>
       </div>
       <div className="flex flex-col gap-4 p-4">
         <section><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Janus summary</p><p className="text-xs leading-relaxed">{lead?.requirement || "Customer conversation is ready for qualification."}</p><p className="mt-2 text-xs"><span className="font-medium">Next step:</span> confirm requirements and schedule the review.</p></section>
         {deal && <section className="border-t border-border pt-4"><div className="flex items-center justify-between"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Deal</p><span className="text-[10px] text-accent">Open</span></div><p className="mt-2 text-sm font-semibold">{deal.name}</p><p className="mt-1 text-sm font-medium">₹{Number(deal.amount).toLocaleString("en-IN")}</p><div className="mt-2 h-1 bg-surface-2"><div className="h-1 w-2/3 bg-accent" /></div><p className="mt-1 text-[10px] text-muted-foreground">{deal.stage} · closes {deal.expectedCloseAt ? new Date(deal.expectedCloseAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "TBD"}</p></section>}
-        <section className="border-t border-border pt-4"><div className="flex items-center justify-between"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tasks</p><button type="button" className="text-[11px] font-medium text-accent" onClick={() => toast.success("Demo task created")}>+ Add</button></div><label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" /> <span>Send updated proposal<span className="block text-[10px] text-danger">Due today</span></span></label><label className="mt-2 flex items-start gap-2 text-xs"><input type="checkbox" /> <span>Schedule review call<span className="block text-[10px] text-muted-foreground">Tomorrow, 11:00 am</span></span></label><button type="button" className="mt-3 w-full border border-accent-border bg-accent-muted px-2.5 py-2 text-left text-[11px] font-medium text-accent" onClick={() => toast.success("Automated follow-up scheduled", { description: "Janus will create a task after the next customer reply." })}>Schedule automated task<span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">Create a follow-up rule for this conversation</span></button></section>
+        <section className="border-t border-border pt-4"><div className="flex items-center justify-between"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tasks</p><button type="button" className="text-[11px] font-medium text-accent" onClick={() => toast.success("Task created")}>+ Add</button></div><label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" /> <span>Send updated proposal<span className="block text-[10px] text-danger">Due today</span></span></label><label className="mt-2 flex items-start gap-2 text-xs"><input type="checkbox" /> <span>Schedule review call<span className="block text-[10px] text-muted-foreground">Tomorrow, 11:00 am</span></span></label><button type="button" className="mt-3 w-full border border-accent-border bg-accent-muted px-2.5 py-2 text-left text-[11px] font-medium text-accent" onClick={() => toast.success("Automated follow-up scheduled", { description: "Janus will create a task after the next customer reply." })}>Schedule automated task<span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">Create a follow-up rule for this conversation</span></button></section>
         <Button size="sm" variant="secondary" asChild><Link href={`/customers/${conversation.contactId}`}>Open customer record</Link></Button>
       </div>
     </aside>
@@ -308,7 +307,7 @@ function Conversation({
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span>{thread.phone}</span>
                   <span aria-hidden="true">·</span>
-                  <span>{demoMode ? "Demo conversation" : "Connected channel"}</span>
+                  <span>{demoMode ? "Conversation" : "Connected channel"}</span>
                   <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", thread.doNotContact ? "bg-warning-muted text-warning" : thread.whatsappOptIn ? "bg-success-muted text-success" : "bg-surface-2 text-muted-foreground")}>
                     {thread.doNotContact ? "Outbound suppressed" : thread.whatsappOptIn ? "WhatsApp opt-in" : "Opt-in not recorded"}
                   </span>
@@ -321,11 +320,6 @@ function Conversation({
             </p>
           )}
         </div>
-        {demoMode && (
-          <span className="hidden rounded-none border border-warning/30 bg-warning-muted px-2 py-1 text-[10px] font-medium text-warning sm:inline-flex">
-            Demo data
-          </span>
-        )}
         <Button
           size="sm"
           variant="ghost"
@@ -533,7 +527,7 @@ function ChannelPanel({
         onSubmit={(event) => {
           event.preventDefault();
           setSaved(true);
-          toast.success(demoMode ? "Email draft saved in demo mode." : "Email draft prepared. Connect an email provider to send it.");
+          toast.success(demoMode ? "Email draft saved." : "Email draft prepared. Connect an email provider to send it.");
         }}
       >
         <div className="mx-auto flex max-w-2xl flex-col gap-3 rounded-md border border-border bg-surface p-4">
@@ -544,7 +538,7 @@ function ChannelPanel({
           <div className="grid gap-1"><Label htmlFor="email-to">To</Label><Input id="email-to" value={email} readOnly /></div>
           <div className="grid gap-1"><Label htmlFor="email-subject">Subject</Label><Input id="email-subject" value={subject} onChange={(event) => setSubject(event.target.value)} /></div>
           <div className="grid gap-1"><Label htmlFor="email-body">Message</Label><Textarea id="email-body" value={body} onChange={(event) => setBody(event.target.value)} className="min-h-36" /></div>
-          {saved && <p role="status" className="text-xs text-success">Draft saved to this demo conversation.</p>}
+          {saved && <p role="status" className="text-xs text-success">Draft saved to this conversation.</p>}
           <Button type="submit" className="self-end"><Send className="size-3.5" /> Save email draft</Button>
         </div>
       </form>
@@ -554,10 +548,10 @@ function ChannelPanel({
     <div className="flex-1 overflow-y-auto p-4">
       <div className="mx-auto flex max-w-2xl flex-col gap-4 rounded-md border border-border bg-surface p-4">
         <div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold">Call workspace</h3><p className="text-xs text-muted-foreground">Start a call, capture the outcome and keep the next step on the timeline.</p></div><Phone className="size-4 text-accent" /></div>
-        <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-3"><span className="text-sm font-medium">{thread.phone}</span><span className="text-xs text-muted-foreground">{demoMode ? "Demo call handoff" : "Connected phone provider"}</span><Button type="button" size="sm" onClick={() => toast.success(demoMode ? "Demo call started." : "Call handoff opened.")}><Phone className="size-3.5" /> Start call</Button></div>
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-3"><span className="text-sm font-medium">{thread.phone}</span><span className="text-xs text-muted-foreground">{demoMode ? "Call handoff" : "Connected phone provider"}</span><Button type="button" size="sm" onClick={() => toast.success(demoMode ? "Demo call started." : "Call handoff opened.")}><Phone className="size-3.5" /> Start call</Button></div>
         <div className="grid gap-1"><Label htmlFor="call-outcome">Call outcome</Label><select id="call-outcome" className={selectClass} value={outcome} onChange={(event) => setOutcome(event.target.value)}><option>Connected</option><option>No answer</option><option>Callback requested</option><option>Qualified</option></select></div>
         <div className="grid gap-1"><Label htmlFor="call-notes">Call notes</Label><Textarea id="call-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Capture the requirement, objections and next step…" className="min-h-24" /></div>
-        <Button type="button" className="self-end" onClick={() => toast.success(`${outcome} call note saved${demoMode ? " in demo mode" : ""}.`)}><CalendarClock className="size-3.5" /> Save call note</Button>
+        <Button type="button" className="self-end" onClick={() => toast.success(`${outcome} call note saved${demoMode ? "" : ""}.`)}><CalendarClock className="size-3.5" /> Save call note</Button>
       </div>
     </div>
   );
@@ -593,14 +587,14 @@ function DemoUnifiedComposer({
     <form className="max-h-[40%] shrink-0 overflow-y-auto border-t border-border bg-surface p-3" onSubmit={(event) => {
       event.preventDefault();
       if (sendChannel === "whatsapp") {
-        const messageBody = `${mode === "text" ? body : preview}${attachmentType ? `\n\n${attachmentType} attachment: ${mediaUrl || "demo attachment"}` : ""}`;
-        addTimelineItem({ channel: "whatsapp", direction: "outbound", title: attachmentType ? `WhatsApp ${attachmentType}` : mode === "text" ? "WhatsApp message" : "WhatsApp template sent", body: messageBody, status: "Demo preview · not sent" });
+        const messageBody = `${mode === "text" ? body : preview}${attachmentType ? `\n\n${attachmentType} attachment: ${mediaUrl || "attachment"}` : ""}`;
+        addTimelineItem({ channel: "whatsapp", direction: "outbound", title: attachmentType ? `WhatsApp ${attachmentType}` : mode === "text" ? "WhatsApp message" : "WhatsApp template sent", body: messageBody, status: "Preview · not sent" });
         toast.success("WhatsApp message added to the conversation preview.");
         setBody("");
         setMediaUrl("");
         setAttachmentType(null);
       } else if (sendChannel === "email") {
-        addTimelineItem({ channel: "email", direction: "outbound", title: "Email sent", body: `${subject}\n\n${emailBody}`, status: `To ${email} · Demo preview · not delivered` });
+        addTimelineItem({ channel: "email", direction: "outbound", title: "Email sent", body: `${subject}\n\n${emailBody}`, status: `To ${email} · Preview · not delivered` });
         toast.success("Email added to the conversation preview.");
       } else {
         addTimelineItem({ channel: "call", direction: "outbound", title: "Call note logged", body: notes || "Call completed with no additional notes.", status: `${outcome} · Demo preview` });
@@ -609,15 +603,15 @@ function DemoUnifiedComposer({
       }
     }}>
       <div className="mx-auto flex max-w-2xl flex-col gap-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-xs font-semibold">WhatsApp reply</h3><p className="text-[11px] text-muted-foreground">Send from this chat. WhatsApp is selected by default.</p></div><span className="text-[10px] text-warning">Demo preview · no external send</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-xs font-semibold">WhatsApp reply</h3><p className="text-[11px] text-muted-foreground">Send from this chat. WhatsApp is selected by default.</p></div><span className="text-[10px] text-warning">Preview · nothing is sent outside Janus</span></div>
         <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Label htmlFor="demo-send-channel" className="text-[11px]">Send via</Label><select id="demo-send-channel" className={cn(selectClass, "h-8 w-auto rounded-none text-xs")} value={sendChannel} onChange={(event) => setSendChannel(event.target.value as "whatsapp" | "email" | "call")}><option value="whatsapp">WhatsApp</option><option value="email">Email</option><option value="call">Call note</option></select></div>{sendChannel === "whatsapp" && <div className="flex items-center gap-2"><Label htmlFor="demo-message-mode" className="text-[11px]">Message type</Label><select id="demo-message-mode" className={cn(selectClass, "h-8 w-auto rounded-none text-xs")} value={mode} onChange={(event) => setMode(event.target.value as WhatsAppMode)}><option value="text">Text reply</option><option value="template">Approved template</option></select></div>}</div>
         {sendChannel === "whatsapp" && <>
-          {mode === "text" && <div className="relative flex items-end gap-1.5 rounded-none border border-border bg-surface-2 px-2 py-1.5 shadow-sm"><div className="relative"><Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 rounded-none" aria-label="Add WhatsApp attachment" onClick={() => setAttachmentOpen((open) => !open)}><Paperclip className="size-4" /></Button>{attachmentOpen && <div className="absolute bottom-10 left-0 z-20 grid w-40 gap-1 border border-border bg-surface p-1 shadow-lg">{(["image", "video", "document", "audio", "location", "contact"] as AttachmentType[]).map((type) => <button key={type} type="button" className="px-2 py-1.5 text-left text-xs hover:bg-surface-2" onClick={() => { setAttachmentType(type); setAttachmentOpen(false); }}>{type[0].toUpperCase() + type.slice(1)}</button>)}</div>}</div><Textarea aria-label="Demo WhatsApp reply" placeholder="Write a WhatsApp reply…" value={body} onChange={(event) => setBody(event.target.value)} className="min-h-9 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0" required /><Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 rounded-none" aria-label="Add emoji" onClick={() => setBody((value) => `${value}${value ? " " : ""}🙂`)}><Smile className="size-4" /></Button><Button type="submit" size="icon" className="size-8 shrink-0 rounded-none" aria-label="Send WhatsApp message"><Send className="size-3.5" /></Button></div>}
-          {mode === "template" && <><select aria-label="Demo approved template" className={selectClass} value={selected} onChange={(event) => setSelected(event.target.value)}>{demoWhatsAppTemplates.map((item) => <option key={item.name} value={item.name}>{item.name} · {item.language}</option>)}</select>{parameters.map((value, index) => <Input key={index} aria-label={`Template parameter ${index + 1}`} placeholder={`Parameter ${index + 1}`} value={value} onChange={(event) => setParameters((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required />)}<p className="whitespace-pre-wrap rounded-md border border-border bg-surface-2 p-2 text-xs">{preview}</p></>}
+          {mode === "text" && <div className="relative flex items-end gap-1.5 rounded-none border border-border bg-surface-2 px-2 py-1.5 shadow-sm"><div className="relative"><Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 rounded-none" aria-label="Add WhatsApp attachment" onClick={() => setAttachmentOpen((open) => !open)}><Paperclip className="size-4" /></Button>{attachmentOpen && <div className="absolute bottom-10 left-0 z-20 grid w-40 gap-1 border border-border bg-surface p-1 shadow-lg">{(["image", "video", "document", "audio", "location", "contact"] as AttachmentType[]).map((type) => <button key={type} type="button" className="px-2 py-1.5 text-left text-xs hover:bg-surface-2" onClick={() => { setAttachmentType(type); setAttachmentOpen(false); }}>{type[0].toUpperCase() + type.slice(1)}</button>)}</div>}</div><Textarea aria-label="WhatsApp reply" placeholder="Write a WhatsApp reply…" value={body} onChange={(event) => setBody(event.target.value)} className="min-h-9 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0" required /><Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 rounded-none" aria-label="Add emoji" onClick={() => setBody((value) => `${value}${value ? " " : ""}🙂`)}><Smile className="size-4" /></Button><Button type="submit" size="icon" className="size-8 shrink-0 rounded-none" aria-label="Send WhatsApp message"><Send className="size-3.5" /></Button></div>}
+          {mode === "template" && <><select aria-label="Approved template" className={selectClass} value={selected} onChange={(event) => setSelected(event.target.value)}>{demoWhatsAppTemplates.map((item) => <option key={item.name} value={item.name}>{item.name} · {item.language}</option>)}</select>{parameters.map((value, index) => <Input key={index} aria-label={`Template parameter ${index + 1}`} placeholder={`Parameter ${index + 1}`} value={value} onChange={(event) => setParameters((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required />)}<p className="whitespace-pre-wrap rounded-md border border-border bg-surface-2 p-2 text-xs">{preview}</p></>}
           {attachmentType && <div className="flex items-center gap-2 border border-border bg-surface-2 p-2"><span className="text-xs font-medium">{attachmentType[0].toUpperCase() + attachmentType.slice(1)} attachment</span><Input aria-label={`${attachmentType} attachment`} className="h-8 text-xs" placeholder={attachmentType === "location" ? "Paste a map link or location" : attachmentType === "contact" ? "Enter a contact name or phone" : `Paste ${attachmentType} URL`} value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} required /></div>}
         </>}
-        {sendChannel === "email" && <><div className="grid gap-1"><Label htmlFor="demo-email-to" className="text-[11px]">To</Label><Input id="demo-email-to" className="h-8 text-xs" value={email} readOnly /></div><div className="grid gap-1"><Label htmlFor="demo-email-subject" className="text-[11px]">Subject</Label><Input id="demo-email-subject" className="h-8 text-xs" value={subject} onChange={(event) => setSubject(event.target.value)} /></div><Textarea aria-label="Demo email message" value={emailBody} onChange={(event) => setEmailBody(event.target.value)} className="min-h-20" /></>}
-        {sendChannel === "call" && <><div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-2"><span className="text-xs font-medium">{thread.phone}</span><span className="text-[11px] text-muted-foreground">Log a call without leaving the chat</span></div><select aria-label="Demo call outcome" className={selectClass} value={outcome} onChange={(event) => setOutcome(event.target.value)}><option>Connected</option><option>No answer</option><option>Callback requested</option><option>Qualified</option></select><Textarea aria-label="Demo call notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Capture the requirement and next step…" className="min-h-14" /></>}
+        {sendChannel === "email" && <><div className="grid gap-1"><Label htmlFor="demo-email-to" className="text-[11px]">To</Label><Input id="demo-email-to" className="h-8 text-xs" value={email} readOnly /></div><div className="grid gap-1"><Label htmlFor="demo-email-subject" className="text-[11px]">Subject</Label><Input id="demo-email-subject" className="h-8 text-xs" value={subject} onChange={(event) => setSubject(event.target.value)} /></div><Textarea aria-label="Email message" value={emailBody} onChange={(event) => setEmailBody(event.target.value)} className="min-h-20" /></>}
+        {sendChannel === "call" && <><div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-2"><span className="text-xs font-medium">{thread.phone}</span><span className="text-[11px] text-muted-foreground">Log a call without leaving the chat</span></div><select aria-label="Call outcome" className={selectClass} value={outcome} onChange={(event) => setOutcome(event.target.value)}><option>Connected</option><option>No answer</option><option>Callback requested</option><option>Qualified</option></select><Textarea aria-label="Call notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Capture the requirement and next step…" className="min-h-14" /></>}
         {!(sendChannel === "whatsapp" && mode === "text") && <Button type="submit" size="sm" className="self-end">{sendChannel === "whatsapp" ? <Send className="size-3.5" /> : sendChannel === "email" ? <Mail className="size-3.5" /> : <CalendarClock className="size-3.5" />} {sendChannel === "whatsapp" ? "Add WhatsApp message" : sendChannel === "email" ? "Add email" : "Save call note"}</Button>}
       </div>
     </form>
