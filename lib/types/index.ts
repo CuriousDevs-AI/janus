@@ -279,6 +279,8 @@ export interface HrLeaveRequest {
   route?: { kind: "person" | "hr"; id?: string; name: string; label: string }[];
   /** Which level of `route` is deciding now. */
   level?: number;
+  /** The day the request reached its current level. Used to time escalation. */
+  levelAt?: string;
   createdAt: string;
 }
 

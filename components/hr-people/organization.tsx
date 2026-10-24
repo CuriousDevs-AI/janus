@@ -10,7 +10,7 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrOrgStore, type ApprovalStepKind, type HrDepartment, type HrRoleDef, type OrgPermission } from "@/lib/stores/hr-org-store";
 import { companySteps, departmentByName, hasPermission, permissionCatalog, permissionLabel, resolveRoute, roleOf, stepLabels, stepsText, wouldLoop } from "@/lib/hr-org";
-import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrTable, hrCell, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
+import { HrEmpty, HrField, HrModal, HrPanel, HrTable, hrCell, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
@@ -32,7 +32,7 @@ export function HrOrganizationView({ role, actorId }: { role: HrDemoRole; actorI
   const active = employees.filter((item) => item.status !== "archived");
   const unlisted = [...new Set(active.map((item) => item.department))].filter((name) => name && !departmentByName(org.departments, name));
   return <div className="space-y-5">
-    <HrStats items={[{ label: "Departments", value: org.departments.filter((item) => item.active).length }, { label: "People", value: active.length }, { label: "Roles", value: org.roles.length }, { label: "Not set up", value: unlisted.length, hint: unlisted.length ? unlisted.join(", ") : "Every department is set up" }]} />
+    <p className="text-sm text-muted-foreground">{org.departments.filter((item) => item.active).length} departments · {active.length} people · {org.roles.length} roles{unlisted.length ? ` · ${unlisted.length} not set up` : ""}</p>
     <div role="tablist" aria-label="Organization" className="flex flex-wrap gap-1 border-b border-border">{tabs.map((item) => <button key={item.id} role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === item.id ? "border-accent text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{item.label}</button>)}</div>
     {!editable && <p className="border border-border bg-surface-2 px-4 py-3 text-sm text-muted-foreground">You can look, but only HR and the owner can change how the company is organised.</p>}
     {tab === "departments" && <DepartmentsTab actorId={actorId} editable={editable} unlisted={unlisted} />}
@@ -62,7 +62,18 @@ function DepartmentsTab({ actorId, editable, unlisted }: { actorId: string; edit
   return <div className="space-y-4">
     {unlisted.length > 0 && <div className="border border-warning/40 bg-warning/10 px-4 py-3 text-sm"><p className="font-medium">Some employees belong to a department that isn&apos;t set up yet.</p><div className="mt-2 flex flex-wrap gap-2">{unlisted.map((name) => <Button key={name} size="sm" variant="outline" disabled={!editable} onClick={() => { setPreset(name); setEditing("new"); }}>Set up {name}</Button>)}</div></div>}
     <HrPanel title="Departments" description="Your company structure. Open a department to see its people, give them roles and see who they report to." actions={editable ? <Button size="sm" onClick={() => { setPreset(""); setEditing("new"); }}><Plus className="mr-1 size-4" />Add department</Button> : undefined}>
-      {rows.length === 0 ? <HrEmpty>No departments yet. Add the first one.</HrEmpty> : <HrTable headings={["Department", "Head", "People", "Leave approval", "Backup", ""]}>{rows.flatMap(({ department, depth }) => {
+      {rows.length === 0 ? <HrEmpty>No departments yet. Add the first one.</HrEmpty> : <><ul className="divide-y divide-border md:hidden">{rows.map(({ department, depth }) => {
+        const head = employees.find((item) => item.id === department.headId);
+        const people = members(department.name);
+        const expanded = open.has(department.id);
+        return <li key={department.id} className={`space-y-2 px-4 py-3 ${department.active ? "" : "opacity-60"}`} style={{ paddingLeft: 16 + depth * 14 }}>
+          <button type="button" aria-expanded={expanded} onClick={() => toggle(department.id)} className="flex w-full items-center gap-2 text-left font-medium"><ChevronRight className={`size-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} aria-hidden />{department.name}{!department.active && <Badge variant="neutral">Archived</Badge>}<span className="ml-auto text-xs font-normal text-muted-foreground">{people.length} {people.length === 1 ? "person" : "people"}</span></button>
+          <p className="text-xs text-muted-foreground">Head: {head?.name ?? "Not set"}</p>
+          <p className="text-xs">{stepsText(department.steps ?? companySteps(settings))}{!department.steps && <span className="text-muted-foreground"> (company default)</span>}{department.longLeave && <span className="block text-muted-foreground">{department.longLeave.minDays}+ days: {stepsText(department.longLeave.steps)}</span>}</p>
+          {expanded && <MembersTable people={people} actorId={actorId} editable={editable} />}
+          {editable && <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(department)}>Edit</Button><Button size="sm" variant="ghost" aria-label={`Remove ${department.name}`} onClick={() => setRemoving(department)}><Trash2 className="size-4" /></Button></div>}
+        </li>;
+      })}</ul><div className="hidden md:block"><HrTable headings={["Department", "Head", "People", "Leave approval", "Backup", ""]}>{rows.flatMap(({ department, depth }) => {
         const head = employees.find((item) => item.id === department.headId);
         const backup = employees.find((item) => item.id === department.backupApproverId);
         const people = members(department.name);
@@ -78,7 +89,7 @@ function DepartmentsTab({ actorId, editable, unlisted }: { actorId: string; edit
         </tr>;
         if (!expanded) return [main];
         return [main, <tr key={`${department.id}-people`}><td colSpan={6} className="bg-surface-2 px-4 py-3"><MembersTable people={people} actorId={actorId} editable={editable} /></td></tr>];
-      })}</HrTable>}
+      })}</HrTable></div></>}
     </HrPanel>
     {editing && <DepartmentDialog key={editing === "new" ? `new-${preset}` : editing.id} department={editing === "new" ? undefined : editing} presetName={preset} actorId={actorId} onClose={() => setEditing(null)} />}
     {removing && <RemoveDepartmentDialog department={removing} actorId={actorId} onClose={() => setRemoving(null)} />}

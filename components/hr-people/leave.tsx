@@ -69,7 +69,7 @@ export function HrLeaveView({ role, actorId, personal = false }: { role: HrDemoR
           <td className={`${hrCell} whitespace-nowrap`}>{hrDate(request.from)}{request.to !== request.from && ` – ${hrDate(request.to)}`}</td>
           <td className={hrCell}>{request.days}</td>
           <td className={`${hrCell} max-w-56 text-muted-foreground`}>{request.reason}</td>
-          <td className={hrCell}><HrStatus status={request.status} /><p className="mt-1 text-[11px] text-muted-foreground">{stepLabel(request)}</p>{settings.escalateAfterDays > 0 && request.status === "pending" && request.step === "manager" && ageDays(request.createdAt, today) >= settings.escalateAfterDays && <p className="mt-1 text-[11px] font-medium text-warning">Waiting {ageDays(request.createdAt, today)} days · HR can step in</p>}</td>
+          <td className={hrCell}><HrStatus status={request.status} /><p className="mt-1 text-[11px] text-muted-foreground">{stepLabel(request)}</p>{settings.escalateAfterDays > 0 && request.status === "pending" && request.step === "manager" && ageDays(request.levelAt ?? request.createdAt, today) >= settings.escalateAfterDays && <p className="mt-1 text-[11px] font-medium text-warning">Waiting {ageDays(request.levelAt ?? request.createdAt, today)} days · HR can step in</p>}</td>
           <td className={hrCell}><div className="flex flex-wrap gap-1">
             {verdict.allowed && verdict.mode && <><Button size="sm" onClick={() => setDecision({ request, kind: "approve", mode: verdict.mode! })}>Approve</Button><Button size="sm" variant="outline" onClick={() => setDecision({ request, kind: "clarify", mode: verdict.mode! })}>Clarify</Button><Button size="sm" variant="outline" onClick={() => setDecision({ request, kind: "reject", mode: verdict.mode! })}>Reject</Button></>}
             {mine && request.status === "needs_clarification" && <Button size="sm" onClick={() => setResponding(request)}>Respond</Button>}
@@ -118,7 +118,10 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
   const [reason, setReason] = React.useState("");
   const config = settings.leaveTypes.find((item) => item.id === type);
   const limited = config ? config.days !== null : false;
-  const days = workingDays(from, to, settings.workWeek, closed);
+  const fullDays = workingDays(from, to, settings.workWeek, closed);
+  const [half, setHalf] = React.useState(false);
+  const canHalf = from === to && fullDays === 1;
+  const days = half && canHalf ? 0.5 : fullDays;
   const route = resolveRoute(employee, org, employees, settings, { typeApproval: config?.approval ?? "default", days, away: { leaves: leaveRequests, from } });
   const balance = types.balance(employeeId, type);
   const oldest = new Date(`${today}T12:00:00`); oldest.setDate(oldest.getDate() - 30);
@@ -141,6 +144,7 @@ export function LeaveRequestForm({ employeeId, initial, onDone, onCreated }: { e
       <HrField label="From"><Input type="date" value={from} onChange={(event) => { setFrom(event.target.value); if (to < event.target.value) setTo(event.target.value); }} className="rounded-none" /></HrField>
       <HrField label="To"><Input type="date" min={from} value={to} onChange={(event) => setTo(event.target.value)} className="rounded-none" /></HrField>
     </div>
+    {canHalf && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={half} onChange={(event) => setHalf(event.target.checked)} />Half day only (counts as 0.5)</label>}
     <p className="text-sm">{days > 0 ? <><strong>{dayText(days)}</strong> of leave</> : "No working days selected"}{limited && <span className="text-muted-foreground"> · {balance.remaining} {config?.name.toLowerCase()} {balance.remaining === 1 ? "day" : "days"} available{days > 0 && days <= balance.remaining ? `, ${balance.remaining - days} after this` : ""}</span>}{config && !config.paid && <span className="text-muted-foreground"> · unpaid</span>}</p>
     {config?.documentAfterDays && days > config.documentAfterDays && <p className="border border-warning/40 bg-warning-muted px-3 py-2 text-xs text-warning">{config.name} longer than {config.documentAfterDays} days needs a supporting document. Share it with HR after you apply.</p>}
     <HrField label="Reason"><Textarea required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-none" /></HrField>
@@ -220,7 +224,7 @@ function DecisionDialog({ decision, onSubmit, onClose }: { decision: Decision; o
   return <HrModal open onOpenChange={(value) => !value && onClose()} title={`${verb}: ${request.employeeName}`} description={`${types.name(request.type)} leave · ${hrDate(request.from)}${request.to !== request.from ? ` – ${hrDate(request.to)}` : ""} · ${dayText(request.days)}`}>
     <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!required || reason.trim().length >= 5) onSubmit(reason.trim()); }}>
       <p className="text-sm text-muted-foreground">Reason given: {request.reason}</p>
-      {decision.mode === "hr" && request.step === "manager" && <p className="border border-info/30 bg-info-muted px-3 py-2 text-xs text-info">You are deciding on the manager&apos;s behalf. This is recorded.</p>}
+      {decision.mode === "hr" && request.step === "manager" && <p className="border border-info/30 bg-info-muted px-3 py-2 text-xs text-info">You are deciding on the approver&apos;s behalf.{request.route && request.route.length - (request.level ?? 0) > 1 ? " Approving here also completes the remaining levels." : ""} This is recorded.</p>}
       {decision.mode === "delegate" && <p className="border border-info/30 bg-info-muted px-3 py-2 text-xs text-info">You are approving as the manager&apos;s delegate. This is recorded.</p>}
       <HrField label={required ? "Reason (required)" : "Note · optional"}><Textarea maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-none" placeholder={decision.kind === "clarify" ? "What do you need to know?" : ""} /></HrField>
       <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={required && reason.trim().length < 5}>{verb}</Button></div>
