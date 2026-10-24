@@ -11,6 +11,7 @@ import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrOrgStore, type ApprovalStepKind, type HrDepartment, type HrRoleDef, type OrgPermission } from "@/lib/stores/hr-org-store";
 import { companySteps, departmentByName, hasPermission, permissionCatalog, permissionLabel, resolveRoute, roleOf, stepLabels, stepsText, wouldLoop } from "@/lib/hr-org";
 import { HrEmpty, HrField, HrModal, HrPanel, HrTable, hrCell, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
+import { canOpenHrView } from "@/lib/hr-people-access";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
@@ -196,12 +197,33 @@ function RemoveDepartmentDialog({ department, actorId, onClose }: { department: 
   </HrModal>;
 }
 
+
+const matrixColumns: { role: HrDemoRole; label: string }[] = [{ role: "owner", label: "Owner" }, { role: "hr_manager", label: "HR" }, { role: "payroll_admin", label: "Finance" }, { role: "employee", label: "Employee" }];
+const matrixRows: { label: string; view?: string; ownerOnly?: boolean; own?: string }[] = [
+  { label: "Business Management (company overview, finance, people & access)", ownerOnly: true },
+  { label: "CRM & Sales (leads, deals, conversations)", ownerOnly: true },
+  { label: "Employees and records", view: "employees" }, { label: "Leave management and approvals", view: "leave" }, { label: "Attendance", view: "attendance" },
+  { label: "Recruitment, onboarding, offboarding", view: "recruitment" }, { label: "Payroll", view: "payroll" }, { label: "Reimbursements (approve)", view: "expenses", own: "Claims their own" },
+  { label: "Statutory compliance", view: "compliance" }, { label: "Policies and settings", view: "settings" }, { label: "Departments and roles", view: "organization" },
+  { label: "My home, leave, payslips, documents", view: "my-home" },
+];
+/** A read-only picture of who can open what, taken from the real access rules so it never drifts from them. */
+function AccessMatrix() {
+  return <HrPanel title="Who can see what" description="The four ways people use Janus. A reporting manager is not a role: anyone with a team approves their team's leave through the reporting line.">
+    <HrTable headings={["Area", ...matrixColumns.map((item) => item.label)]}>{matrixRows.map((row) => <tr key={row.label}>
+      <td className={hrCell}>{row.label}</td>
+      {matrixColumns.map((column) => { const open = row.ownerOnly ? column.role === "owner" : canOpenHrView(column.role, row.view!); return <td key={column.role} className={hrCell}>{open ? (row.view === "expenses" && column.role === "employee" ? <span className="text-muted-foreground">{row.own}</span> : <span className="font-medium text-success" aria-label="Yes">Yes</span>) : <span className="text-muted-foreground" aria-label="No">—</span>}</td>; })}
+    </tr>)}</HrTable>
+  </HrPanel>;
+}
+
 function RolesTab({ actorId, editable }: { actorId: string; editable: boolean }) {
   const org = useOrg();
   const [editing, setEditing] = React.useState<HrRoleDef | "new" | null>(null);
   const [removing, setRemoving] = React.useState<HrRoleDef | null>(null);
   const holders = (roleId: string) => Object.values(org.assignments).filter((id) => id === roleId).length;
   return <div className="space-y-4">
+    <AccessMatrix />
     <HrPanel title="Roles & permissions" description="A role lets someone approve leave or manage employees beyond their place in the reporting line. Give it to a person by opening their department." actions={editable ? <Button size="sm" onClick={() => setEditing("new")}><Plus className="mr-1 size-4" />Add role</Button> : undefined}>
       <HrTable headings={["Role", "Can do", "People", ""]}>{org.roles.map((item) => <tr key={item.id}>
         <td className={hrCell}><p className="flex items-center gap-2 font-medium"><Shield className="size-4 text-muted-foreground" aria-hidden />{item.name}{item.system && <Badge variant="neutral">Built in</Badge>}</p><p className="text-xs text-muted-foreground">{item.description}</p></td>

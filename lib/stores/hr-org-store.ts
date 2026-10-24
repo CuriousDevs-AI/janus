@@ -44,15 +44,14 @@ export const defaultDepartments = (): HrDepartment[] => {
 
 export const defaultRoles = (): HrRoleDef[] => [
   { id: "role-owner", name: "Owner", description: "Full control of the company.", system: true, permissions: ["leave.approve_team", "leave.approve_department", "leave.approve_all", "employees.manage", "policies.manage", "settings.manage", "org.manage", "career.propose", "career.approve", "payroll.view", "attendance.edit"] },
-  { id: "role-hr", name: "HR Manager", description: "Runs people operations day to day.", system: true, permissions: ["leave.approve_team", "leave.approve_department", "leave.approve_all", "employees.manage", "policies.manage", "settings.manage", "org.manage", "career.propose", "career.approve", "payroll.view", "attendance.edit"] },
+  { id: "role-hr", name: "HR", description: "Runs people operations: leave, attendance, hiring, policies. No CRM or business finance.", system: true, permissions: ["leave.approve_team", "leave.approve_department", "leave.approve_all", "employees.manage", "policies.manage", "settings.manage", "org.manage", "career.propose", "career.approve", "payroll.view", "attendance.edit"] },
   { id: "role-department-head", name: "Department head", description: "Approves leave for everyone in their department.", system: false, permissions: ["leave.approve_team", "leave.approve_department", "career.propose"] },
-  { id: "role-manager", name: "Reporting manager", description: "Approves leave for direct reports.", system: true, permissions: ["leave.approve_team", "career.propose"] },
-  { id: "role-payroll", name: "Payroll admin", description: "Sees pay and runs payroll.", system: true, permissions: ["payroll.view"] },
-  { id: "role-employee", name: "Employee", description: "Own records only.", system: true, permissions: [] },
+  { id: "role-payroll", name: "Finance", description: "Payroll, reimbursements and statutory filings. No leave or employee records.", system: true, permissions: ["payroll.view"] },
+  { id: "role-employee", name: "Employee", description: "Own work, leave, pay and documents. A manager approves their team by reporting line.", system: true, permissions: [] },
 ];
 
 /** Who holds which role today. Anyone not listed here gets the plain Employee role. */
-export const defaultAssignments = (): Record<string, string> => ({ "emp-001": "role-owner", "emp-002": "role-hr", "emp-003": "role-department-head", "emp-005": "role-manager", "emp-007": "role-payroll" });
+export const defaultAssignments = (): Record<string, string> => ({ "emp-001": "role-owner", "emp-002": "role-hr", "emp-003": "role-department-head", "emp-007": "role-payroll" });
 
 export const useHrOrgStore = create<HrOrgState>()(persist((set) => ({
   departments: defaultDepartments(), roles: defaultRoles(), assignments: defaultAssignments(),
@@ -63,7 +62,7 @@ export const useHrOrgStore = create<HrOrgState>()(persist((set) => ({
   removeRole: (id) => set((state) => ({ roles: state.roles.filter((item) => item.id !== id), assignments: Object.fromEntries(Object.entries(state.assignments).filter(([, roleId]) => roleId !== id)) })),
   assignRole: (employeeId, roleId) => set((state) => { const next = { ...state.assignments }; if (roleId) next[employeeId] = roleId; else delete next[employeeId]; return { assignments: next }; }),
 }), {
-  name: "janus.hr-org-demo.v1", version: 2, storage: createJSONStorage(() => localStorage),
+  name: "janus.hr-org-demo.v1", version: 3, storage: createJSONStorage(() => localStorage),
   // Version 2 replaced "route + steps" with an ordered list of approval levels.
   migrate: (persisted) => {
     const state = persisted as { departments?: (Partial<HrDepartment> & { leaveRoute?: string; chain?: string })[] };
@@ -75,6 +74,13 @@ export const useHrOrgStore = create<HrOrgState>()(persist((set) => ({
       delete rest.leaveRoute; delete rest.chain;
       return { ...rest, steps, longLeave: null } as HrDepartment;
     });
-    return state as HrOrgState;
+    // Version 3 went to Owner, HR, Finance and Employee. Reporting manager is the reporting line, not a role.
+    const full = state as Partial<HrOrgState>;
+    const fresh = defaultRoles();
+    const roles = (full.roles ?? fresh).filter((item) => item.id !== "role-manager").map((item) => { const base = fresh.find((entry) => entry.id === item.id); return base?.system ? { ...item, name: base.name, description: base.description } : item; });
+    const known = new Set(roles.map((item) => item.id));
+    full.roles = roles;
+    full.assignments = Object.fromEntries(Object.entries(full.assignments ?? {}).filter(([, roleId]) => known.has(roleId)));
+    return full as HrOrgState;
   },
 }));
