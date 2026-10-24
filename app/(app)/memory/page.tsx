@@ -113,6 +113,7 @@ export default function MemoryPage() {
       <PageHeader
         title="Memory"
         description={`${items.length} memories — ${kindCounts.stable_fact} customer · ${kindCounts.conversation} conversation · ${kindCounts.derived_insight} derived insights · ${kindCounts.support} event history`}
+        actions={<Badge variant="neutral">Demo data</Badge>}
       />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">

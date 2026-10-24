@@ -57,6 +57,7 @@ export default function KnowledgePage() {
         description={`${rows.length} of ${knowledgeDocuments.length} documents`}
         actions={
           <>
+            <Badge variant="neutral">Demo data</Badge>
             <Button variant="secondary" size="sm" onClick={() => setUrlOpen(true)}>
               <Link2 className="size-3.5" />
               Add URL

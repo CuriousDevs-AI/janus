@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatRelativeTime, cn } from "@/lib/utils";
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 
 type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
@@ -57,12 +58,7 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         description={`${unreadCount} unread of ${notifications.length}`}
-        actions={
-          <Button size="sm" variant="secondary" onClick={markAllNotificationsRead} disabled={unreadCount === 0}>
-            <CheckCheck className="size-3.5" />
-            Mark all read
-          </Button>
-        }
+        actions={<div className="flex items-center gap-2">{demoMode && <Badge variant="neutral">Demo data</Badge>}<Button size="sm" variant="secondary" onClick={markAllNotificationsRead} disabled={unreadCount === 0}><CheckCheck className="size-3.5" />Mark all read</Button></div>}
       />
 
       <div className="border-b border-border px-6">

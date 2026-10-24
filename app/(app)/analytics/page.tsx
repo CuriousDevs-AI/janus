@@ -46,7 +46,7 @@ export default function AnalyticsPage() {
   if (businessReports) return <BusinessReports />;
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
-      <PageHeader title="Analytics" description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days." />
+      <PageHeader title="Analytics" description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days." actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined} />
       <Tabs defaultValue="acquisition" className="px-6 pb-8">
         <TabsList><TabsTrigger value="acquisition">Acquisition</TabsTrigger><TabsTrigger value="sales">Sales</TabsTrigger><TabsTrigger value="ai">AI</TabsTrigger><TabsTrigger value="support">Support</TabsTrigger><TabsTrigger value="customer">Customer</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList>
         <TabsContent value="acquisition" className="pt-5"><AcquisitionSection /></TabsContent>

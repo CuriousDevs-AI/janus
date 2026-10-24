@@ -27,6 +27,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatCurrencyINR, formatNumber } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 
 const CATEGORY_ORDER: UsageRecord["category"][] = ["llm", "embedding", "voice", "whatsapp", "email"];
 
@@ -93,6 +95,7 @@ export default function UsagePage() {
       <PageHeader
         title="Usage & Cost"
         description={`${tenant.name} · ${tenant.plan} plan — this workspace only`}
+        actions={demoMode ? <Badge variant="neutral">Demo data</Badge> : undefined}
       />
 
       <div className="flex flex-col gap-6 px-6 pb-8">
