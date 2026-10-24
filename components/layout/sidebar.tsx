@@ -320,7 +320,7 @@ function hrNavVisible(label: string, role: HrDemoRole) {
   // Everyone is also an employee, so every role gets the personal pages.
   const mySelfService = ["Home", "Engage", "My profile", "My onboarding", "Document Center", "My documents", "Ask about policy", "Payslips", "Reimbursements", "Leave Apply", "Leave Balances", "Leave Calendar", "Holiday Calendar", "My requests", "Attendance Info", "Regularization & Permission"];
   if (role === "employee") return mySelfService.includes(label);
-  if (role === "reporting_manager") return mySelfService.includes(label) || ["HR Overview", "Attendance", "Leave Management", "My Team", "Pending Approvals", "Documents", "HR Reports"].includes(label);
+  if (role === "reporting_manager") return mySelfService.includes(label) || ["HR Overview", "Attendance", "Leave Management", "My Team", "Pending Approvals", "Promotions & changes", "Documents", "HR Reports"].includes(label);
   if (role === "payroll_admin") return mySelfService.includes(label) || ["HR Overview", "Documents", "Payroll", "HR Reports"].includes(label);
   if (role === "business_manager") return mySelfService.includes(label) || ["HR Overview", "HR Reports"].includes(label);
   return true;

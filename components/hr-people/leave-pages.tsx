@@ -11,7 +11,8 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore, type HrHoliday } from "@/lib/stores/hr-operations-store";
 import { canManageHr } from "@/lib/hr-people-access";
 import { LeaveRequestForm } from "@/components/hr-people/leave";
-import { entitlement, leaveBalance, leaveTypeLabels, leaveYear, paidLeaveTypes, stepLabel, type LeaveType } from "@/lib/hr-leave";
+import { leaveYear, stepLabel, type LeaveType } from "@/lib/hr-leave";
+import { useLeaveTypes } from "@/lib/hr-leave-hooks";
 import { useHolidays } from "@/lib/hr-holidays";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, HrTable, hrCell, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrLeaveRequest } from "@/lib/types";
@@ -22,12 +23,12 @@ const covers = (request: HrLeaveRequest, date: string) => request.status !== "re
 export function HrLeaveApplyView({ actorId }: { actorId: string }) {
   const params = useSearchParams();
   const { employees, leaveRequests, updateLeave } = useHrPeopleStore();
-  const { settings, log } = useHrOperationsStore();
+  const log = useHrOperationsStore((state) => state.log);
+  const types = useLeaveTypes();
   const [version, setVersion] = React.useState(0);
   const from = params.get("from") ?? undefined;
   const type = (params.get("type") as LeaveType | null) ?? undefined;
   const actor = employees.find((item) => item.id === actorId);
-  const today = hrToday();
   const mine = leaveRequests.filter((item) => item.employeeId === actorId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
   if (!actor) return <HrPanel title="Apply for leave"><HrEmpty>This account is not linked to an employee record. Ask HR to link it.</HrEmpty></HrPanel>;
   return <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
@@ -36,30 +37,34 @@ export function HrLeaveApplyView({ actorId }: { actorId: string }) {
     </HrPanel>
     <div className="space-y-5">
       <HrPanel title="Your balance" description="Days left this leave year, after approved and pending requests.">
-        <div className="grid grid-cols-3 gap-3 p-5">{paidLeaveTypes.map((item) => { const balance = leaveBalance(leaveRequests, actorId, item, settings, today); return <div key={item} className="border border-border p-3 text-center"><p className="text-xs text-muted-foreground">{leaveTypeLabels[item]}</p><p className="mt-1 text-xl font-semibold">{balance.remaining}</p><p className="text-[11px] text-muted-foreground">of {balance.total}</p></div>; })}</div>
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">{types.limited.map((item) => { const balance = types.balance(actorId, item.id); return <div key={item.id} className="border border-border p-3 text-center"><p className="text-xs text-muted-foreground">{item.name}</p><p className="mt-1 text-xl font-semibold">{balance.remaining}</p><p className="text-[11px] text-muted-foreground">of {balance.total}</p></div>; })}</div>
         <p className="border-t border-border px-5 py-3 text-xs"><Link className="text-accent underline" href="/workspace/hr-people?view=leave-balances&workspace=hr-people">See full balances</Link></p>
       </HrPanel>
-      <HrPanel title="My recent requests">{mine.length ? <ul className="divide-y divide-border text-sm">{mine.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><div><p className="font-medium">{leaveTypeLabels[item.type]} · {item.days} {item.days === 1 ? "day" : "days"}</p><p className="text-xs text-muted-foreground">{hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""} · {stepLabel(item)}</p></div><div className="flex items-center gap-2"><HrStatus status={item.status} />{(item.status === "pending" || item.status === "needs_clarification") && <Button size="sm" variant="ghost" onClick={() => { updateLeave(item.id, "rejected", item.step); log({ recordId: item.id, actorId, action: "withdrawn", reason: "Withdrawn by the employee" }); toast.success("Request withdrawn"); }}>Withdraw</Button>}</div></li>)}</ul> : <HrEmpty>You haven&apos;t applied for leave yet.</HrEmpty>}</HrPanel>
+      <HrPanel title="My recent requests">{mine.length ? <ul className="divide-y divide-border text-sm">{mine.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><div><p className="font-medium">{types.name(item.type)} · {item.days} {item.days === 1 ? "day" : "days"}</p><p className="text-xs text-muted-foreground">{hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""} · {stepLabel(item)}</p></div><div className="flex items-center gap-2"><HrStatus status={item.status} />{(item.status === "pending" || item.status === "needs_clarification") && <Button size="sm" variant="ghost" onClick={() => { updateLeave(item.id, "rejected", item.step); log({ recordId: item.id, actorId, action: "withdrawn", reason: "Withdrawn by the employee" }); toast.success("Request withdrawn"); }}>Withdraw</Button>}</div></li>)}</ul> : <HrEmpty>You haven&apos;t applied for leave yet.</HrEmpty>}</HrPanel>
     </div>
   </div>;
 }
 
 export function HrLeaveBalancesView({ actorId }: { actorId: string }) {
   const { employees, leaveRequests } = useHrPeopleStore();
-  const settings = useHrOperationsStore((state) => state.settings);
+  const types = useLeaveTypes();
+  const { settings, adjustments } = types;
   const today = hrToday();
   const actor = employees.find((item) => item.id === actorId);
   const year = leaveYear(today, settings.yearStart);
   const mine = leaveRequests.filter((item) => item.employeeId === actorId && item.from >= year.start && item.from <= year.end && item.status !== "rejected").sort((a, b) => b.from.localeCompare(a.from));
+  const adjustmentsMine = adjustments.filter((item) => item.employeeId === actorId && item.at.slice(0, 10) >= year.start && item.at.slice(0, 10) <= year.end);
   if (!actor) return <HrPanel title="Leave balances"><HrEmpty>This account is not linked to an employee record.</HrEmpty></HrPanel>;
-  const unpaid = mine.filter((item) => item.type === "unpaid" && item.status === "approved").reduce((sum, item) => sum + item.days, 0);
+  const unlimited = types.active.filter((item) => item.days === null);
+  const taken = (id: string) => mine.filter((item) => item.type === id && item.status === "approved").reduce((sum, item) => sum + item.days, 0);
   return <div className="space-y-5">
-    <HrStats items={[...paidLeaveTypes.map((type) => { const b = leaveBalance(leaveRequests, actorId, type, settings, today); return { label: `${leaveTypeLabels[type]} leave`, value: `${b.remaining} left`, hint: `${b.used} used · ${b.pending} pending · ${b.total} a year` }; }), { label: "Unpaid leave taken", value: `${unpaid} ${unpaid === 1 ? "day" : "days"}`, hint: "No yearly limit" }]} />
+    <HrStats items={[...types.limited.slice(0, 3).map((type) => { const b = types.balance(actorId, type.id); return { label: type.name, value: `${b.remaining} left`, hint: `${b.used} used · ${b.pending} pending · ${b.total} a year` }; }), ...unlimited.slice(0, 1).map((type) => ({ label: `${type.name} taken`, value: `${taken(type.id)} ${taken(type.id) === 1 ? "day" : "days"}`, hint: "No yearly limit" }))]} />
     <HrPanel title="Where your leave stands" description={`Leave year ${hrDate(year.start)} to ${hrDate(year.end)}. Weekly offs and company holidays are never counted.`}
       actions={<Button size="sm" asChild><Link href="/workspace/hr-people?view=leave-apply&workspace=hr-people"><Plus className="mr-1 size-3.5" />Apply for leave</Link></Button>}>
-      <div className="grid gap-4 p-5 md:grid-cols-3">{paidLeaveTypes.map((type) => { const b = leaveBalance(leaveRequests, actorId, type, settings, today); const total = entitlement(type, settings); const usedPct = total ? Math.min(100, (b.used / total) * 100) : 0; const pendingPct = total ? Math.min(100 - usedPct, (b.pending / total) * 100) : 0; return <div key={type} className="space-y-3 border border-border p-4"><div className="flex items-baseline justify-between"><h3 className="text-sm font-semibold">{leaveTypeLabels[type]}</h3><span className="text-xs text-muted-foreground">{total} days a year</span></div><div className="flex h-2 overflow-hidden bg-surface-2" role="img" aria-label={`${leaveTypeLabels[type]}: ${b.used} used, ${b.pending} pending, ${b.remaining} available`}><div className="bg-accent" style={{ width: `${usedPct}%` }} /><div className="bg-warning/70" style={{ width: `${pendingPct}%` }} /></div><dl className="grid grid-cols-3 gap-2 text-center text-xs"><div><dt className="text-muted-foreground">Used</dt><dd className="text-base font-semibold">{b.used}</dd></div><div><dt className="text-muted-foreground">Pending</dt><dd className="text-base font-semibold">{b.pending}</dd></div><div><dt className="text-muted-foreground">Available</dt><dd className="text-base font-semibold text-success">{b.remaining}</dd></div></dl></div>; })}</div>
+      <div className="grid gap-4 p-5 md:grid-cols-3">{types.limited.map((type) => { const b = types.balance(actorId, type.id); const usedPct = b.total ? Math.min(100, (b.used / b.total) * 100) : 0; const pendingPct = b.total ? Math.min(100 - usedPct, (b.pending / b.total) * 100) : 0; return <div key={type.id} className="space-y-3 border border-border p-4"><div className="flex items-baseline justify-between"><h3 className="text-sm font-semibold">{type.name}</h3><span className="text-xs text-muted-foreground">{b.total} days a year{type.paid ? "" : " · unpaid"}</span></div><div className="flex h-2 overflow-hidden bg-surface-2" role="img" aria-label={`${type.name}: ${b.used} used, ${b.pending} pending, ${b.remaining} available`}><div className="bg-accent" style={{ width: `${usedPct}%` }} /><div className="bg-warning/70" style={{ width: `${pendingPct}%` }} /></div><dl className="grid grid-cols-3 gap-2 text-center text-xs"><div><dt className="text-muted-foreground">Used</dt><dd className="text-base font-semibold">{b.used}</dd></div><div><dt className="text-muted-foreground">Pending</dt><dd className="text-base font-semibold">{b.pending}</dd></div><div><dt className="text-muted-foreground">Available</dt><dd className="text-base font-semibold text-success">{b.remaining}</dd></div></dl>{b.adjusted !== 0 && <p className="text-[11px] text-muted-foreground">Includes {b.adjusted > 0 ? "+" : ""}{b.adjusted} days adjusted by HR</p>}</div>; })}{!types.limited.length && <p className="text-sm text-muted-foreground">HR hasn&apos;t set any leave types with a yearly limit.</p>}</div>
     </HrPanel>
-    <HrPanel title="Leave this year" description="Approved and pending requests, newest first.">{mine.length ? <HrTable headings={["Type", "Dates", "Days", "Status"]}>{mine.map((item) => <tr key={item.id}><td className={hrCell}>{leaveTypeLabels[item.type]}</td><td className={hrCell}>{hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""}</td><td className={hrCell}>{item.days}</td><td className={hrCell}><HrStatus status={item.status} /><p className="mt-1 text-[11px] text-muted-foreground">{stepLabel(item)}</p></td></tr>)}</HrTable> : <HrEmpty>No leave taken or requested this year.</HrEmpty>}</HrPanel>
+    {adjustmentsMine.length > 0 && <HrPanel title="Adjustments by HR" description="Days HR added or took away, with the reason."><ul className="divide-y divide-border text-sm">{adjustmentsMine.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><div><p className="font-medium">{item.days > 0 ? "+" : ""}{item.days} {types.name(item.typeId)}</p><p className="text-xs text-muted-foreground">{item.reason}</p></div><span className="text-xs text-muted-foreground">{hrDate(item.at.slice(0, 10))}</span></li>)}</ul></HrPanel>}
+    <HrPanel title="Leave this year" description="Approved and pending requests, newest first.">{mine.length ? <HrTable headings={["Type", "Dates", "Days", "Status"]}>{mine.map((item) => <tr key={item.id}><td className={hrCell}>{types.name(item.type)}</td><td className={hrCell}>{hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""}</td><td className={hrCell}>{item.days}</td><td className={hrCell}><HrStatus status={item.status} /><p className="mt-1 text-[11px] text-muted-foreground">{stepLabel(item)}</p></td></tr>)}</HrTable> : <HrEmpty>No leave taken or requested this year.</HrEmpty>}</HrPanel>
   </div>;
 }
 

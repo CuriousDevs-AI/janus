@@ -33,10 +33,7 @@ export function settingsSource(settings: HrPolicySettings): PolicySource {
   const week = settings.workWeek.length ? settings.workWeek.join(", ") : "no working days set";
   const chain = settings.approvalChain === "manager_hr" ? "the reporting manager first, then HR" : "the reporting manager";
   return { id: "settings", title: "Time & leave policy (HR Settings)", version: null, issuedAt: null, kind: "settings", paragraphs: [
-    { id: "s-earned", text: `Earned leave: ${settings.earnedDays} days per leave year. The leave year starts on ${start}.` },
-    { id: "s-casual", text: `Casual leave: ${settings.casualDays} days per leave year.` },
-    { id: "s-sick", text: `Sick leave: ${settings.sickDays} days per leave year.` },
-    { id: "s-unpaid", text: "Unpaid leave can be requested when paid leave runs out. It has no yearly limit." },
+    ...settings.leaveTypes.filter((type) => type.active).map((type) => ({ id: `s-type-${type.id}`, text: type.days === null ? `${type.name}: no yearly limit${type.paid ? "" : ", and it is unpaid"}. ${type.documentAfterDays ? `A document is needed after ${type.documentAfterDays} days.` : ""}`.trim() : `${type.name}: ${type.days} days per leave year${type.paid ? "" : " (unpaid)"}. The leave year starts on ${start}.${type.documentAfterDays ? ` A document is needed after ${type.documentAfterDays} days.` : ""}` })),
     { id: "s-approval", text: `Leave approval: requests go to ${chain}. A manager can delegate approvals to a colleague while they are away.` },
     { id: "s-backdate", text: "Leave can be requested for dates up to 30 days in the past. Weekly offs are not counted as leave days." },
     { id: "s-week", text: `Working week: ${week}. The shift runs ${settings.shiftStart} to ${settings.shiftEnd}. You are marked late if you check in more than ${settings.graceMinutes} minutes after the shift starts.` },

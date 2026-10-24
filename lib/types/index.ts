@@ -228,6 +228,8 @@ export interface HrEmployee {
   /** YYYY-MM-DD. Optional so older records keep working. */
   birthDate?: string;
   salaryMonthly: number;
+  /** Earlier pay, so old payslips stay correct after a revision. Each entry applies from the first month on or after `from`. */
+  salaryHistory?: { from: string; salaryMonthly: number }[];
   onboardingPercent: number;
   documentsDue: number;
 }
@@ -265,7 +267,8 @@ export interface HrLeaveRequest {
   employeeName: string;
   managerId: ID | null;
   managerName: string;
-  type: "earned" | "sick" | "casual" | "unpaid";
+  /** The id of a leave type HR has set up, for example "casual". */
+  type: string;
   from: string;
   to: string;
   days: number;

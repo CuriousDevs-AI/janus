@@ -7,7 +7,8 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { canManageHr } from "@/lib/hr-people-access";
 import { useHolidays } from "@/lib/hr-holidays";
-import { isTeamOf, isWorkingDay, leaveBalance, leaveTypeLabels, paidLeaveTypes, stepLabel, workingDays } from "@/lib/hr-leave";
+import { isTeamOf, isWorkingDay, stepLabel, workingDays } from "@/lib/hr-leave";
+import { useLeaveTypes } from "@/lib/hr-leave-hooks";
 import { HrEmpty, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrLeaveRequest } from "@/lib/types";
 
@@ -22,6 +23,7 @@ export function HrLeaveCalendarView({ role, actorId }: { role: HrDemoRole; actor
   const { employees, leaveRequests } = useHrPeopleStore();
   const settings = useHrOperationsStore((state) => state.settings);
   const holidays = useHolidays();
+  const types = useLeaveTypes();
   const closed = React.useMemo(() => new Set(holidays.filter((item) => item.kind === "company").map((item) => item.date)), [holidays]);
   const today = hrToday();
   const [year, setYear] = React.useState(Number(today.slice(0, 4)));
@@ -75,18 +77,18 @@ export function HrLeaveCalendarView({ role, actorId }: { role: HrDemoRole; actor
           const isToday = date === today;
           return <td key={column} className={`h-20 align-top border p-1 ${off ? "border-border bg-surface-2" : "border-border bg-surface"} ${isToday ? "ring-2 ring-accent" : ""}`}>
             <div className="flex items-start justify-between"><span className={`font-medium ${off ? "text-muted-foreground" : ""}`}>{day}</span>{here.length > 0 && <button type="button" onClick={() => setOpenDay(date)} className="text-[10px] text-accent hover:underline" aria-label={`${here.length} on leave on ${hrDate(date)}. Open details`}>{here.length > 3 ? `+${here.length - 3}` : "View"}</button>}</div>
-            {holiday && <span className="mt-1 block truncate bg-info-muted px-1 text-[10px] text-info" title={`${holiday.name} · ${holiday.kind === "company" ? "Company holiday" : "Optional holiday"}`}>{holiday.name}</span>}<div className="mt-1 space-y-0.5">{here.slice(0, holiday ? 2 : 3).map((item) => <button type="button" key={item.id} onClick={() => setOpenDay(date)} title={`${item.employeeName} · ${leaveTypeLabels[item.type]} · ${stepLabel(item)}`} className={`block w-full truncate px-1 text-left text-[10px] ${item.status === "approved" ? "bg-success-muted text-success" : "bg-warning-muted text-warning"}`}>{item.employeeName.split(" ")[0]}</button>)}</div>
+            {holiday && <span className="mt-1 block truncate bg-info-muted px-1 text-[10px] text-info" title={`${holiday.name} · ${holiday.kind === "company" ? "Company holiday" : "Optional holiday"}`}>{holiday.name}</span>}<div className="mt-1 space-y-0.5">{here.slice(0, holiday ? 2 : 3).map((item) => <button type="button" key={item.id} onClick={() => setOpenDay(date)} title={`${item.employeeName} · ${types.name(item.type)} · ${stepLabel(item)}`} className={`block w-full truncate px-1 text-left text-[10px] ${item.status === "approved" ? "bg-success-muted text-success" : "bg-warning-muted text-warning"}`}>{item.employeeName.split(" ")[0]}</button>)}</div>
           </td>;
         })}</tr>)}</tbody></table></div>
     </HrPanel>
     <div className="grid gap-5 lg:grid-cols-2">
-      <HrPanel title="Upcoming leave" description="Next requests in this view, soonest first.">{upcoming.length ? <ul className="divide-y divide-border text-sm">{upcoming.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><div><p className="font-medium">{item.employeeName} · {leaveTypeLabels[item.type]}</p><p className="text-xs text-muted-foreground">{hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""} · {item.days} {item.days === 1 ? "day" : "days"}</p></div><HrStatus status={item.status} /></li>)}</ul> : <HrEmpty>No upcoming leave.</HrEmpty>}</HrPanel>
+      <HrPanel title="Upcoming leave" description="Next requests in this view, soonest first.">{upcoming.length ? <ul className="divide-y divide-border text-sm">{upcoming.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><div><p className="font-medium">{item.employeeName} · {types.name(item.type)}</p><p className="text-xs text-muted-foreground">{hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""} · {item.days} {item.days === 1 ? "day" : "days"}</p></div><HrStatus status={item.status} /></li>)}</ul> : <HrEmpty>No upcoming leave.</HrEmpty>}</HrPanel>
       {actor && <HrPanel title="My leave balance" description="Days left this leave year after approved and pending requests.">
-        <div className="grid gap-3 p-5 sm:grid-cols-3">{paidLeaveTypes.map((type) => { const balance = leaveBalance(leaveRequests, actor.id, type, settings, today); return <div key={type} className="border border-border p-3"><p className="text-xs text-muted-foreground">{leaveTypeLabels[type]}</p><p className="mt-1 text-xl font-semibold">{balance.remaining}<span className="text-xs font-normal text-muted-foreground"> / {balance.total}</span></p></div>; })}</div>
+        <div className="grid gap-3 p-5 sm:grid-cols-3">{types.limited.map((type) => { const balance = types.balance(actor.id, type.id); return <div key={type.id} className="border border-border p-3"><p className="text-xs text-muted-foreground">{type.name}</p><p className="mt-1 text-xl font-semibold">{balance.remaining}<span className="text-xs font-normal text-muted-foreground"> / {balance.total}</span></p></div>; })}</div>
       </HrPanel>}
     </div>
     {openDay && <HrModal open onOpenChange={(value) => !value && setOpenDay(null)} title={hrDate(openDay)} description={`${dayRequests.length} on leave${isWorkingDay(openDay, settings.workWeek) ? "" : " · weekly off"}`}>
-      {dayRequests.length ? <ul className="divide-y divide-border border border-border text-sm">{dayRequests.map((item) => <li key={item.id} className="space-y-1 px-4 py-3"><div className="flex items-center justify-between gap-2"><p className="font-medium">{item.employeeName}</p><HrStatus status={item.status} /></div><p className="text-xs text-muted-foreground">{leaveTypeLabels[item.type]} · {hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""} · {item.days} {item.days === 1 ? "day" : "days"} · {stepLabel(item)}</p><p className="text-xs">{item.reason}</p></li>)}</ul> : <HrEmpty>Nobody is on leave this day.</HrEmpty>}
+      {dayRequests.length ? <ul className="divide-y divide-border border border-border text-sm">{dayRequests.map((item) => <li key={item.id} className="space-y-1 px-4 py-3"><div className="flex items-center justify-between gap-2"><p className="font-medium">{item.employeeName}</p><HrStatus status={item.status} /></div><p className="text-xs text-muted-foreground">{types.name(item.type)} · {hrDate(item.from)}{item.to !== item.from ? ` – ${hrDate(item.to)}` : ""} · {item.days} {item.days === 1 ? "day" : "days"} · {stepLabel(item)}</p><p className="text-xs">{item.reason}</p></li>)}</ul> : <HrEmpty>Nobody is on leave this day.</HrEmpty>}
     </HrModal>}
   </div>;
 }

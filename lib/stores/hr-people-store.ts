@@ -58,6 +58,7 @@ interface HrPeopleState {
   updateCandidate: (id: string, patch: Partial<HrCandidate>) => void;
   updateEmployee: (id: string, patch: Partial<HrEmployee>) => void;
   archiveEmployee: (id: string) => void;
+  reassignManager: (employeeId: string, managerId: string | null, managerName: string | null) => number;
   updateLeave: (id: string, status: ApprovalStatus, step?: HrLeaveRequest["step"]) => void;
   updateAttendance: (id: string, patch: Partial<HrAttendanceRecord>) => void;
   addAttendance: (record: HrAttendanceRecord) => void;
@@ -108,6 +109,16 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       addCandidate: (candidate) => set((state) => ({ candidates: [candidate, ...state.candidates] })),
       updateCandidate: (id, patch) => set((state) => ({ candidates: state.candidates.map((item) => item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString().slice(0, 10) } : item) })),
       updateEmployee: (id, patch) => set((state) => ({ employees: state.employees.map((employee) => employee.id === id ? { ...employee, ...patch } : employee) })),
+      // Moves the person under a new manager and re-routes anything still waiting on the old one. Returns how many requests moved.
+      reassignManager: (employeeId, managerId, managerName) => {
+        let moved = 0;
+        set((state) => {
+          const leaveRequests = state.leaveRequests.map((request) => { if (request.employeeId === employeeId && (request.status === "pending" || request.status === "needs_clarification") && request.step === "manager") { moved += 1; return { ...request, managerId, managerName: managerName ?? "HR", step: managerId ? request.step : "hr" as const }; } return request; });
+          const expenseClaims = state.expenseClaims.map((claim) => { if (claim.employeeId === employeeId && claim.status === "manager_review") { moved += 1; return { ...claim, approverName: managerName ?? "HR", status: managerId ? claim.status : "hr_review" as const }; } return claim; });
+          return { employees: state.employees.map((employee) => employee.id === employeeId ? { ...employee, managerId, managerName } : employee), leaveRequests, expenseClaims };
+        });
+        return moved;
+      },
       archiveEmployee: (id) => set((state) => ({ employees: state.employees.map((employee) => employee.id === id ? { ...employee, status: "archived" } : employee) })),
       updateLeave: (id, status, step) => set((state) => ({ leaveRequests: state.leaveRequests.map((request) => request.id === id ? { ...request, status, step: step ?? (status === "approved" ? "complete" : request.step) } : request) })),
       addAttendance: (record) => set((state) => ({ attendance: [record, ...state.attendance] })),
