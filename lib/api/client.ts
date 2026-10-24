@@ -11,7 +11,13 @@ export class APIError extends Error {
 }
 
 let refreshing: Promise<void> | undefined;
+let refreshFailure: { at: number; error: unknown } | undefined;
+const REFRESH_RETRY_MS = 30_000;
 async function refreshSession() {
+  // After a failed refresh, fail fast instead of re-running /me + /auth/refresh
+  // for every queued request, so screens can show their offline state at once.
+  if (refreshFailure && Date.now() - refreshFailure.at < REFRESH_RETRY_MS)
+    throw refreshFailure.error;
   if (!refreshing) {
     const refresh = async () => {
       const check = await fetch("/api/backend/me", { cache: "no-store" });
@@ -27,9 +33,17 @@ async function refreshSession() {
         await navigator.locks.request("janus-session", refresh);
       else await refresh();
     };
-    refreshing = run().finally(() => {
-      refreshing = undefined;
-    });
+    refreshing = run()
+      .then(() => {
+        refreshFailure = undefined;
+      })
+      .catch((error) => {
+        refreshFailure = { at: Date.now(), error };
+        throw error;
+      })
+      .finally(() => {
+        refreshing = undefined;
+      });
   }
   return refreshing;
 }
