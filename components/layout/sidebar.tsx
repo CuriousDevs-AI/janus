@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { activeCompany, scoped } from "@/lib/company";
+import { activeCompany, activeCompanyId, portfolioHome, scoped } from "@/lib/company";
+import { CompanyLogo } from "@/components/shared/company-logo";
 import { CompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -136,10 +137,17 @@ export function SidebarNav({
 
   return (
     <>
-      {/* Business and active workspace selector */}
+      {/* Top of the sidebar. In a company it is the company itself; in the Portfolio it is the Janus brand. */}
+      {workspaceId === "portfolio" && <div className="flex h-14 items-center border-b border-border px-4">
+        <Link href={portfolioHome} className="flex items-center gap-2 overflow-hidden">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">C</span>
+          <span className="flex flex-col leading-none"><span className="text-[13px] font-semibold text-foreground">Curious<span className="text-accent">Devs</span></span><span className="text-[10px] text-muted-foreground">Janus</span></span>
+        </Link>
+      </div>}
       <div
         className={cn(
-          "border-b border-border py-2",
+          "border-b border-border",
+          workspaceId === "portfolio" ? "py-2" : "flex h-14 items-center",
           collapsed ? "px-2" : "px-3",
         )}
       >
@@ -151,13 +159,11 @@ export function SidebarNav({
                 collapsed && "justify-center px-0",
               )}
             >
-              <span className="flex size-5 shrink-0 items-center justify-center rounded bg-surface-3 text-[10px] font-semibold text-foreground">
-                {tenant.name[0]}
-              </span>
+              <CompanyLogo company={{ id: activeCompanyId(), name: tenant.name, logo: activeCompany().logo }} size={32} />
               {!collapsed && (
                 <>
                   <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
-                    <span className="max-w-full truncate text-[12px] font-medium text-foreground">
+                    <span className="max-w-full truncate text-[13px] font-semibold text-foreground">
                       {tenant.name}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
@@ -321,23 +327,6 @@ export function Sidebar() {
           "hidden w-[258px] shrink-0 flex-col border-r border-border bg-surface md:flex",
         )}
       >
-        <div className="flex h-14 items-center border-b border-border px-4">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 overflow-hidden"
-          >
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">
-              C
-            </span>
-            <span className="flex flex-col leading-none">
-              <span className="text-[13px] font-semibold text-foreground">
-                Curious<span className="text-accent">Devs</span>
-              </span>
-              <span className="text-[10px] text-muted-foreground">Janus</span>
-            </span>
-          </Link>
-        </div>
-
         <SidebarNav />
       </aside>
     </TooltipProvider>

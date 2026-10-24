@@ -14,6 +14,8 @@ export interface CompanyRecord {
   setupDone: boolean;
   size?: string;
   timezone?: string;
+  /** A small image as a data URL. Shown in the sidebar, the company menu and the Portfolio. */
+  logo?: string;
   /** People added while setting the company up. They become its first employees. */
   team?: { name: string; email: string; title: string; department: string }[];
   createdAt: string;

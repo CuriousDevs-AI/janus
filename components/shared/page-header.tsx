@@ -19,7 +19,7 @@ export function PageHeader({
   const repeated = typeof title === "string" && title.trim().toLowerCase() === topbarTitle.trim().toLowerCase();
   const empty = repeated && !description && !actions;
   return (
-    <header className={cn("page-header flex flex-wrap items-center justify-between gap-4 px-6", repeated ? "py-3" : "min-h-[104px] py-6", empty && "sr-only", className)}>
+    <header className={cn("page-header flex flex-wrap items-center justify-between gap-4 px-6", repeated ? "pb-4 pt-5" : "min-h-[104px] py-6", empty && "sr-only", className)}>
       <div className="min-w-0 flex-1 basis-60">
         <h1 className={cn("text-[22px] font-semibold leading-7 tracking-[-0.015em] text-foreground sm:text-2xl", repeated && "sr-only")}>{title}</h1>
         {description && <p className={cn("max-w-3xl text-[13px] leading-5 text-muted-foreground", !repeated && "mt-1")}>{description}</p>}

@@ -166,6 +166,8 @@ body {
 
 .page-header {
   border-bottom: 1px solid var(--border);
+  /* Content that follows should never touch the header line. */
+  margin-bottom: 1rem;
 }
 
 .page-header-actions {

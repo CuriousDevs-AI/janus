@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CompanyLogo } from "@/components/shared/company-logo";
+import { LogoPicker } from "@/components/shared/logo-picker";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
@@ -99,7 +101,7 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
   return <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
     {list.map((item) => <section key={item.company.id} aria-label={item.company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Building2 className="size-4" aria-hidden /></span><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.company.name}</h3><p className="truncate text-xs text-muted-foreground">{item.company.industry} · {item.company.city}</p></div></div>
+        <div className="flex min-w-0 items-start gap-3"><CompanyLogo company={item.company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.company.name}</h3><p className="truncate text-xs text-muted-foreground">{item.company.industry} · {item.company.city}</p></div></div>
         <Badge variant={item.company.setupDone ? "neutral" : "warning"}>{item.company.setupDone ? "Active" : "Setup unfinished"}</Badge>
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -172,7 +174,7 @@ function Companies({ list }: { list: CompanySummary[] }) {
   return <>
     <div className="grid gap-4 lg:grid-cols-2">
       {list.map((item) => { const company = item.company; return <section key={company.id} aria-label={company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{company.industry} · {company.city} · since {company.createdAt}</p></div><Badge variant={company.setupDone ? "success" : "warning"}>{company.setupDone ? "Set up" : "Setup unfinished"}</Badge></div>
+        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{company.industry} · {company.city} · since {company.createdAt}</p></div></div><Badge variant={company.setupDone ? "success" : "warning"}>{company.setupDone ? "Set up" : "Setup unfinished"}</Badge></div>
         <fieldset className="grid gap-2"><legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</legend>
           {["crm-sales", "hr-people"].map((id) => { const on = company.workspaces.includes(id); return <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} disabled={on && company.workspaces.length === 1} onChange={() => updateCompany(company.id, { workspaces: on ? company.workspaces.filter((entry) => entry !== id) : [...company.workspaces, id] })} />{workspaceName(id)}</label>; })}
         </fieldset>
@@ -189,11 +191,12 @@ function EditCompany({ company, onClose }: { company: CompanyRecord; onClose: ()
   const [name, setName] = React.useState(company.name);
   const [industry, setIndustry] = React.useState(company.industry);
   const [city, setCity] = React.useState(company.city);
+  const [logo, setLogo] = React.useState<string | undefined>(company.logo);
   const taken = readCompanies().some((item) => item.id !== company.id && item.name.trim().toLowerCase() === name.trim().toLowerCase());
   const error = name.trim().length < 2 ? "Give the company a name." : taken ? `${name.trim()} already exists.` : city.trim().length < 2 ? "Add a city." : "";
   return <Dialog open onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>Edit {company.name}</DialogTitle><DialogDescription>The name appears in the company menu, reports and letters.</DialogDescription></DialogHeader>
-    <div className="grid gap-3"><label className="grid gap-1.5 text-xs text-muted-foreground">Name<Input value={name} maxLength={60} onChange={(event) => setName(event.target.value)} /></label><label className="grid gap-1.5 text-xs text-muted-foreground">Industry<Input value={industry} maxLength={60} onChange={(event) => setIndustry(event.target.value)} /></label><label className="grid gap-1.5 text-xs text-muted-foreground">City<Input value={city} maxLength={40} onChange={(event) => setCity(event.target.value)} /></label>{error && <p role="alert" className="text-xs text-danger">{error}</p>}</div>
-    <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={Boolean(error)} onClick={() => { updateCompany(company.id, { name: name.trim(), industry: industry.trim(), city: city.trim() }); toast.success("Company updated."); onClose(); }}>Save</Button></DialogFooter></DialogContent></Dialog>;
+    <div className="grid gap-4"><LogoPicker id={company.id} name={name} value={logo} onChange={setLogo} /><label className="grid gap-1.5 text-xs text-muted-foreground">Name<Input value={name} maxLength={60} onChange={(event) => setName(event.target.value)} /></label><label className="grid gap-1.5 text-xs text-muted-foreground">Industry<Input value={industry} maxLength={60} onChange={(event) => setIndustry(event.target.value)} /></label><label className="grid gap-1.5 text-xs text-muted-foreground">City<Input value={city} maxLength={40} onChange={(event) => setCity(event.target.value)} /></label>{error && <p role="alert" className="text-xs text-danger">{error}</p>}</div>
+    <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={Boolean(error)} onClick={() => { updateCompany(company.id, { name: name.trim(), industry: industry.trim(), city: city.trim(), logo }); toast.success("Company updated."); onClose(); }}>Save</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function RemoveCompany({ company, onClose }: { company: CompanyRecord; onClose: () => void }) {
