@@ -59,7 +59,7 @@ interface HrPeopleState {
   updateEmployee: (id: string, patch: Partial<HrEmployee>) => void;
   archiveEmployee: (id: string) => void;
   reassignManager: (employeeId: string, managerId: string | null, managerName: string | null) => number;
-  updateLeave: (id: string, status: ApprovalStatus, step?: HrLeaveRequest["step"]) => void;
+  updateLeave: (id: string, status: ApprovalStatus, step?: HrLeaveRequest["step"], patch?: Partial<HrLeaveRequest>) => void;
   updateAttendance: (id: string, patch: Partial<HrAttendanceRecord>) => void;
   addAttendance: (record: HrAttendanceRecord) => void;
   addLeave: (request: HrLeaveRequest) => void;
@@ -120,7 +120,7 @@ export const useHrPeopleStore = create<HrPeopleState>()(
         return moved;
       },
       archiveEmployee: (id) => set((state) => ({ employees: state.employees.map((employee) => employee.id === id ? { ...employee, status: "archived" } : employee) })),
-      updateLeave: (id, status, step) => set((state) => ({ leaveRequests: state.leaveRequests.map((request) => request.id === id ? { ...request, status, step: step ?? (status === "approved" ? "complete" : request.step) } : request) })),
+      updateLeave: (id, status, step, patch) => set((state) => ({ leaveRequests: state.leaveRequests.map((request) => request.id === id ? { ...request, ...patch, status, step: step ?? (status === "approved" ? "complete" : request.step) } : request) })),
       addAttendance: (record) => set((state) => ({ attendance: [record, ...state.attendance] })),
       addLeave: (request) => set((state) => ({ leaveRequests: [request, ...state.leaveRequests] })),
       updateAttendance: (id, patch) => set((state) => ({ attendance: state.attendance.map((record) => record.id === id ? { ...record, ...patch } : record) })),

@@ -275,6 +275,10 @@ export interface HrLeaveRequest {
   reason: string;
   status: ApprovalStatus;
   step: "manager" | "hr" | "finance" | "complete";
+  /** The approval levels this request passes, fixed when it is made. Older requests have none. */
+  route?: { kind: "person" | "hr"; id?: string; name: string; label: string }[];
+  /** Which level of `route` is deciding now. */
+  level?: number;
   createdAt: string;
 }
 

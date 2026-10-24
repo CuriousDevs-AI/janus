@@ -1,8 +1,9 @@
 import type { HrEmployee, HrLeaveRequest } from "@/lib/types";
-import type { HrDepartment, HrRoleDef, OrgPermission } from "@/lib/stores/hr-org-store";
+import type { ApprovalStepKind, HrDepartment, HrRoleDef, OrgPermission } from "@/lib/stores/hr-org-store";
 import type { HrPolicySettings } from "@/lib/stores/hr-operations-store";
 
-export const permissionCatalog: { id: OrgPermission; label: string; hint: string; group: string }[] = [
+/** `admin` permissions belong to the built-in Owner and HR Manager roles and are not offered on custom roles. */
+export const permissionCatalog: { id: OrgPermission; label: string; hint: string; group: string; admin?: boolean }[] = [
   { id: "leave.approve_team", label: "Approve leave of direct reports", hint: "People who report to them.", group: "Leave" },
   { id: "leave.approve_department", label: "Approve leave of their department", hint: "Everyone in the department they head, and the departments under it.", group: "Leave" },
   { id: "leave.approve_all", label: "Approve any leave, including the HR step", hint: "Works like HR for leave.", group: "Leave" },
@@ -10,15 +11,18 @@ export const permissionCatalog: { id: OrgPermission; label: string; hint: string
   { id: "career.propose", label: "Propose promotions and transfers", hint: "Goes to HR (and the owner for pay) to approve.", group: "People" },
   { id: "career.approve", label: "Approve promotions and pay changes", hint: "Still never their own.", group: "People" },
   { id: "attendance.edit", label: "Correct attendance", hint: "Edit or add entries with a reason.", group: "People" },
-  { id: "policies.manage", label: "Write and publish policies", hint: "Versions, archive and delete.", group: "Company" },
-  { id: "settings.manage", label: "Change leave types and HR settings", hint: "Leave types, work week, approval defaults.", group: "Company" },
-  { id: "org.manage", label: "Manage departments, roles and approval flow", hint: "This page.", group: "Company" },
-  { id: "payroll.view", label: "See pay and payroll", hint: "Salaries, payslips and payroll runs.", group: "Money" },
+  { id: "policies.manage", label: "Write and publish policies", hint: "Versions, archive and delete.", group: "Company", admin: true },
+  { id: "settings.manage", label: "Change leave types and HR settings", hint: "Leave types, work week, approval defaults.", group: "Company", admin: true },
+  { id: "org.manage", label: "Manage departments, roles and approval flow", hint: "This page.", group: "Company", admin: true },
+  { id: "payroll.view", label: "See pay and payroll", hint: "Salaries, payslips and payroll runs.", group: "Money", admin: true },
 ];
 export const permissionLabel = (id: OrgPermission) => permissionCatalog.find((item) => item.id === id)?.label ?? id;
 
-export const chainLabels: Record<HrDepartment["chain"], string> = { default: "Company default", manager: "Approver only", manager_hr: "Approver, then HR", hr: "HR only" };
-export const routeLabels: Record<HrDepartment["leaveRoute"], string> = { reporting_manager: "Employee's reporting manager", department_head: "Department head" };
+export const stepLabels: Record<ApprovalStepKind, string> = { manager: "Reporting manager", head: "Department head", upper_head: "Head of the department above", hr: "HR" };
+/** What a leave type's own approver setting means as levels. */
+export const typeSteps = (approval: string): ApprovalStepKind[] | null => approval === "manager" ? ["manager"] : approval === "manager_hr" ? ["manager", "hr"] : approval === "hr" ? ["hr"] : null;
+export const companySteps = (settings: HrPolicySettings): ApprovalStepKind[] => settings.approvalChain === "manager" ? ["manager"] : ["manager", "hr"];
+export const stepsText = (steps: ApprovalStepKind[]) => steps.map((step) => stepLabels[step]).join(" → ");
 
 type Org = { departments: HrDepartment[]; roles: HrRoleDef[]; assignments: Record<string, string> };
 
@@ -43,36 +47,51 @@ export function descendants(departments: HrDepartment[], departmentId: string) {
 }
 export const wouldLoop = (departments: HrDepartment[], departmentId: string, parentId: string | null) => parentId !== null && (parentId === departmentId || descendants(departments, departmentId).has(parentId));
 
-/** Who a new leave request goes to first, following the employee's department route. */
-export function approverFor(employee: HrEmployee, org: Org, employees: HrEmployee[], away?: { leaves: HrLeaveRequest[]; from: string }): { id: string | null; name: string | null; viaBackup?: boolean } {
-  const first = approverBeforeBackup(employee, org, employees);
-  const own = departmentByName(org.departments, employee.department);
-  const backup = employees.find((item) => item.id === own?.backupApproverId && item.status !== "archived" && item.id !== employee.id);
-  const gone = Boolean(away && first.id && away.leaves.some((item) => item.employeeId === first.id && item.status === "approved" && item.from <= away.from && item.to >= away.from));
-  return gone && backup && backup.id !== first.id ? { id: backup.id, name: backup.name, viaBackup: true } : first;
+export interface RouteStep { kind: "person" | "hr"; id?: string; name: string; label: string; viaBackup?: boolean }
+
+/** The department's own route for this many days, or the leave type's, or the company default. */
+export function stepsFor(settings: HrPolicySettings, department: HrDepartment | undefined, typeApproval: string, days: number): ApprovalStepKind[] {
+  const forType = typeSteps(typeApproval);
+  if (forType) return forType;
+  if (department?.longLeave && days >= department.longLeave.minDays) return department.longLeave.steps;
+  return department?.steps ?? companySteps(settings);
 }
 
-function approverBeforeBackup(employee: HrEmployee, org: Org, employees: HrEmployee[]): { id: string | null; name: string | null } {
-  const manager = employees.find((item) => item.id === employee.managerId && item.status !== "archived");
+/**
+ * The people a leave request must pass, in order. Skips the requester and anyone already on the route,
+ * swaps in the department's backup when the approver is away on the start date, and falls back to HR
+ * if nobody can be found, so a request never has nowhere to go.
+ */
+export function resolveRoute(employee: HrEmployee, org: Org, employees: HrEmployee[], settings: HrPolicySettings, options: { typeApproval?: string; days?: number; away?: { leaves: HrLeaveRequest[]; from: string } } = {}): RouteStep[] {
   const own = departmentByName(org.departments, employee.department);
-  const fallback = { id: manager?.id ?? null, name: manager?.name ?? null };
-  if (!own || own.leaveRoute !== "department_head") return fallback;
-  // Nearest head above (or at) the department who is not the requester and still works here.
-  for (const department of ancestry(org.departments, own.id)) {
-    const head = employees.find((item) => item.id === department.headId && item.status !== "archived" && item.id !== employee.id);
-    if (head) return { id: head.id, name: head.name };
+  const steps = stepsFor(settings, own, options.typeApproval ?? "default", options.days ?? 1);
+  const works = (id: string | null | undefined) => employees.find((item) => item.id === id && item.status !== "archived" && item.id !== employee.id);
+  const out: RouteStep[] = [];
+  const used = new Set<string>();
+  const chain = ancestry(org.departments, own?.id ?? null);
+  const backup = works(own?.backupApproverId);
+  const isAway = (id: string) => Boolean(options.away && options.away.leaves.some((item) => item.employeeId === id && item.status === "approved" && item.from <= options.away!.from && item.to >= options.away!.from));
+  for (const step of steps) {
+    if (step === "hr") { if (!out.some((item) => item.kind === "hr")) out.push({ kind: "hr", name: "HR", label: stepLabels.hr }); continue; }
+    let person = step === "manager" ? works(employee.managerId)
+      : step === "head" ? chain.map((department) => works(department.headId)).find(Boolean)
+      : chain.slice(1).map((department) => works(department.headId)).find((head) => head && !used.has(head.id));
+    if (!person || used.has(person.id)) continue;
+    let viaBackup = false;
+    if (backup && isAway(person.id) && backup.id !== person.id && !used.has(backup.id)) { person = backup; viaBackup = true; }
+    used.add(person.id);
+    out.push({ kind: "person", id: person.id, name: person.name, label: stepLabels[step], viaBackup });
   }
-  return fallback;
+  return out.length ? out : [{ kind: "hr", name: "HR", label: stepLabels.hr }];
 }
 
-/** The chain for a request: leave type override first, then the department, then the company default. */
-export function chainForDepartment(settings: HrPolicySettings, typeApproval: string, department?: HrDepartment): HrPolicySettings["approvalChain"] | "hr" | "manager" {
-  if (typeApproval !== "default") return typeApproval as "hr" | "manager" | "manager_hr";
-  if (department && department.chain !== "default") return department.chain;
-  return settings.approvalChain;
+/** The chain as the older single-step model understood it. Only used for requests made before routes existed. */
+export function chainForDepartment(settings: HrPolicySettings, typeApproval: string, department?: HrDepartment): "manager_hr" | "manager" | "hr" {
+  const steps = typeSteps(typeApproval) ?? department?.steps ?? companySteps(settings);
+  return steps.length === 1 && steps[0] === "hr" ? "hr" : steps.includes("hr") ? "manager_hr" : "manager";
 }
 
-/** True when the actor may approve at the manager step because of a department role, not a direct report line. */
+/** True when the actor may approve at a manager step because of a department role, not a direct report line. */
 export function approvesForDepartment(org: Org, actorId: string, employee: HrEmployee) {
   if (!hasPermission(org, actorId, "leave.approve_department")) return false;
   const own = departmentByName(org.departments, employee.department);
@@ -82,18 +101,3 @@ export const isBackupFor = (org: Org, actorId: string, employee: HrEmployee) => 
   const own = departmentByName(org.departments, employee.department);
   return Boolean(own && own.backupApproverId === actorId);
 };
-
-/** A plain-language route for one person, used for the "who approves?" preview. */
-export function approvalPath(employee: HrEmployee, org: Org, employees: HrEmployee[], settings: HrPolicySettings, typeApproval = "default") {
-  const own = departmentByName(org.departments, employee.department);
-  const first = approverFor(employee, org, employees);
-  const chain = chainForDepartment(settings, typeApproval, own);
-  const steps: string[] = [];
-  if (chain === "hr") steps.push("HR decides");
-  else {
-    steps.push(first.name ? `${first.name} (${own?.leaveRoute === "department_head" ? "department head" : "reporting manager"}) approves` : "No manager on record, so HR decides");
-    if (first.name && chain === "manager_hr") steps.push("HR gives final approval");
-  }
-  const backup = own?.backupApproverId ? employees.find((item) => item.id === own.backupApproverId) : undefined;
-  return { steps, backup: backup?.name ?? null, chain, department: own?.name ?? employee.department };
-}
