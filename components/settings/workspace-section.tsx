@@ -226,7 +226,7 @@ function BusinessOverviewPanel() {
   const rich = demoMode && isFirstCompany;
   const people = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
   return (
-    <div className="mt-3 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-1 sm:mt-4 sm:p-2">
+    <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">

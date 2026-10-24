@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { CompanyLogo } from "@/components/shared/company-logo";
+import { LogoPicker } from "@/components/shared/logo-picker";
 import { SectionCard } from "@/components/settings/section-ui";
 import { addCompany, newCompanyId, readCompanies, switchCompany, updateCompany, type CompanyRecord } from "@/lib/company";
 
@@ -37,6 +39,7 @@ export function CompanyWizard({ finishId }: { finishId?: string }) {
   const [name, setName] = React.useState(finishing?.name ?? "");
   const [industry, setIndustry] = React.useState(finishing?.industry ?? industries[0]);
   const [city, setCity] = React.useState(finishing?.city ?? "");
+  const [logo, setLogo] = React.useState<string | undefined>(finishing?.logo);
   const [size, setSize] = React.useState(finishing?.size ?? sizes[1]);
   const [template, setTemplate] = React.useState<CompanyRecord["template"]>(finishing?.template ?? "blank");
   const [workspaces, setWorkspaces] = React.useState<string[]>(finishing?.workspaces ?? ["crm-sales", "hr-people"]);
@@ -60,7 +63,7 @@ export function CompanyWizard({ finishId }: { finishId?: string }) {
   }
   function finish() {
     if (profileError) { setStep(0); return; }
-    const record: CompanyRecord = { id: finishId ?? newCompanyId(name, existing), name: name.trim(), industry, city: city.trim(), template, workspaces, setupDone: true, size, team, createdAt: finishing?.createdAt ?? new Date().toISOString().slice(0, 10) };
+    const record: CompanyRecord = { id: finishId ?? newCompanyId(name, existing), name: name.trim(), industry, city: city.trim(), template, workspaces, setupDone: true, size, team, logo, createdAt: finishing?.createdAt ?? new Date().toISOString().slice(0, 10) };
     if (finishing) updateCompany(record.id, record); else addCompany(record);
     toast.success(`${record.name} is ready.`);
     switchCompany(record.id);
@@ -79,6 +82,7 @@ export function CompanyWizard({ finishId }: { finishId?: string }) {
       <main className="min-w-0">
         <SectionCard title={`${step + 1}. ${steps[step].label}`} description={steps[step].description}>
           {step === 0 && <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2"><LogoPicker id={finishId ?? "new"} name={name} value={logo} onChange={setLogo} /></div>
             <label className="grid gap-1.5 text-xs text-muted-foreground sm:col-span-2">Company name<Input autoFocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} placeholder="e.g. Sunrise Foods Pvt Ltd" /></label>
             <label className="grid gap-1.5 text-xs text-muted-foreground">Industry<select className="h-9 border border-border bg-surface px-3 text-sm text-foreground" value={industry} onChange={(event) => setIndustry(event.target.value)}>{industries.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label className="grid gap-1.5 text-xs text-muted-foreground">City<Input value={city} maxLength={40} onChange={(event) => setCity(event.target.value)} placeholder="e.g. Jaipur" /></label>
@@ -103,7 +107,7 @@ export function CompanyWizard({ finishId }: { finishId?: string }) {
             {team.length === 0 ? <p className="text-sm text-muted-foreground">No one added yet. You can skip this and add people later from HR & People.</p> : <ul className="divide-y divide-border border border-border">{team.map((person) => <li key={person.email} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span className="flex min-w-0 items-center gap-2"><UsersRound className="size-4 shrink-0 text-muted-foreground" aria-hidden /><span className="truncate"><span className="font-medium">{person.name}</span> <span className="text-muted-foreground">· {person.title}{person.department ? ` · ${person.department}` : ""}</span></span></span><Button type="button" size="sm" variant="ghost" aria-label={`Remove ${person.name}`} onClick={() => setTeam((current) => current.filter((item) => item.email !== person.email))}><Trash2 className="size-4" /></Button></li>)}</ul>}
           </div>}
           {step === 4 && <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            <div><dt className="text-xs text-muted-foreground">Company</dt><dd className="font-medium">{name.trim()}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Company</dt><dd className="flex items-center gap-2 font-medium"><CompanyLogo company={{ id: finishId ?? "new", name, logo }} size={24} />{name.trim()}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Industry and city</dt><dd>{industry} · {city.trim()}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Starting point</dt><dd>{templates.find((item) => item.id === template)?.title}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Workspaces</dt><dd>{workspaces.map((id) => workspaceOptions.find((item) => item.id === id)?.name).join(", ") || "Business Management only"}</dd></div>
