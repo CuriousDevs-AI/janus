@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { conversations, dealRows, lakh, leadRows, stats as crm } from "@/lib/demo-universe";
+import { tickets } from "@/lib/mock-data/tickets";
 import { useSearchParams } from "next/navigation";
 import { Bookmark, Check, Globe2, Link2, Loader2, MessageSquare, MessageSquarePlus, Pencil, Plus, Search, Send, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
@@ -40,20 +42,25 @@ type Turn = {
 
 function demoCrmAnswer(question: string): BusinessAnswer {
   const normalized = question.toLowerCase();
+  const open = dealRows.filter((item) => !["won", "lost"].includes(item.stage));
+  const top = [...open].sort((x, y) => Number(y.amount) - Number(x.amount)).slice(0, 2);
+  const quietLeads = leadRows.filter((item) => item.stage === "new").slice(0, 3);
+  const openTickets = tickets.filter((item) => !["resolved", "closed"].includes(item.status));
+  const urgent = openTickets.filter((item) => item.priority === "urgent" || item.status === "escalated");
   if (normalized.includes("lead") || normalized.includes("attention")) {
     return {
       question,
-      answer: "Riya Kapoor is the highest-priority follow-up today. She asked for pricing for a multi-store rollout and already has a qualified ₹4.8L deal. Neha Verma is next because her proposal is open and the last activity was yesterday. Amit Shah is a new missed-call lead and needs a callback.",
-      dataUsed: ["3 demo leads", "2 demo deals", "Unified chat activity"],
-      calculation: { metric: "Lead priority and next action", period: "Current CRM snapshot", filters: "open leads owned by Pankaj Neema", sources: "Demo leads, deals and conversations" },
-      followups: ["Show the two open deals", "Draft a WhatsApp follow-up for Riya", "Create a callback task for Amit"],
+      answer: `${top[0]?.company} has the biggest open deal at ${lakh(Number(top[0]?.amount))} and is waiting on a reply. ${quietLeads.map((item) => `${item.contactName} (${item.company})`).join(", ")} are new enquiries with no first response yet.`,
+      dataUsed: [`${crm.leads} demo leads`, `${crm.deals} demo deals`, "Unified chat activity"],
+      calculation: { metric: "Lead priority and next action", period: "Current CRM snapshot", filters: "open leads sorted by deal value and age", sources: "Demo leads, deals and conversations" },
+      followups: ["Show the open deals", `Draft a WhatsApp follow-up for ${top[0]?.customerName}`, `Create a callback task for ${quietLeads[0]?.contactName}`],
     };
   }
   if (normalized.includes("pipeline") || normalized.includes("deal") || normalized.includes("revenue")) {
     return {
       question,
-      answer: "The open pipeline is ₹7.55L across two active deals: Northstar support rollout at ₹4.8L in Qualified and Acme distributor operations at ₹2.75L in Proposal. No demo deal is marked Won yet, so the next best action is to follow up on the proposal and confirm the decision timeline.",
-      dataUsed: ["2 demo deals", "3 demo customers", "Pipeline stages"],
+      answer: `The open pipeline is ${lakh(crm.pipeline)} across ${crm.openDeals} active deals. The largest are ${top.map((item) => `${item.name} at ${lakh(Number(item.amount))} in ${item.stage}`).join(" and ")}. ${crm.wonDeals} deals are won, worth ${lakh(crm.wonValue)}.`,
+      dataUsed: [`${crm.deals} demo deals`, `${crm.buyers} demo customers`, "Pipeline stages"],
       calculation: { metric: "Open pipeline value", period: "Current CRM snapshot", filters: "stages excluding Won and Lost", sources: "Demo deals" },
       followups: ["Which deal should I follow up first?", "Show proposal-stage activity", "Create a next-step task"],
     };
@@ -61,15 +68,15 @@ function demoCrmAnswer(question: string): BusinessAnswer {
   if (normalized.includes("support") || normalized.includes("ticket")) {
     return {
       question,
-      answer: "There are 8 demo support tickets. Four still need attention, including two escalated urgent issues. The most useful next step is to review the escalated tickets first, then assign the open SLA-risk ticket to the support owner.",
-      dataUsed: ["8 demo tickets", "Customer timeline", "SLA status"],
+      answer: `There are ${tickets.length} support tickets and ${openTickets.length} are still open, ${urgent.length} urgent or escalated. Start with ${urgent[0]?.number}: ${urgent[0]?.subject}.`,
+      dataUsed: [`${tickets.length} demo tickets`, "Customer timeline", "SLA status"],
       calculation: { metric: "Open support workload", period: "Current CRM snapshot", filters: "open, escalated and AI-handling tickets", sources: "Demo tickets" },
       followups: ["Show escalated tickets", "Which customers are at risk?", "Draft a customer update"],
     };
   }
   return {
     question,
-    answer: "Janus is using the connected demo CRM records: 3 leads, 2 open deals worth ₹7.55L, 3 customer profiles, 8 support tickets and two active conversations. Ask about leads, pipeline, customer risk or support to see a grounded answer.",
+    answer: `Janus is using the connected demo records for Acme Traders: ${crm.leads} leads, ${crm.openDeals} open deals worth ${lakh(crm.pipeline)}, ${crm.buyers} customers, ${tickets.length} support tickets and ${conversations.length} conversations. Ask about leads, pipeline, customer risk or support to see a grounded answer.`,
     dataUsed: ["Leads", "Deals", "Customers", "Tickets", "Chats"],
     calculation: { metric: "Connected CRM snapshot", period: "Current demo records", filters: "CRM & Sales workspace", sources: "Local demo data" },
     followups: ["Which leads need attention today?", "What is our open pipeline?", "What support needs attention?"],
