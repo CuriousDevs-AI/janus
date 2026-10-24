@@ -1,36 +1,17 @@
 "use client";
-import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, Search, LogOut } from "lucide-react";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
-import { getNavSectionsForWorkspace } from "@/lib/nav-config";
+import { usePageTitle } from "@/components/layout/use-page-title";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { Button } from "@/components/ui/button";
 export function Topbar() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const { workspaceId, workspace } = useWorkspace();
+  const { workspace } = useWorkspace();
   const session = useSession();
   const signOut = useSignOut();
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const setMobile = useUIStore((s) => s.setMobileNavOpen);
-  const title =
-    getNavSectionsForWorkspace(workspaceId)
-      .flatMap((s) => s.items)
-      .find(
-        (item) => {
-          const [itemPath, itemQuery] = item.href.split("?");
-          if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
-          const itemParams = new URLSearchParams(itemQuery ?? "");
-          for (const [key, value] of itemParams.entries()) {
-            if (searchParams.get(key) !== value) return false;
-          }
-          for (const [key] of searchParams.entries()) {
-            if (key !== "workspace" && !itemParams.has(key)) return false;
-          }
-          return true;
-        },
-      )?.label || "Janus";
+  const title = usePageTitle();
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
       <div className="flex min-w-0 items-center gap-3">
