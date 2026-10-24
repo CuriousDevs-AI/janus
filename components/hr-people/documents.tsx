@@ -1,0 +1,275 @@
+"use client";
+
+import * as React from "react";
+import { ArrowLeft, CheckCheck, Download, FileSignature, FileText, Folder, History, LockKeyhole, Search, ShieldCheck, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+import { demoHrSignatureProvider, loadHrFile, saveHrFile, useHrDocumentStore, type CompanyPolicy, type DocumentExtras, type DocumentSigner } from "@/lib/stores/hr-document-store";
+import type { DocumentVisibility, HrDemoRole, HrDocument, HrEmployee, HrSignatureAudit, SignatureStatus } from "@/lib/types";
+
+export interface HrDocumentsProps { role: HrDemoRole; actorId: string; personal?: boolean }
+const inputClass = "h-9 w-full border border-border bg-surface px-3 text-sm rounded-none";
+const panelClass = "border border-border bg-surface";
+const protectedCategory = /salary|compensation|tax|bank|pan|uan|esi|payroll|settlement|disciplinary|warning/i;
+const categories = ["Identity & verification", "Offer letter", "Employment agreement", "NDA & confidentiality", "Policy acknowledgement", "Salary & compensation", "Tax & statutory", "Bank / PAN / UAN / ESI", "Performance review", "Warning / disciplinary", "Exit clearance", "Full & final settlement", "Experience letter", "Relieving letter"];
+const visibilityLabels: Record<DocumentVisibility, string> = { employee: "Employee only", employee_manager: "Employee & reporting manager", hr: "HR only", payroll: "Payroll authorised users", business_management: "Business Management authorised users", selected_roles: "Selected HR roles" };
+const signatureLabels: Record<SignatureStatus, string> = { draft: "Draft", sent: "Sent for signature", viewed: "Viewed", partially_signed: "Partially signed", signed: "Signed", rejected: "Rejected", expired: "Expired", cancelled: "Cancelled" };
+const templates = ["NDA & confidentiality", "Offer letter", "Employment agreement", "Policy acknowledgement", "Salary revision letter", "Warning / notice letter", "Exit clearance", "Full & final acknowledgement", "Experience letter", "Relieving letter"];
+const date = (value?: string | null) => value ? new Date(value).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Not set";
+const nowDate = () => new Date().toISOString().slice(0, 10);
+const canManage = (role: HrDemoRole) => role === "owner" || role === "hr_manager";
+const isPayroll = (item: HrDocument) => /salary|compensation|tax|bank|pan|uan|esi|payroll|settlement/i.test(item.category);
+function signatureState(document: HrDocument): SignatureStatus {
+  return document.expiresAt && document.expiresAt < nowDate() && ["sent", "viewed", "partially_signed"].includes(document.signatureStatus) ? "expired" : document.signatureStatus;
+}
+function canRead(document: HrDocument, role: HrDemoRole, actorId: string, employees: HrEmployee[], extra?: DocumentExtras, personal = false) {
+  const own = document.employeeId === actorId;
+  if (personal) return own && ["employee", "employee_manager"].includes(document.visibility);
+  if (canManage(role)) return true;
+  if (role === "business_manager") return false;
+  if (role === "payroll_admin") return isPayroll(document) && document.visibility !== "hr";
+  if (own && ["employee", "employee_manager"].includes(document.visibility)) return true;
+  if (role === "reporting_manager") return !protectedCategory.test(document.category) && document.visibility === "employee_manager" && employees.some((item) => item.id === document.employeeId && item.managerId === actorId);
+  return document.visibility === "selected_roles" && (extra?.selectedRoles ?? []).includes(role);
+}
+function Status({ document }: { document: HrDocument }) {
+  const state = signatureState(document);
+  const value = document.status === "missing" ? "Missing" : document.status === "archived" ? "Archived" : state === "draft" ? "Available" : signatureLabels[state];
+  return <Badge variant={["Signed", "Available"].includes(value) ? "success" : ["Missing", "Rejected", "Expired"].includes(value) ? "danger" : "neutral"}>{value}</Badge>;
+}
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">{label}{children}</label>; }
+function sampleBody(document: HrDocument) {
+  return `SAMPLE DOCUMENT · NOT A LEGAL INSTRUMENT\n\n${document.name}\n${document.employeeName} · ${document.employeeId.toUpperCase()}\nVersion ${document.version} · Issued ${date(document.issuedAt)}\n\nThis example demonstrates the employee document lifecycle in Janus. The employee and company should review the agreed terms, dates and responsibilities before an actual document is issued.\n\nThis sample does not contain an uploaded original. Upload your own file to review a real document locally. Demo signatures are UI states only and are not legal electronic signatures.`;
+}
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = fileName; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function HrDocumentsView(props: HrDocumentsProps) { return <DocumentCentre {...props} />; }
+export function HrSignaturesView(props: HrDocumentsProps) { return <div className="space-y-5"><DocumentCentre {...props} signaturesOnly /><SignatureAuditTimeline role={props.role} actorId={props.actorId} /></div>; }
+
+const auditLabels: Record<HrSignatureAudit["event"], string> = { sent: "Sent for signature", viewed: "Viewed", signed: "Signed", rejected: "Rejected", cancelled: "Request cancelled" };
+function SignatureAuditTimeline({ role, actorId }: { role: HrDemoRole; actorId: string }) {
+  const { documents, signatureAudits, employees } = useHrPeopleStore();
+  const { extras } = useHrDocumentStore();
+  const visibleIds = new Set(documents.filter((item) => canRead(item, role, actorId, employees, extras[item.id])).map((item) => item.id));
+  const entries = signatureAudits.filter((item) => visibleIds.has(item.documentId)).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  return <section aria-label="Signature audit timeline" className={panelClass}>
+    <div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Signature audit timeline</h2><p className="mt-1 text-xs text-muted-foreground">Newest first. Records are append-only demo events, not legal evidence.</p></div>
+    {entries.length ? <ol className="divide-y divide-border">{entries.map((item) => <li key={item.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 text-sm"><div><p className="font-medium">{auditLabels[item.event]} · {item.documentName}</p><p className="mt-1 text-xs text-muted-foreground">{item.employeeName} · by {item.actorName} · {item.device}</p></div><time dateTime={item.occurredAt} className="text-xs text-muted-foreground">{new Date(item.occurredAt).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</time></li>)}</ol> : <p className="p-6 text-center text-sm text-muted-foreground">No signature activity yet.</p>}
+  </section>;
+}
+
+function DocumentCentre({ role, actorId, personal = false, signaturesOnly = false }: HrDocumentsProps & { signaturesOnly?: boolean }) {
+  const { employees, documents } = useHrPeopleStore();
+  const { extras, policies, acknowledgements } = useHrDocumentStore();
+  const [scope, setScope] = React.useState<"employees" | "company">("employees");
+  const [folderId, setFolderId] = React.useState<string | null>(personal ? actorId : null);
+  const [query, setQuery] = React.useState("");
+  const [filter, setFilter] = React.useState("all");
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [upload, setUpload] = React.useState<{ document?: HrDocument; company?: boolean } | null>(null);
+  const [templateOpen, setTemplateOpen] = React.useState(false);
+  const manager = canManage(role);
+  const actor = employees.find((item) => item.id === actorId);
+  const visible = documents.filter((item) => canRead(item, role, actorId, employees, extras[item.id], personal));
+  const currentFolderId = personal ? actorId : folderId;
+  const folder = employees.find((item) => item.id === currentFolderId);
+  const folderEmployees = employees.filter((item) => (personal ? item.id === actorId : manager || role === "payroll_admin" || (role === "reporting_manager" && (item.managerId === actorId || item.id === actorId)) || item.id === actorId));
+  const data = scope === "company" ? policies : visible.filter((item) => !currentFolderId || item.employeeId === currentFolderId);
+  const rows = data.filter((item) => `${item.name} ${item.employeeName} ${item.employeeId} ${item.category}`.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "missing" ? item.status === "missing" : filter === "archived" ? item.status === "archived" : filter === "action" ? ["sent", "viewed", "partially_signed"].includes(signatureState(item)) : signatureState(item) === filter)) && (!signaturesOnly || item.signatureStatus !== "draft") && (filter === "archived" || item.status !== "archived"));
+  const selected = [...visible, ...policies].find((item) => item.id === selectedId);
+  const expected = visible.filter((item) => item.status !== "archived");
+  const missing = expected.filter((item) => item.status === "missing").length;
+  const awaiting = expected.filter((item) => ["sent", "viewed", "partially_signed"].includes(signatureState(item))).length;
+  if (role === "business_manager" && !personal) return <div className={`${panelClass} p-8 text-center`}><LockKeyhole className="mx-auto mb-3 size-7 text-muted-foreground" /><h3 className="font-semibold">HR documents are restricted</h3><p className="mt-2 text-sm text-muted-foreground">Business Management access does not grant access to employee files. Ask an HR administrator for the appropriate workspace role.</p></div>;
+  return <div className="space-y-5">
+    <div className="grid gap-3 sm:grid-cols-3">{[{ title: personal ? "My available documents" : "Available documents", value: expected.length - missing, text: "Organised by employee and lifecycle" }, { title: "Missing documents", value: missing, text: "Upload required documents below" }, { title: "Awaiting signatures", value: awaiting, text: "Review and sign from your own account" }].map((item) => <div key={item.title} className={`${panelClass} p-4`}><p className="text-xs font-medium text-muted-foreground">{item.title}</p><p className="mt-2 text-2xl font-semibold">{item.value}</p><p className="mt-1 text-xs text-muted-foreground">{item.text}</p></div>)}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      {!signaturesOnly ? <div className="flex flex-wrap gap-1 border border-border bg-surface-2 p-1" role="tablist" aria-label="Document library"><button id="doc-tab-employees" role="tab" aria-selected={scope === "employees"} aria-controls="doc-panel" onClick={() => { setScope("employees"); setFilter("all"); }} className={`px-4 py-2 text-sm ${scope === "employees" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"}`}>{personal ? "My documents" : "Employee folders"}</button><button id="doc-tab-company" role="tab" aria-selected={scope === "company"} aria-controls="doc-panel" onClick={() => { setScope("company"); setFilter("all"); }} className={`px-4 py-2 text-sm ${scope === "company" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"}`}>Company policies</button></div> : <p className="text-sm text-muted-foreground">Track document reviews and signatures. Demo only — no emails or legal signatures are sent.</p>}
+      <div className="flex gap-2">{manager && !personal && scope !== "company" && <Button variant="outline" onClick={() => setTemplateOpen(true)}><FileSignature className="mr-2 size-4" />Use template</Button>}{(manager || personal) && <Button onClick={() => setUpload({ company: scope === "company" })} disabled={scope === "company" && !manager}><Upload className="mr-2 size-4" />{scope === "company" ? "Add policy" : "Upload document"}</Button>}</div>
+    </div>
+    <div id="doc-panel" role={signaturesOnly ? undefined : "tabpanel"} aria-labelledby={signaturesOnly ? undefined : `doc-tab-${scope}`} className={`${panelClass} overflow-hidden`}>
+      <div className="flex flex-wrap items-center gap-3 border-b border-border p-4"><div className="relative min-w-48 flex-1"><Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Search documents or employees" placeholder="Search name, employee ID or document…" value={query} onChange={(event) => setQuery(event.target.value)} className="rounded-none pl-9" /></div><select aria-label="Filter document status" className={`${inputClass} max-w-48`} value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All statuses</option><option value="missing">Missing</option><option value="action">Awaiting signature</option><option value="signed">Signed</option><option value="rejected">Rejected</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="archived">Archived</option></select></div>
+      {scope === "employees" && !personal && !signaturesOnly && !currentFolderId && !query && filter === "all" ? <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">{folderEmployees.map((employee) => {
+        const files = visible.filter((item) => item.employeeId === employee.id && item.status !== "archived"); const due = files.filter((item) => item.status === "missing").length;
+        return <button key={employee.id} onClick={() => setFolderId(employee.id)} className="group border border-border p-4 text-left transition-colors hover:border-accent hover:bg-surface-2"><div className="mb-3 flex items-center justify-between"><Folder className="size-6 text-accent" /><span className="font-mono text-xs text-muted-foreground">{employee.id.toUpperCase()}</span></div><p className="font-medium">{employee.name}</p><p className="mt-1 text-xs text-muted-foreground">{employee.department} · {employee.title}</p><div className="mt-4 flex flex-wrap gap-2"><Badge variant="neutral">{files.length} documents</Badge>{due > 0 && <Badge variant="warning">{due} missing</Badge>}<span className="text-xs text-muted-foreground">{employee.status}</span></div></button>;
+      })}{!folderEmployees.length && <p className="p-6 text-sm text-muted-foreground">No employee folders are assigned to your role.</p>}</div> : <>
+      {scope === "employees" && folder && <div className="flex items-center gap-3 border-b border-border bg-surface-2 p-4">{!personal && <Button size="icon" variant="ghost" aria-label="Back to employee folders" onClick={() => setFolderId(null)}><ArrowLeft className="size-4" /></Button>}<div><h2 className="text-sm font-semibold">{folder.name} <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{folder.id.toUpperCase()}</span></h2><p className="mt-1 text-xs text-muted-foreground">{folder.title} · {folder.department} · Joined {date(folder.joiningDate)}</p></div></div>}
+      <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm"><thead className="border-b border-border bg-surface-2 text-xs text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Document</th>{!personal && <th className="px-4 py-3 font-medium">Owner</th>}<th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Issued / expires</th><th className="px-4 py-3 font-medium">Action</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-2/50"><td className="px-4 py-4"><button className="text-left font-medium hover:text-accent" onClick={() => setSelectedId(item.id)}>{item.name}</button><p className="mt-1 text-xs text-muted-foreground">{item.category} · v{item.version}{extras[item.id]?.fileName ? ` · ${extras[item.id].fileName}` : " · Sample"}</p></td>{!personal && <td className="px-4 py-4"><p>{item.employeeName}</p><p className="text-xs text-muted-foreground">{item.employeeId.toUpperCase()}</p></td>}<td className="px-4 py-4"><Status document={item} />{scope === "company" && acknowledgements[`${item.id}:${item.version}:${actorId}`] && <p className="mt-1 text-xs text-success">Acknowledged</p>}</td><td className="px-4 py-4 text-xs text-muted-foreground"><p>{date(item.issuedAt)}</p><p>{item.expiresAt ? `Expires ${date(item.expiresAt)}` : "No expiry"}</p></td><td className="px-4 py-4"><Button size="sm" variant="outline" onClick={() => item.status === "missing" && (manager || item.employeeId === actorId) ? setUpload({ document: item }) : setSelectedId(item.id)}>{item.status === "missing" && (manager || item.employeeId === actorId) ? "Upload" : "Review"}</Button></td></tr>)}</tbody></table></div>
+      {!rows.length && <div className="p-10 text-center"><FileText className="mx-auto mb-3 size-7 text-muted-foreground" /><h3 className="text-sm font-medium">No documents match this view</h3><p className="mt-1 text-xs text-muted-foreground">Try another status or search, or upload a document for this employee.</p></div>}
+      </>}
+    </div>
+    <p className="flex items-start gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-4 shrink-0" />Only documents permitted for your role appear here. Demo uploads are stored in this browser, up to 10 MB per file. Use sample files, not real identity or bank records.</p>
+    {upload && <UploadDialog role={role} actorId={actorId} personal={personal} initialEmployeeId={currentFolderId ?? actorId} document={upload.document} company={upload.company} onClose={() => setUpload(null)} />}
+    {templateOpen && <TemplateDialog actorId={actorId} initialEmployeeId={currentFolderId ?? ""} onClose={() => setTemplateOpen(false)} onCreated={(id) => { setTemplateOpen(false); setSelectedId(id); }} />}
+    {selected && <DocumentDialog key={`${selected.id}:${actorId}:${role}`} document={selected} role={role} actorId={actorId} personal={personal} company={selected.employeeId === "company"} onClose={() => setSelectedId(null)} onUpload={() => { setSelectedId(null); setUpload({ document: selected, company: selected.employeeId === "company" }); }} />}
+    {!actor && <p className="text-sm text-danger">This account is not linked to an employee record. Ask HR to link your account before signing.</p>}
+  </div>;
+}
+
+function UploadDialog({ role, actorId, personal, initialEmployeeId, document, company = false, onClose }: HrDocumentsProps & { initialEmployeeId: string; document?: HrDocument; company?: boolean; onClose: () => void }) {
+  const { employees, addDocument, updateDocument } = useHrPeopleStore();
+  const { extras, patch, record, savePolicy } = useHrDocumentStore();
+  const [employeeId, setEmployeeId] = React.useState(document?.employeeId ?? initialEmployeeId);
+  const [name, setName] = React.useState(document?.name ?? "");
+  const [category, setCategory] = React.useState(document?.category ?? (company ? "Policy acknowledgement" : "Identity & verification"));
+  const [visibility, setVisibility] = React.useState<DocumentVisibility>(document?.visibility ?? "employee");
+  const [issuedAt, setIssuedAt] = React.useState(document?.issuedAt ?? nowDate());
+  const [expiresAt, setExpiresAt] = React.useState(document?.expiresAt ?? "");
+  const [selectedRoles, setSelectedRoles] = React.useState<HrDemoRole[]>(document ? extras[document.id]?.selectedRoles ?? [] : []);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const manager = canManage(role) && !personal;
+  async function save(event: React.FormEvent) {
+    event.preventDefault(); setError("");
+    if (!file) { setError("Choose the document file to upload."); return; }
+    if (!name.trim()) { setError("Enter a document name."); return; }
+    if (expiresAt && expiresAt < issuedAt) { setError("Expiry must be on or after the issue date."); return; }
+    if (visibility === "selected_roles" && !selectedRoles.length) { setError("Select at least one authorised role."); return; }
+    const employee = employees.find((item) => item.id === (personal ? actorId : employeeId));
+    if (!company && !employee) { setError("Choose an employee."); return; }
+    const id = document?.id ?? `doc-${crypto.randomUUID()}`; const version = document ? document.version + (document.status === "missing" ? 0 : 1) : 1;
+    const key = `${id}:${version}:${crypto.randomUUID()}`;
+    setBusy(true);
+    try {
+      await saveHrFile(key, file);
+      const actor = employees.find((item) => item.id === actorId)?.name ?? "HR";
+      const entry: HrDocument = { id, employeeId: company ? "company" : employee!.id, employeeName: company ? "Company library" : employee!.name, name: name.trim(), category, visibility: manager ? visibility : "employee", version, status: "current", signatureStatus: "draft", issuedAt: issuedAt || null, expiresAt: expiresAt || null, ownerName: actor, acknowledgedAt: null };
+      const previous = document && document.status !== "missing" ? [{ version: document.version, fileName: extras[id]?.fileName, mime: extras[id]?.mime, size: extras[id]?.size, fileKey: extras[id]?.fileKey, body: extras[id]?.body ?? sampleBody(document), savedAt: new Date().toISOString(), savedBy: document.ownerName, signatureStatus: document.signatureStatus }, ...(extras[id]?.versions ?? [])] : extras[id]?.versions ?? [];
+      patch(id, { fileName: file.name, mime: file.type, size: file.size, fileKey: key, body: undefined, versions: previous, selectedRoles: visibility === "selected_roles" ? selectedRoles : [], signers: [] });
+      if (company) savePolicy({ ...entry, body: "" }); else if (document) updateDocument(id, entry); else addDocument(entry);
+      record(id, { actor, event: document ? "New file version uploaded" : "Document uploaded", version, detail: `${file.name} · ${visibilityLabels[entry.visibility]} · Local browser storage` });
+      toast.success(`Document v${version} saved locally`); onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "The document could not be stored."); } finally { setBusy(false); }
+  }
+  return <Dialog open onOpenChange={(open) => !open && !busy && onClose()}><DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto rounded-none"><DialogHeader><DialogTitle>{document ? document.status === "missing" ? "Upload missing document" : "Upload a new version" : company ? "Add company policy" : "Upload employee document"}</DialogTitle><DialogDescription>PDF, image or office file · up to 10 MB. Previous versions are retained. Files stay in this browser.</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4">{!company && <Field label="Employee"><select className={inputClass} value={personal ? actorId : employeeId} disabled={personal || Boolean(document)} onChange={(event) => setEmployeeId(event.target.value)}>{employees.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id.toUpperCase()}</option>)}</select></Field>}<Field label="Document name"><Input required maxLength={160} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Signed employment agreement" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Category"><select className={inputClass} value={category} onChange={(event) => setCategory(event.target.value)}>{[...new Set([category, ...categories])].map((item) => <option key={item}>{item}</option>)}</select></Field><Field label="Visibility"><select className={inputClass} value={manager ? visibility : "employee"} disabled={!manager} onChange={(event) => setVisibility(event.target.value as DocumentVisibility)}>{Object.entries(visibilityLabels).filter(([key]) => !company || key === "employee" || key === "hr").map(([key, label]) => <option key={key} value={key}>{company && key === "employee" ? "All HR workspace members" : label}</option>)}</select></Field><Field label="Issue date"><Input type="date" required value={issuedAt} onChange={(event) => setIssuedAt(event.target.value)} /></Field><Field label="Expiry date · optional"><Input type="date" min={issuedAt} value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></Field></div>{visibility === "selected_roles" && <div className="space-y-2 border border-border p-3"><p className="text-xs font-medium">Authorised roles</p>{(["hr_manager", "payroll_admin"] as HrDemoRole[]).map((item) => <label key={item} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedRoles.includes(item)} onChange={(event) => setSelectedRoles(event.target.checked ? [...selectedRoles, item] : selectedRoles.filter((value) => value !== item))} />{item === "hr_manager" ? "HR Manager" : "Payroll Admin"}</label>)}</div>}<Field label="Choose file"><Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.doc,.docx,.xls,.xlsx" onChange={(event) => { const next = event.target.files?.[0] ?? null; setFile(next); if (!name && next) setName(next.name.replace(/\.[^.]+$/, "")); }} /></Field>{file && <p className="text-xs text-muted-foreground">{file.name} · {(file.size / 1024).toFixed(0)} KB</p>}{document?.signatureStatus === "signed" && <p className="border border-info/20 bg-info-muted p-3 text-xs text-info">The signed version remains in version history. This upload starts a new unsigned version.</p>}{error && <p role="alert" className="text-sm text-danger">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Storing file…" : "Save document"}</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function TemplateDialog({ actorId, initialEmployeeId, onClose, onCreated }: { actorId: string; initialEmployeeId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const { employees, addDocument } = useHrPeopleStore(); const { patch, record } = useHrDocumentStore();
+  const [employeeId, setEmployeeId] = React.useState(initialEmployeeId || employees[0]?.id || ""); const [template, setTemplate] = React.useState(templates[0]); const [body, setBody] = React.useState("");
+  const employee = employees.find((item) => item.id === employeeId);
+  const preview = body || `SAMPLE ${template.toUpperCase()}\n\nEmployee: ${employee?.name ?? ""}\nEmployee ID: ${employee?.id.toUpperCase() ?? ""}\nDesignation: ${employee?.title ?? ""}\nDepartment: ${employee?.department ?? ""}\nJoining date: ${date(employee?.joiningDate)}\n\nThis document is prepared for review between ${employee?.name ?? "the employee"} and Acme Traders. Please replace these sample terms with the company's approved wording before issuing any real agreement.\n\nDemo document only. No legal electronic signature is created.`;
+  function create(event: React.FormEvent) { event.preventDefault(); if (!employee) return; const actor = employees.find((item) => item.id === actorId)?.name ?? "HR"; const id = `doc-${crypto.randomUUID()}`; const document: HrDocument = { id, employeeId, employeeName: employee.name, name: `${template} — ${employee.name}`, category: template, visibility: /warning/i.test(template) ? "hr" : "employee", version: 1, status: "current", signatureStatus: "draft", issuedAt: nowDate(), expiresAt: null, ownerName: actor, acknowledgedAt: null }; addDocument(document); patch(id, { body: preview }); record(id, { actor, event: "Draft created from template", version: 1 }); onCreated(id); }
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto rounded-none"><DialogHeader><DialogTitle>Prepare an employee document</DialogTitle><DialogDescription>Choose a template, check merged details and edit the draft before requesting signatures.</DialogDescription></DialogHeader><form onSubmit={create} className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><Field label="Employee"><select className={inputClass} value={employeeId} onChange={(event) => { setEmployeeId(event.target.value); setBody(""); }}>{employees.filter((item) => item.status !== "archived").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select></Field><Field label="Template"><select className={inputClass} value={template} onChange={(event) => { setTemplate(event.target.value); setBody(""); }}>{templates.map((item) => <option key={item}>{item}</option>)}</select></Field></div><Field label="Review and edit document text"><Textarea className="min-h-72 font-mono text-xs" value={preview} onChange={(event) => setBody(event.target.value)} /></Field><DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!employee || !preview.trim()}>Create draft</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+type DocumentDialogProps = HrDocumentsProps & { document: HrDocument; company?: boolean; onClose: () => void; onUpload: () => void };
+
+function DocumentDialog({ document, role, actorId, personal, company = false, onClose, onUpload }: DocumentDialogProps) {
+  const { employees, updateDocument, addSignatureAudit } = useHrPeopleStore();
+  const { extras, patch, record, savePolicy, policies, acknowledgements, acknowledgePolicy } = useHrDocumentStore();
+  const live = company ? policies.find((item) => item.id === document.id) ?? document : document;
+  const extra = extras[live.id];
+  const manager = canManage(role) && !personal;
+  const actor = employees.find((item) => item.id === actorId);
+  const actorName = actor?.name ?? "HR";
+  const state = signatureState(live);
+  // Seed documents can be awaiting signature without recorded signers; the employee is then the pending signer.
+  const signers: DocumentSigner[] = extra?.signers?.length ? extra.signers : ["sent", "viewed", "partially_signed"].includes(state) && live.employeeId !== "company" ? [{ employeeId: live.employeeId, name: live.employeeName, status: "pending" }] : [];
+  const mySigner = signers.find((item) => item.employeeId === actorId && ["pending", "viewed"].includes(item.status));
+  const [busy, setBusy] = React.useState(false);
+  const [extraSigners, setExtraSigners] = React.useState<string[]>([]);
+  const [preview, setPreview] = React.useState<string | null>(null);
+  const body = extra?.body ?? (company ? (live as CompanyPolicy).body : undefined) ?? (extra?.fileKey ? undefined : sampleBody(live));
+  const acknowledgedKey = `${live.id}:${live.version}:${actorId}`;
+  const acknowledged = Boolean(acknowledgements[acknowledgedKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!extra?.fileKey || !extra.mime?.startsWith("text/")) return;
+    loadHrFile(extra.fileKey).then((blob) => blob?.text()).then((text) => { if (!cancelled) setPreview(text ?? null); }).catch(() => { if (!cancelled) setPreview(null); });
+    return () => { cancelled = true; };
+  }, [extra?.fileKey, extra?.mime]);
+
+  function apply(change: Partial<HrDocument>) {
+    if (company) savePolicy({ ...(live as CompanyPolicy), ...change });
+    else updateDocument(live.id, change);
+  }
+  function audit(event: "sent" | "viewed" | "signed" | "rejected" | "cancelled") {
+    addSignatureAudit({ id: `audit-${crypto.randomUUID()}`, documentId: live.id, documentName: live.name, employeeName: live.employeeName, event, actorName, occurredAt: new Date().toISOString(), device: "Web · demo" });
+  }
+  function rollup(next: DocumentSigner[]): SignatureStatus {
+    if (next.some((item) => item.status === "rejected")) return "rejected";
+    if (next.every((item) => item.status === "signed")) return "signed";
+    if (next.some((item) => item.status === "signed")) return "partially_signed";
+    return next.some((item) => item.status === "viewed") ? "viewed" : "sent";
+  }
+  async function download() {
+    try {
+      if (extra?.fileKey) {
+        const blob = await loadHrFile(extra.fileKey);
+        if (!blob) throw new Error("The stored file could not be found in this browser.");
+        downloadBlob(blob, extra.fileName ?? `${live.name}.bin`);
+      } else downloadBlob(new Blob([body ?? sampleBody(live)], { type: "text/plain" }), `${live.name}.txt`);
+      record(live.id, { actor: actorName, event: "Document downloaded", version: live.version });
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : "The document could not be downloaded."); }
+  }
+  async function sendForSignature() {
+    const ids = [...new Set([live.employeeId, ...extraSigners])].filter((id) => employees.some((item) => item.id === id));
+    const chosen: DocumentSigner[] = ids.map((id) => ({ employeeId: id, name: employees.find((item) => item.id === id)!.name, status: "pending" }));
+    setBusy(true);
+    try {
+      const { reference } = await demoHrSignatureProvider.send(live, chosen);
+      patch(live.id, { signers: chosen });
+      apply({ signatureStatus: "sent" });
+      record(live.id, { actor: actorName, event: "Sent for signature", version: live.version, detail: `${chosen.map((item) => item.name).join(", ")} · ${reference}` });
+      audit("sent");
+      toast.success("Marked as sent for signature (demo — no email is sent)");
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : "Could not send for signature."); } finally { setBusy(false); }
+  }
+  function respond(status: "signed" | "rejected") {
+    if (!mySigner) return;
+    const next = signers.map((item) => item.employeeId === actorId ? { ...item, status, signedAt: new Date().toISOString() } : item);
+    patch(live.id, { signers: next });
+    apply({ signatureStatus: rollup(next), acknowledgedAt: status === "signed" ? new Date().toISOString() : live.acknowledgedAt });
+    record(live.id, { actor: actorName, event: status === "signed" ? "Signed (demo)" : "Rejected signature request", version: live.version });
+    audit(status);
+    toast.success(status === "signed" ? "Signed. This is a demo state, not a legal e-signature." : "Signature request rejected");
+  }
+  function cancelRequest() {
+    patch(live.id, { signers: [] });
+    apply({ signatureStatus: "cancelled" });
+    record(live.id, { actor: actorName, event: "Signature request cancelled", version: live.version });
+    audit("cancelled");
+  }
+  function archive() {
+    apply({ status: "archived" });
+    record(live.id, { actor: actorName, event: "Document archived", version: live.version });
+    toast.success("Document archived");
+    onClose();
+  }
+  function acknowledge() {
+    acknowledgePolicy(live.id, actorId, live.version);
+    record(live.id, { actor: actorName, event: "Policy acknowledged", version: live.version });
+    toast.success("Policy acknowledged");
+  }
+
+  const history = [...(extra?.versions ?? [])].sort((a, b) => b.version - a.version);
+  const events = extra?.events ?? [];
+  const canRequest = manager && !company && live.status !== "missing" && ["draft", "rejected", "cancelled", "expired"].includes(state);
+  const canCancel = manager && !company && ["sent", "viewed", "partially_signed"].includes(state);
+
+  return <Dialog open onOpenChange={(open) => !open && !busy && onClose()}><DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto rounded-none">
+    <DialogHeader><DialogTitle>{live.name}</DialogTitle><DialogDescription>{live.category} · v{live.version} · {live.employeeName}{live.employeeId !== "company" && ` (${live.employeeId.toUpperCase()})`}</DialogDescription></DialogHeader>
+    <div className="grid gap-3 sm:grid-cols-4">{[["Status", <Status key="s" document={live} />], ["Visibility", visibilityLabels[live.visibility]], ["Issued", date(live.issuedAt)], ["Expires", live.expiresAt ? date(live.expiresAt) : "No expiry"]].map(([label, value]) => <div key={String(label)} className="border border-border p-3"><p className="text-[11px] text-muted-foreground">{label}</p><div className="mt-1 text-sm font-medium">{value}</div></div>)}</div>
+    {live.status === "missing" ? <div className="border border-dashed border-border p-8 text-center"><FileText className="mx-auto mb-3 size-7 text-muted-foreground" /><p className="text-sm font-medium">This document has not been uploaded</p>{(manager || live.employeeId === actorId) && <Button className="mt-4" onClick={onUpload}><Upload className="mr-2 size-4" />Upload document</Button>}</div> : <>
+      <section aria-label="Document preview" className="border border-border"><div className="flex items-center justify-between border-b border-border bg-surface-2 px-4 py-2"><p className="text-xs font-medium">{extra?.fileName ?? "Sample document"}{extra?.size ? ` · ${(extra.size / 1024).toFixed(0)} KB` : ""}</p><Button size="sm" variant="outline" onClick={download}><Download className="mr-2 size-3.5" />Download</Button></div>
+        {preview !== null || body ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap p-4 font-mono text-xs">{preview ?? body}</pre> : <p className="p-4 text-sm text-muted-foreground">Preview isn’t available for this file type. Use Download to open the original.</p>}</section>
+      {signers.length > 0 && <section aria-label="Signers"><h3 className="mb-2 text-sm font-semibold">Signature progress</h3><ul className="divide-y divide-border border border-border">{signers.map((item) => <li key={item.employeeId} className="flex items-center justify-between px-4 py-2 text-sm"><span>{item.name}</span><span className="text-xs text-muted-foreground">{item.status === "signed" ? `Signed ${date(item.signedAt)}` : item.status === "rejected" ? "Rejected" : item.status === "viewed" ? "Viewed" : "Waiting"}</span></li>)}</ul><p className="mt-2 text-xs text-muted-foreground">Demo signatures are UI states only and are not legal electronic signatures.</p></section>}
+      {canRequest && <section aria-label="Request signature" className="space-y-2 border border-border p-4"><h3 className="text-sm font-semibold">Request signature</h3><p className="text-xs text-muted-foreground">The employee is always a signer. Add anyone else who must countersign.</p><Field label="Additional signers"><select multiple className={`${inputClass} h-24`} value={extraSigners} onChange={(event) => setExtraSigners(Array.from(event.target.selectedOptions, (option) => option.value))}>{employees.filter((item) => item.id !== live.employeeId && item.status !== "archived").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.title}</option>)}</select></Field><Button onClick={sendForSignature} disabled={busy}><FileSignature className="mr-2 size-4" />Send for signature</Button></section>}
+      {company && <div className="flex items-center justify-between border border-border p-4"><p className="text-sm">{acknowledged ? "You have acknowledged this version." : "Read the policy, then confirm you have understood it."}</p><Button onClick={acknowledge} disabled={acknowledged || !actor}><CheckCheck className="mr-2 size-4" />{acknowledged ? "Acknowledged" : "Acknowledge"}</Button></div>}
+      {mySigner && <div className="flex flex-wrap items-center justify-between gap-3 border border-accent p-4"><p className="text-sm">Your signature is requested on this document.</p><div className="flex gap-2"><Button variant="outline" onClick={() => respond("rejected")}>Reject</Button><Button onClick={() => respond("signed")}><FileSignature className="mr-2 size-4" />Sign</Button></div></div>}
+      <section aria-label="Version history"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><History className="size-4" />History</h3>
+        <ul className="divide-y divide-border border border-border text-sm">{events.map((item) => <li key={item.id} className="px-4 py-2"><p>{item.event} <span className="text-xs text-muted-foreground">· v{item.version}</span></p><p className="text-xs text-muted-foreground">{item.actor} · {date(item.at)}{item.detail ? ` · ${item.detail}` : ""}</p></li>)}{history.map((item) => <li key={`v${item.version}`} className="px-4 py-2 text-muted-foreground"><p>Earlier version v{item.version}{item.fileName ? ` · ${item.fileName}` : ""}</p><p className="text-xs">Saved by {item.savedBy} · {date(item.savedAt)}</p></li>)}{!events.length && !history.length && <li className="px-4 py-3 text-xs text-muted-foreground">No activity recorded yet.</li>}</ul></section>
+    </>}
+    <DialogFooter className="gap-2">{manager && live.status !== "archived" && <Button variant="outline" onClick={archive}>Archive</Button>}{canCancel && <Button variant="outline" onClick={cancelRequest}>Cancel request</Button>}{live.status !== "missing" && (manager || (!company && live.employeeId === actorId)) && <Button variant="outline" onClick={onUpload}><Upload className="mr-2 size-4" />New version</Button>}<Button onClick={onClose}>Close</Button></DialogFooter>
+  </DialogContent></Dialog>;
+}
