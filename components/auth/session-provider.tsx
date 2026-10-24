@@ -1,10 +1,11 @@
 "use client";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, APIError, message } from "@/lib/api/client";
 import type { Me } from "@/lib/api/types";
 import { demoMode } from "@/lib/demo-mode";
+import { personaOptions, personaPermissions, usePersona } from "@/lib/demo-persona";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -49,6 +50,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession : null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const persona = usePersona();
+  // In the demo the permissions follow the person being previewed, so menus and pages narrow the same way they would for them.
+  const shown = useMemo(() => session && demoMode ? { ...session, role: personaOptions.find((item) => item.id === persona)?.label ?? session.role, permissions: personaPermissions(persona) } : session, [session, persona]);
   useEffect(() => {
     let active = true;
     if (demoMode) {
@@ -73,7 +77,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [attempt]);
-  if (!session)
+  if (!session || !shown)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 text-sm">
         <p role="status">{error || "Opening your workspace…"}</p>
@@ -88,7 +92,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       </div>
     );
   return (
-    <SessionContext.Provider value={session}>
+    <SessionContext.Provider value={shown}>
       {children}
     </SessionContext.Provider>
   );

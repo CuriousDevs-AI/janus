@@ -36,6 +36,7 @@ import { HrApprovalsView } from "@/components/hr-people/approvals";
 import { ArchiveEmployeeDialog, CareerHistory, EmployeeFormDialog } from "@/components/hr-people/employee-forms";
 import { applyDueChanges } from "@/lib/hr-career";
 import { HrCareerView } from "@/components/hr-people/career";
+import { usePersona } from "@/lib/demo-persona";
 import { useCan } from "@/lib/hr-org-hooks";
 import { HrOrganizationView } from "@/components/hr-people/organization";
 import { HrEmployeeImport } from "@/components/hr-people/employee-import";
@@ -63,7 +64,6 @@ import type { HrDemoRole, HrEmployee } from "@/lib/types";
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const dateLabel = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
 
-const roleOptions: HrDemoRole[] = ["owner", "business_manager", "hr_manager", "reporting_manager", "payroll_admin", "employee"];
 
 function statusVariant(status: string): "success" | "warning" | "danger" | "info" | "neutral" {
   if (["active", "present", "approved", "signed", "done", "delivered", "accepted", "current", "locked"].includes(status)) return "success";
@@ -84,21 +84,13 @@ export function HrPeopleWorkspace() {
   const employees = useHrPeopleStore((state) => state.employees);
   const employeeRows = visibleEmployees(role, employees);
   // An employee lands on Home, not the HR dashboard.
-  const shown = role === "employee" && view === "overview" ? "my-home" : view;
-  React.useEffect(() => { if (role === "employee" && view === "overview") router.replace("/workspace/hr-people?view=my-home&workspace=hr-people"); }, [role, view, router]);
+  const landing = role === "employee" ? "my-home" : role === "payroll_admin" ? "payroll" : null;
+  const shown = landing && view === "overview" ? landing : view;
+  React.useEffect(() => { if (landing && view === "overview") router.replace(`/workspace/hr-people?view=${landing}&workspace=hr-people`); }, [landing, view, router]);
   const title = viewTitle(shown);
 
-  function changeRole(nextRole: HrDemoRole) {
-    setDemoRole(nextRole);
-    window.localStorage.setItem("janus.hr-demo-role", nextRole);
-    window.dispatchEvent(new Event("janus:hr-demo-role"));
-    toast.success(`Previewing ${hrRoleLabels[nextRole]} access`);
-  }
-
-  React.useEffect(() => {
-    const stored = window.localStorage.getItem("janus.hr-demo-role") as HrDemoRole | null;
-    if (stored && roleOptions.includes(stored) && stored !== role) setDemoRole(stored);
-  }, [role, setDemoRole]);
+  const persona = usePersona();
+  React.useEffect(() => { if (demoMode && persona !== role) setDemoRole(persona); }, [persona, role, setDemoRole]);
 
   const blocked = !canOpenHrView(role, view);
   // Approved changes start on their date, so catch up whenever someone opens the workspace.
@@ -109,10 +101,10 @@ export function HrPeopleWorkspace() {
       <PageHeader
         title={title}
         description={selfServiceViews.has(shown) ? "Your work, time off, pay and documents in one place." : "Employee records, approvals and people operations in one permission-aware workspace."}
-        actions={<div className="flex flex-wrap items-center gap-2"><Badge variant={demoMode ? "info" : "neutral"}>{demoMode ? "Sample data" : "Live records"}</Badge>{demoMode && <label className="flex items-center gap-2 text-xs text-muted-foreground"><span>Preview as</span><select value={role} onChange={(event) => changeRole(event.target.value as HrDemoRole)} className="h-8 border border-border bg-surface px-2 text-xs text-foreground">{roleOptions.map((item) => <option key={item} value={item}>{hrRoleLabels[item]}</option>)}</select></label>}</div>}
+        actions={<div className="flex flex-wrap items-center gap-2"><Badge variant={demoMode ? "info" : "neutral"}>{demoMode ? "Sample data" : "Live records"}</Badge></div>}
       />
       <div className="px-6 pb-10">
-        {demoMode && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />Access preview: {hrRoleLabels[role]}. Business Management access and HR workspace access are separate.</div>}
+        {demoMode && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />Viewing as {hrRoleLabels[role]}. {role === "payroll_admin" ? "Finance sees pay and reimbursements, not leave or employee records." : role === "employee" ? "Employees see only their own records." : "Use Viewing as in the top bar to switch."}</div>}
         {blocked ? <AccessNotice role={role} /> : (
           <>
             {shown === "my-home" && <HrHomeView role={role} actorId={demoActorId(role)} />}
