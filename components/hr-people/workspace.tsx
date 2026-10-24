@@ -36,6 +36,7 @@ import { HrApprovalsView } from "@/components/hr-people/approvals";
 import { ArchiveEmployeeDialog, CareerHistory, EmployeeFormDialog } from "@/components/hr-people/employee-forms";
 import { applyDueChanges } from "@/lib/hr-career";
 import { HrCareerView } from "@/components/hr-people/career";
+import { useCan } from "@/lib/hr-org-hooks";
 import { HrOrganizationView } from "@/components/hr-people/organization";
 import { HrEmployeeImport } from "@/components/hr-people/employee-import";
 import { HrHomeView } from "@/components/hr-people/home";
@@ -221,7 +222,7 @@ function QuickAction({ label, icon, onClick }: { label: string; icon: React.Reac
 }
 
 function EmployeesView({ role, employees }: { role: HrDemoRole; employees: HrEmployee[] }) {
-  const canManage = canManageHr(role);
+  const canManage = useCan(role, "employees.manage");
   const [query, setQuery] = React.useState("");
   const [formFor, setFormFor] = React.useState<HrEmployee | "new" | null>(null);
   const [archiving, setArchiving] = React.useState<HrEmployee | null>(null);
