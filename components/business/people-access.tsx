@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
@@ -193,7 +194,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
   function saveDepartment(event: React.FormEvent) { event.preventDefault(); if (!departmentName.trim()) return; setDepartments((current) => [...current, departmentName.trim()]); setDepartmentName(""); setDepartmentDialog(false); setNotice("Department added."); }
 
   return <div className="flex flex-col gap-5">
-    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">People & Access</h2><p className="mt-1 text-sm text-muted-foreground">Manage company-level managers separately from CRM, HR and department members.</p></div><Button size="sm" onClick={openInvite}><UserPlus className="size-3.5" />Add person</Button></div></div>
+    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">People & Access</h2><p className="mt-1 text-sm text-muted-foreground">Who can sign in to this company, what they can open and their role. Employee records are kept in <Link href="/workspace/hr-people?view=people&workspace=hr-people" className="text-accent underline-offset-2 hover:underline">HR &amp; People</Link>.</p></div><Button size="sm" onClick={openInvite}><UserPlus className="size-3.5" />Add person</Button></div></div>
     <div className="janus-tab-strip sticky top-0 z-20 flex gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1">{sections.map(([value, label]) => <button key={value} type="button" onClick={() => setSection(value)} className={`shrink-0 rounded-sm px-3 py-2 text-[12px] transition-colors ${section === value ? "bg-white font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"}`}>{label}{value === "invitations" && invites.length > 0 ? <span className="ml-1.5 rounded-full bg-accent-muted px-1.5 py-0.5 text-[10px] text-accent">{invites.length}</span> : null}</button>)}</div>
     <div className="flex items-start gap-3 rounded-lg border border-accent-border bg-accent-muted/60 px-4 py-3 text-xs"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent" /><p><strong>Access is independent.</strong> Select Business Management access and active department workspaces separately. People only see the areas that are checked for them.</p></div>
     {notice && <div role="status" className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent">{notice}</div>}
