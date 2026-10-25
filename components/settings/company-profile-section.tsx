@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+import { companyProfile } from "@/lib/company-profile";
 import { MapPin, Plus, ShieldCheck, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -20,19 +22,16 @@ type CompanyProfile = {
   city: string; state: string; pin: string; billingSame: boolean;
 };
 
+const profile = companyProfile();
 const initialProfile: CompanyProfile = {
-  displayName: "Acme Traders", legalName: "Acme Traders Private Limited", industry: "Wholesale & distribution",
-  size: "41–50 people", founded: "2016", website: "https://acmetraders.in",
-  description: "Wholesale supplier of packaging material and industrial fans to manufacturers across North India since 2016.",
-  email: "hello@acmetraders.in", phone: "+91 98100 00000", whatsapp: "+91 98100 00001",
-  address1: "Plot 14, Udyog Vihar Phase 4", address2: "Near Sector 18 Metro", city: "Gurugram", state: "Haryana", pin: "122015", billingSame: true,
+  displayName: profile.short, legalName: profile.legalName, industry: profile.industry,
+  size: profile.size, founded: profile.founded, website: profile.website,
+  description: profile.description,
+  email: profile.email, phone: profile.phone, whatsapp: profile.whatsapp,
+  address1: profile.address1, address2: profile.address2, city: profile.city, state: profile.state, pin: profile.pin, billingSame: true,
 };
 
-const initialLocations: Location[] = [
-  { id: 1, name: "Head office", kind: "Office", address: "Udyog Vihar Phase 4, Gurugram, Haryana", people: 18, gst: "" },
-  { id: 2, name: "Manesar warehouse", kind: "Warehouse", address: "IMT Manesar, Sector 8, Haryana", people: 17, gst: "" },
-  { id: 3, name: "Jaipur branch", kind: "Branch", address: "Sitapura Industrial Area, Jaipur, Rajasthan", people: 7, gst: "Own GSTIN" },
-];
+const initialLocations: Location[] = profile.locations.map((item, index) => ({ ...item, people: index === 0 ? 0 : 0 }));
 
 export function CompanyProfileSection() {
   const session = useSession();
@@ -57,7 +56,7 @@ export function CompanyProfileSection() {
   const initial = demoMode ? initialProfile : connectedProfile;
   const [draft, setDraft] = React.useState(initial);
   const [saved, setSaved] = React.useState(initial);
-  const [locations, setLocations] = React.useState<Location[]>(() => demoMode ? initialLocations : []);
+  const [locations, setLocations] = React.useState<Location[]>(() => demoMode ? initialLocations.map((place) => ({ ...place, people: useHrPeopleStore.getState().employees.filter((person) => person.status !== "archived" && place.address.includes(person.branch)).length })) : []);
   const [logo, setLogo] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState(false);
   const [locationOpen, setLocationOpen] = React.useState(false);
@@ -101,7 +100,7 @@ export function CompanyProfileSection() {
   }
 
   const taxRecords = demoMode
-    ? [["GSTIN", "06AAB1234567891Z5", "Verified"], ["PAN", "AABCT1234F", "Verified"], ["CIN", "U51909HR2016PTC123456", "Added"], ["Udyam (MSME)", "", "Not added"]]
+    ? [["GSTIN", profile.gstin, profile.gstin ? "Verified" : "Not added"], ["PAN", profile.pan, profile.pan ? "Verified" : "Not added"], ["CIN", profile.cin, profile.cin ? "Added" : "Not added"], ["Udyam (MSME)", "", "Not added"]]
     : [["GSTIN", "", "Not connected"], ["PAN", "", "Not connected"], ["CIN", "", "Not connected"], ["Udyam (MSME)", "", "Not connected"]];
 
   return <div className="flex flex-col gap-5">

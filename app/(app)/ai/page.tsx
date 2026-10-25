@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { conversations, dealRows, lakh, leadRows, stats as crm } from "@/lib/demo-universe";
+import { company, conversations, dealRows, lakh, leadRows, stats as crm } from "@/lib/demo-universe";
 import { tickets } from "@/lib/mock-data/tickets";
 import { useSearchParams } from "next/navigation";
 import { Bookmark, Check, Globe2, Link2, Loader2, MessageSquare, MessageSquarePlus, Pencil, Plus, Search, Send, Sparkles, Upload } from "lucide-react";
@@ -32,6 +32,9 @@ const INTELLIGENCE_VIEWS = [
 ] as const;
 
 const AI_VIEWER_ID = "pankaj";
+const topDeal = [...dealRows].filter((item) => !["won", "lost"].includes(item.stage)).sort((a, b) => Number(b.amount) - Number(a.amount))[0];
+const stalled = dealRows.filter((item) => ["proposal", "negotiation"].includes(item.stage));
+function stalledText() { return stalled.length ? `${stalled.length} deal${stalled.length === 1 ? " is" : "s are"} in proposal or negotiation. The largest is ${topDeal?.company} at ${lakh(Number(topDeal?.amount))}.` : "No deal is waiting on a decision right now."; }
 
 type Turn = {
   id: string;
@@ -76,7 +79,7 @@ function demoCrmAnswer(question: string): BusinessAnswer {
   }
   return {
     question,
-    answer: `Janus is using the connected records for Acme Traders: ${crm.leads} leads, ${crm.openDeals} open deals worth ${lakh(crm.pipeline)}, ${crm.buyers} customers, ${tickets.length} support tickets and ${conversations.length} conversations. Ask about leads, pipeline, customer risk or support to see a grounded answer.`,
+    answer: `Janus is using the connected records for ${company.short}: ${crm.leads} leads, ${crm.openDeals} open deals worth ${lakh(crm.pipeline)}, ${crm.buyers} customers, ${tickets.length} support tickets and ${conversations.length} conversations. Ask about leads, pipeline, customer risk or support to see a grounded answer.`,
     dataUsed: ["Leads", "Deals", "Customers", "Tickets", "Chats"],
     calculation: { metric: "Connected CRM snapshot", period: "Current records", filters: "CRM & Sales workspace", sources: "Janus records" },
     followups: ["Which leads need attention today?", "What is our open pipeline?", "What support needs attention?"],
@@ -278,7 +281,7 @@ const initialChatThreads: ChatThread[] = [
     ownerId: AI_VIEWER_ID,
     messages: [
       { id: "m-3", role: "user", text: "Which deals need attention?", day: "Yesterday", time: "17:35" },
-      { id: "m-4", role: "assistant", text: "Six Proposal-stage deals have no activity for more than 10 days. The largest is Acme Traders at ₹4.8L, followed by Bharat Cooling at ₹3.2L.", day: "Yesterday", time: "17:36" },
+      { id: "m-4", role: "assistant", text: stalledText(), day: "Yesterday", time: "17:36" },
     ],
   },
   {
@@ -511,7 +514,7 @@ type KnowledgeForm = { title: string; content: string; url: string; app: string;
 const initialKnowledgeSources: KnowledgeSource[] = [
   { name: "Price list, October 2026", detail: "price-list-oct-2026.xlsx", type: "Excel", collection: "Products & pricing", access: "Sales, Owner", status: "Ready", updated: "Today" },
   { name: "Refund and returns policy", detail: "Conflicts with the Customer FAQ on bulk orders", type: "Page", collection: "Company & policies", access: "Everyone", status: "Needs review", updated: "3 days ago" },
-  { name: "acmetraders.in/products", detail: "Reading 42 pages", type: "Website", collection: "Products & pricing", access: "Everyone", status: "Processing", updated: "10 min ago" },
+  { name: `${company.domain}/products`, detail: "Reading 42 pages", type: "Website", collection: "Products & pricing", access: "Everyone", status: "Processing", updated: "10 min ago" },
   { name: "Employee handbook v3", detail: "employee-handbook-v3.pdf", type: "PDF", collection: "HR handbook", access: "HR, Owner", status: "Ready", updated: "2 weeks ago" },
   { name: "GST invoicing rules", detail: "Written by Finance", type: "Page", collection: "Finance & tax rules", access: "Finance, Owner", status: "Ready", updated: "1 month ago" },
   { name: "Distributor onboarding SOP", detail: "Not updated in 9 months", type: "Word", collection: "Processes & SOPs", access: "Everyone", status: "Outdated", updated: "Jan 2026" },
@@ -530,7 +533,7 @@ const initialKnowledgeCollections: KnowledgeCollection[] = [
 const initialBusinessMemory: BusinessMemory[] = [
   { id: "memory-1", title: "Pankaj prefers concise owner briefs", detail: "Keep daily summaries to the top three risks and next actions.", source: "Saved from Business AI Chat", ownerId: AI_VIEWER_ID, updated: "Today" },
   { id: "memory-2", title: "Review WhatsApp spend before outbound campaigns", detail: "Use email or phone when the expected value does not justify message cost.", source: "Saved from Planning", ownerId: AI_VIEWER_ID, updated: "Yesterday" },
-  { id: "memory-3", title: "Acme Traders needs a 48-hour follow-up", detail: "Owner note linked to the stalled proposal and next best action.", source: "Saved from CRM context", ownerId: AI_VIEWER_ID, updated: "2 days ago" },
+  { id: "memory-3", title: `${topDeal?.company ?? "The largest account"} needs a 48-hour follow-up`, detail: "Owner note linked to the stalled proposal and next best action.", source: "Saved from CRM context", ownerId: AI_VIEWER_ID, updated: "2 days ago" },
 ];
 
 const emptyKnowledgeForm: KnowledgeForm = { title: "", content: "", url: "", app: "Google Drive", question: "", answer: "", collection: "Company & policies", description: "" };
@@ -544,7 +547,7 @@ function BusinessKnowledgeView() {
   const [facts, setFacts] = React.useState<Record<string, "approved" | "rejected">>({});
   const [sources, setSources] = React.useState<KnowledgeSource[]>(() => demoMode ? initialKnowledgeSources : []);
   const [collections, setCollections] = React.useState<KnowledgeCollection[]>(() => demoMode ? initialKnowledgeCollections : []);
-  const [unanswered, setUnanswered] = React.useState(() => demoMode ? [["What is the refund window for bulk orders?", "Asked 7 times · WhatsApp and team chat"], ["Do we deliver to Jaipur on Sundays?", "Asked 4 times · WhatsApp"], ["What warranty do industrial fans come with?", "Asked 3 times · Sales team"], ["Who approves travel expenses above ₹10,000?", "Asked 2 times · HR"]] : []);
+  const [unanswered, setUnanswered] = React.useState(() => demoMode ? [["What is the refund window for bulk orders?", "Asked 7 times · WhatsApp and team chat"], [`Do we deliver to ${company.city.split(",")[0]} on Sundays?`, "Asked 4 times · WhatsApp"], ["What is the minimum order quantity for festive packs?", "Asked 3 times · Sales team"], ["Who approves travel expenses above ₹10,000?", "Asked 2 times · HR"]] : []);
   const [dialog, setDialog] = React.useState<KnowledgeDialog | null>(null);
   const [form, setForm] = React.useState<KnowledgeForm>(emptyKnowledgeForm);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);

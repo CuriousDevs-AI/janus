@@ -1,6 +1,7 @@
 import type { DemoAccount } from "@/lib/demo-accounts";
 import type { HrEmployee } from "@/lib/types";
 import type { CompanySpec } from "@/lib/companies/spec";
+import { demoMode } from "@/lib/demo-mode";
 
 const person = (id: string, name: string, email: string, title: string, department: string, managerId: string | null, managerName: string | null, salaryMonthly: number, joiningDate: string, color: string, birthDate: string): HrEmployee => ({ id, name, email, phone: `+91 97${id.slice(-1)}3${id.slice(-1)} 4${id.slice(-1)}1${id.slice(-1)}2`, title, department, branch: "Pune", managerId, managerName, status: "active", employmentType: "full_time", joiningDate, location: "Pune", avatarColor: color, salaryMonthly, onboardingPercent: 100, documentsDue: 0, birthDate });
 const employees: HrEmployee[] = [
@@ -12,7 +13,7 @@ const employees: HrEmployee[] = [
   person("emp-006", "Rohan Gaikwad", "rohan@greenleaforganics.in", "Delivery Lead", "Logistics", "emp-003", "Mihir Kulkarni", 34000, "2025-03-03", "#db2777", "1995-12-09"),
 ];
 const account = (id: string, email: string, password: string, name: string, title: string, employeeId: string, crmUserId: string, hrRole: DemoAccount["hrRole"], blurb: string): DemoAccount => ({ id, email, password, name, title, employeeId, crmUserId, hrRole, crm: id === "owner" ? "all" : "none", blurb });
-const accounts: DemoAccount[] = [
+const accounts: DemoAccount[] = !demoMode ? [] : [
   account("owner", "pankaj@acmetraders.in", "Owner@123", "Pankaj Neema", "Founder", "emp-001", "u-1", "owner", "Everything in this company."),
   account("hr", "pooja@greenleaforganics.in", "HR@12345", "Pooja Shinde", "HR and Accounts Manager", "emp-002", "u-2", "hr_manager", "All of HR & People."),
   account("team-lead", "mihir@greenleaforganics.in", "Lead@12345", "Mihir Kulkarni", "Head of Store Operations", "emp-003", "u-3", "reporting_manager", "Approves leave for the store, purchase and delivery team."),

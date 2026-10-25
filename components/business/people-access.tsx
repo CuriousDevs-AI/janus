@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { isFirstCompany } from "@/lib/companies";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
 import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -114,13 +116,12 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     return workspaceOptions.filter(([key]) => active.has(key));
   }, [storedWorkspace, workspacesApi.data]);
   const activeWorkspaceKeys = React.useMemo(() => new Set(activeWorkspaceOptions.map(([key]) => key)), [activeWorkspaceOptions]);
-  const [invites, setInvites] = React.useState<PendingInvite[]>([
-    { id: "invite-1", name: "Arjun Mehta", email: "arjun@curiousdevs.ai", role: "sales_manager", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
-    { id: "invite-2", name: "Priya Shah", email: "priya@curiousdevs.ai", role: "analyst", businessAccess: false, workspaces: ["crm-sales", "finance-accounting"], invitedAt: "Yesterday", status: "Pending" },
-    { id: "invite-3", name: "Nikhil Verma", email: "nikhil@acmetrader.in", role: "business_manager", businessAccess: true, workspaces: [], invitedAt: "Today, 08:45", status: "Pending" },
-  ]);
+  const [invites, setInvites] = React.useState<PendingInvite[]>(isFirstCompany ? [
+    { id: "invite-1", name: "Tarun Sethi", email: "tarun@acmetraders.in", role: "sales_agent", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
+    { id: "invite-2", name: "Priya Shah", email: "priya@acmetraders.in", role: "analyst", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Yesterday", status: "Pending" },
+  ] : []);
   const [roles, setRoles] = React.useState<RoleRecord[]>(initialRoles);
-  const [departments, setDepartments] = React.useState(["Management", "Sales", "Finance", "Customer Support", "Operations"]);
+  const [departments, setDepartments] = React.useState(() => [...new Set(useHrPeopleStore.getState().employees.filter((item) => item.status !== "archived").map((item) => item.department))]);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [memberDialog, setMemberDialog] = React.useState<"invite" | "edit" | null>(null);
   const [editingMemberId, setEditingMemberId] = React.useState<string | null>(null);
@@ -258,12 +259,12 @@ function DepartmentsSection({ departments, onAdd }: { departments: string[]; onA
 }
 
 function RequestsSection({ onNotice }: { onNotice: (message: string) => void }) {
-  const requests = [["Aman Verma", "Finance & Accounting", "Needs read access to invoices", "Today"], ["Sana Iyer", "Customer Support & Success", "Needs report access", "Yesterday"]];
+  const requests = isFirstCompany ? [["Aman Verma", "Finance & Accounting", "Needs read access to invoices", "Today"]] : [];
   return <SectionCard title="Access requests" description="Review requests before a member receives access to another workspace."><div className="flex flex-col divide-y divide-border">{requests.map(([name, workspace, reason, date]) => <div key={name} className="flex flex-wrap items-center gap-3 py-4 first:pt-0 last:pb-0"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{name} · {workspace}</p><p className="mt-1 text-xs text-muted-foreground">{reason} · {date}</p></div><Button size="sm" variant="secondary" onClick={() => onNotice(`${name} request approved in the demo.`)}>Approve</Button><Button size="sm" variant="ghost" onClick={() => onNotice(`${name} request declined in the demo.`)}>Decline</Button></div>)}</div></SectionCard>;
 }
 
 function AuditSection() {
-  const logs = [["Pankaj updated Riya Kapoor’s workspace access", "Today, 09:32", "Access"], ["Karan Bhatt role changed to Sales Manager", "Yesterday, 16:10", "Role"], ["Invite sent to arjun@curiousdevs.ai", "Today, 10:20", "Invitation"], ["Finance workspace access removed from a demo member", "18 Oct, 14:42", "Access"]];
+  const logs = isFirstCompany ? [["Pankaj Neema updated Meera Singh’s workspace access", "Today, 09:32", "Access"], ["Arjun Mehta’s role changed to Sales Manager", "Yesterday, 16:10", "Role"], ["Invite sent to tarun@acmetraders.in", "Today, 10:20", "Invitation"]] : [];
   return <SectionCard title="Audit logs" description="A clear record of people, role and workspace changes for owner review."><div className="flex flex-col divide-y divide-border">{logs.map(([event, date, type]) => <div key={event} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex size-7 items-center justify-center rounded-md bg-accent-muted text-accent"><ShieldCheck className="size-3.5" /></span><div className="min-w-0 flex-1"><p className="text-sm">{event}</p><p className="mt-1 text-[11px] text-muted-foreground">{date}</p></div><Badge variant="neutral">{type}</Badge></div>)}</div></SectionCard>;
 }
 
