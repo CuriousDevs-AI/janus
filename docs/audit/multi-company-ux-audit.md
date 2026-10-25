@@ -31,13 +31,13 @@ It is **not yet a believable end-to-end prototype** because of five things, in t
 
 ### P0 — blocks the demo
 
-**P0-1. `/ai` crashes for every company (verified as Owner; other roles have no AI link).**
+**P0-1. `/ai` crashes for every company (verified as Owner; other roles have no AI link). FIXED:** the support answer is now built from however many urgent tickets exist. Verified for Acme and Nimbus, no page errors.
 `/ai`, `/ai?workspace=business`, `/ai?workspace=crm-sales` and the HR AI Chat link all render "This page couldn't load" (`Cannot read properties of undefined (reading 'subject')`).
 Cause (confirmed): `lib/services/business-ai.ts:97,265` builds a canned answer at module load using `urgentTickets[0]` and `urgentTickets[1]`. Acme's data has exactly one urgent ticket and Nimbus and GreenLeaf have none, so importing the module throws.
 Impact: Janus Intelligence, AI Assistant and "Ask Janus →" on Business Overview are dead. This is the product's headline feature.
 Fix direction: build those answers lazily and tolerate missing tickets. Also have the page answer from the active company's records, not Acme's.
 
-**P0-2. Business Management cannot be reached from the workspace menu.**
+**P0-2. Business Management cannot be reached from the workspace menu. FIXED:** it is now the first entry in the owner's workspace menu and opens Business Overview. Verified in Acme.
 The menu in a company lists only "Created workspaces" (CRM & Sales, HR & People). `components/layout/sidebar.tsx` (`accessibleWorkspaces`, around lines 107–132) never includes `business` in demo/owner view. Yet the wizard says "Business Management is always on for the Owner", Companies → Open lands in it, and you land in it after creating a company. After that you can never get back except by typing the URL or using "Open" from the Portfolio.
 Impact: People & Access, Workspaces, Business Reports, Billing, Settings and Business Overview are effectively orphaned. The owner journey "company → business overview → team → settings" has no door.
 Fix direction: list Business Management first in the owner's workspace menu, and make it the default landing for a company opened from the Portfolio.
@@ -50,6 +50,8 @@ Fix direction: list Business Management first in the owner's workspace menu, and
 - Nimbus CRM Overview "AI operating insights": "Follow up with Riya Kapoor, ₹4.8L" (an Acme employee and an Acme deal).
 - Nimbus and GreenLeaf Automations show Acme's 8 automations and 64 runs, and Agents show the same 2 agents, while Tickets and Knowledge are empty.
 - Business Overview "Needs your attention" and Reports use fixed figures (₹3.1L overdue invoices, GSTR-3B on 20 Nov, ₹42.8L revenue vs ₹50L target) for every company.
+
+**P1-1b. CRM Assistant shows the wrong records, and the same ones for every company** (found while verifying P0-1). Its "Stored CRM records" panel shows 3 leads, ₹7.55L and 8 tickets for both Acme and Nimbus, while Acme's CRM Overview shows 24 leads, ₹26.9L and 9 open deals, and Nimbus 12 leads. Its suggested question names Riya (an Acme employee) in Nimbus.
 
 **P1-2. Business Overview invents finance while the Portfolio says Finance is "Not connected".**
 `components/settings/workspace-section.tsx:356` shows "4 invoices overdue by 30+ days ₹3.1L", "GSTR-3B deadline" and a revenue chart. Two screens contradict each other on whether Finance data exists.

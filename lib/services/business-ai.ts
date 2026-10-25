@@ -95,6 +95,9 @@ const atRiskMinSupportLoad = Math.min(...atRiskCustomers.map((c) => c.health.sup
 const atRiskMaxSupportLoad = Math.max(...atRiskCustomers.map((c) => c.health.supportLoad));
 
 const urgentTickets = tickets.filter((t) => t.priority === "urgent");
+const urgentSummary = urgentTickets.length === 0
+  ? "No urgent tickets are open right now."
+  : `${urgentTickets.length === 1 ? "One urgent ticket needs" : `${urgentTickets.length} urgent tickets need`} attention right now: ${urgentTickets.slice(0, 2).map((t) => `"${t.subject}" (${t.number}, ${t.slaMinutesRemaining} min to SLA breach)`).join(" and ")}.`;
 const peakTicketDay = ticketVolumeTrend.reduce((max, p) => (p.value > max.value ? p : max), ticketVolumeTrend[0]);
 const lowTicketDay = ticketVolumeTrend.reduce((min, p) => (p.value < min.value ? p : min), ticketVolumeTrend[0]);
 
@@ -262,7 +265,7 @@ const CANNED_ENTRIES: CannedEntry[] = [
     ],
     data: {
       question: "What are our biggest support problems?",
-      answer: `Two urgent, escalated tickets need attention right now: "${urgentTickets[0].subject}" (${urgentTickets[0].number}, ${urgentTickets[0].slaMinutesRemaining} min to SLA breach) and "${urgentTickets[1].subject}" (${urgentTickets[1].number}, ${urgentTickets[1].slaMinutesRemaining} min to SLA breach, an at-risk account). More broadly, there have been ${supportMetrics.slaBreaches30d} SLA breaches in the last 30 days, and ${peakTicketDay.date} is the peak ticket-volume day (${peakTicketDay.value} tickets vs ${lowTicketDay.value} on ${lowTicketDay.date}). AI resolves ${supportMetrics.aiResolutionRate}% of tickets on its own; the rest need a human and average ${supportMetrics.resolutionHours}h to resolve.`,
+      answer: `${urgentSummary} More broadly, there have been ${supportMetrics.slaBreaches30d} SLA breaches in the last 30 days, and ${peakTicketDay.date} is the peak ticket-volume day (${peakTicketDay.value} tickets vs ${lowTicketDay.value} on ${lowTicketDay.date}). AI resolves ${supportMetrics.aiResolutionRate}% of tickets on its own; the rest need a human and average ${supportMetrics.resolutionHours}h to resolve.`,
       dataUsed: ["Tickets", "Support Metrics"],
       calculation: {
         metric: "Escalated ticket detail, SLA breaches & ticket volume trend",
