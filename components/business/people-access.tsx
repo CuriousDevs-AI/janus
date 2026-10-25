@@ -100,7 +100,14 @@ function isManagementRole(role: Role) {
 
 export function BusinessPeopleAccess({ initialSection = "members" }: { initialSection?: string }) {
   const [section, setSection] = React.useState<string>(initialSection);
-  const [members, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", initialMembers);
+  const [members, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", () => {
+    // Everyone in the HR directory belongs here too, so people added while setting a company up are not missing.
+    const known = new Set(initialMembers.flatMap((item) => [item.email.toLowerCase(), item.name.toLowerCase()]));
+    const fromHr = useHrPeopleStore.getState().employees
+      .filter((item) => item.status !== "archived" && !known.has(item.email.toLowerCase()) && !known.has(item.name.toLowerCase()))
+      .map((item): AccessMember => ({ id: item.id, name: item.name, email: item.email, role: "read_only", department: item.department, status: "Active", businessAccess: false, workspaces: ["hr-people"], permissions: rolePermissions.read_only, lastActive: "Not yet" }));
+    return [...initialMembers, ...fromHr];
+  });
   const workspacesApi = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const [storedWorkspace, setStoredWorkspace] = React.useState<string | null>(null);
   React.useEffect(() => {
