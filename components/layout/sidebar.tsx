@@ -109,10 +109,11 @@ export function SidebarNav({
 
   const ownerView = !demoMode || hrDemoRole === "owner";
   const accessibleWorkspaces = React.useMemo(() => {
+    const businessEntry = { id: "business", name: "Business Management", description: "Overview, people, workspaces, reports and settings." };
     const catalogue: Record<string, { id: string; name: string; description: string }> = { "crm-sales": { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }, "hr-people": { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." } };
     const switchedOn = demoMode ? activeCompany().workspaces : ["crm-sales", "hr-people"];
     // Only the Owner moves between workspaces. Everyone else works inside HR & People.
-    if (demoMode && ownerView) return switchedOn.map((id) => catalogue[id]).filter(Boolean);
+    if (demoMode && ownerView) return [businessEntry, ...switchedOn.map((id) => catalogue[id]).filter(Boolean)];
     if (!ownerView) return [...(account && account.crm !== "none" && switchedOn.includes("crm-sales") ? [catalogue["crm-sales"]] : []), catalogue["hr-people"]];
     const fromApi = workspacesApi.data?.filter((item) => item.status === "active").map((item) => ({
       id: item.type.replaceAll("_", "-"),
@@ -120,10 +121,11 @@ export function SidebarNav({
       description: item.description,
     }));
     if (hasActiveWorkspace && fromApi?.length) {
-      if (!demoMode || fromApi.some((item) => item.id === "hr-people")) return fromApi;
-      return [...fromApi, { id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }];
+      if (!demoMode || fromApi.some((item) => item.id === "hr-people")) return [businessEntry, ...fromApi.filter((item) => item.id !== "business")];
+      return [businessEntry, ...fromApi.filter((item) => item.id !== "business"), { id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }];
     }
     if (hasActiveWorkspace) return [
+      businessEntry,
       { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." },
       ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
     ];
