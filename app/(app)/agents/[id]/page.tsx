@@ -16,6 +16,8 @@ import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import { toast } from "sonner";
 import { demoMode } from "@/lib/demo-mode";
+import { agents } from "@/lib/mock-data";
+import type { Agent as AssistantAgent } from "@/lib/types";
 import { WorkspaceCopyDialog, workspaceCopyOptions } from "@/components/workspace-copy-dialog";
 
 type Agent = { id: string; key: string; name: string; department: string; status: string; workspaceId: string | null; configuration: Record<string, unknown> };
@@ -23,6 +25,12 @@ type Tab = "overview" | "job" | "triggers" | "permissions" | "activity" | "appro
 
 const tabLabels: Array<[Tab, string]> = [["overview", "Overview"], ["job", "Job"], ["triggers", "Triggers"], ["permissions", "Permissions & limits"], ["activity", "Activity"], ["approvals", "Approvals"], ["settings", "Settings"], ["versions", "Versions"]];
 const workspaceNames: Record<string, string> = { crm_sales: "CRM & Sales", finance_accounting: "Finance & Accounting", customer_support: "Customer Support & Success", operations_inventory: "Operations & Inventory", hr_people: "HR & People", projects_delivery: "Projects & Delivery", it_infrastructure: "IT & Infrastructure", business: "Business" };
+
+/** The AI agents the evaluations and knowledge pages mention, shown with the same detail layout. */
+const fromAssistant = (agent: AssistantAgent): Agent => ({
+  id: agent.id, key: agent.id, name: agent.name, department: agent.type === "support" ? "customer_support" : "crm_sales", status: agent.status === "paused" ? "paused" : "active", workspaceId: null,
+  configuration: { description: agent.purpose, ownerName: "Pankaj Neema", approvalMode: agent.tools.some((tool) => tool.requiresApproval) ? "Ask before sensitive actions" : "Act and report", lastRunAt: "Today", "Success rate": `${agent.successRate}%`, "Actions taken": String(agent.conversationsHandled), instructions: agent.instructions, goal: agent.purpose, readPermissions: true, knowledgeCollectionIds: agent.knowledgeDocIds, approvers: ["owner"], readScopes: ["customers", "pipeline"], actions: agent.tools.filter((tool) => tool.allowed).map((tool) => tool.name.replace("()", "")), triggers: agent.channels.map((channel) => `New ${channel.replace("_", " ")} message`), limits: { dailyRuns: 200, dailyActions: 800, workingHours: "09:00–18:00" }, model: agent.model },
+});
 
 const demoAgentRecords: Agent[] = [
   { id: "demo-agent-health", key: "business-health", name: "Business Health Monitor", department: "business", status: "active", workspaceId: null, configuration: { description: "Prepares a daily owner brief from connected CRM activity.", ownerName: "Pankaj Neema", approvalMode: "Ask before sensitive actions", lastRunAt: "Today · 09:00", "Runs · 7d": "18", "Actions taken": "18", "Waiting approval": "2", Failed: "0", "Success rate": "96%", "Avg run time": "4.2s", instructions: "Review verified business signals and highlight the next best action.", readPermissions: true, knowledgeCollectionIds: ["business-faq"], approvers: ["owner"], readScopes: ["pipeline", "customers"], actions: ["create_task", "assign_owner"], triggers: ["Every morning at 09:00"], limits: { dailyRuns: 100, dailyActions: 500, workingHours: "09:00–18:00" } } },
@@ -34,7 +42,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const router = useRouter();
   const search = useSearchParams();
-  const isDemoAgent = demoMode && id.startsWith("demo-agent-");
+  const assistant = agents.find((item) => item.id === id);
+  const isDemoAgent = demoMode && (id.startsWith("demo-agent-") || Boolean(assistant));
   const rawTab = search.get("tab") as Tab | null;
   const tab: Tab = tabLabels.some(([key]) => key === rawTab) ? (rawTab as Tab) : "overview";
   const [editing, setEditing] = React.useState(search.get("mode") === "edit");
@@ -42,7 +51,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const [copyOpen, setCopyOpen] = React.useState(false);
   const [testOutput, setTestOutput] = React.useState<Record<string, unknown> | null>(null);
   const agent = useApi<Agent>(isDemoAgent ? null : `/business/agents/${id}`);
-  const [demoItem, setDemoItem] = React.useState<Agent | null>(() => isDemoAgent ? demoAgentRecords.find((record) => record.id === id) ?? null : null);
+  const [demoItem, setDemoItem] = React.useState<Agent | null>(() => isDemoAgent ? demoAgentRecords.find((record) => record.id === id) ?? (assistant ? fromAssistant(assistant) : null) : null);
   const item = agent.data ?? demoItem;
 
   function selectTab(value: Tab) { router.replace(`/agents/${id}?workspace=business&tab=${value}`); }

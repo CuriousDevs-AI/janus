@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { can } from "@/lib/permissions";
 import { demoConnectedSources, demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
-import { monthlyLeads, stats as crm } from "@/lib/demo-universe";
+import { lakh, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSession } from "@/components/auth/session-provider";
@@ -25,7 +26,7 @@ export default function DashboardPage() {
   const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
   const deals = useApi<Deal[]>("/deals?limit=100&after_id=0");
   const canViewSources =
-    session.permissions.includes("sources:manage") &&
+    can(session, "sources:manage") &&
     Boolean(session.user.email_verified_at);
   const sources = useApi<Source[]>(
     canViewSources ? "/sources?limit=50&after_id=0" : null,
@@ -39,6 +40,9 @@ export default function DashboardPage() {
   const dealRows = deals.data ?? (usingDemoDeals ? demoDealRows : []);
   const openDeals = dealRows.filter((deal) => !["won", "lost"].includes(deal.stage));
   const openValue = openDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
+  // The suggestions below come from the records on this page, so they always name someone who is really in the list.
+  const biggest = [...openDeals].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
+  const unanswered = [...leadRows].filter((lead) => lead.stage === "new").sort((a, b) => b.createdAt.localeCompare(a.createdAt)).sort((a, b) => Number(b.source === "phone_call") - Number(a.source === "phone_call"))[0];
   const connectedSources = (sources.data ?? (usingDemoSources ? demoConnectedSources : [])).filter(
     (source) => source.status === "connected",
   );
@@ -172,9 +176,9 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">AI operating insights</h2></div>
           <p className="mt-1 text-[11px] text-muted-foreground">The next actions Janus would surface for the sales owner.</p>
           <div className="mt-4 space-y-3">
-            <div className="rounded-md border border-accent/20 bg-accent-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Follow up with Riya Kapoor</p><ArrowUpRight className="size-3.5 text-accent" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Qualified website lead with ₹4.8L potential. Next best action: send the approved WhatsApp follow-up.</p></div>
-            <div className="rounded-md border border-warning/30 bg-warning-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Respond to the missed call</p><AlertTriangle className="size-3.5 text-warning" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Amit Shah is a new phone lead with no first response recorded yet.</p></div>
-            <div className="rounded-md border border-border bg-surface-2 p-3"><p className="text-xs font-semibold">Pipeline focus</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Two open deals total ₹7.5L. Keep proposal follow-ups within two business days.</p></div>
+            {biggest ? <div className="rounded-md border border-accent/20 bg-accent-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Follow up with {biggest.customerName}</p><ArrowUpRight className="size-3.5 text-accent" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{biggest.company} has {lakh(Number(biggest.amount))} in play ({biggest.name}, {biggest.stage}). Next best action: send the approved WhatsApp follow-up.</p></div> : null}
+            {unanswered ? <div className="rounded-md border border-warning/30 bg-warning-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{unanswered.source === "phone_call" ? "Return the missed call" : "Send a first reply"}</p><AlertTriangle className="size-3.5 text-warning" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{unanswered.contactName} ({unanswered.company}) is a new {unanswered.source.replace("_", " ")} lead with no first response recorded yet.</p></div> : null}
+            <div className="rounded-md border border-border bg-surface-2 p-3"><p className="text-xs font-semibold">Pipeline focus</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{openDeals.length === 0 ? "There are no open deals yet. New enquiries will show up here as they become deals." : `${openDeals.length} open deal${openDeals.length === 1 ? "" : "s"} total ${lakh(openValue)}. Keep proposal follow-ups within two business days.`}</p></div>
           </div>
         </section>
       </div>

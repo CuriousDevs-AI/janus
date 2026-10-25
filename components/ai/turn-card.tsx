@@ -2,7 +2,7 @@
 
 import { Bot, ChevronRight, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { EXAMPLE_QUESTIONS, type BusinessAnswer } from "@/lib/services/business-ai";
+import { EXAMPLE_QUESTIONS, type BusinessAnswer } from "@/lib/services/business-answer";
 import { MiniBarChart } from "@/components/ai/mini-bar-chart";
 
 const FALLBACK_MESSAGE =

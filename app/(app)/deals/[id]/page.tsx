@@ -1,5 +1,6 @@
 "use client";
 import { use, useState } from "react";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useApi } from "@/lib/api/use-api";
@@ -78,7 +79,7 @@ export default function DealPage({
           <div className="grid gap-5 md:grid-cols-2">
             <section className="rounded-lg border border-border bg-surface p-4">
               <h2 className="mb-4 text-sm font-semibold">Deal details</h2>
-              {session.permissions.includes("leads:write") ? (
+              {can(session, "leads:write") ? (
                 <DealForm
                   key={`${deal.id}-${deal.version}`}
                   deal={deal}
