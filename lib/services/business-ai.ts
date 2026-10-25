@@ -51,22 +51,22 @@ type CannedEntry = {
 // ---------------------------------------------------------------------------
 
 function sourceByName(name: string) {
-  return leadsBySource.find((s) => s.source === name)!;
+  return leadsBySource.find((s) => s.source === name) ?? leadsBySource[0];
 }
 
 const bySourceLeadsDesc = [...leadsBySource].sort((a, b) => b.leads - a.leads);
 const bySourceConversionDesc = [...leadsBySource].sort((a, b) => b.conversion - a.conversion);
 
 const website = sourceByName("Website");
-const metaLeadAds = sourceByName("Meta Lead Ads");
-const referral = sourceByName("Referral");
+const metaLeadAds = sourceByName("Meta Lead Ads") ?? sourceByName("Phone calls");
+const referral = sourceByName("Referral") ?? sourceByName("WhatsApp");
 const secondBySourceVolume = bySourceLeadsDesc.find((s) => s.source !== website.source)!;
 const websiteVsSecondRatio = +(website.leads / secondBySourceVolume.leads).toFixed(1);
 
 const repsByConversionDesc = [...salesLeaderboard].sort((a, b) => b.conversion - a.conversion);
 const topRep = repsByConversionDesc[0];
-const secondRep = repsByConversionDesc[1];
-const thirdRep = repsByConversionDesc[2];
+const secondRep = repsByConversionDesc[1] ?? topRep;
+const thirdRep = repsByConversionDesc[2] ?? secondRep;
 
 const firstConv = conversionTrend[0];
 const lastConv = conversionTrend[conversionTrend.length - 1];
@@ -95,6 +95,9 @@ const atRiskMinSupportLoad = Math.min(...atRiskCustomers.map((c) => c.health.sup
 const atRiskMaxSupportLoad = Math.max(...atRiskCustomers.map((c) => c.health.supportLoad));
 
 const urgentTickets = tickets.filter((t) => t.priority === "urgent");
+const urgentSummary = urgentTickets.length === 0
+  ? "No urgent tickets are open right now."
+  : `${urgentTickets.length === 1 ? "One urgent ticket needs" : `${urgentTickets.length} urgent tickets need`} attention right now: ${urgentTickets.slice(0, 2).map((t) => `"${t.subject}" (${t.number}, ${t.slaMinutesRemaining} min to SLA breach)`).join(" and ")}.`;
 const peakTicketDay = ticketVolumeTrend.reduce((max, p) => (p.value > max.value ? p : max), ticketVolumeTrend[0]);
 const lowTicketDay = ticketVolumeTrend.reduce((min, p) => (p.value < min.value ? p : min), ticketVolumeTrend[0]);
 
@@ -262,7 +265,7 @@ const CANNED_ENTRIES: CannedEntry[] = [
     ],
     data: {
       question: "What are our biggest support problems?",
-      answer: `Two urgent, escalated tickets need attention right now: "${urgentTickets[0].subject}" (${urgentTickets[0].number}, ${urgentTickets[0].slaMinutesRemaining} min to SLA breach) and "${urgentTickets[1].subject}" (${urgentTickets[1].number}, ${urgentTickets[1].slaMinutesRemaining} min to SLA breach, an at-risk account). More broadly, there have been ${supportMetrics.slaBreaches30d} SLA breaches in the last 30 days, and ${peakTicketDay.date} is the peak ticket-volume day (${peakTicketDay.value} tickets vs ${lowTicketDay.value} on ${lowTicketDay.date}). AI resolves ${supportMetrics.aiResolutionRate}% of tickets on its own; the rest need a human and average ${supportMetrics.resolutionHours}h to resolve.`,
+      answer: `${urgentSummary} More broadly, there have been ${supportMetrics.slaBreaches30d} SLA breaches in the last 30 days, and ${peakTicketDay.date} is the peak ticket-volume day (${peakTicketDay.value} tickets vs ${lowTicketDay.value} on ${lowTicketDay.date}). AI resolves ${supportMetrics.aiResolutionRate}% of tickets on its own; the rest need a human and average ${supportMetrics.resolutionHours}h to resolve.`,
       dataUsed: ["Tickets", "Support Metrics"],
       calculation: {
         metric: "Escalated ticket detail, SLA breaches & ticket volume trend",

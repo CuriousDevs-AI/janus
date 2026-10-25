@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { scoped } from "@/lib/company";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CompanyWizard } from "@/components/setup/company-wizard";
 import { ArrowRight, Building2, Check, CircleHelp, Mail, SkipForward, UsersRound, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
@@ -24,10 +26,10 @@ const steps: Array<{ id: WizardStep; apiId: string; label: string; description: 
   { id: "members", apiId: "members", label: "Invite your team", description: "Add teammates now or skip and invite them later from People & Access." },
   { id: "connections", apiId: "data_connections", label: "Connect data", description: "Connect a source when you are ready. This step is optional for the first session." },
 ];
-const profileStorageKey = "janus.setup.profile";
-const activationStorageKey = "janus.setup.active-workspace";
+const profileStorageKey = scoped("janus.setup.profile");
+const activationStorageKey = scoped("janus.setup.active-workspace");
 
-export default function SetupPage() {
+function LegacySetupPage() {
   const router = useRouter();
   const [setup, setSetup] = React.useState<Setup | null>(null);
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
@@ -155,7 +157,7 @@ function ProfileStep({ name, industry, companySize, timezone, setName, setIndust
 }
 
 function WorkspaceStep({ activeWorkspace, onActivate, onSkip, saving }: { activeWorkspace: string | null; onActivate: (type: string) => void; onSkip: () => void; saving: boolean }) {
-  const options = workspaceDefinitions.filter((item) => item.id !== "business");
+  const options = workspaceDefinitions.filter((item) => item.id !== "business" && item.id !== "portfolio");
   return <div className="grid gap-4"><div className={`rounded-lg border p-4 ${activeWorkspace ? "border-success/40 bg-success/5" : "border-amber-300/60 bg-amber-50"}`}><div className="flex items-start gap-3"><Building2 className="mt-0.5 size-4" /><div><p className="text-sm font-medium">{activeWorkspace ? "A workspace is active" : "No workspace is active yet"}</p><p className="mt-1 text-xs text-muted-foreground">{activeWorkspace ? "Your team can now enter the selected workspace from the workspace switcher." : "You can still use Business Management to configure the company and activate a workspace later."}</p></div></div></div><div className="grid gap-2 sm:grid-cols-2">{options.map((item) => { const type = item.id.replaceAll("-", "_"); const active = activeWorkspace === type; return <div key={item.id} className={`flex items-center gap-3 rounded-lg border p-3 ${active ? "border-success/40 bg-success/5" : "border-border bg-surface"}`}><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{item.name}</span><span className="mt-1 block text-xs text-muted-foreground">{item.description}</span></span>{active ? <Badge variant="success">Active</Badge> : <Button size="sm" variant="secondary" onClick={() => onActivate(type)} disabled={saving}>Activate</Button>}</div>; })}</div><Button variant="ghost" className="w-fit" onClick={onSkip} disabled={saving}><SkipForward className="size-3.5" />Skip for now</Button></div>;
 }
 
@@ -165,4 +167,11 @@ function MembersStep({ inviteEmail, setInviteEmail, invited, onInvite, onSkip, s
 
 function ConnectionsStep({ onConnect, onSkip }: { onConnect: () => void; onSkip: () => void }) {
   return <div className="grid gap-4"><div className="flex items-start gap-3 rounded-lg border border-border bg-surface-2 p-4"><Waypoints className="mt-0.5 size-4 text-accent" /><div><p className="text-sm font-medium">Connect your first source</p><p className="mt-1 text-xs text-muted-foreground">Website forms, WhatsApp, phone calls, webhooks, API and CSV imports are available from Lead Sources.</p></div></div><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onConnect}>Open Lead Sources <ArrowRight className="size-3.5" /></Button><Button variant="ghost" onClick={onSkip}><SkipForward className="size-3.5" />Skip for now</Button></div></div>;
+}
+
+/** The preview adds and finishes companies with its own wizard. The live product keeps the API-driven setup. */
+export default function SetupPage() {
+  const params = useSearchParams();
+  if (demoMode) return <CompanyWizard key={params.get("finish") ?? "new"} finishId={params.get("finish") ?? undefined} />;
+  return <LegacySetupPage />;
 }

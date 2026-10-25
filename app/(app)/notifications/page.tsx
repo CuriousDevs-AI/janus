@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useCrmAccess } from "@/lib/use-crm-access";
 import { useRouter } from "next/navigation";
 import type { ComponentType } from "react";
 import { Handshake, LifeBuoy, Sparkles, Workflow, Bell, BellOff, CheckCheck } from "lucide-react";
@@ -14,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatRelativeTime, cn } from "@/lib/utils";
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 
 type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
@@ -36,7 +38,9 @@ const TABS: { key: "all" | NotificationCategory; label: string }[] = [
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const notifications = useAppStore((s) => s.notifications);
+  const allNotifications = useAppStore((s) => s.notifications);
+  const access = useCrmAccess();
+  const notifications = React.useMemo(() => access.notifications(allNotifications), [access, allNotifications]);
   const markNotificationRead = useAppStore((s) => s.markNotificationRead);
   const markAllNotificationsRead = useAppStore((s) => s.markAllNotificationsRead);
   const [tab, setTab] = React.useState<"all" | NotificationCategory>("all");
@@ -57,12 +61,7 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         description={`${unreadCount} unread of ${notifications.length}`}
-        actions={
-          <Button size="sm" variant="secondary" onClick={markAllNotificationsRead} disabled={unreadCount === 0}>
-            <CheckCheck className="size-3.5" />
-            Mark all read
-          </Button>
-        }
+        actions={<div className="flex items-center gap-2"><Button size="sm" variant="secondary" onClick={markAllNotificationsRead} disabled={unreadCount === 0}><CheckCheck className="size-3.5" />Mark all read</Button></div>}
       />
 
       <div className="border-b border-border px-6">

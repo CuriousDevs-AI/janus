@@ -10,8 +10,8 @@ export const agents: Agent[] = [
     version: "v3",
     purpose: "Qualify leads and assist sales communication across website, email and WhatsApp.",
     instructions:
-      "You represent CuriousDevs in sales conversations. Answer product and pricing questions using the connected knowledge base only — never invent pricing or policy. Qualify leads by asking about requirement, urgency, budget and decision-maker. Schedule demos when interest is confirmed. Escalate to a human for security-sensitive, legal or high-value (>₹5L) conversations.",
-    knowledgeDocIds: ["kb-3", "kb-4", "kb-6"],
+      "You represent Acme Traders in sales conversations. Answer price, scheme and delivery questions using the connected knowledge base only — never invent pricing or policy. Qualify leads by asking about requirement, urgency, budget and decision-maker. Offer a call or a sample delivery when interest is confirmed. Escalate to a human for security-sensitive, legal or high-value (>₹5L) conversations.",
+    knowledgeDocIds: ["kb-1", "kb-2", "kb-6"],
     tools: [
       { name: "get_customer()", allowed: true, requiresApproval: false },
       { name: "update_lead()", allowed: true, requiresApproval: false },
@@ -28,8 +28,8 @@ export const agents: Agent[] = [
     escalationRate: 11,
     temperature: 0.4,
     versions: [
-      { version: "v3", deployedAt: "2026-08-01T10:00:00+05:30", changeSummary: "Tightened discount approval threshold to ₹5L", status: "current" },
-      { version: "v2", deployedAt: "2026-06-10T10:00:00+05:30", changeSummary: "Added WhatsApp channel support", status: "previous" },
+      { version: "v3", deployedAt: "2026-10-07T10:00:00+05:30", changeSummary: "Tightened discount approval threshold to ₹5L", status: "current" },
+      { version: "v2", deployedAt: "2026-08-16T10:00:00+05:30", changeSummary: "Added WhatsApp channel support", status: "previous" },
       { version: "v1", deployedAt: "2026-03-01T10:00:00+05:30", changeSummary: "Initial deployment", status: "archived" },
     ],
   },
@@ -42,13 +42,13 @@ export const agents: Agent[] = [
     version: "v5",
     purpose: "Resolve customer support tickets using knowledge, customer history and connected tools.",
     instructions:
-      "Diagnose and resolve support tickets using the knowledge base, prior tickets and the customer's plan. Always confirm before taking an irreversible action. Hand off to a human immediately if the customer explicitly asks for one, if confidence drops below 60%, or after two unsuccessful resolution attempts.",
-    knowledgeDocIds: ["kb-1", "kb-2", "kb-5", "kb-6"],
+      "Diagnose and resolve support tickets using the knowledge base, prior tickets and the customer's order history and credit terms. Always confirm before taking an irreversible action. Hand off to a human immediately if the customer explicitly asks for one, if confidence drops below 60%, or after two unsuccessful resolution attempts.",
+    knowledgeDocIds: ["kb-3", "kb-4", "kb-5", "kb-6"],
     tools: [
       { name: "get_customer()", allowed: true, requiresApproval: false },
       { name: "create_ticket()", allowed: true, requiresApproval: false },
       { name: "update_ticket()", allowed: true, requiresApproval: false },
-      { name: "reset_api_token()", allowed: true, requiresApproval: false },
+      { name: "check_order_status()", allowed: true, requiresApproval: false },
       { name: "issue_refund()", allowed: true, requiresApproval: true },
       { name: "notify_human()", allowed: true, requiresApproval: false },
     ],
@@ -58,8 +58,8 @@ export const agents: Agent[] = [
     escalationRate: 24,
     temperature: 0.2,
     versions: [
-      { version: "v5", deployedAt: "2026-08-05T10:00:00+05:30", changeSummary: "Lowered handoff confidence threshold to 60%", status: "current" },
-      { version: "v4", deployedAt: "2026-06-20T10:00:00+05:30", changeSummary: "Added refund policy grounding", status: "previous" },
+      { version: "v5", deployedAt: "2026-10-11T10:00:00+05:30", changeSummary: "Lowered handoff confidence threshold to 60%", status: "current" },
+      { version: "v4", deployedAt: "2026-08-26T10:00:00+05:30", changeSummary: "Added refund policy grounding", status: "previous" },
       { version: "v3", deployedAt: "2026-04-11T10:00:00+05:30", changeSummary: "Improved auth-issue diagnosis", status: "archived" },
     ],
   },
@@ -73,7 +73,7 @@ export const agents: Agent[] = [
     purpose: "First-touch lead qualification — extract intent, requirement and route to the right owner.",
     instructions:
       "For every new inbound lead, extract intent, requirement, urgency and company signals. Produce a lead score with explicit reasons. Route high-value or sensitive leads to a human immediately without engaging further.",
-    knowledgeDocIds: ["kb-3"],
+    knowledgeDocIds: ["kb-1"],
     tools: [
       { name: "get_customer()", allowed: true, requiresApproval: false },
       { name: "update_lead()", allowed: true, requiresApproval: false },
@@ -85,7 +85,7 @@ export const agents: Agent[] = [
     escalationRate: 6,
     temperature: 0.1,
     versions: [
-      { version: "v2", deployedAt: "2026-07-18T10:00:00+05:30", changeSummary: "Added budget-signal detection", status: "current" },
+      { version: "v2", deployedAt: "2026-09-23T10:00:00+05:30", changeSummary: "Added budget-signal detection", status: "current" },
       { version: "v1", deployedAt: "2026-05-02T10:00:00+05:30", changeSummary: "Initial deployment", status: "archived" },
     ],
   },
@@ -109,7 +109,7 @@ export const agents: Agent[] = [
     conversationsHandled: 214,
     escalationRate: 2,
     temperature: 0.1,
-    versions: [{ version: "v1", deployedAt: "2026-06-01T10:00:00+05:30", changeSummary: "Initial deployment", status: "current" }],
+    versions: [{ version: "v1", deployedAt: "2026-08-07T10:00:00+05:30", changeSummary: "Initial deployment", status: "current" }],
   },
 ];
 

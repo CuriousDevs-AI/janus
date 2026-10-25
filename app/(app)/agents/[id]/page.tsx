@@ -48,13 +48,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   function selectTab(value: Tab) { router.replace(`/agents/${id}?workspace=business&tab=${value}`); }
   async function archive() {
     if (!item || !window.confirm(`Archive “${item.name}”? Run history will be retained.`)) return;
-    if (isDemoAgent) { toast.success("Demo agent archived"); router.push("/agents?workspace=business&tab=agents"); return; }
+    if (isDemoAgent) { toast.success("Agent archived"); router.push("/agents?workspace=business&tab=agents"); return; }
     try { await api(`/business/agents/${id}`, { method: "DELETE" }); toast.success("Agent archived"); router.push("/agents?workspace=business&tab=agents"); }
     catch (error) { toast.error(message(error)); }
   }
 
   async function testRun() {
-    if (isDemoAgent) { setTestOutput({ dryRun: true, status: "passed", preview: `Reviewed ${item?.name ?? "agent"} against demo records`, side_effects: false }); toast.success("Demo agent dry run completed"); return; }
+    if (isDemoAgent) { setTestOutput({ dryRun: true, status: "passed", preview: `Reviewed ${item?.name ?? "agent"} against your records`, side_effects: false }); toast.success("Agent dry run completed"); return; }
     try {
       const result = await api<Record<string, unknown>>(`/business/agents/${id}/test`, { method: "POST", body: JSON.stringify({ dryRun: true }) });
       setTestOutput(result);
@@ -65,7 +65,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   async function toggleStatus() {
     if (!item) return;
     const status = item.status === "active" ? "paused" : "active";
-    if (isDemoAgent) { setDemoItem({ ...item, status }); toast.success(status === "active" ? "Demo agent activated" : "Demo agent paused"); return; }
+    if (isDemoAgent) { setDemoItem({ ...item, status }); toast.success(status === "active" ? "Agent activated" : "Agent paused"); return; }
     try {
       await api(`/business/agents/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
       toast.success(status === "active" ? "Agent activated" : "Agent paused");
@@ -136,7 +136,7 @@ function AgentEditor({ agent, onCancel, onSaved, onTest, testOutput }: { agent: 
   async function save() {
     if (!name.trim()) return;
     const next = { ...agent, name: name.trim(), department, status, configuration: config };
-    if (agent.id.startsWith("demo-")) { toast.success("Demo agent updated"); onSaved(next); return; }
+    if (agent.id.startsWith("demo-")) { toast.success("Agent updated"); onSaved(next); return; }
     setSaving(true);
     try { await api("/business/agents/" + agent.id, { method: "PATCH", body: JSON.stringify({ name: next.name, department, status, configuration: config }) }); toast.success("Agent changes saved"); onSaved(); }
     catch (error) { toast.error(message(error)); } finally { setSaving(false); }

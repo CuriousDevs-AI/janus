@@ -126,7 +126,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   async function saveDraft(next = draft, silent = false) {
     if (isNew || !next.name.trim()) return false;
-    if (isDemoWorkflow) { setSaveState("Saved · demo"); lastSavedRef.current = JSON.stringify(next); if (!silent) toast.success("Demo workflow draft saved"); return true; }
+    if (isDemoWorkflow) { setSaveState("Saved · demo"); lastSavedRef.current = JSON.stringify(next); if (!silent) toast.success("Workflow draft saved"); return true; }
     setSaveState("Saving…");
     const payload = { name: next.name, description: next.description, scope: "business", trigger: next.trigger, steps: next.steps, actions: next.steps.map((step) => ({ id: step.id, type: step.type, module: step.module, action: step.action, title: step.title, config: step.config, disabled: step.disabled })), goal: next.goal, settings: next.settings, folderId: next.folderId };
     try {
@@ -164,7 +164,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   async function publish() {
     if (isNew) { toast.info("Save the workflow draft before publishing."); return; }
     if (!draft.steps.length && !draft.trigger.type) { toast.error("Add a trigger before publishing."); return; }
-    if (isDemoWorkflow) { setDraft((current) => ({ ...current, status: "active", liveVersion: (current.liveVersion ?? 0) + 1 })); setSaveState("Published · demo"); setReviewOpen(false); setEditing(false); toast.success("Demo workflow published"); return; }
+    if (isDemoWorkflow) { setDraft((current) => ({ ...current, status: "active", liveVersion: (current.liveVersion ?? 0) + 1 })); setSaveState("Published · demo"); setReviewOpen(false); setEditing(false); toast.success("Workflow published"); return; }
     try {
       await saveDraft(draft, true);
       await api("/business/automations/" + id + "/publish", { method: "POST", body: JSON.stringify({ changeNote: changeNote.trim() || "Published from Janus workflow editor" }) });
@@ -189,7 +189,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
     if (isNew) return;
     const next = live ? "off" : "on";
     if (next === "on" && hasOutboundMessage(draft) && !window.confirm("This workflow can send customer messages. Turn it on?")) return;
-    if (isDemoWorkflow) { setDraft((current) => ({ ...current, status: next === "on" ? "active" : "paused" })); setSaveState("Saved · demo"); toast.success(next === "on" ? "Demo workflow turned on" : "Demo workflow turned off"); return; }
+    if (isDemoWorkflow) { setDraft((current) => ({ ...current, status: next === "on" ? "active" : "paused" })); setSaveState("Saved · demo"); toast.success(next === "on" ? "Workflow turned on" : "Workflow turned off"); return; }
     try {
       await api("/business/automations/" + id + "/" + next, { method: "POST" });
       workflowApi.reload();
@@ -202,13 +202,13 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   async function archive() {
     if (isNew || !window.confirm("Archive this workflow? Run history will be kept for audit.")) return;
-    if (isDemoWorkflow) { toast.success("Demo workflow archived"); router.push("/automations?workspace=business"); return; }
+    if (isDemoWorkflow) { toast.success("Workflow archived"); router.push("/automations?workspace=business"); return; }
     try { await api("/business/automations/" + id, { method: "DELETE" }); toast.success("Workflow archived"); router.push("/automations?workspace=business"); }
     catch (error) { toast.error(message(error)); }
   }
 
   async function duplicate() {
-    if (isDemoWorkflow) { toast.success("Demo workflow duplicated as a draft"); router.push("/automations?workspace=business"); return; }
+    if (isDemoWorkflow) { toast.success("Workflow duplicated as a draft"); router.push("/automations?workspace=business"); return; }
     try {
       const created = await api<WorkflowRecord>("/business/automations", { method: "POST", body: JSON.stringify({ name: draft.name + " copy", description: draft.description, scope: "business", trigger: draft.trigger, steps: draft.steps, actions: draft.steps, requiresApproval: hasApproval(draft) }) });
       toast.success("Workflow duplicated");

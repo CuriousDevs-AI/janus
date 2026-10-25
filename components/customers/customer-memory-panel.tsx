@@ -98,7 +98,7 @@ export function CustomerMemoryPanel({ customerId }: { customerId: string }) {
                       <Check className="size-3" /> Approve
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => toast("Edit isn't wired up in this demo")}>
+                  <Button size="sm" variant="ghost" onClick={() => toast("Editing isn't available yet")}>
                     <Pencil className="size-3" />
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => remove(m.id)}>

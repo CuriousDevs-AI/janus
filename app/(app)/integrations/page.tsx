@@ -10,6 +10,8 @@ import type { Integration } from "@/lib/types";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { demoMode } from "@/lib/demo-mode";
 import { formatRelativeTime, formatNumber, cn } from "@/lib/utils";
 import {
   integrationCategoryMeta,
