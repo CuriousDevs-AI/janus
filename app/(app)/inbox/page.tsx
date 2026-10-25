@@ -79,7 +79,7 @@ function Inbox() {
         v?.toLowerCase().includes(query.toLowerCase()),
       ),
     ) || [];
-  const rows = allRows.filter((conversation) => {
+  const rows = allRows.filter(() => {
     const matchesOwner = listView !== "unassigned";
     const matchesChannel = channelFilter === "all" || usingDemo;
     return matchesOwner && matchesChannel;
