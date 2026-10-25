@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import type { Lead } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
+import { AddLeadDialog } from "@/components/leads/add-lead-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +156,7 @@ export default function LeadsPage() {
   const canWrite = can(session, "leads:write");
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
+  const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -360,12 +362,15 @@ export default function LeadsPage() {
               <RotateCw className="size-3.5" />
               Refresh
             </Button>
+            {can(session, "leads:write") && (
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus className="size-3.5" />
+                Add lead
+              </Button>
+            )}
             {can(session, "sources:manage") && (
-              <Button size="sm" asChild>
-                <Link href="/lead-sources/new">
-                  <Plus className="size-3.5" />
-                  New lead
-                </Link>
+              <Button size="sm" variant="secondary" asChild>
+                <Link href="/lead-sources/new">Add lead source</Link>
               </Button>
             )}
           </>
@@ -538,6 +543,8 @@ export default function LeadsPage() {
       )}
 
       <div className="flex gap-2 p-6"><Button size="sm" variant="ghost" onClick={() => { setAfter("0"); setVersion((value) => value + 1); }}>First page</Button><Button size="sm" variant="secondary" disabled={!loaded || loaded.rows.length !== 50} onClick={() => setAfter(loaded!.rows.at(-1)!.lead.id)}>Next 50</Button></div>
+
+      <AddLeadDialog open={adding} onOpenChange={setAdding} onAdded={() => { setAfter("0"); setVersion((value) => value + 1); }} />
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>

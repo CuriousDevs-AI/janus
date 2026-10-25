@@ -11,6 +11,7 @@ interface CrmState {
   deals: Deal[];
   contacts: Contact[];
   events: Record<string, DealEvent[]>;
+  addLead: (lead: Lead, contact: Contact) => void;
   patchLead: (id: string, patch: Partial<Lead>) => void;
   removeLead: (id: string) => void;
   putDeal: (id: string, patch: Partial<Deal>, event: DealEvent) => void;
@@ -36,6 +37,7 @@ const seed = () => ({
 /** The preview's stand-in for the CRM database. Reads and writes go through lib/demo-backend/handler.ts, which applies the same visibility rules the real API does. */
 export const useDemoCrmStore = create<CrmState>()(persist((set) => ({
   ...seed(),
+  addLead: (lead, contact) => set((state) => ({ leads: [lead, ...state.leads], contacts: [contact, ...state.contacts] })),
   patchLead: (id, patch) => set((state) => ({ leads: state.leads.map((item) => item.id === id ? { ...item, ...patch } : item) })),
   removeLead: (id) => set((state) => ({ leads: state.leads.filter((item) => item.id !== id) })),
   putDeal: (id, patch, event) => set((state) => ({ deals: state.deals.map((item) => item.id === id ? { ...item, ...patch, version: item.version + 1, updatedAt: event.createdAt } : item), events: { ...state.events, [id]: [event, ...(state.events[id] ?? [])] } })),
