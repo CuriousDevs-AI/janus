@@ -8,6 +8,8 @@ export type Persona = HrDemoRole;
 
 const LOGIN_KEY = "janus.demo-login";
 const VIEW_KEY = "janus.demo-view";
+/** The company the person signed in to. Account ids repeat across companies ("hr", "employee"), so a sign-in only counts in its own company. */
+const LOGIN_COMPANY_KEY = "janus.demo-login-company";
 const EVENT = "janus:demo-account";
 
 function read(key: string) {
@@ -24,7 +26,12 @@ function subscribe(listener: () => void) {
 }
 
 /** Who signed in. Null until someone does. */
-export const readLogin = () => accountById(read(LOGIN_KEY));
+export function readLogin() {
+  const account = accountById(read(LOGIN_KEY));
+  // The Owner is one person across every company. Anyone else belongs to the company they signed in to.
+  if (account && account.hrRole !== "owner" && read(LOGIN_COMPANY_KEY) !== activeCompany().id) return undefined;
+  return account;
+}
 /** Whose screens are on show. The Owner can view as anyone; everyone else sees only their own. */
 export function readView(): DemoAccount | undefined {
   const login = readLogin();
@@ -32,8 +39,8 @@ export function readView(): DemoAccount | undefined {
   const viewed = accountById(read(VIEW_KEY));
   return login.hrRole === "owner" && viewed ? viewed : login;
 }
-export function signIn(accountId: string) { write(VIEW_KEY, null); write(LOGIN_KEY, accountId); }
-export function signOut() { write(VIEW_KEY, null); write(LOGIN_KEY, null); }
+export function signIn(accountId: string) { write(VIEW_KEY, null); write(LOGIN_COMPANY_KEY, activeCompany().id); write(LOGIN_KEY, accountId); }
+export function signOut() { write(VIEW_KEY, null); write(LOGIN_KEY, null); write(LOGIN_COMPANY_KEY, null); }
 export function viewAs(accountId: string) { write(VIEW_KEY, accountId); }
 
 const idOf = (account: DemoAccount | undefined) => account?.id ?? "";
@@ -58,7 +65,8 @@ export function personaPermissions(account: DemoAccount | undefined): string[] {
   const out = ["hr:self"];
   if (account.hrRole === "hr_manager") out.push("hr:read", "hr:manage", "hr:approve", "hr:team", "hr:payroll:read");
   if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read");
-  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve");
+  // A manager works with their own team, so the menu offers leave, attendance, reviews and expenses too.
+  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve", "hr:read");
   // These are the backend's own permission names, so the preview behaves like a real role.
   if (account.crm === "team") out.push("leads:read_team", "leads:write", "leads:assign", "reports:read", "approvals:manage");
   if (account.crm === "own") out.push("leads:read_own", "leads:write");

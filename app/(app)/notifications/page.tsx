@@ -15,7 +15,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatRelativeTime, cn } from "@/lib/utils";
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
-import { demoMode } from "@/lib/demo-mode";
 
 type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 

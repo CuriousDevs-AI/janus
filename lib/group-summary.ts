@@ -55,7 +55,7 @@ export function summarise(record: CompanyRecord): CompanySummary {
   };
   const to = (path: string) => path;
   if (!record.setupDone) summary.attention.push({ severity: "high", text: "Setup is not finished", to: to(`/setup?finish=${record.id}`) });
-  if (pendingLeave > 0) summary.attention.push({ severity: pendingLeave > 2 ? "high" : "medium", text: `${pendingLeave} leave request${pendingLeave === 1 ? "" : "s"} waiting for a decision`, to: to("/workspace/hr-people?view=approvals&workspace=hr-people") });
+  if (pendingLeave > 0) summary.attention.push({ severity: pendingLeave > 2 ? "high" : "medium", text: `${pendingLeave} leave request${pendingLeave === 1 ? "" : "s"} open, pending or needing clarification`, to: to("/workspace/hr-people?view=approvals&workspace=hr-people") });
   if (summary.crm && summary.crm.quiet > 0) summary.attention.push({ severity: summary.crm.quiet > 4 ? "high" : "medium", text: `${summary.crm.quiet} open lead${summary.crm.quiet === 1 ? "" : "s"} with no activity for 4+ days`, to: to("/leads?workspace=crm-sales") });
   const waiting = deals.filter((item) => ["proposal", "negotiation"].includes(item.stage));
   if (summary.crm && waiting.length) summary.attention.push({ severity: "low", text: `${waiting.length} deal${waiting.length === 1 ? "" : "s"} in proposal or negotiation worth ₹${(waiting.reduce((sum, item) => sum + Number(item.amount), 0) / 100000).toFixed(1).replace(/\.0$/, "")}L`, to: to("/deals?workspace=crm-sales") });

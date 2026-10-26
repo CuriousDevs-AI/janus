@@ -1,5 +1,6 @@
 import type { HrDemoRole } from "@/lib/types";
 import { activeSpec } from "@/lib/companies";
+import { demoMode } from "@/lib/demo-mode";
 
 /**
  * How much of the CRM a person may see.
@@ -25,7 +26,8 @@ export interface DemoAccount {
   blurb: string;
 }
 
-const acmeAccounts: DemoAccount[] = [
+/** Test sign-ins exist only in the preview. In a live build this list is empty and the passwords below are dropped from the bundle. */
+const acmeAccounts: DemoAccount[] = !demoMode ? [] : [
   { id: "owner", email: "pankaj@acmetraders.in", password: "Owner@123", name: "Pankaj Neema", title: "Owner", employeeId: "emp-001", crmUserId: "u-1", hrRole: "owner", crm: "all", blurb: "Everything: Business Management, CRM, HR, every company." },
   { id: "sales-manager", email: "arjun@acmetraders.in", password: "Manager@123", name: "Arjun Mehta", title: "Sales Manager", employeeId: "emp-003", crmUserId: "u-4", hrRole: "reporting_manager", crm: "team", blurb: "CRM for the whole sales team, approvals, and his own team's leave." },
   { id: "sales-rep-1", email: "meera@acmetraders.in", password: "Sales@123", name: "Meera Singh", title: "Sales Executive", employeeId: "emp-009", crmUserId: "u-2", hrRole: "employee", crm: "own", blurb: "Only her own leads, deals and customers." },

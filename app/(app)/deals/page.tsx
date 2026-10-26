@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { Plus, GripVertical, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -26,7 +27,7 @@ import {
 
 export default function DealsPage() {
   const session = useSession();
-  const canWrite = session.permissions.includes("leads:write");
+  const canWrite = can(session, "leads:write");
   const [cursors, setCursors] = useState(["0"]);
   const result = useApi<Deal[]>(`/deals?after_id=${cursors.at(-1)}&limit=100`);
   const usingDemo = Boolean(result.error);

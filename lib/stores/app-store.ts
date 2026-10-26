@@ -1,6 +1,8 @@
 "use client";
 
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { scoped } from "@/lib/company";
 import type {
   Lead,
   LeadStage,
@@ -123,7 +125,7 @@ interface AppState {
   resetDemoData: () => void;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()(persist((set, get) => ({
   leads: initialLeads,
   deals: initialDeals,
   tickets: initialTickets,
@@ -350,6 +352,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...t, status: "resolved", resolvedAt: new Date().toISOString(), closedReason: reason, updatedAt: new Date().toISOString() }
           : t
       ),
+      // The chat behind a resolved ticket is finished, so the assistant stops answering it.
+      conversations: s.conversations.map((c) => (c.id === ticket.conversationId ? { ...c, aiActive: false, status: "resolved" } : c)),
     }));
     get().addActivity(ticket.customerId, "ticket_resolved", HUMAN_ACTOR, `Ticket ${ticket.number} resolved${reason ? ` — ${reason}` : ""}`, {
       relatedId: ticketId,
@@ -620,6 +624,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       companies: initialCompanies,
     });
   },
+}), {
+  // Tickets, approvals, notifications and the rest survive a reload, like leads and HR records do.
+  name: scoped("janus.crm-records.v1"), version: 1, storage: createJSONStorage(() => localStorage),
+  partialize: (state) => ({ leads: state.leads, deals: state.deals, tickets: state.tickets, approvals: state.approvals, automations: state.automations, notifications: state.notifications, conversations: state.conversations, messages: state.messages, activities: state.activities, agents: state.agents, knowledgeDocuments: state.knowledgeDocuments, customers: state.customers, companies: state.companies }),
 }));
 
 function hashString(s: string): number {

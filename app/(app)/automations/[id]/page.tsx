@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useAppStore } from "@/lib/stores/app-store";
+import type { Automation } from "@/lib/types";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -56,6 +58,17 @@ const emptyWorkflow: WorkflowRecord = {
   modulesUsed: [],
 };
 
+/** Turns one of the CRM automations into the workflow shape this page edits. */
+function fromAutomation(item: Automation): WorkflowRecord {
+  const kinds: Record<string, string> = { action: "action", ai_decision: "action", condition: "condition", branch: "condition", wait: "wait" };
+  return {
+    id: item.id, name: item.name, description: item.description, status: item.status === "active" ? "active" : item.status === "disabled" ? "paused" : "draft", scope: "business", ownerId: "Sales team",
+    trigger: { type: item.trigger }, actions: [], modulesUsed: ["crm_sales"], updatedAt: item.lastRunAt ?? item.createdAt,
+    settings: { runWindow: "any_time", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} },
+    steps: item.nodes.filter((node) => node.kind !== "trigger").map((node, index) => ({ id: `${item.id}-step-${index + 1}`, type: kinds[node.kind] ?? "action", title: node.label, note: node.detail, config: {} })),
+  };
+}
+
 const demoWorkflowRecords: WorkflowRecord[] = [
   { id: "demo-workflow-lead-follow-up", name: "New lead follow-up", description: "Qualify a new lead, draft a reply and create a follow-up task.", status: "active", scope: "business", ownerId: "Sales team", liveVersion: 3, draftVersion: 4, trigger: { type: "lead_created", module: "crm_sales", reEnrollment: false, enrollExisting: false }, steps: [{ id: "lead-qualify", type: "action", module: "crm_sales", action: "qualify_lead", title: "Qualify lead", config: {}, disabled: false }, { id: "lead-reply", type: "action", module: "whatsapp", action: "draft_reply", title: "Draft WhatsApp reply", config: { approvalRequired: true }, disabled: false }, { id: "lead-task", type: "action", module: "crm_sales", action: "create_task", title: "Create follow-up task", config: {}, disabled: false }], actions: [], goal: { type: "stage_changed", value: "qualified" }, settings: { runWindow: "business_hours", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["crm_sales", "whatsapp"], requiresApproval: true, updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
   { id: "demo-workflow-lead", name: "New lead follow-up", description: "Qualify a new lead, draft a reply and create a follow-up task.", status: "active", scope: "business", ownerId: "Sales team", liveVersion: 3, draftVersion: 4, trigger: { type: "lead_created", module: "crm_sales", reEnrollment: false, enrollExisting: false }, steps: [{ id: "lead-qualify", type: "action", module: "crm_sales", action: "qualify_lead", title: "Qualify lead", config: {}, disabled: false }, { id: "lead-reply", type: "action", module: "whatsapp", action: "draft_reply", title: "Draft WhatsApp reply", config: { approvalRequired: true }, disabled: false }, { id: "lead-task", type: "action", module: "crm_sales", action: "create_task", title: "Create follow-up task", config: {}, disabled: false }], actions: [], goal: { type: "stage_changed", value: "qualified" }, settings: { runWindow: "business_hours", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["crm_sales", "whatsapp"], requiresApproval: true, updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
@@ -70,7 +83,8 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   const router = useRouter();
   const search = useSearchParams();
   const isNew = id === "new";
-  const isDemoWorkflow = demoMode && id.startsWith("demo-workflow-");
+  const crmAutomation = useAppStore((state) => state.automations.find((item) => item.id === id));
+  const isDemoWorkflow = demoMode && (id.startsWith("demo-workflow-") || Boolean(crmAutomation));
   const rawTab = search.get("tab") as PageTab | null;
   const tab: PageTab = pageTabs.some(([key]) => key === rawTab) ? (rawTab as PageTab) : "editor";
   const workflowApi = useApi<WorkflowRecord>(isNew || isDemoWorkflow ? null : "/business/automations/" + id);
@@ -78,7 +92,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   const runsApi = useApi<BusinessWorkflowRun[]>(isNew || isDemoWorkflow ? null : "/business/automations/" + id + "/runs");
   const versionsApi = useApi<Array<Record<string, unknown>>>(isNew || isDemoWorkflow ? null : "/business/automations/" + id + "/versions");
   const catalogApi = useApi<BusinessAutomationCatalog>("/business/automation-catalog");
-  const demoRecord = isDemoWorkflow ? demoWorkflowRecords.find((record) => record.id === id) : undefined;
+  const demoRecord = isDemoWorkflow ? demoWorkflowRecords.find((record) => record.id === id) ?? (crmAutomation ? fromAutomation(crmAutomation) : undefined) : undefined;
   const [draft, setDraft] = React.useState<WorkflowRecord>(() => demoRecord ? normalizeWorkflow(demoRecord) : emptyWorkflow);
   const [hydrated, setHydrated] = React.useState(isNew || Boolean(demoRecord));
   const [editing, setEditing] = React.useState(isNew || search.get("mode") === "edit");

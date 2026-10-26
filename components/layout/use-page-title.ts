@@ -8,9 +8,11 @@ export function usePageTitle() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { workspaceId } = useWorkspace();
+  const items = getNavSectionsForWorkspace(workspaceId).flatMap((s) => s.items);
+  // A page that carries extra parameters (a selected chat, a report) still belongs to its menu item.
+  const byPath = items.find((item) => item.href.split("?")[0] === pathname);
   return (
-    getNavSectionsForWorkspace(workspaceId)
-      .flatMap((s) => s.items)
+    items
       .find((item) => {
         const [itemPath, itemQuery] = item.href.split("?");
         if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
@@ -22,6 +24,6 @@ export function usePageTitle() {
           if (key !== "workspace" && !itemParams.has(key)) return false;
         }
         return true;
-      })?.label || "Janus"
+      })?.label || byPath?.label || "Janus"
   );
 }

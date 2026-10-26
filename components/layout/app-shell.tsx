@@ -12,6 +12,7 @@ import { MobileSidebar } from "@/components/layout/mobile-sidebar";
 import { usePathname, useRouter } from "next/navigation";
 import { demoMode } from "@/lib/demo-mode";
 import { homeFor, personaMayOpen, useDemoAccount } from "@/lib/demo-persona";
+import { businessHome, readCompanies } from "@/lib/company";
 import { WorkspaceProvider } from "@/components/layout/workspace-context";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -32,7 +33,11 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const allowed = !demoMode || !account || personaMayOpen(account, pathname);
   // HR, Finance and Employee previews have no business in CRM or Business Management. Send them home.
-  React.useEffect(() => { if (!allowed && account) router.replace(homeFor(account)); }, [allowed, account, router]);
+  React.useEffect(() => {
+    if (allowed || !account) return;
+    // The Owner who has companies goes back to the company they are in; with none, to the Portfolio.
+    router.replace(account.hrRole === "owner" && readCompanies().length > 0 && !pathname.startsWith("/portfolio") ? businessHome : homeFor(account));
+  }, [allowed, account, router, pathname]);
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
       <Sidebar />
