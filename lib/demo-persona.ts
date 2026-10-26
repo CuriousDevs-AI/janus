@@ -8,6 +8,8 @@ export type Persona = HrDemoRole;
 
 const LOGIN_KEY = "janus.demo-login";
 const VIEW_KEY = "janus.demo-view";
+/** The company the person signed in to. Account ids repeat across companies ("hr", "employee"), so a sign-in only counts in its own company. */
+const LOGIN_COMPANY_KEY = "janus.demo-login-company";
 const EVENT = "janus:demo-account";
 
 function read(key: string) {
@@ -24,7 +26,12 @@ function subscribe(listener: () => void) {
 }
 
 /** Who signed in. Null until someone does. */
-export const readLogin = () => accountById(read(LOGIN_KEY));
+export function readLogin() {
+  const account = accountById(read(LOGIN_KEY));
+  // The Owner is one person across every company. Anyone else belongs to the company they signed in to.
+  if (account && account.hrRole !== "owner" && read(LOGIN_COMPANY_KEY) !== activeCompany().id) return undefined;
+  return account;
+}
 /** Whose screens are on show. The Owner can view as anyone; everyone else sees only their own. */
 export function readView(): DemoAccount | undefined {
   const login = readLogin();
@@ -32,8 +39,8 @@ export function readView(): DemoAccount | undefined {
   const viewed = accountById(read(VIEW_KEY));
   return login.hrRole === "owner" && viewed ? viewed : login;
 }
-export function signIn(accountId: string) { write(VIEW_KEY, null); write(LOGIN_KEY, accountId); }
-export function signOut() { write(VIEW_KEY, null); write(LOGIN_KEY, null); }
+export function signIn(accountId: string) { write(VIEW_KEY, null); write(LOGIN_COMPANY_KEY, activeCompany().id); write(LOGIN_KEY, accountId); }
+export function signOut() { write(VIEW_KEY, null); write(LOGIN_KEY, null); write(LOGIN_COMPANY_KEY, null); }
 export function viewAs(accountId: string) { write(VIEW_KEY, accountId); }
 
 const idOf = (account: DemoAccount | undefined) => account?.id ?? "";

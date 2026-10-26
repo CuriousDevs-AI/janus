@@ -59,7 +59,8 @@ export function activeCompanyId(): string {
 export const activeCompany = (): CompanyRecord => readCompanies().find((item) => item.id === activeCompanyId()) ?? seedCompanies[0];
 
 export function switchCompany(id: string, to = businessHome) {
-  try { window.localStorage.setItem(ACTIVE_KEY, id); } catch { /* private mode */ }
+  // "View as" names a person in the company being left, so it must not carry over to the next one.
+  try { window.localStorage.setItem(ACTIVE_KEY, id); window.localStorage.removeItem("janus.demo-view"); } catch { /* private mode */ }
   window.location.assign(to);
 }
 
