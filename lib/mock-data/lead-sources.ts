@@ -4,7 +4,7 @@ import type { LeadSourceConnection } from "@/lib/types";
 // webhook endpoint, not another integration or independently provisioned URL.
 const webhook = {
   webhookUrl: "https://ingest.janus.example/hooks/tenant_demo",
-  signingSecret: "Demo secret — generated when connected",
+  signingSecret: "Generated when connected",
   fieldMapping: [
     { rawField: "full_name", mapsTo: "name" },
     { rawField: "email_address", mapsTo: "email" },
@@ -29,14 +29,14 @@ export const leadSourceConnections: LeadSourceConnection[] = [
   {
     id: "ls-website", source: "website", name: "Website Form & Chat Widget",
     description: "Capture enquiries from an embedded form or chat widget on your website.",
-    connectionKind: "embed", status: "connected", connectedAccount: "Demo website",
+    connectionKind: "embed", status: "connected", connectedAccount: "Website form",
     embedSnippet: '<script src="https://cdn.janus.example/widget.js" data-tenant="tenant_demo" async></script>',
     leadsCaptured30d: 8, lastEventAt: "2026-10-23T11:20:00+05:30",
   },
   {
     id: "ls-whatsapp", source: "whatsapp", name: "WhatsApp Business",
     description: "Capture first-time enquiries to your WhatsApp Business number through the Meta Cloud API.",
-    connectionKind: "oauth", status: "connected", connectedAccount: "Demo WhatsApp Business account",
+    connectionKind: "oauth", status: "connected", connectedAccount: "WhatsApp Business account",
     webhookUrl: "https://ingest.janus.example/hooks/whatsapp/tenant_demo",
     leadsCaptured30d: 12, lastEventAt: "2026-10-23T09:40:00+05:30",
   },

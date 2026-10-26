@@ -408,7 +408,7 @@ function CrmAssistantView() {
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />CRM &amp; Sales AI</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">CRM Assistant</h1><Badge variant="neutral">{demoMode ? "Demo data" : "Connected records"}</Badge></div>
+          <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">CRM Assistant</h1>{!demoMode && <Badge variant="neutral">Connected records</Badge>}</div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Ask about leads, deals, customers, chats and tickets. Every answer stays scoped to CRM &amp; Sales.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2"><Badge variant="success">CRM scope</Badge><Badge variant="outline">Private to you</Badge></div>
@@ -621,7 +621,7 @@ function BusinessKnowledgeView() {
       </DialogContent>
     </Dialog>
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Verified sources"}</Badge></div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Everything Janus knows about your business. Answers use this knowledge and connected records, with access controlled by permissions.</p></div>
+      <div><div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1>{!demoMode && <Badge variant="success">Verified sources</Badge>}</div><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Everything Janus knows about your business. Answers use this knowledge and connected records, with access controlled by permissions.</p></div>
       <div className="flex gap-2"><Button variant="secondary" onClick={() => openDialog("app")}><Link2 className="size-3.5" />Connect an app</Button><Button onClick={() => openDialog("menu")}><Plus className="size-3.5" />Add knowledge</Button></div>
     </div>
     <BusinessIntelligenceNav active="knowledge" />
@@ -646,7 +646,7 @@ function BusinessMemoryView() {
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />Janus Intelligence</div>
-        <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">Memory</h1><Badge variant={demoMode ? "neutral" : "success"}>{demoMode ? "Demo data" : "Your private memory"}</Badge></div>
+        <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">Memory</h1>{!demoMode && <Badge variant="success">Your private memory</Badge>}</div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Preferences and context that Janus remembers for your work. Memory is personal to your account and separate from shared business knowledge.</p>
       </div>
       <div className="flex items-center gap-2"><Badge variant="success">Owner scope</Badge><Badge variant="outline">Private to you</Badge></div>
