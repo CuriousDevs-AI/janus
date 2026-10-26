@@ -12,8 +12,9 @@ import { SectionCard, FieldRow } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { useSession } from "@/components/auth/session-provider";
+import { useLocationsStore, type CompanyLocation } from "@/lib/stores/company-locations-store";
 
-type Location = { id: number; name: string; kind: string; address: string; people: number; gst: string };
+type Location = CompanyLocation;
 type CompanyProfile = {
   displayName: string; legalName: string; industry: string; size: string; founded: string; website: string;
   description: string; email: string; phone: string; whatsapp: string; address1: string; address2: string;
@@ -28,11 +29,6 @@ const initialProfile: CompanyProfile = {
   address1: "Plot 14, Udyog Vihar Phase 4", address2: "Near Sector 18 Metro", city: "Gurugram", state: "Haryana", pin: "122015", billingSame: true,
 };
 
-const initialLocations: Location[] = [
-  { id: 1, name: "Head office", kind: "Office", address: "Udyog Vihar Phase 4, Gurugram, Haryana", people: 18, gst: "" },
-  { id: 2, name: "Manesar warehouse", kind: "Warehouse", address: "IMT Manesar, Sector 8, Haryana", people: 17, gst: "" },
-  { id: 3, name: "Jaipur branch", kind: "Branch", address: "Sitapura Industrial Area, Jaipur, Rajasthan", people: 7, gst: "Own GSTIN" },
-];
 
 export function CompanyProfileSection() {
   const session = useSession();
@@ -57,7 +53,8 @@ export function CompanyProfileSection() {
   const initial = demoMode ? initialProfile : connectedProfile;
   const [draft, setDraft] = React.useState(initial);
   const [saved, setSaved] = React.useState(initial);
-  const [locations, setLocations] = React.useState<Location[]>(() => demoMode ? initialLocations : []);
+  const locations = useLocationsStore((state) => state.locations);
+  const saveLocationToStore = useLocationsStore((state) => state.saveLocation);
   const [logo, setLogo] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState(false);
   const [locationOpen, setLocationOpen] = React.useState(false);
@@ -95,7 +92,7 @@ export function CompanyProfileSection() {
   }
   function openLocation(location?: Location) { setEditingLocation(location ?? null); setLocationOpen(true); }
   function saveLocation(value: Location) {
-    setLocations((current) => current.some((item) => item.id === value.id) ? current.map((item) => item.id === value.id ? value : item) : [...current, value]);
+    saveLocationToStore(value);
     setLocationOpen(false);
     toast.success(value.id ? "Location updated" : "Location added");
   }
