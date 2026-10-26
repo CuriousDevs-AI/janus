@@ -352,6 +352,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
           ? { ...t, status: "resolved", resolvedAt: new Date().toISOString(), closedReason: reason, updatedAt: new Date().toISOString() }
           : t
       ),
+      // The chat behind a resolved ticket is finished, so the assistant stops answering it.
+      conversations: s.conversations.map((c) => (c.id === ticket.conversationId ? { ...c, aiActive: false, status: "resolved" } : c)),
     }));
     get().addActivity(ticket.customerId, "ticket_resolved", HUMAN_ACTOR, `Ticket ${ticket.number} resolved${reason ? ` — ${reason}` : ""}`, {
       relatedId: ticketId,

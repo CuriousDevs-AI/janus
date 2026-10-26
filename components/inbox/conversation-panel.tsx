@@ -76,8 +76,11 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
     setAiDraft(null);
     setSending(true);
     window.setTimeout(() => {
-      const reply = generateAIReply(conversation);
-      simulateAIReply(conversation.id, reply.content, { confidence: reply.confidence, knowledgeUsed: reply.knowledgeUsed });
+      // The assistant only answers chats it is handling. A person's reply, or a chat that is already resolved, stays with the person.
+      if (conversation.aiActive && conversation.status !== "resolved") {
+        const reply = generateAIReply(conversation);
+        simulateAIReply(conversation.id, reply.content, { confidence: reply.confidence, knowledgeUsed: reply.knowledgeUsed });
+      }
       setSending(false);
     }, 1400);
   }
