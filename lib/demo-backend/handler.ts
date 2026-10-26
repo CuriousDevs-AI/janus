@@ -137,6 +137,16 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
     return conversations.filter((item) => store.leads.some((lead) => lead.customerId === item.contactId && canSeeOwner(account, lead.ownerId)));
   }
 
+  // Opening a WhatsApp follow-up returns the customer's existing chat, so the inbox can open it.
+  if (parts[0] === "whatsapp" && parts[1] === "conversations" && parts.length === 2 && method === "POST") {
+    const account = readView();
+    if (!account || account.crm === "none") throw forbidden("chats");
+    const contactId = text(body(init).contactId);
+    const found = conversations.find((item) => item.contactId === contactId);
+    if (!found) throw missing("A WhatsApp chat for this customer");
+    return found;
+  }
+
   // Creating a connection answers with the new source. The preview does not keep it in the lead source list.
   if (parts[0] === "sources" && parts.length === 1 && method === "POST") {
     const data = body(init);
