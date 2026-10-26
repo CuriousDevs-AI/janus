@@ -366,3 +366,24 @@ Links: deal (won), customer, dispatch (section 8.2), tickets (credit note), GST 
 4. **Stock:** may stock go negative with approval, or never?
 5. **Invoices:** do you want GST split and HSN in V1 (recommended for India), or plain invoices first?
 6. **Vendors and purchase orders:** V2 as planned, or needed earlier by any company?
+
+---
+
+## 9. Decisions taken (industry-standard defaults)
+
+These defaults replace the open questions in sections 7 and 8.9. They follow common practice for Indian SMB ERP and PSA products. Each one can be changed per company later.
+
+| # | Question | Default taken | Basis |
+|---|---|---|---|
+| 1 | Fund request approval | Owner approves up to a set limit; above it, owner plus finance. Limits are per company settings. Two levels maximum in V1. | Standard delegation-of-authority practice |
+| 2 | Project budget source | Project draws from a fund allocation (one budget source, no duplicate budgets) | Standard project-accounting practice |
+| 3 | Change request approval | Project owner for small changes; client and internal sponsor for larger ones, with a per-company threshold | PMO change-control practice |
+| 4 | Negative stock | Not allowed by default; an item may allow it only with approval and a reason | Standard inventory control |
+| 5 | Invoice format | GST tax invoice with HSN/SAC, tax split (CGST+SGST or IGST) and invoice number, from V1 | Indian GST requirement |
+| 6 | Vendors and purchase orders | V2, as planned | Lower priority than sales and dispatch |
+| 7 | Batch and expiry | Per item setting, on for items that need it (food, medicine) | Standard FEFO practice |
+| 8 | Time tracking | V2; V1 has tasks and delivery health only | Scope control |
+| 9 | Support | Tickets stay in CRM; V1 adds queues and SLA view only | Avoids duplicate ticket lists |
+| 10 | Order of build | Step 0 (done), then Finance, Operations, Projects, Support, IT | Section 5 |
+
+Compliance points to confirm with the company's accountant before go-live: GST credit note timing, e-invoice applicability by turnover, and HSN digit requirements.
