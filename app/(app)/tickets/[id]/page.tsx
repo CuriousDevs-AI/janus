@@ -19,7 +19,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
-import { users, currentUser } from "@/lib/mock-data";
+import { users } from "@/lib/mock-data";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { TicketStatusBadge, TicketPriorityBadge } from "@/components/shared/status-badge";
 import { AIConfidence } from "@/components/shared/ai-indicator";
