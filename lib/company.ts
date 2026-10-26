@@ -29,7 +29,7 @@ const EVENT = "janus:company";
 export const seedCompanies: CompanyRecord[] = [
   { id: "acme", name: "Acme Traders Pvt Ltd", industry: "FMCG & household goods distribution", city: "Gurugram", template: "acme", workspaces: ["crm-sales", "hr-people"], setupDone: true, createdAt: "2025-04-01" },
   { id: "nimbus", name: "Nimbus Digital Studio", industry: "Digital marketing and web agency", city: "Bengaluru", template: "nimbus", workspaces: ["crm-sales", "hr-people"], setupDone: true, createdAt: "2026-02-10" },
-  { id: "greenleaf", name: "GreenLeaf Organics", industry: "Organic grocery retail", city: "Pune", template: "greenleaf", workspaces: ["hr-people"], setupDone: false, createdAt: "2026-10-12" },
+  { id: "greenleaf", name: "GreenLeaf Organics", industry: "Organic grocery retail", city: "Pune", template: "greenleaf", workspaces: ["hr-people"], setupDone: true, createdAt: "2026-10-12" },
 ];
 
 function read(key: string) {
