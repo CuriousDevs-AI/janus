@@ -432,7 +432,11 @@ function WorkspacesPanel() {
 
   React.useEffect(() => {
     api<{ id: string; type: string; name: string; description: string }[]>("/workspaces")
-      .then((items) => setCreatedWorkspaces(items.filter((item) => item.type !== "crm_sales")))
+      // Workspaces already listed as active above are not listed twice.
+      .then((items) => {
+        const active = demoMode ? activeCompany().workspaces : workspaceDefinitions.filter((workspace) => workspace.status === "active").map((workspace) => workspace.id);
+        setCreatedWorkspaces(items.filter((item) => item.type !== "crm_sales" && !active.includes(item.type.replaceAll("_", "-"))));
+      })
       .catch((error) => setLoadError(message(error)));
   }, []);
 
