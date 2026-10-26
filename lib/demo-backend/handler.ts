@@ -137,6 +137,27 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
     return conversations.filter((item) => store.leads.some((lead) => lead.customerId === item.contactId && canSeeOwner(account, lead.ownerId)));
   }
 
+  // Creating a connection answers with the new source. The preview does not keep it in the lead source list.
+  if (parts[0] === "sources" && parts.length === 1 && method === "POST") {
+    const data = body(init);
+    const name = text(data.name);
+    if (name.length < 2) throw invalid("Enter a connection name.");
+    const kind = text(data.connectionKind) || "webhook";
+    const source = ({ api_key: "api", csv: "csv_import", embed: "website", webhook: "webhook", pull: "webhook" } as Record<string, string>)[kind] ?? "webhook";
+    const id = `demo-source-${Date.now()}`;
+    return {
+      id, name, description: text(data.description), connectionKind: kind, source, status: "connected", preset: text(data.preset) || "custom",
+      fieldMapping: [], ingestUrl: `/v1/ingest/${kind}/${id}`, webhookUrl: null, allowedOrigins: Array.isArray(data.allowedOrigins) ? data.allowedOrigins : [],
+      eventIdField: null, lastEventAt: null, capturedLeads: 0, signingSecret: null, callbackUrl: null,
+    };
+  }
+  // Lead source presets are fixed reference data, so the preview answers them itself.
+  if (parts[0] === "sources" && parts[1] === "presets" && parts.length === 2 && method === "GET") {
+    return [
+      ["exotel", "Exotel", "Calls"], ["knowlarity", "Knowlarity", "Calls"], ["myoperator", "MyOperator", "Calls"], ["tata_tele", "Tata Tele", "Calls"],
+      ["google_ads_lead_form", "Google Ads Lead Form", "Forms/ads"], ["zapier", "Zapier", "Automation"], ["make", "Make", "Automation"], ["custom", "Custom", "Custom"],
+    ].map(([value, label, group]) => ({ value, label, group, fieldMapping: [], eventIdField: null, instructions: "", documentationUrl: null }));
+  }
   if (parts[0] === "workspaces" && parts.length === 1) {
     const company = activeCompany();
     const named = (id: string) => ({ id, type: id.replaceAll("-", "_"), name: id === "crm-sales" ? "CRM & Sales" : id === "hr-people" ? "HR & People" : id.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), description: "", status: "active" });
