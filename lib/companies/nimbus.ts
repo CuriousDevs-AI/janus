@@ -1,6 +1,7 @@
 import type { DemoAccount } from "@/lib/demo-accounts";
 import type { HrEmployee } from "@/lib/types";
 import type { CompanySpec } from "@/lib/companies/spec";
+import { demoMode } from "@/lib/demo-mode";
 
 const employee = (id: string, name: string, email: string, title: string, department: string, managerId: string | null, managerName: string | null, salaryMonthly: number, joiningDate: string, color: string, birthDate: string): HrEmployee => ({ id, name, email, phone: `+91 98${id.slice(-1)}0${id.slice(-1)}1 2${id.slice(-1)}4${id.slice(-1)}0`, title, department, branch: "Bengaluru", managerId, managerName, status: "active", employmentType: "full_time", joiningDate, location: "Bengaluru", avatarColor: color, salaryMonthly, onboardingPercent: 100, documentsDue: 0, birthDate });
 const employees: HrEmployee[] = [
@@ -13,7 +14,7 @@ const employees: HrEmployee[] = [
 ];
 
 const account = (id: string, email: string, password: string, name: string, title: string, employeeId: string, crmUserId: string, hrRole: DemoAccount["hrRole"], crm: DemoAccount["crm"], blurb: string): DemoAccount => ({ id, email, password, name, title, employeeId, crmUserId, hrRole, crm, blurb });
-const accounts: DemoAccount[] = [
+const accounts: DemoAccount[] = !demoMode ? [] : [
   account("owner", "pankaj@acmetraders.in", "Owner@123", "Pankaj Neema", "Founder", "emp-001", "u-1", "owner", "all", "Everything in this company."),
   account("sales-manager", "tanya@nimbusstudio.in", "Manager@123", "Tanya Menon", "Account Manager", "emp-003", "u-2", "reporting_manager", "team", "Clients and deals for her team, and her team's leave."),
   account("sales-rep-1", "dev@nimbusstudio.in", "Sales@123", "Dev Arora", "Account Executive", "emp-005", "u-3", "employee", "own", "Only his own leads, deals and clients."),
