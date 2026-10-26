@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { companyProfile } from "@/lib/company-profile";
+import { isFirstCompany } from "@/lib/companies";
 
 const profile = companyProfile();
 import { Check, Download, Plus, Sparkles } from "lucide-react";
@@ -26,7 +27,19 @@ const invoices = [
   ["JAN-2025-1102", "2 Nov 2025", "Janus Starter · upgrade credit applied", "₹8,850", "Paid"],
 ];
 
+/** Plan, invoices and payment details are sample records for the first company only. Other companies start with none. */
 export function BillingSection() {
+  if (!isFirstCompany) {
+    return (
+      <SectionCard title="Plan & billing" description="Subscription, payment method and invoices for this company.">
+        <p className="text-sm text-muted-foreground">No plan or payment method is set up for this company yet. Billing details appear here once it subscribes.</p>
+      </SectionCard>
+    );
+  }
+  return <BillingDetails />;
+}
+
+function BillingDetails() {
   const [cycle, setCycle] = React.useState<"annual" | "monthly">("annual");
   const [plan, setPlan] = React.useState("business");
   const [planOpen, setPlanOpen] = React.useState(false);
