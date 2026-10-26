@@ -105,7 +105,7 @@ export function CompanyProfileSection() {
     : [["GSTIN", "", "Not connected"], ["PAN", "", "Not connected"], ["CIN", "", "Not connected"], ["Udyam (MSME)", "", "Not connected"]];
 
   return <div className="flex flex-col gap-5">
-    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Company</p><div className="mt-1 flex flex-wrap items-center gap-2"><h2 className="text-2xl font-semibold tracking-tight">Company Profile</h2><Badge variant={demoMode ? "neutral" : "warning"}>{demoMode ? "Demo data" : "Needs setup"}</Badge></div><p className="mt-1 text-sm text-muted-foreground">How your company appears on invoices, emails, reports and to Janus. Only Owner and Admins can change this.</p></div>
+    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Company</p><div className="mt-1 flex flex-wrap items-center gap-2"><h2 className="text-2xl font-semibold tracking-tight">Company Profile</h2>{!demoMode && <Badge variant="warning">Needs setup</Badge>}</div><p className="mt-1 text-sm text-muted-foreground">How your company appears on invoices, emails, reports and to Janus. Only Owner and Admins can change this.</p></div>
 
     <SectionCard title="Company details" description="Basic information about your business.">
       <div className="flex flex-col gap-5">
