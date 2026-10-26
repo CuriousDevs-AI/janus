@@ -665,7 +665,7 @@ function BusinessMemoryView() {
   </div>;
 }
 
-function KnowledgeStat({ label, value, detail, tone = "neutral", demo = demoMode }: { label: string; value: string; detail: string; tone?: "neutral" | "success" | "warning" | "danger"; demo?: boolean }) {
+function KnowledgeStat({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: "neutral" | "success" | "warning" | "danger" }) {
   const badge = tone === "success" ? "Ready" : tone === "warning" ? "Review" : tone === "danger" ? "Action" : "Unavailable";
   return <div className="rounded-lg border border-border bg-surface p-4"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><Badge variant={tone}>{badge}</Badge></div><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
