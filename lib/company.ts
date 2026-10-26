@@ -1,3 +1,4 @@
+import "@/lib/demo-clock";
 /**
  * Which company the app is showing. The Owner can run several companies from one login; each has its
  * own people, records and settings, kept apart in the browser exactly as the backend keeps tenants apart.
