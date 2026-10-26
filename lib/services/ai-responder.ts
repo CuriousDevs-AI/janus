@@ -18,7 +18,7 @@ export function generateAIReply(conversation: Conversation): { content: string; 
   return {
     content,
     confidence: conversation.category === "support" ? 0.74 : 0.88,
-    knowledgeUsed: conversation.category === "support" ? ["Authentication Guide"] : ["Pricing 2026", "Enterprise FAQ"],
+    knowledgeUsed: conversation.category === "support" ? undefined : ["Pricing 2026", "Enterprise FAQ"],
   };
 }
 
