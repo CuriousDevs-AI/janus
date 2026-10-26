@@ -18,6 +18,7 @@ const accounts: DemoAccount[] = !demoMode ? [] : [
   account("owner", "pankaj@acmetraders.in", "Owner@123", "Pankaj Neema", "Founder", "emp-001", "u-1", "owner", "all", "Everything in this company."),
   account("sales-manager", "tanya@nimbusstudio.in", "Manager@123", "Tanya Menon", "Account Manager", "emp-003", "u-2", "reporting_manager", "team", "Clients and deals for her team, and her team's leave."),
   account("sales-rep-1", "dev@nimbusstudio.in", "Sales@123", "Dev Arora", "Account Executive", "emp-005", "u-3", "employee", "own", "Only his own leads, deals and clients."),
+  account("team-lead", "ishaan@nimbusstudio.in", "Lead@12345", "Ishaan Rao", "Creative Director", "emp-004", "u-5", "reporting_manager", "none", "Approves leave for the creative team (Sneha)."),
   account("hr", "zoya@nimbusstudio.in", "HR@12345", "Zoya Khan", "Finance and HR Manager", "emp-002", "u-4", "hr_manager", "none", "All of HR & People."),
   account("employee", "sneha@nimbusstudio.in", "Employee@123", "Sneha Pillai", "Graphic Designer", "emp-006", "u-6", "employee", "none", "Own leave, pay and documents only."),
 ];

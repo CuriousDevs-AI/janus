@@ -470,7 +470,7 @@ function WorkspacesPanel() {
             <div key={workspace.id} className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><Plus className="size-4" /></span>
               <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-foreground">{workspace.name}</span><span className="mt-1 block text-xs text-muted-foreground">{workspace.description}</span></span>
-              <Button size="sm" variant="secondary" onClick={() => { setWorkspaceType(workspace.id); setCreateOpen(true); }}>Activate</Button>
+              {demoMode && !["crm-sales", "hr-people"].includes(workspace.id) ? <Badge variant="neutral">Coming soon</Badge> : <Button size="sm" variant="secondary" onClick={() => { setWorkspaceType(workspace.id); setCreateOpen(true); }}>Activate</Button>}
             </div>
           ))}
         </div>
@@ -501,7 +501,7 @@ function WorkspacesPanel() {
             <Select value={workspaceType} onValueChange={setWorkspaceType}>
               <SelectTrigger id="workspace-type"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {available.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
+                {available.filter((workspace) => !demoMode || ["crm-sales", "hr-people"].includes(workspace.id)).map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

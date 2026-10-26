@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
@@ -99,7 +100,7 @@ function isManagementRole(role: Role) {
 
 export function BusinessPeopleAccess({ initialSection = "members" }: { initialSection?: string }) {
   const [section, setSection] = React.useState<string>(initialSection);
-  const [members, setMembers] = React.useState<AccessMember[]>(initialMembers);
+  const [members, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", initialMembers);
   const workspacesApi = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const [storedWorkspace, setStoredWorkspace] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -116,12 +117,12 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     return workspaceOptions.filter(([key]) => active.has(key));
   }, [storedWorkspace, workspacesApi.data]);
   const activeWorkspaceKeys = React.useMemo(() => new Set(activeWorkspaceOptions.map(([key]) => key)), [activeWorkspaceOptions]);
-  const [invites, setInvites] = React.useState<PendingInvite[]>(isFirstCompany ? [
+  const [invites, setInvites] = usePersistedState<PendingInvite[]>("janus.business-invites.v1", isFirstCompany ? [
     { id: "invite-1", name: "Tarun Sethi", email: "tarun@acmetraders.in", role: "sales_agent", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
     { id: "invite-2", name: "Priya Shah", email: "priya@acmetraders.in", role: "analyst", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Yesterday", status: "Pending" },
   ] : []);
-  const [roles, setRoles] = React.useState<RoleRecord[]>(initialRoles);
-  const [departments, setDepartments] = React.useState(() => [...new Set(useHrPeopleStore.getState().employees.filter((item) => item.status !== "archived").map((item) => item.department))]);
+  const [roles, setRoles] = usePersistedState<RoleRecord[]>("janus.business-roles.v1", initialRoles);
+  const [departments, setDepartments] = usePersistedState<string[]>("janus.business-departments.v1", () => [...new Set(useHrPeopleStore.getState().employees.filter((item) => item.status !== "archived").map((item) => item.department))]);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [memberDialog, setMemberDialog] = React.useState<"invite" | "edit" | null>(null);
   const [editingMemberId, setEditingMemberId] = React.useState<string | null>(null);

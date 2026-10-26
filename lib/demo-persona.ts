@@ -58,7 +58,8 @@ export function personaPermissions(account: DemoAccount | undefined): string[] {
   const out = ["hr:self"];
   if (account.hrRole === "hr_manager") out.push("hr:read", "hr:manage", "hr:approve", "hr:team", "hr:payroll:read");
   if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read");
-  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve");
+  // A manager works with their own team, so the menu offers leave, attendance, reviews and expenses too.
+  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve", "hr:read");
   // These are the backend's own permission names, so the preview behaves like a real role.
   if (account.crm === "team") out.push("leads:read_team", "leads:write", "leads:assign", "reports:read", "approvals:manage");
   if (account.crm === "own") out.push("leads:read_own", "leads:write");
