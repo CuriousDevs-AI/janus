@@ -153,3 +153,216 @@ Status: proposal for review. No code is changed by this document.
 4. **Projects:** is time tracking needed, or only tasks and delivery health?
 5. **Support:** keep tickets in CRM only, or add a separate workspace view?
 6. **Order:** confirm the order in section 5, or choose a different company to lead with.
+
+---
+
+## 8. End-to-end operations catalogue
+
+This section lists every normal operation a company runs through these workspaces, from request to record. Each entry says who acts, what is approved, which records are created, what it links to, and whether it belongs in version 1 (V1) or later (V2). Research sources are at the end.
+
+Conventions: "Approver" means a decision recorded in the approvals queue with the person's name and time. Every money or stock change writes an audit entry (section 4.5). Amounts are in INR. Thresholds below are examples; each company sets its own values in its settings.
+
+### 8.1 Finance and money
+
+**A. Fund request and budget allocation (V1)**
+1. A person (or project lead) raises a fund request: purpose, amount, cost centre or project, needed-by date, supporting document.
+2. Approval by the budget owner, then finance. Thresholds decide how many levels apply (e.g., under a set amount: owner only; above it: owner plus finance).
+3. On approval, money is allocated to a budget line (department, project or cost centre). The allocation reduces the remaining budget.
+4. Spending against the allocation is tracked: each expense, bill or PO draws from it. Remaining balance is always visible.
+5. Over-spend blocks the request or raises an approval; it never silently continues.
+6. Unused allocation is released or carried over at period end.
+
+Records: fund request, approval decisions, allocation, budget line balance, draws against it.
+Links: projects (project budget), purchase orders (V2), expenses and reimbursements (HR), approvals, audit.
+
+**B. Budgets (V1 basic, V2 full)**
+- Annual or quarterly budget per department, project and cost centre. Budget versus actual by month.
+- V2: revisions with a reason, forecast versus budget, variance explanations.
+
+**C. Expenses and reimbursements (V1, reuse HR)**
+- Employee claims with category, amount, date, purpose and receipt (receipt required above a set amount).
+- Reporting manager approval, then finance marks paid. Already built in HR; Finance should show paid totals and the bank or UPI reference.
+
+**D. Sales invoicing, order to cash (V1)**
+1. A won deal (or a manual order) becomes a sales order.
+2. Invoice is created: number, date, customer, items with HSN/SAC, quantities, rates, discounts, GST split (CGST+SGST within the state, IGST across states, based on company and customer state), totals.
+3. Invoice is sent (email or WhatsApp, with the PDF) and marked sent.
+4. Payment is recorded against the invoice (cash, UPI, bank transfer, cheque) with reference; partial payments allowed.
+5. Overdue invoices move to the collections list by aging bucket (0–30, 31–60, 61–90, 90+). Reminders follow the policy (WhatsApp templates require opt-in, already built in CRM).
+6. Write-off requires an approval.
+
+Records: sales order, invoice, invoice lines, payment, collection note, write-off.
+Links: deal (won), customer, dispatch (section 8.2), tickets (credit note), GST returns (V2), audit.
+
+**E. Credit notes and debit notes (V1)**
+- Credit note: for returned goods, post-supply discount or over-charge. Must reference the original invoice. Created from a support ticket or a dispute; needs approval.
+- Debit note: for under-charge. Same reference rule.
+- Credit notes reduce receivables; they never delete the invoice.
+- Note: the timing rules for issuing credit notes vary between sources. Confirm the current rule with the company's accountant before relying on it.
+
+**F. Purchase bills and payables (V2, read-only in V1)**
+- Vendor bill received, matched to a PO and goods receipt (three-way match), approved, scheduled for payment, paid.
+- V1 can show bills entered by hand with due dates, without matching.
+
+**G. Cash, bank and reconciliation (V2)**
+- Bank statement import and matching to payments. Needs a bank feed or file upload.
+- Petty cash: opening balance, expenses, replenishment with approval.
+
+**H. Month-end close (V2)**
+- Checklist: all invoices entered, all payments matched, expenses approved, accruals and prepayments posted, bank reconciled, reports locked for the period. Each step has an owner and a done date.
+
+**I. Tax (V2)**
+- GST: output tax from invoices, input tax from bills, net liability per period, return summaries. The company's accountant files the return; Janus shows the figures.
+- Tax invoice rules to implement in V1: supplier and buyer GSTIN, invoice number and date, description, HSN/SAC, taxable value, tax split, total. Mandatory e-invoicing applies above a turnover threshold; check the current notification before enabling.
+
+**J. Reports (V1 basic)**
+- Revenue (from invoices, not the pipeline), outstanding and aging, collections this month, budget versus actual, expenses by category. V2: profit and loss, cash flow, balance sheet.
+
+### 8.2 Operations, inventory and procurement
+
+**K. Item master (V1)**
+- Item: name, SKU, unit, HSN, default rate, tax slab, reorder level, track batch (yes/no), track expiry (yes/no), active flag.
+- Changing a rate keeps history; old invoices keep the rate they used.
+
+**L. Warehouses and stock points (V1, reuse locations)**
+- Each company location that holds stock is a warehouse. Add a bin or zone only if needed.
+
+**M. Stock movements (V1)**
+- Opening stock (one-time), goods receipt (from a PO in V2, or manual in V1), dispatch (from a sales order), transfer between warehouses (V1 simple, V2 with transit), adjustment (count difference, damage, expiry).
+- Adjustments above a set value or quantity need approval. Every movement has a reason and a user.
+- Stock can never go negative unless the item allows it, and then only with an approval.
+
+**N. Batch and expiry (V1 for items that track it)**
+- Receipts carry batch number and expiry date. Dispatch picks stock first-expiry-first-out. Expired stock is blocked from dispatch and listed for disposal approval.
+
+**O. Physical stock count (V2)**
+- Cycle count or full count: count sheet, variance, approval of adjustments, audit.
+
+**P. Dispatch and delivery (V1)**
+1. From a confirmed sales order, create a dispatch: items, batches, quantities, vehicle or courier, date.
+2. Delivery challan issued (GST requirement for movement of goods without an invoice; the invoice follows).
+3. Stock reduces on dispatch. Proof of delivery (signed challan or photo) closes the dispatch.
+4. Short or damaged delivery raises a ticket and a stock adjustment or credit note request.
+
+**Q. Returns (V1)**
+- Customer return: receipt into the warehouse (good or damaged), credit note against the invoice, stock updated, approval for damaged goods.
+
+**R. Procurement, procure to pay (V2)**
+1. Purchase requisition from a department or from a low-stock alert, with budget check (section 8.1A).
+2. Approval against budget.
+3. Purchase order to a vendor, with agreed rate and delivery date.
+4. Goods receipt against the PO (quantity received, damaged, batch and expiry).
+5. Vendor bill matched to PO and receipt (three-way match); mismatch goes to a dispute list.
+6. Payment approved and recorded.
+
+**S. Vendors (V2)**
+- Vendor master: name, GSTIN, bank details (masked), payment terms, category, rating. Changing bank details needs a second approval.
+
+**T. Reorder and low stock (V1 list, V2 auto-PO)**
+- Items below reorder level listed per warehouse; each can create a requisition.
+
+**U. Logistics and fulfilment (V2)**
+- Route or delivery slot planning, driver and vehicle, delivery status, cut-off times. Some distributors need this early; confirm with the company.
+
+### 8.3 Projects and delivery
+
+**V. Project initiation (V1)**
+- Project: name, client (customer), linked deal (optional), owner, start and end date, type (fixed price, time and material, internal), budget (uses fund allocation, section 8.1A), status.
+- Approval of the project and budget by the owner before work starts.
+
+**W. Planning (V1)**
+- Milestones or phases with due date, deliverable, acceptance criteria and billing amount (for milestone billing).
+- Tasks: title, owner (from the HR directory), dependency, due date, estimate.
+- Team: who is on the project and how much of their time it uses.
+
+**X. Execution and tracking (V1)**
+- Task status updates, progress, risks and issues, delivery health (on track, at risk, late), computed from dates and open tasks.
+- Meetings and notes per project (V2 with calendar).
+
+**Y. Change requests (V1 basic)**
+1. Change requested (scope, date, budget or resource).
+2. Impact assessment: effect on budget, milestone dates, resources.
+3. Approval: project owner for small changes; client and internal sponsor for larger ones (threshold set per company).
+4. Approved change updates the plan and budget as a new version. The old version is kept.
+5. A change order is only an approval record; billing happens later, from accepted milestones or approved hours (see Z).
+
+**Z. Milestone acceptance and billing (V1)**
+1. Milestone marked complete by the team.
+2. Acceptance: client or internal approver confirms, with the date and who accepted. Acceptance is the trigger for billing.
+3. An invoice for the milestone amount is created (section 8.1D).
+4. Disputes stop billing for that milestone until resolved.
+
+**AA. Timesheets (V2)**
+- Hours per task per day, billable or not, submitted weekly, approved by the project owner. Approved billable hours can drive time-and-material invoices.
+
+**AB. Resource allocation (V2)**
+- Planned versus actual allocation per person across projects; over-allocation warning.
+
+**AC. Project costs and profitability (V2)**
+- Costs: people time (from timesheets), expenses, vendor bills, fund draws. Revenue: invoices. Margin per project.
+
+**AD. Client delivery (V1)**
+- Per client: active projects, due milestones, deliverables handed over, acceptance pending.
+- Handover record with the client's acceptance.
+
+**AE. Closure (V1 basic)**
+- Final acceptance, final invoice, lessons learned, release of unused budget (back to the fund allocation), archive. Project stays readable after closure.
+
+### 8.4 Customer support and success
+
+**AF. Ticket lifecycle (exists in CRM, reuse)**
+- Open, assign, reply, escalate, waiting customer, resolve, close. SLA timer per priority.
+- V1 addition: queues and assignment rules; SLA dashboard; reopen rule.
+
+**AG. Credit or replacement from a ticket (V1)**
+- A ticket can request a credit note (finance approval) or a replacement dispatch (stock approval).
+
+**AH. Renewals and success (V2)**
+- Renewal date per customer or contract, reminders, health score built from tickets, invoices and usage. Keep it simple at first.
+
+### 8.5 IT and infrastructure (V2)
+
+**AI. Assets** — register, assign to a person, return on exit (link with offboarding in HR).
+**AJ. Helpdesk** — reuse tickets with an IT category.
+**AK. Access** — list of systems and who has access; access removal on exit.
+**AL. Licences** — count, renewal dates, cost.
+
+### 8.6 Company-wide controls (apply everywhere)
+
+- **Approvals:** one queue for all modules; each item shows amount, requester, reason, decision and time.
+- **Audit:** who did what, when, with before and after values, for money, stock and access changes.
+- **Period locks:** closed periods cannot be changed without the owner.
+- **Documents:** invoices, challans, receipts and contracts attached to the record.
+- **Notifications:** WhatsApp and email only with opt-in, as already built for customers.
+- **Roles:** each process above maps to a permission (e.g., `budget:approve`, `invoice:create`, `stock:adjust`, `project:accept`). Names are proposed; to be confirmed.
+
+### 8.7 V1 scope summary
+
+| Area | V1 (first build) | V2 (later) |
+|---|---|---|
+| Money | Fund request and allocation, budget lines, expenses, sales invoices with GST, credit and debit notes, payments, receivables aging, basic reports | Payables and three-way match, bank reconciliation, petty cash, month-end close, GST return summary, P&L, cash flow |
+| Operations | Item master, warehouses from locations, stock movements, batch and expiry, dispatch and challan, returns, low-stock list | Procurement and purchase orders, vendors, goods receipt, physical count, transit transfers, logistics |
+| Projects | Project initiation with budget, milestones, tasks, delivery health, change requests, milestone acceptance and billing, client delivery view, closure | Timesheets, resource allocation, project profitability |
+| Support | Queues, SLA view, credit or replacement from a ticket | Renewals and health score |
+| IT | Nothing in V1 | Assets, helpdesk, access, licences |
+
+### 8.8 Research sources
+
+- Procure-to-pay and order-to-cash concepts, functional areas, and inventory cycle counting: [SAP S/4HANA Cloud process flows](https://learning.sap.com/courses/implementing-sap-s-4hana-cloud-public-edition/summarizing-the-line-of-business-and-industry-process-flows_ae1fe8c2-4195-4a60-9bcb-385541839fb2), [ERP and digital transformation (University of Padua)](https://orientamentodtg.gest.unipd.it/wp-content/uploads/2025/04/ERP-and-digital-transformation_v2.pdf), [Oracle ERP features](https://www.oracle.com/erp/erp-features/).
+- Budget allocation and project accounting modules: [SAP S/4HANA Cloud](https://learning.sap.com/courses/implementing-sap-s-4hana-cloud-public-edition/summarizing-the-line-of-business-and-industry-process-flows_ae1fe8c2-4195-4a60-9bcb-385541839fb2); [Oracle EBS project modules](https://www.udemy.com/course/functional-principles-of-oracle-erp-ebs-project-modules/).
+- Change control with approvers and thresholds: [Montclair State PMO change control procedure](https://www.montclair.edu/program-management-office/wp-content/uploads/sites/42/2017/12/OM-PRC-005_Project_Change_Control_v1.0.docx).
+- Milestone acceptance as billing trigger, and separating scope approval from price approval: [Upland PSA guide to BPM for project managers](https://uplandsoftware.com/psa/wp-content/uploads/sites/3/2017/03/GuideBPMforProjectManagers.pdf), [InvoiceRa on project change order billing](https://www.invoicera.com/blog/billing-operations/project-change-order-billing-handoff/).
+- Timesheets and invoicing from billable hours: [SlideShare, project open timesheet and invoicing](https://www.slideshare.net/slideshow/projectopen-timesheet-project-invoicing/3205643).
+- GST invoice fields, credit and debit notes, HSN: [Masters India GST invoice and notes guide](https://www.mastersindia.co/blog/gst-invoice-e-invoice-credit-note-debit-note-guide/), [Avalara on Indian GST invoices](https://www.avalara.com/vatlive/en/country-guides/asia/india/indian-gst-invoices.html), [Kanakkupillai on tax invoices and notes](https://www.kanakkupillai.com/learn/?p=903).
+- E-invoice threshold: [Tungsten Network, India e-invoicing thresholds](https://es.tungsten-network.com/compliance-overview/country-updates/country/india/e-invoicing-threshold-reduced-to-%e2%82%b95-from-august-1st-2023).
+
+**Caveat:** these are general guides, not official rules. GST credit note timing and e-invoice thresholds conflict between sources and must be checked against the CBIC or GST portal and the company's accountant before the product relies on them.
+
+### 8.9 Open questions for you
+
+1. **Fund request:** who approves at what amount? (Example: owner up to a set limit, owner plus finance above it.) Confirm the thresholds, or keep one approver for V1.
+2. **Project budget:** should a project draw from a fund allocation (recommended), or keep its own budget?
+3. **Change requests:** one approver for all changes in V1, or thresholds from the start?
+4. **Stock:** may stock go negative with approval, or never?
+5. **Invoices:** do you want GST split and HSN in V1 (recommended for India), or plain invoices first?
+6. **Vendors and purchase orders:** V2 as planned, or needed earlier by any company?
