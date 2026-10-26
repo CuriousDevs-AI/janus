@@ -220,6 +220,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "All Projects", href: "/workspace/projects-delivery?view=projects", icon: ClipboardList },
       { label: "Tasks & Work Items", href: "/workspace/projects-delivery?view=tasks", icon: FileText },
       { label: "Milestones & Deliverables", href: "/workspace/projects-delivery?view=milestones", icon: CalendarClock },
+      { label: "Change Requests", href: "/workspace/projects-delivery?view=changes", icon: Workflow },
       { label: "Resource Allocation", href: "/workspace/projects-delivery?view=resources", icon: Users },
       { label: "Timesheets", href: "/workspace/projects-delivery?view=timesheets", icon: CalendarClock },
       { label: "Project Calendar", href: "/workspace/projects-delivery?view=calendar", icon: CalendarClock },

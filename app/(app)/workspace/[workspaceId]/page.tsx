@@ -15,6 +15,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { HrPeopleWorkspace } from "@/components/hr-people/workspace";
 import { FinanceWorkspace } from "@/components/finance/finance-workspace";
 import { OperationsWorkspace } from "@/components/operations/operations-workspace";
+import { ProjectsWorkspace } from "@/components/projects/projects-workspace";
 
 const workspacePermissions: Record<string, string> = {
   "hr-people": "hr:self",
@@ -66,6 +67,10 @@ function WorkspacePageInner({
 
   if (routeWorkspaceId === "operations-inventory") {
     return <OperationsWorkspace />;
+  }
+
+  if (routeWorkspaceId === "projects-delivery") {
+    return <ProjectsWorkspace />;
   }
 
   const selectedWorkspace = getWorkspaceDefinition(routeWorkspaceId);
