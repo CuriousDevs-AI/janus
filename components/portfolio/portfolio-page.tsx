@@ -150,7 +150,7 @@ function Analytics({ list }: { list: CompanySummary[] }) {
         <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Channel</th>{crm.map((item) => <th key={item.company.id} className="px-3 py-2">{item.company.name.split(" ")[0]}</th>)}</tr></thead><tbody>{["whatsapp", "website", "phone_call"].map((source) => <tr key={source} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{source === "phone_call" ? "Phone calls" : source === "whatsapp" ? "WhatsApp" : "Website"}</td>{crm.map((item) => { const row = item.crm!.bySource.find((entry) => entry.source === source)!; return <td key={item.company.id} className="px-3 py-2.5 tabular-nums">{row.count}<span className="text-muted-foreground"> · {row.won} won</span></td>; })}</tr>)}</tbody></table></div>
       </SectionCard>
     </>}
-    <SectionCard title="People" description="Headcount and payroll by company."><Bars format={(value) => `${value} people`} rows={list.map((item) => ({ id: item.company.id, label: item.company.name, value: item.hr.people, color: colors.get(item.company.id)! }))} /></SectionCard>
+    <SectionCard title="People" description="Headcount and payroll by company."><Bars format={(value) => `${value} ${value === 1 ? "person" : "people"}`} rows={list.map((item) => ({ id: item.company.id, label: item.company.name, value: item.hr.people, color: colors.get(item.company.id)! }))} /></SectionCard>
   </>;
 }
 
@@ -181,7 +181,7 @@ function Companies({ list }: { list: CompanySummary[] }) {
         <fieldset className="grid gap-2"><legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</legend>
           {["crm-sales", "hr-people"].map((id) => { const on = company.workspaces.includes(id); return <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} disabled={on && company.workspaces.length === 1} onChange={() => updateCompany(company.id, { workspaces: on ? company.workspaces.filter((entry) => entry !== id) : [...company.workspaces, id] })} />{workspaceName(id)}</label>; })}
         </fieldset>
-        <p className="text-xs text-muted-foreground">{item.hr.people} people{item.crm ? ` · ${item.crm.leads} leads · ${item.crm.openDeals} open deals` : ""}</p>
+        <p className="text-xs text-muted-foreground">{item.hr.people} {item.hr.people === 1 ? "person" : "people"}{item.crm ? ` · ${item.crm.leads} leads · ${item.crm.openDeals} open deals` : ""}</p>
         <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => open(company.id)}>Open<ArrowRight className="ml-1 size-4" /></Button>{!company.setupDone && <Button size="sm" variant="secondary" asChild><Link href={`/setup?finish=${company.id}`}>Finish setup</Link></Button>}<Button size="sm" variant="outline" onClick={() => setEditing(company)}>Edit details</Button><Button size="sm" variant="ghost" aria-label={`Remove ${company.name}`} onClick={() => setRemoving(company)}><Trash2 className="size-4" /></Button></div>
       </section>; })}
     </div>
