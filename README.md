@@ -1,5 +1,103 @@
 # Janus — by CuriousDevs
 
+Janus is an AI-native operations workspace for Indian small and mid-sized businesses. One login runs several companies. Each company has its own people, customers, records and settings. The Owner sees all of them from a Portfolio, and everyone else sees only their own company, role and workspace.
+
+## The idea in one paragraph
+
+A business spends its day in WhatsApp, phone calls, email, spreadsheets and HR tools. Janus brings those into one place. Enquiries arrive from every channel, become leads, move through a pipeline, and turn into deals and orders. Support tickets, approvals, leave, payroll and documents sit beside them. Janus AI answers from the company's own knowledge, drafts replies, and asks a person before any consequential action: money, discounts, refunds, bulk messages or deletions.
+
+## Who uses it
+
+| Role | What they see |
+| --- | --- |
+| Owner | Everything: Portfolio across companies, Business Management, CRM, HR and every setting |
+| Sales manager | The whole sales team's leads and deals, approvals, and their own team's leave |
+| Sales executive / account executive | Only their own leads, deals and customers |
+| Support lead / agent | Tickets and chats assigned to them, plus unassigned ones |
+| HR manager | All of HR & People, no CRM and no business finance |
+| Finance executive | Payroll, reimbursements and compliance; no leave or employee records |
+| Reporting manager (employee with a team) | Own HR records plus approvals for their team |
+| Employee | Own leave, pay, documents and requests only |
+
+Visibility is enforced in the backend for each request, not only hidden in the UI.
+
+## Modules
+
+**1. Portfolio (Owner).** Every company at a glance: people, open pipeline, win rate, monthly payroll, what needs attention, and what Janus remembers. Companies are added through a wizard (details, starting point, workspaces, team, review) and switched from the company menu.
+
+**2. CRM & Sales.**
+- Lead sources: website forms, webhooks, a REST API with scoped keys, CSV import with header mapping, WhatsApp Cloud API, and call-provider presets.
+- Leads and customers, with search, stages, owners and an add-lead form for people with the right permission.
+- Deals: created from a lead, moved through stages, with value, expected close date and history.
+- Tickets: opened from chats or by hand, assigned, escalated, replied to and resolved. Resolving a ticket ends its chat, so the assistant stops answering it.
+- Chats: a shared inbox with WhatsApp follow-ups using approved templates.
+- Analytics and an overview dashboard with computed insights.
+
+**3. HR & People.**
+- Employee directory shared with Business Management. Employees can be added with branch, manager, pay and onboarding checklist.
+- Leave: apply, balances, calendar, holidays, and a two-step approval chain (reporting manager, then HR).
+- Attendance, regularization, expenses and reimbursements.
+- Payroll: monthly run with submit, exception handling (blocking items must be resolved or deferred with a reason), dual approval (a different person approves), lock, and publish. Payslips show provident fund, ESI, professional tax and new-regime TDS calculated from the current India rules.
+- Documents, document center, policies, onboarding, recruitment pipeline (candidates to offers to employee records), performance reviews, and engage (announcements, polls, events, kudos).
+
+**4. Business Management (Owner and admins).**
+- Business overview: leads, open deals, pipeline, follow-up SLA, owner workload, and a data-coverage card that says which workspaces are connected.
+- People & Access: members, roles and permissions, workspace access, departments and invitations.
+- Janus Intelligence: business AI chat, a knowledge base (files, pages, websites, connected apps and approved Q&As), memory, insights, risk alerts and planning.
+- Agents and workflows: AI agents with approval modes, workflows with a When, If, Then structure, dry runs and an approval queue. Activation stays blocked until a dry run passes.
+- Business reports, billing and company settings.
+
+**5. AI, with guardrails.** Janus answers only from sources a person can use. It shows which sources an answer came from, and it lists questions it could not answer. It suggests facts from chats, but nothing is added until a person approves. Sensitive actions always need approval.
+
+## Current status (honest)
+
+| Area | Status |
+| --- | --- |
+| Backend API (auth, org, leads, deals, WhatsApp, ingestion, worker, AI settings, business) | Built and tested in `backend/` |
+| Frontend across all modules above | Built. Most screens run on a browser preview backend with demo data, switched on with `NEXT_PUBLIC_JANUS_DEMO_MODE=true` |
+| Tickets, leave, payroll, HR records and approvals as real API | Not yet on the backend. They work in the preview only |
+| Multi-company isolation | Built for the preview (per-company storage). Real tenant separation lives in the backend |
+| Statutory payroll | PF, ESI, professional tax and new-regime TDS are calculated. Special cases (old regime, other states, exemptions) need an accountant to confirm |
+| Live AI answers and agent execution | Not connected. The screens show what would happen and mark unavailable parts |
+| Real-time notifications, e-signature, banking, GST filing | Not started |
+
+Known gaps tracked for later: a single People & Access screen (Portfolio, Business and HR still have separate entry points for people), a full click-through of every dialog on every role, and a final check against the product scope document.
+
+## Try the preview
+
+```sh
+npm install
+cp .env.example .env.local
+# set NEXT_PUBLIC_JANUS_DEMO_MODE=true in .env.local for the preview
+npm run dev
+```
+
+Preview test sign-ins (preview only; never used in a live build):
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Owner | pankaj@acmetraders.in | Owner@123 |
+| Sales manager | arjun@acmetraders.in | Manager@123 |
+| Sales executive | meera@acmetraders.in | Sales@123 |
+| Support lead | karan@acmetraders.in | Support@123 |
+| HR manager | shaista@acmetraders.in | HR@12345 |
+| Finance executive | aman@acmetraders.in | Finance@123 |
+| Reporting manager | neha@acmetraders.in | Lead@12345 |
+| Employee | vikas@acmetraders.in | Employee@123 |
+
+The login page's "Reset the test data" button restores the preview to its starting state.
+
+## Where to read more
+
+- `docs/business-management-current.md`: the Business Management screens and their current behaviour.
+- `docs/audit/`: the audits that shaped the current build (CRM & Sales, Business Management, multi-company).
+- `backend/README.md`: the API, database and worker.
+- `deploy/README.md`: the single-VPS pilot deployment.
+
+---
+
+## Working slice (backend pilot)
+
 Janus connects lead capture, CRM, communication and business operations for Indian SMBs. The current working slice is **sign up → verify → capture a lead → send a WhatsApp follow-up → receive the reply in the inbox → move the deal through the pipeline**.
 
 ## Run locally
