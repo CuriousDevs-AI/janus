@@ -4,6 +4,7 @@ import { APIError } from "@/lib/api/client";
 import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
 import { canSeeOwner } from "@/lib/crm-scope";
 import { demoAccounts } from "@/lib/demo-accounts";
+import { conversations } from "@/lib/demo-universe";
 import { readView } from "@/lib/demo-persona";
 import { activeCompany, updateCompany } from "@/lib/company";
 import { useDemoCrmStore } from "@/lib/demo-backend/crm-store";
@@ -111,6 +112,13 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
       store.patchContact(contact.id, { whatsappOptIn: Boolean(data.whatsappOptIn), doNotContact: Boolean(data.doNotContact), consentSource: text(data.consentSource) || "customer_record", consentUpdatedAt: new Date().toISOString() });
       return useDemoCrmStore.getState().contacts.find((item) => item.id === contact.id);
     }
+  }
+
+  if (parts[0] === "whatsapp" && parts[1] === "conversations" && parts.length === 2 && method === "GET") {
+    // Chats for the customer pages: only customers this person is allowed to see.
+    const account = readView();
+    if (!account || account.crm === "none") throw forbidden("chats");
+    return conversations.filter((item) => store.leads.some((lead) => lead.customerId === item.contactId && canSeeOwner(account, lead.ownerId)));
   }
 
   if (parts[0] === "workspaces" && parts.length === 1) {

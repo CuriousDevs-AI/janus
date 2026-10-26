@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { TurnCard } from "@/components/ai/turn-card";
-import { EXAMPLE_QUESTIONS, type BusinessAnswer } from "@/lib/services/business-ai";
+import { EXAMPLE_QUESTIONS, type BusinessAnswer } from "@/lib/services/business-answer";
 import { api } from "@/lib/api/client";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { SectionCard } from "@/components/settings/section-ui";

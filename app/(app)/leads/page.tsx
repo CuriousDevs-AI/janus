@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { can } from "@/lib/permissions";
 import { demoMode } from "@/lib/demo-mode";
 import { demoAccounts } from "@/lib/demo-accounts";
 import { canSeeOwner } from "@/lib/crm-scope";
@@ -151,7 +152,7 @@ function EditableValue({
 export default function LeadsPage() {
   const session = useSession();
   const viewer = useDemoAccount();
-  const canWrite = session.permissions.includes("leads:write");
+  const canWrite = can(session, "leads:write");
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
@@ -204,7 +205,7 @@ export default function LeadsPage() {
   const usingDemo = Boolean(loaded?.error);
   const canEditRows = canWrite && !usingDemo;
   // Owners and managers can hand a lead to someone they manage.
-  const assignees = demoMode && (session.permissions.includes("*") || session.permissions.includes("leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
+  const assignees = demoMode && (session.permissions.includes("*") || can(session, "leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
   const sources = useMemo(
     () => [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])],
     [loaded],
@@ -359,7 +360,7 @@ export default function LeadsPage() {
               <RotateCw className="size-3.5" />
               Refresh
             </Button>
-            {session.permissions.includes("sources:manage") && (
+            {can(session, "sources:manage") && (
               <Button size="sm" asChild>
                 <Link href="/lead-sources/new">
                   <Plus className="size-3.5" />

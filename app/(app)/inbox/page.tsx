@@ -1,7 +1,9 @@
 "use client";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { can } from "@/lib/permissions";
 import { buyers } from "@/lib/demo-universe";
 import { useCrmAccess } from "@/lib/use-crm-access";
+import { demoMode } from "@/lib/demo-mode";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -60,10 +62,11 @@ function Inbox() {
   const [fullscreen, setFullscreen] = useState(false);
   const [listView, setListView] = useState<"mine" | "unassigned" | "all">("mine");
   const [channelFilter, setChannelFilter] = useState<"all" | "whatsapp" | "email" | "call">("all");
+  // The preview keeps its chats in the browser, so it never asks a server for them.
   const list = useApi<WhatsAppConversation[]>(
-    `/whatsapp/conversations?limit=50&before_id=${before}`,
+    demoMode ? null : `/whatsapp/conversations?limit=50&before_id=${before}`,
   );
-  const usingDemo = Boolean(list.error);
+  const usingDemo = demoMode || Boolean(list.error);
   const access = useCrmAccess();
   const reload = list.reload;
   useEffect(() => {
@@ -202,7 +205,7 @@ function Inbox() {
             <div className="flex min-w-0 flex-1 flex-col">
               <Conversation key={selected} id={selected} onChanged={reload} />
             </div>
-            {selected.startsWith("demo-") && <DemoContextPanel conversationId={selected} />}
+            {isPreviewChat(selected) && <DemoContextPanel conversationId={selected} />}
           </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -217,6 +220,9 @@ function Inbox() {
     </div>
   );
 }
+
+/** The preview keeps its chats in the browser. Their ids come from the shared demo company, not from a prefix. */
+const isPreviewChat = (id: string) => demoConversations.some((item) => item.id === id);
 
 function DemoContextPanel({ conversationId }: { conversationId: string }) {
   const conversation = demoConversations.find((item) => item.id === conversationId);
@@ -246,23 +252,23 @@ function Conversation({
   id: string;
   onChanged: () => void;
 }) {
-  const demoMode = id.startsWith("demo-");
+  const previewChat = isPreviewChat(id);
   const liveThread = useApi<WhatsAppConversation>(
-    demoMode ? null : `/whatsapp/conversations/${encodeURIComponent(id)}`,
+    previewChat ? null : `/whatsapp/conversations/${encodeURIComponent(id)}`,
   );
   const [before, setBefore] = useState("0");
   const liveMessages = useApi<WhatsAppMessage[]>(
-    demoMode
+    previewChat
       ? null
       : `/whatsapp/conversations/${encodeURIComponent(id)}/messages?limit=50&before_id=${before}`,
   );
   const [channel, setChannel] = useState<"all" | "whatsapp" | "email" | "call">("all");
   const [timelineOverride, setTimelineOverride] = useState<DemoTimelineItem[] | undefined>();
   const demoThread = demoConversations.find((conversation) => conversation.id === id);
-  const thread = liveThread.data ?? (demoMode ? demoThread : undefined);
+  const thread = liveThread.data ?? (previewChat ? demoThread : undefined);
   const messageRows =
-    liveMessages.data ?? (demoMode ? demoMessagesByConversation[id] ?? [] : undefined);
-  const timeline = demoMode
+    liveMessages.data ?? (previewChat ? demoMessagesByConversation[id] ?? [] : undefined);
+  const timeline = previewChat
     ? timelineOverride ?? demoConversationTimeline[id] ?? []
     : messageRows?.map((message) => ({
         id: message.id,
@@ -276,13 +282,13 @@ function Conversation({
   const reloadThread = liveThread.reload;
   const reloadMessages = liveMessages.reload;
   useEffect(() => {
-    if (demoMode) return;
+    if (previewChat) return;
     const timer = setInterval(() => {
       reloadThread();
       if (before === "0") reloadMessages();
     }, 5000);
     return () => clearInterval(timer);
-  }, [demoMode, reloadThread, reloadMessages, before]);
+  }, [previewChat, reloadThread, reloadMessages, before]);
   const bottom = useRef<HTMLDivElement>(null);
   const lastId = messageRows?.at(-1)?.id;
   useEffect(() => {
@@ -310,7 +316,7 @@ function Conversation({
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span>{thread.phone}</span>
                   <span aria-hidden="true">·</span>
-                  <span>{demoMode ? "Conversation" : "Connected channel"}</span>
+                  <span>{previewChat ? "Conversation" : "Connected channel"}</span>
                   <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", thread.doNotContact ? "bg-warning-muted text-warning" : thread.whatsappOptIn ? "bg-success-muted text-success" : "bg-surface-2 text-muted-foreground")}>
                     {thread.doNotContact ? "Outbound suppressed" : thread.whatsappOptIn ? "WhatsApp opt-in" : "Opt-in not recorded"}
                   </span>
@@ -438,10 +444,10 @@ function Conversation({
           </div>
         </div>
       ) : thread ? (
-        <ChannelPanel channel={channel} thread={thread} demoMode={demoMode} />
+        <ChannelPanel channel={channel} thread={thread} previewChat={previewChat} />
       ) : null}
       {thread && (channel === "all" || channel === "whatsapp") &&
-        (demoMode ? (
+        (previewChat ? (
           <DemoUnifiedComposer
             thread={thread}
             onAdded={(item) =>
@@ -509,11 +515,11 @@ function UnifiedTimeline({
 function ChannelPanel({
   channel,
   thread,
-  demoMode,
+  previewChat,
 }: {
   channel: "email" | "call";
   thread: WhatsAppConversation;
-  demoMode: boolean;
+  previewChat: boolean;
 }) {
   const [subject, setSubject] = useState("Following up on your Janus enquiry");
   const [body, setBody] = useState(
@@ -530,7 +536,7 @@ function ChannelPanel({
         onSubmit={(event) => {
           event.preventDefault();
           setSaved(true);
-          toast.success(demoMode ? "Email draft saved." : "Email draft prepared. Connect an email provider to send it.");
+          toast.success(previewChat ? "Email draft saved." : "Email draft prepared. Connect an email provider to send it.");
         }}
       >
         <div className="mx-auto flex max-w-2xl flex-col gap-3 rounded-md border border-border bg-surface p-4">
@@ -551,10 +557,10 @@ function ChannelPanel({
     <div className="flex-1 overflow-y-auto p-4">
       <div className="mx-auto flex max-w-2xl flex-col gap-4 rounded-md border border-border bg-surface p-4">
         <div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold">Call workspace</h3><p className="text-xs text-muted-foreground">Start a call, capture the outcome and keep the next step on the timeline.</p></div><Phone className="size-4 text-accent" /></div>
-        <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-3"><span className="text-sm font-medium">{thread.phone}</span><span className="text-xs text-muted-foreground">{demoMode ? "Call handoff" : "Connected phone provider"}</span><Button type="button" size="sm" onClick={() => toast.success(demoMode ? "Demo call started." : "Call handoff opened.")}><Phone className="size-3.5" /> Start call</Button></div>
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-3"><span className="text-sm font-medium">{thread.phone}</span><span className="text-xs text-muted-foreground">{previewChat ? "Call handoff" : "Connected phone provider"}</span><Button type="button" size="sm" onClick={() => toast.success(previewChat ? "Demo call started." : "Call handoff opened.")}><Phone className="size-3.5" /> Start call</Button></div>
         <div className="grid gap-1"><Label htmlFor="call-outcome">Call outcome</Label><select id="call-outcome" className={selectClass} value={outcome} onChange={(event) => setOutcome(event.target.value)}><option>Connected</option><option>No answer</option><option>Callback requested</option><option>Qualified</option></select></div>
         <div className="grid gap-1"><Label htmlFor="call-notes">Call notes</Label><Textarea id="call-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Capture the requirement, objections and next step…" className="min-h-24" /></div>
-        <Button type="button" className="self-end" onClick={() => toast.success(`${outcome} call note saved${demoMode ? "" : ""}.`)}><CalendarClock className="size-3.5" /> Save call note</Button>
+        <Button type="button" className="self-end" onClick={() => toast.success(`${outcome} call note saved${previewChat ? "" : ""}.`)}><CalendarClock className="size-3.5" /> Save call note</Button>
       </div>
     </div>
   );
@@ -629,7 +635,7 @@ function Composer({
 }) {
   const session = useSession();
   const allowed =
-    session.permissions.includes("leads:write") &&
+    can(session, "leads:write") &&
     !!session.user.email_verified_at;
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {

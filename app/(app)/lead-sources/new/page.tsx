@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Building2, FileSpreadsheet, Globe, Key, MessageCircle, Phone, Users, Webhook } from "lucide-react";
@@ -34,7 +35,7 @@ function Setup() {
   const selectedKind = params.get("kind");
   const kind = selectedKind || "webhook";
   const session = useSession();
-  const allowed = session.permissions.includes("sources:manage") && Boolean(session.user.email_verified_at);
+  const allowed = can(session, "sources:manage") && Boolean(session.user.email_verified_at);
   const presets = useApi<Preset[]>(allowed ? "/sources/presets" : null);
   const [created, setCreated] = useState<Source | null>(null);
 
