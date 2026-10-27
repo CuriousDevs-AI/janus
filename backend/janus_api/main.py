@@ -18,6 +18,7 @@ from janus_api.crm.router import router as crm_router
 from janus_api.org.router import router as org_router
 from janus_api.sources.router import router as sources_router
 from janus_api.state.router import router as state_router
+from janus_api.timeline.router import router as timeline_router
 from janus_api.vault.router import router as vault_router
 from janus_api.whatsapp.router import router as whatsapp_router
 
@@ -46,6 +47,7 @@ app.include_router(crm_router)
 app.include_router(whatsapp_router)
 app.include_router(state_router)
 app.include_router(vault_router)
+app.include_router(timeline_router)
 
 
 @app.get("/health")
