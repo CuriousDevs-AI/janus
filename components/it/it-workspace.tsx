@@ -105,16 +105,19 @@ function HelpdeskView() {
   const raiseTicket = useITStore((state) => state.raiseTicket);
   const setTicketStatus = useITStore((state) => state.setTicketStatus);
   const assignTicket = useITStore((state) => state.assignTicket);
+  const resolveTicket = useITStore((state) => state.resolveTicket);
+  const [system, setSystem] = React.useState("");
+  const [level, setLevel] = React.useState<(typeof ACCESS_LEVELS)[number]>("view");
   const [requester, setRequester] = React.useState("");
   const [category, setCategory] = React.useState<(typeof HELPDESK_CATEGORIES)[number]>("Laptop or phone");
   const [priority, setPriority] = React.useState<(typeof HELPDESK_PRIORITIES)[number]>("medium");
   const [subject, setSubject] = React.useState("");
 
   function raise() {
-    const problem = raiseTicket({ requester, category, priority, subject }, me);
+    const problem = raiseTicket({ requester, category, priority, subject, system: category === "Access" ? system : undefined, level: category === "Access" ? level : undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Request raised");
-    setSubject("");
+    setSubject(""); setSystem("");
   }
 
   return (
@@ -128,6 +131,12 @@ function HelpdeskView() {
             <select aria-label="Category" className={selectClass} value={category} onChange={(e) => setCategory(e.target.value as (typeof HELPDESK_CATEGORIES)[number])}>{HELPDESK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
             <select aria-label="Priority" className={selectClass} value={priority} onChange={(e) => setPriority(e.target.value as (typeof HELPDESK_PRIORITIES)[number])}>{HELPDESK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
             <Input aria-label="Problem" placeholder="What is the problem?" value={subject} onChange={(e) => setSubject(e.target.value)} />
+            {category === "Access" ? (
+              <>
+                <Input aria-label="System" placeholder="System, e.g. Tally Prime" value={system} onChange={(e) => setSystem(e.target.value)} />
+                <select aria-label="Access level" className={selectClass} value={level} onChange={(e) => setLevel(e.target.value as (typeof ACCESS_LEVELS)[number])}>{ACCESS_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+              </>
+            ) : null}
             <Button disabled={!requester || subject.trim().length < 5} onClick={raise}>Raise request</Button>
           </div>
         </CardContent>
@@ -139,7 +148,7 @@ function HelpdeskView() {
             <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
               <span>
                 <span className="font-medium">{t.number}</span> · {t.subject}
-                <span className="block text-xs text-muted-foreground">{t.requester} · {t.category} · {t.priority} priority · raised {t.raisedOn}{t.assignee ? ` · with ${t.assignee}` : " · not assigned"}</span>
+                <span className="block text-xs text-muted-foreground">{t.requester} · {t.category}{t.system ? ` (${t.system}, ${t.level})` : ""} · {t.priority} priority · raised {t.raisedOn} · due {t.dueOn ?? "—"}{t.status !== "resolved" && t.dueOn && t.dueOn < TODAY ? " · overdue" : ""}{t.assignee ? ` · with ${t.assignee}` : " · not assigned"}</span>
               </span>
               <span className="flex flex-wrap items-center gap-2">
                 <Badge variant={t.status === "resolved" ? "success" : t.status === "in progress" ? "warning" : "neutral"}>{t.status}</Badge>
@@ -150,7 +159,7 @@ function HelpdeskView() {
                       {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                     </select>
                     {t.status === "open" ? <Button size="sm" variant="secondary" onClick={() => { const p = setTicketStatus(t.id, "in progress", me); if (p) toast.error(p); }}>Start</Button> : null}
-                    <Button size="sm" variant="outline" onClick={() => { const p = setTicketStatus(t.id, "resolved", me); if (p) toast.error(p); else toast.success(`${t.number} resolved`); }}>Resolve</Button>
+                    <Button size="sm" variant="outline" onClick={() => { const p = resolveTicket(t.id, me); if (p) toast.error(p); else toast.success(`${t.number} resolved`); }}>Resolve</Button>
                   </>
                 ) : null}
               </span>
