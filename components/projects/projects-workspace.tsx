@@ -18,7 +18,7 @@ import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
 import { projectPersonRefs } from "@/lib/timeline-team";
-import { createProjectRecord, setProjectRecordStatus } from "@/lib/project-records";
+import { mirrorNewProject, setProjectRecordStatus } from "@/lib/project-records";
 import { message } from "@/lib/api/client";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -333,7 +333,9 @@ function ProjectsView({ me }: { me: string }) {
     // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
     const created = useProjectsStore.getState().projects.at(-1);
     if (created) {
-      createProjectRecord(created).catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
+      mirrorNewProject(created, created.owner)
+        .then((links) => { if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(created.id, links); })
+        .catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
       syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
         .then((result) => {
           if (result) useProjectsStore.getState().linkPeople(created.id, result.links);

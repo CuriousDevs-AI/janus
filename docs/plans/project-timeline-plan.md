@@ -168,3 +168,9 @@ Not built yet, in plan order:
 - In real mode, creating a project also creates its typed project record on the server, and closing it marks the record done. The record is created with the project key, name, client, status, budget and dates.
 - Verified in the browser: a project created on the screen appeared on the server with status planned and budget 20000.00; closing it changed the server record to done.
 - Not done: the screen still saves locally and draws its budget from the finance store in the browser. Reading the projects list from the server, and moving the budget draw to the server, need finance on the server first (point 5). A failed mirror shows a warning; it does not undo the local change.
+
+**Tenth pass: owner recorded by account (point 2, partial):**
+- A new project's owner is matched to a single company account by name. The account ID is stored on the server record and on the screen data, the same way the timeline sync stores it.
+- A name with no single account, or with two, is left unlinked and is not guessed.
+- Verified in the browser: a project created for the signed-in owner was stored with that account's ID.
+- Not done: the owner field is still typed as free text. Choosing the owner from the company directory, and recording task assignees and allocations by ID at the time they are set, remain open.
