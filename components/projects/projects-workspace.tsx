@@ -16,7 +16,7 @@ import { DEFAULT_HOURLY_COST, PROJECT_TYPES, TODAY, addDays, projectHealth, proj
 import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
-import { describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
+import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
 import { projectPeople } from "@/lib/timeline-team";
 import { message } from "@/lib/api/client";
 
@@ -376,7 +376,7 @@ function ProjectsView({ me }: { me: string }) {
                     <td className="px-4 py-3">{p.end}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(p.budget)}</td>
                     <td className="px-4 py-3"><Badge variant={healthTone(health) as "neutral"}>{health}</Badge></td>
-                    <td className="px-4 py-3 text-right">{p.status === "done" ? <span className="text-xs text-muted-foreground">Closed</span> : <Button size="sm" variant="ghost" onClick={() => { const problem = closeProject(p.id, me); if (problem) toast.error(problem); else toast.success(`${p.name} closed; unused budget released to its fund line`); }}>Close project</Button>}</td>
+                    <td className="px-4 py-3 text-right">{p.status === "done" ? <span className="text-xs text-muted-foreground">Closed</span> : <Button size="sm" variant="ghost" onClick={() => { const problem = closeProject(p.id, me); if (problem) toast.error(problem); else { toast.success(`${p.name} closed; unused budget released. Closure summary saved.`); archiveProjectTimeline(p.id).catch((error: unknown) => toast.error(`Timeline not closed: ${message(error)}`)); } }}>Close project</Button>}</td>
                   </tr>
                 );
               })}

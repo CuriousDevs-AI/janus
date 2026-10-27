@@ -23,6 +23,14 @@ export interface Project { id: string; name: string; client: string; customerId?
 export interface MilestoneDispute { reason: string; raisedBy: string; date: string }
 export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string; dispute?: MilestoneDispute }
 
+/** What a closed project amounted to, captured at closing from the records, so it stays true later. */
+export interface ProjectClosure {
+  projectId: string;
+  closedOn: string;
+  closedBy: string;
+  lines: { label: string; value: string }[];
+}
+
 /** One version of a project's plan. Version 1 is the plan as first set; each approved change adds the next one (plan §8.3Y step 4). */
 export interface PlanVersion { id: string; projectId: string; number: number; budget: number; end: string; note: string; by: string; date: string }
 export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; due: string; status: "todo" | "doing" | "done" }
@@ -41,6 +49,7 @@ interface ProjectsState {
   tasks: Task[];
   changes: ChangeRequest[];
   versions: PlanVersion[];
+  closures: ProjectClosure[];
   timesheets: Timesheet[];
   allocations: Allocation[];
   rates: CostRate[];
@@ -121,6 +130,7 @@ export const useProjectsStore = create<ProjectsState>()(
       trail: [],
       rates: [],
       versions: [],
+      closures: [],
       setCostRate: (person, hourlyCost, by) => {
         if (!person) return "Choose the person.";
         if (!(hourlyCost >= 0 && hourlyCost <= 100000)) return "Enter a cost per hour between 0 and 1,00,000.";
@@ -253,9 +263,28 @@ export const useProjectsStore = create<ProjectsState>()(
         const unused = Math.max(0, Math.round((project.budget - cost) * 100) / 100);
         const released = unused > 0 ? useFinanceStore.getState().releaseBudget(project.budgetLineId, unused, `Project: ${project.name}`, by, TODAY) : null;
         if (released) return `Budget: ${released}`;
+        const money = (value: number) => `₹${value.toLocaleString("en-IN")}`;
+        const milestones = get().milestones.filter((m) => m.projectId === id);
+        const accepted = milestones.filter((m) => m.status === "accepted");
+        const versions = get().versions.filter((v) => v.projectId === id).sort((a, b) => a.number - b.number);
+        const approvedChanges = get().changes.filter((c) => c.projectId === id && c.status === "approved").length;
+        const profit = projectProfitability(project, milestones, timesheets, rates);
+        const closure: ProjectClosure = {
+          projectId: id,
+          closedOn: TODAY,
+          closedBy: by,
+          lines: [
+            { label: "Milestones accepted", value: `${accepted.length} of ${milestones.length}, billed ${money(accepted.reduce((sum, m) => sum + m.amount, 0))}` },
+            { label: "Budget", value: `${money(project.budget)}; cost of logged hours ${money(profit.cost)}; released to the fund line ${money(unused)}` },
+            { label: "Hours logged", value: `${profit.hours} hours` },
+            { label: "Plan versions", value: `${versions.length} (${approvedChanges} approved change${approvedChanges === 1 ? "" : "s"})` },
+            { label: "Margin on billing", value: profit.margin === null ? "no billing recorded" : `${profit.margin}%` },
+          ],
+        };
         set((state) => ({
           projects: state.projects.map((p) => p.id === id ? { ...p, status: "done" } : p),
-          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Closed ${project.name}; ₹${unused.toLocaleString("en-IN")} of budget released`)),
+          closures: [...state.closures.filter((c) => c.projectId !== id), closure],
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Closed ${project.name}; ${money(unused)} of budget released`)),
         }));
         return null;
       },

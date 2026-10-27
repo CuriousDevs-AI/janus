@@ -31,6 +31,7 @@ export function TimelineView() {
   const canManage = hasPermission(session.permissions, "projects:manage");
   const projects = useProjectsStore((state) => state.projects);
   const tasks = useProjectsStore((state) => state.tasks);
+  const closures = useProjectsStore((state) => state.closures);
   const allocations = useProjectsStore((state) => state.allocations);
   const [members, setMembers] = React.useState<{ user_id: string; name: string }[]>([]);
   const [directory, setDirectory] = React.useState<DirectoryPerson[]>([]);
@@ -277,6 +278,30 @@ export function TimelineView() {
                 <Button size="sm" variant="secondary" onClick={syncTeam}>Sync team from project</Button>
               </div>
             ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+      {selected && closures.find((c) => c.projectId === selected.id) ? (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Closure summary</CardTitle></CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            {(() => {
+              const closure = closures.find((c) => c.projectId === selected.id);
+              if (!closure) return null;
+              return (
+                <>
+                  <p className="text-xs text-muted-foreground">Closed on {closure.closedOn} by {closure.closedBy}. This is a snapshot taken at closing.</p>
+                  <dl className="grid gap-2">
+                    {closure.lines.map((line) => (
+                      <div key={line.label} className="grid gap-0.5 sm:grid-cols-[180px_1fr]">
+                        <dt className="text-muted-foreground">{line.label}</dt>
+                        <dd>{line.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       ) : null}

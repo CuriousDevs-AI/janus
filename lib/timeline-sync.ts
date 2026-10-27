@@ -46,3 +46,14 @@ export function describeUnmatched(unmatched: TeamMatch["unmatched"]): string {
   return unmatched.map((u) => `${u.name} (${u.reason})`).join(", ");
 }
 
+
+/** Closes a project's timeline on the server. A project that never had a timeline is not an error. */
+export async function archiveProjectTimeline(projectId: string): Promise<void> {
+  if (demoMode) return;
+  try {
+    await api(`/project-timelines/${encodeURIComponent(projectId)}/archive`, { method: "POST" });
+  } catch (error) {
+    if (error instanceof APIError && (error.status === 404 || error.code === "already_archived")) return;
+    throw error;
+  }
+}
