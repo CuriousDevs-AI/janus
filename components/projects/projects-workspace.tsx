@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useSession } from "@/components/auth/session-provider";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
-import { PROJECT_TYPES, TODAY, addDays, projectHealth, useProjectsStore, type Project } from "@/lib/stores/projects-store";
+import { DEFAULT_HOURLY_COST, PROJECT_TYPES, TODAY, addDays, projectHealth, projectProfitability, useProjectsStore, type Project } from "@/lib/stores/projects-store";
 import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
 
@@ -21,7 +21,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 
 const comingSoon: Record<string, string> = {
   calendar: "The project calendar comes in phase 2, with meetings.",
-  reports: "Project reports and profitability come after timesheets and costs are in use.",
 };
 
 export function ProjectsWorkspace() {
@@ -29,7 +28,7 @@ export function ProjectsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
+  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
 
   if (view in comingSoon) {
     return (
@@ -50,9 +49,10 @@ export function ProjectsWorkspace() {
         {view === "changes" && <ChangesView me={me} />}
         {view === "timesheets" && <TimesheetsView me={me} />}
         {view === "resources" && <ResourcesView />}
+        {view === "reports" && <ProfitabilityView />}
         {view === "client-delivery" && <ClientView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources"].includes(view) && <OverviewView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources"].includes(view) && <ProjectsTrail />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports"].includes(view) && <OverviewView />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports"].includes(view) && <ProjectsTrail />}
       </div>
     </div>
   );
@@ -177,6 +177,64 @@ function ResourcesView() {
           </Card>
         );
       })}
+    </>
+  );
+}
+
+/** Profit per project to date: accepted milestones billed, against the cost of the hours logged. People without a rate use the default. */
+function ProfitabilityView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const projects = useProjectsStore((state) => state.projects);
+  const milestones = useProjectsStore((state) => state.milestones);
+  const timesheets = useProjectsStore((state) => state.timesheets);
+  const rates = useProjectsStore((state) => state.rates);
+  const setCostRate = useProjectsStore((state) => state.setCostRate);
+  const [person, setPerson] = React.useState("");
+  const [hourly, setHourly] = React.useState("");
+
+  function save() {
+    const problem = setCostRate(person, Number(hourly), me);
+    if (problem) return toast.error(problem);
+    toast.success("Cost saved");
+    setHourly("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Cost per hour</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Project cost is hours logged times what each person costs an hour. A person with no cost set uses ₹{DEFAULT_HOURLY_COST} an hour.</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <select aria-label="Cost person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <Input aria-label="Cost per hour" type="number" min={0} placeholder="₹ per hour" value={hourly} onChange={(e) => setHourly(e.target.value)} />
+            <Button disabled={!person || hourly === ""} onClick={save}>Save cost</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{rates.length === 0 ? "No cost set yet; everyone uses the default." : rates.map((r) => `${r.person}: ₹${r.hourlyCost}/hr`).join(" · ")}</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[640px] text-sm tabular-nums">
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Project</th><th className="px-4 py-2 text-right">Billed</th><th className="px-4 py-2 text-right">Hours</th><th className="px-4 py-2 text-right">Cost</th><th className="px-4 py-2 text-right">Margin</th></tr></thead>
+            <tbody>
+              {projects.map((p) => {
+                const r = projectProfitability(p, milestones, timesheets, rates);
+                return (
+                  <tr key={p.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 font-medium">{p.name}<span className="block text-xs font-normal text-muted-foreground">{p.client}</span></td>
+                    <td className="px-4 py-3 text-right">{money(r.billed)}</td>
+                    <td className="px-4 py-3 text-right">{r.hours}</td>
+                    <td className="px-4 py-3 text-right">{money(r.cost)}</td>
+                    <td className={`px-4 py-3 text-right ${r.margin !== null && r.margin < 0 ? "text-danger" : ""}`}>{r.margin === null ? "no billing yet" : `${r.margin}%`}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     </>
   );
 }
