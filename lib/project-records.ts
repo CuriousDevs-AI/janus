@@ -108,3 +108,55 @@ export async function refreshProjectRecords(): Promise<void> {
     }),
   }));
 }
+
+/** Mirrors a new milestone of a project that has a server record. A project without one is skipped quietly. */
+export async function mirrorMilestone(
+  projectId: string,
+  milestone: { id: string; name: string; due: string; amount: number },
+): Promise<void> {
+  if (demoMode) return;
+  try {
+    await api(`/project-records/${encodeURIComponent(projectId)}/milestones`, {
+      method: "POST",
+      body: JSON.stringify({ external_key: milestone.id, name: milestone.name, due_on: milestone.due, amount: milestone.amount.toFixed(2) }),
+    });
+  } catch (error) {
+    if (error instanceof APIError && (error.status === 404 || error.code === "already_exists")) return;
+    throw error;
+  }
+}
+
+/** Moves a mirrored milestone to done or accepted on the server. The server enforces the same rules as the screen. */
+export async function mirrorMilestoneStatus(projectId: string, milestoneId: string, status: "done" | "accepted"): Promise<void> {
+  if (demoMode) return;
+  try {
+    await api(`/project-records/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+  } catch (error) {
+    if (error instanceof APIError && error.status === 404) return;
+    throw error;
+  }
+}
+
+/** Brings the status of mirrored milestones of one project into the screen data. */
+export async function refreshMilestones(projectId: string): Promise<void> {
+  if (demoMode) return;
+  let rows: { external_key: string; status: string; name: string; amount: string }[];
+  try {
+    rows = await api(`/project-records/${encodeURIComponent(projectId)}/milestones`);
+  } catch (error) {
+    if (error instanceof APIError && error.status === 404) return;
+    throw error;
+  }
+  const { useProjectsStore } = await import("@/lib/stores/projects-store");
+  const byKey = new Map(rows.map((r) => [r.external_key, r]));
+  useProjectsStore.setState((state) => ({
+    milestones: state.milestones.map((m) => {
+      const r = byKey.get(m.id);
+      if (!r) return m;
+      return { ...m, status: r.status as typeof m.status, name: r.name, amount: Number(r.amount) };
+    }),
+  }));
+}

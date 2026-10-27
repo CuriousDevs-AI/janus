@@ -184,3 +184,9 @@ Not built yet, in plan order:
 - On opening the Projects screen in real mode, each project that exists on the server has its name, client, status, budget and dates updated from the server.
 - Verified in the browser: a project was marked done on the server, outside the screen; after a reload, the screen showed it as done and closed.
 - Limits: projects that exist only on the screens still come from the browser copy, and milestones, tasks and the budget line still live in the browser until they move to the server.
+
+**Thirteenth pass: milestones mirrored to the server (point 1, milestones):**
+- Adding a milestone, marking it complete and accepting it are mirrored to the server, and the Milestones screen refreshes each milestone's status from the server when it opens.
+- Verified in the browser: a milestone added on the screen was stored on the server as planned; marking it complete changed the server status to done.
+- Found and fixed: the bridge did not allow the milestone paths, so the mirror was silently skipped on 404. The bridge now allows them. The milestone list also now returns who completed and accepted each milestone.
+- Not verified in the browser: acceptance by a second person (covered by the backend tests) and the refresh-on-open merge.

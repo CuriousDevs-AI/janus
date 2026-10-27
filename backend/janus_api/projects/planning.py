@@ -149,7 +149,14 @@ async def list_milestones(project_key: str, actor: Manage, db: Db) -> list[Miles
         .where(ProjectMilestone.project_id == project.id)
         .order_by(ProjectMilestone.due_on, ProjectMilestone.id)
     )
-    return [_milestone_out(row, None, None) for row in rows.all()]
+    return [
+        _milestone_out(
+            row,
+            str(row.completed_by) if row.completed_by else None,
+            str(row.accepted_by) if row.accepted_by else None,
+        )
+        for row in rows.all()
+    ]
 
 
 @router.post("/{project_key}/milestones/{milestone_key}/status", response_model=MilestoneOut)
