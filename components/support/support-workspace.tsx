@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/stores/app-store";
 import { useRenewalsStore } from "@/lib/stores/renewals-store";
+import { useFeedbackStore } from "@/lib/stores/feedback-store";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { users } from "@/lib/mock-data";
 import type { Ticket } from "@/lib/types";
@@ -30,14 +31,12 @@ function slaState(ticket: Ticket) {
 const slaTone = (state: ReturnType<typeof slaState>) => state === "breached" ? "danger" : state === "due soon" ? "warning" : state === "on track" ? "success" : "neutral";
 
 const comingSoon: Record<string, string> = {
-  feedback: "Customer feedback after resolution comes in phase 2.",
-  reports: "Support reports come once queues and SLA history have data.",
 };
 
 export function SupportWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
-  const titles: Record<string, string> = { overview: "Support overview", queues: "Queues & assignments", sla: "SLA management", renewals: "Renewals & contracts" };
+  const titles: Record<string, string> = { overview: "Support overview", queues: "Queues & assignments", sla: "SLA management", renewals: "Renewals & contracts", feedback: "Customer feedback", reports: "Support reports" };
 
   if (view in comingSoon) {
     return (
@@ -52,7 +51,7 @@ export function SupportWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "Support overview"} description="Tickets are worked in CRM & Sales. This workspace shows who holds them, and whether they are within their service time." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "queues" ? <QueuesView /> : view === "sla" ? <SlaView /> : view === "renewals" ? <RenewalsView /> : <OverviewView />}
+        {view === "queues" ? <QueuesView /> : view === "sla" ? <SlaView /> : view === "renewals" ? <RenewalsView /> : view === "feedback" ? <FeedbackView /> : view === "reports" ? <SupportReportsView /> : <OverviewView />}
       </div>
     </div>
   );
@@ -117,6 +116,80 @@ function AssignmentsTrail() {
 }
 
 const TODAY = "2026-10-23";
+
+/** Ratings the customer gave on resolved tickets, recorded by staff with the customer's words. */
+function FeedbackView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const tickets = useAppStore((state) => state.tickets);
+  const feedback = useFeedbackStore((state) => state.feedback);
+  const recordFeedback = useFeedbackStore((state) => state.recordFeedback);
+  const done = new Set(feedback.map((f) => f.ticketId));
+  const resolved = tickets.filter((t) => (t.status === "resolved" || t.status === "closed") && !done.has(t.id));
+  const [ticketId, setTicketId] = React.useState("");
+  const [rating, setRating] = React.useState("5");
+  const [comment, setComment] = React.useState("");
+
+  function save() {
+    const ticket = tickets.find((t) => t.id === ticketId);
+    if (!ticket) return toast.error("Choose a resolved ticket.");
+    const problem = recordFeedback({ ticketId, ticketNumber: ticket.number, rating: Number(rating) as 1 | 2 | 3 | 4 | 5, comment, recordedBy: me, date: TODAY });
+    if (problem) return toast.error(problem);
+    toast.success("Feedback recorded");
+    setTicketId(""); setComment("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Record feedback</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Once a ticket is resolved, record the rating the customer gave and their words. One rating per ticket.</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <select aria-label="Resolved ticket" className={selectClass} value={ticketId} onChange={(e) => setTicketId(e.target.value)}><option value="">Resolved ticket…</option>{resolved.map((t) => <option key={t.id} value={t.id}>{t.number} · {t.subject}</option>)}</select>
+            <select aria-label="Rating" className={selectClass} value={rating} onChange={(e) => setRating(e.target.value)}>{[5, 4, 3, 2, 1].map((r) => <option key={r} value={r}>{r} / 5</option>)}</select>
+            <Input aria-label="Customer's words" placeholder="What the customer said" value={comment} onChange={(e) => setComment(e.target.value)} />
+            <Button disabled={!ticketId} onClick={save}>Record feedback</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-2 p-4 text-sm">
+          {feedback.length === 0 ? <p className="text-muted-foreground">No feedback recorded yet.</p> : null}
+          {feedback.map((f) => <p key={f.id}><span className="font-medium">{f.ticketNumber}</span> · {f.rating}/5 · {f.comment || "no comment"} <span className="text-xs text-muted-foreground">· recorded by {f.recordedBy} on {f.date}</span></p>)}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Support in numbers: what is open, how service times are holding, and what customers rated. */
+function SupportReportsView() {
+  const tickets = useAppStore((state) => state.tickets);
+  const feedback = useFeedbackStore((state) => state.feedback);
+  const open = tickets.filter((t) => !closed(t));
+  const breached = open.filter((t) => slaState(t) === "breached").length;
+  const escalated = open.filter((t) => t.status === "escalated").length;
+  const resolved = tickets.filter((t) => closed(t)).length;
+  const average = feedback.length > 0 ? Math.round((feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length) * 10) / 10 : null;
+  const rows: [string, string][] = [
+    ["Open tickets", String(open.length)],
+    ["Resolved tickets", String(resolved)],
+    ["Breached service time (open)", String(breached)],
+    ["Escalated (open)", String(escalated)],
+    ["Customer ratings recorded", String(feedback.length)],
+    ["Average rating", average === null ? "No ratings yet" : `${average} / 5`],
+  ];
+  return (
+    <Card>
+      <CardContent className="grid gap-2 p-4 text-sm">
+        {rows.map(([label, value]) => <div key={label} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{label}</span><span className="font-medium tabular-nums">{value}</span></div>)}
+        <p className="text-xs text-muted-foreground">Figures come from the tickets in this workspace and the feedback recorded here.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 const RENEWAL_WINDOW_DAYS = 60;
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 
