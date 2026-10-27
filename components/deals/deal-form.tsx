@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, message } from "@/lib/api/client";
@@ -160,7 +161,7 @@ export function LeadDeal({
         <Link href={`/deals/${lead.dealId}`}>Open deal</Link>
       </Button>
     );
-  if (!session.permissions.includes("leads:write")) return null;
+  if (!can(session, "leads:write")) return null;
   return (
     <>
       <Button size="sm" onClick={() => setOpen(true)}>

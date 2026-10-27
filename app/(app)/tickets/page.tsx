@@ -4,7 +4,7 @@ import * as React from "react";
 import { useCrmAccess } from "@/lib/use-crm-access";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -20,7 +20,6 @@ import { formatRelativeTime, cn } from "@/lib/utils";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,9 +62,12 @@ export default function TicketsPage() {
     handleSubmit,
     reset,
     setValue,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<TicketFormValues>({ resolver: zodResolver(ticketSchema), defaultValues: { priority: "medium", customerId: customers[0]?.id } });
+
+  const customerId = useWatch({ control, name: "customerId" });
+  const priority = useWatch({ control, name: "priority" });
 
   const rows = tickets
     .map((t) => ({ ticket: t, customer: customers.find((c) => c.id === t.customerId) }))
@@ -211,7 +213,7 @@ export default function TicketsPage() {
           <form onSubmit={handleSubmit(onCreate)} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Customer</Label>
-              <Select value={watch("customerId")} onValueChange={(v) => setValue("customerId", v)}>
+              <Select value={customerId} onValueChange={(v) => setValue("customerId", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
@@ -236,7 +238,7 @@ export default function TicketsPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Priority</Label>
-              <Select value={watch("priority")} onValueChange={(v) => setValue("priority", v)}>
+              <Select value={priority} onValueChange={(v) => setValue("priority", v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

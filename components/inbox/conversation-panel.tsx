@@ -76,8 +76,11 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
     setAiDraft(null);
     setSending(true);
     window.setTimeout(() => {
-      const reply = generateAIReply(conversation);
-      simulateAIReply(conversation.id, reply.content, { confidence: reply.confidence, knowledgeUsed: reply.knowledgeUsed });
+      // The assistant only answers chats it is handling. A person's reply, or a chat that is already resolved, stays with the person.
+      if (conversation.aiActive && conversation.status !== "resolved") {
+        const reply = generateAIReply(conversation);
+        simulateAIReply(conversation.id, reply.content, { confidence: reply.confidence, knowledgeUsed: reply.knowledgeUsed });
+      }
       setSending(false);
     }, 1400);
   }
@@ -179,7 +182,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
           />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => toast("Attachments aren't available yet")}>
+              <Button variant="ghost" size="icon" aria-label="Attach a file" onClick={() => toast("Attachments aren't available yet")}>
                 <Paperclip className="size-3.5" />
               </Button>
               <Button variant="ghost" size="sm" onClick={() => { setDraftIndex(0); setAiDraft(generateDraft(0)); }}>
