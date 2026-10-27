@@ -80,6 +80,13 @@ export const workspaceDefinitions: WorkspaceDefinition[] = [
   },
 ];
 
+/** Workspaces a company can switch on or off. Switching one off hides it; its records are kept. */
+/** The workspaces added in the operational rollout. Each is switched on per company. */
+export const OPERATIONAL_WORKSPACES: WorkspaceId[] = ["finance-accounting", "operations-inventory", "projects-delivery", "customer-support", "it-infrastructure"];
+
+/** Everything a company can switch on or off. */
+export const SWITCHABLE_WORKSPACES: WorkspaceId[] = ["crm-sales", "hr-people", ...OPERATIONAL_WORKSPACES];
+
 export const activeWorkspace = workspaceDefinitions.find((workspace) => workspace.id === "crm-sales")!;
 
 export function getWorkspaceDefinition(id: WorkspaceId) {
