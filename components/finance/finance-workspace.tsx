@@ -18,6 +18,7 @@ import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queu
 import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-store";
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
+import { EXPENSE_CATEGORIES, pettyCashBalance } from "@/lib/stores/finance-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
@@ -30,7 +31,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
-  expenses: "Expense claims live in HR & People (Expenses & Reimbursements). Finance pay-out and register come next.",
   reports: "Financial reports come after invoices, payments and credit notes are in use.",
 };
 
@@ -41,7 +41,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash" };
 
   if (view in comingSoon) {
     return (
@@ -67,8 +67,9 @@ export function FinanceWorkspace() {
         {view === "cash-flow" && <CashFlowView me={me} />}
         {view === "reconciliation" && <ReconciliationView me={me} />}
         {view === "month-end" && <MonthEndView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end"].includes(view) && <FinanceTrail />}
+        {view === "expenses" && <ExpensesView me={me} />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -288,6 +289,85 @@ function MonthEndView({ me }: { me: string }) {
   );
 }
 
+/** Business expenses, paid from the petty cash float or the bank, and the petty cash balance. */
+function ExpensesView({ me }: { me: string }) {
+  const expenses = useFinanceStore((state) => state.expenses);
+  const topUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const addExpense = useFinanceStore((state) => state.addExpense);
+  const topUpPettyCash = useFinanceStore((state) => state.topUpPettyCash);
+  const balance = pettyCashBalance(topUps, expenses);
+  const [date, setDate] = React.useState("2026-10-23");
+  const [category, setCategory] = React.useState<(typeof EXPENSE_CATEGORIES)[number]>("Travel");
+  const [payee, setPayee] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [gstRate, setGstRate] = React.useState("18");
+  const [paidFrom, setPaidFrom] = React.useState<"petty cash" | "bank">("petty cash");
+  const [topUp, setTopUp] = React.useState("");
+
+  function save() {
+    const problem = addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Expense recorded");
+    setPayee(""); setAmount("");
+  }
+
+  function topUpCash() {
+    const problem = topUpPettyCash({ date, amount: Number(topUp) }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Petty cash topped up");
+    setTopUp("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Petty cash · ₹{balance.toLocaleString("en-IN")} in hand</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Petty cash is a float kept for small payments. Top it up from the bank; a petty cash expense cannot be more than what is in hand.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input aria-label="Top-up amount" type="number" min={0} className="h-8 w-40" placeholder="Top-up ₹" value={topUp} onChange={(e) => setTopUp(e.target.value)} />
+            <Button size="sm" variant="secondary" disabled={!(Number(topUp) > 0)} onClick={topUpCash}>Top up from bank</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Record an expense</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input aria-label="Expense date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <select aria-label="Expense category" className={selectClass} value={category} onChange={(e) => setCategory(e.target.value as (typeof EXPENSE_CATEGORIES)[number])}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            <Input aria-label="Paid to" placeholder="Paid to" value={payee} onChange={(e) => setPayee(e.target.value)} />
+            <Input aria-label="Expense amount" type="number" min={0} placeholder="Amount ex-GST ₹" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input aria-label="GST rate" type="number" min={0} max={28} placeholder="GST %" value={gstRate} onChange={(e) => setGstRate(e.target.value)} />
+            <select aria-label="Paid from" className={selectClass} value={paidFrom} onChange={(e) => setPaidFrom(e.target.value as "petty cash" | "bank")}><option value="petty cash">Petty cash</option><option value="bank">Bank</option></select>
+            <Button disabled={payee.trim().length < 2 || !(Number(amount) > 0)} onClick={save}>Record expense</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">An expense counts as a cost in profit and loss at its amount before GST. A bank expense is paid with GST in cash flow.</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[640px] text-sm tabular-nums">
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Date</th><th className="px-4 py-2">Category</th><th className="px-4 py-2">Paid to</th><th className="px-4 py-2">Paid from</th><th className="px-4 py-2 text-right">Ex-GST</th></tr></thead>
+            <tbody>
+              {expenses.length === 0 ? <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No expenses yet.</td></tr> : null}
+              {expenses.map((e) => (
+                <tr key={e.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3">{e.date}</td>
+                  <td className="px-4 py-3">{e.category}</td>
+                  <td className="px-4 py-3">{e.payee}</td>
+                  <td className="px-4 py-3">{e.paidFrom}</td>
+                  <td className="px-4 py-3 text-right">{money(e.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 /** Bank statement lines matched to the payments recorded in the books. A match needs the same amount and direction. */
 function ReconciliationView({ me }: { me: string }) {
   const invoices = useFinanceStore((state) => state.invoices);
@@ -361,6 +441,8 @@ function CashFlowView({ me }: { me: string }) {
   const invoices = useFinanceStore((state) => state.invoices);
   const bills = useFinanceStore((state) => state.bills);
   const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const pettyCashTopUps = useFinanceStore((state) => state.pettyCashTopUps);
   const openingCash = useFinanceStore((state) => state.openingCash);
   const setOpeningCash = useFinanceStore((state) => state.setOpeningCash);
   const addBankEntry = useFinanceStore((state) => state.addBankEntry);
@@ -369,7 +451,7 @@ function CashFlowView({ me }: { me: string }) {
   const [amount, setAmount] = React.useState("");
   const [direction, setDirection] = React.useState<"in" | "out">("out");
   const [date, setDate] = React.useState("2026-10-23");
-  const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash);
+  const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, pettyCashTopUps);
   const lastClosing = months.length > 0 ? months[months.length - 1].closing : openingCash;
 
   function saveOpening() {
@@ -443,7 +525,8 @@ function ProfitLossView() {
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const bills = useFinanceStore((state) => state.bills);
-  const pnl = profitAndLoss(invoices, creditNotes, bills);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const pnl = profitAndLoss(invoices, creditNotes, bills, expenses);
   // `|| 0` turns a negative zero into zero, so an empty line does not read "-₹0".
   const rows: [string, number, boolean][] = [
     ["Sales (ex-GST)", pnl.sales, false],
