@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { scoped } from "@/lib/company";
 
 /**
@@ -27,6 +28,6 @@ export const useFeedbackStore = create<FeedbackState>()(
         return null;
       },
     }),
-    { name: scoped("janus.feedback.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.feedback.v1"), storage: createJSONStorage(() => workspaceStorage) },
   ),
 );

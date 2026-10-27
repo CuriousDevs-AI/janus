@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { scoped } from "@/lib/company";
 
 /**
@@ -36,7 +37,7 @@ export const useRecordDocumentsStore = create<RecordDocumentsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.record-documents.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.record-documents.v1"), storage: createJSONStorage(() => workspaceStorage) },
   ),
 );
 

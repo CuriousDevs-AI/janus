@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { addDays } from "@/lib/stores/projects-store";
@@ -353,6 +354,6 @@ export const useITStore = create<ITState>()(
         },
       };
     },
-    { name: scoped("janus.it.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.it.v1"), storage: createJSONStorage(() => workspaceStorage) },
   ),
 );

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
@@ -103,6 +104,9 @@ interface FinanceState {
   importBankStatement: (text: string, by: string) => { imported: number; errors: string[] };
   matchBankLine: (lineId: string, key: string | null, by: string) => string | null;
   setOpeningCash: (amount: number, by: string) => string | null;
+  /** Share capital as the company's books state it (Schedule III, equity). Entered once and kept; it is not derived from sales. */
+  shareCapital: number;
+  setShareCapital: (amount: number, by: string) => string | null;
   setBudgetPlan: (lineId: string, fiscalYear: string, quarter: BudgetPlan["quarter"], planned: number, by: string) => string | null;
   addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; poId?: string }, by: string) => string | null;
   recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
@@ -159,6 +163,12 @@ export const useFinanceStore = create<FinanceState>()(
       trail: [],
       bills: seedFinance().bills,
       plans: [],
+      shareCapital: 0,
+      setShareCapital: (amount, by) => {
+        if (!(amount >= 0)) return "Share capital cannot be negative.";
+        set((state) => ({ shareCapital: amount, trail: withTrail(state.trail, trailEntry("finance", today, by, `Set share capital to ₹${amount.toLocaleString("en-IN")}`)) }));
+        return null;
+      },
       setOpeningCash: (amount, by) => {
         if (!(amount >= 0)) return "The opening cash cannot be negative.";
         set((state) => ({ openingCash: amount, trail: withTrail(state.trail, trailEntry("finance", today, by, `Set opening cash to ₹${amount.toLocaleString("en-IN")}`)) }));
@@ -453,7 +463,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, shareCapital: state.shareCapital, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
   ),
 );
 
@@ -488,7 +498,8 @@ export function gstSummary(month: string, invoices: Invoice[], creditNotes: Cred
   }
   const rows = [...byRate.values()].sort((a, b) => a.rate - b.rate).map((r) => ({ rate: r.rate, taxable: round(r.taxable), cgst: round(r.cgst), sgst: round(r.sgst), igst: round(r.igst) }));
   let creditTax = 0;
-  for (const note of creditNotes.filter((n) => n.status === "approved" && n.date.startsWith(month))) {
+  // A bad-debt write-off is a book entry, not a GST credit note: non-payment is not a ground for one under Section 34 of the CGST Act.
+  for (const note of creditNotes.filter((n) => n.status === "approved" && n.kind !== "write-off" && n.date.startsWith(month))) {
     const invoice = invoices.find((i) => i.id === note.invoiceId);
     if (!invoice) continue;
     const totals = invoiceTotals(invoice);

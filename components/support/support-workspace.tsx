@@ -101,30 +101,33 @@ function OverviewView() {
 /** Customer health for every customer on the renewals list: open tickets, escalations, SLA breaches, overdue invoices and renewal timing. */
 function HealthCard() {
   const open = useOpenTickets();
+  const customers = useAppStore((state) => state.customers);
   const renewals = useRenewalsStore((state) => state.renewals);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const rows = renewals.map((r) => {
-    const mine = open.filter((t) => t.customerId === r.customerId);
-    const overdueInvoices = invoices.filter((i) => !i.cancelled && i.customer === r.customerName && i.dueDate < TODAY && dueAmount(i, creditNotes) > 0.001).length;
+  // Every CRM customer is scored. A renewal date, where there is one, adds its timing to the score.
+  const rows = customers.map((c) => {
+    const mine = open.filter((t) => t.customerId === c.id);
+    const overdueInvoices = invoices.filter((i) => !i.cancelled && i.customer === c.name && i.dueDate < TODAY && dueAmount(i, creditNotes) > 0.001).length;
+    const renewal = renewals.find((r) => r.customerId === c.id);
     const health = customerHealth({
       openTickets: mine.length,
       escalatedTickets: mine.filter((t) => t.status === "escalated").length,
       breachedTickets: mine.filter((t) => slaState(t) === "breached").length,
       overdueInvoices,
-      renewalDays: daysBetween(TODAY, r.contractEnd),
+      renewalDays: renewal ? daysBetween(TODAY, renewal.contractEnd) : null,
     });
-    return { renewal: r, health };
+    return { id: c.id, name: c.name, health };
   });
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Customer health</CardTitle></CardHeader>
       <CardContent className="grid gap-2 text-sm">
-        {rows.length === 0 ? <p className="text-muted-foreground">No customers on the renewals list yet, so there is no health to show.</p> : null}
-        {rows.map(({ renewal, health }) => (
-          <div key={renewal.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+        {rows.length === 0 ? <p className="text-muted-foreground">No customers yet, so there is no health to show.</p> : null}
+        {rows.map(({ id, name, health }) => (
+          <div key={id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
             <span>
-              <span className="font-medium">{renewal.customerName}</span>
+              <span className="font-medium">{name}</span>
               <span className="block text-xs text-muted-foreground">{health.reasons.length > 0 ? health.reasons.join(" · ") : "No issues on record"}</span>
             </span>
             <span className="flex items-center gap-2">

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { useFinanceStore } from "@/lib/stores/finance-store";
@@ -150,7 +151,11 @@ export const useProjectsStore = create<ProjectsState>()(
         if (input.date > TODAY) return "Hours can only be logged for today or earlier.";
         const dayTotal = get().timesheets.filter((t) => t.person === input.person && t.date === input.date).reduce((sum, t) => sum + t.hours, 0);
         if (dayTotal + input.hours > 12) return `${input.person} already has ${dayTotal} hours on ${input.date}. A day cannot go over 12.`;
-        set((state) => ({ timesheets: [{ ...input, id: `ts-${Date.now()}`, note: input.note.trim() }, ...state.timesheets] }));
+        const project = get().projects.find((p) => p.id === input.projectId);
+        set((state) => ({
+          timesheets: [{ ...input, id: `ts-${Date.now()}`, note: input.note.trim() }, ...state.timesheets],
+          trail: withTrail(state.trail, trailEntry("projects", input.date, by, `Logged ${input.hours} hours for ${input.person} on ${project?.name ?? "a project"}`)),
+        }));
         return null;
       },
       addProject: (input, by) => {
@@ -161,8 +166,11 @@ export const useProjectsStore = create<ProjectsState>()(
         if (!line) return "Choose the budget line the project draws from.";
         const problem = useFinanceStore.getState().drawBudget(input.budgetLineId, input.budget, `Project: ${input.name.trim()}`, by, TODAY);
         if (problem) return `Budget: ${problem}`;
+        const id = `prj-${Date.now()}`;
         set((state) => ({
-          projects: [...state.projects, { ...input, id: `prj-${Date.now()}`, name: input.name.trim(), status: "planned", createdBy: by }],
+          projects: [...state.projects, { ...input, id, name: input.name.trim(), status: "planned", createdBy: by }],
+          // Version 1 is the plan as first set, so every later change can be compared with it.
+          versions: [...state.versions, { id: `pv-${Date.now()}`, projectId: id, number: 1, budget: input.budget, end: input.end, note: "Plan as first set", by, date: TODAY }],
           trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Created project ${input.name.trim()} · budget ₹${input.budget.toLocaleString("en-IN")} from ${line.name}`)),
         }));
         return null;
@@ -259,7 +267,7 @@ export const useProjectsStore = create<ProjectsState>()(
         const earlier = get().versions.filter((v) => v.projectId === change.projectId);
         // The first approved change keeps the plan as it was before it, so the original is never lost.
         const original: PlanVersion[] = approve && project && earlier.length === 0
-          ? [{ id: `pv-${Date.now()}-0`, projectId: change.projectId, number: 1, budget: project.budget, end: project.end, note: "Plan as first set", by: project.createdBy, date: TODAY }]
+          ? [{ id: `pv-${Date.now()}-0`, projectId: change.projectId, number: 1, budget: project.budget, end: project.end, note: "Plan before its first recorded change", by: project.createdBy, date: TODAY }]
           : [];
         const base = [...earlier, ...original];
         const next = approve && project
@@ -274,6 +282,6 @@ export const useProjectsStore = create<ProjectsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage) },
   ),
 );

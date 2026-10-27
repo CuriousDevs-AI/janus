@@ -386,7 +386,7 @@ function GstView() {
         <CardHeader><CardTitle className="text-base">GST summary · {month}</CardTitle></CardHeader>
         <CardContent className="grid gap-3 text-sm">
           <div className="flex items-center gap-2"><Label htmlFor="gst-month">Month</Label><select id="gst-month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
-          <p className="text-xs text-muted-foreground">A summary to check the month, not a return. Approved credit notes reduce the output tax. Confirm these figures with the company&apos;s accountant before filing.</p>
+          <p className="text-xs text-muted-foreground">A summary to check the month, not a return. Approved credit notes reduce the output tax. Bad-debt write-offs are not GST credit notes, so they are not included here. Confirm these figures with the company&apos;s accountant before filing.</p>
           <table className="w-full text-sm tabular-nums">
             <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">GST rate</th><th className="text-right">Taxable</th><th className="text-right">CGST</th><th className="text-right">SGST</th><th className="text-right">IGST</th></tr></thead>
             <tbody>
@@ -665,9 +665,9 @@ function ProfitLossView() {
 }
 
 /**
- * Balance sheet to date (plan §8.7 V2). Every figure comes from a record: cash from the cash flow closing balance,
- * receivables from invoices still owed, stock at the item rate, and payables from bills still owed. Net assets is
- * what is left after liabilities; it already includes the profit in the profit and loss view.
+ * Balance sheet to date (plan §8.7 V2, Schedule III layout). Every figure comes from a record: cash from the cash flow
+ * closing balance, receivables from invoices still owed, stock at the item rate, and payables from bills still owed.
+ * Equity is the share capital entered plus reserves and surplus (the profit to date). Any gap is shown as a difference.
  */
 function BalanceSheetCard() {
   const invoices = useFinanceStore((state) => state.invoices);
@@ -679,26 +679,43 @@ function BalanceSheetCard() {
   const topUps = useFinanceStore((state) => state.pettyCashTopUps);
   const items = useOperationsStore((state) => state.items);
   const movements = useOperationsStore((state) => state.movements);
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const shareCapital = useFinanceStore((state) => state.shareCapital);
+  const setShareCapital = useFinanceStore((state) => state.setShareCapital);
+  const [capitalInput, setCapitalInput] = React.useState(String(shareCapital));
   const flow = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
   const cash = flow.length > 0 ? flow[flow.length - 1].closing : openingCash;
   const receivables = invoices.filter((i) => !i.cancelled).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const stock = items.reduce((sum, item) => sum + stockOn(movements, item.id) * item.rate, 0);
   const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
+  // Schedule III, vertical form: equity is share capital plus reserves and surplus; reserves include the profit to date.
+  const reserves = profitAndLoss(invoices, creditNotes, bills, expenses).profit;
+  const equity = shareCapital + reserves;
   const assets = cash + receivables + stock;
-  const netAssets = assets - payables;
+  const liabilitiesAndEquity = equity + payables;
+  const difference = Math.round((assets - liabilitiesAndEquity) * 100) / 100;
   const rows: [string, number, boolean][] = [
+    ["Share capital", shareCapital, false],
+    ["Reserves and surplus (profit to date)", reserves, false],
+    ["Total equity", equity, true],
+    ["Trade payables (bills still owed)", payables, false],
+    ["Total equity and liabilities", liabilitiesAndEquity, true],
     ["Cash and bank", cash, false],
-    ["Owed by customers", receivables, false],
-    ["Stock at item rate", stock, false],
+    ["Trade receivables (owed by customers)", receivables, false],
+    ["Inventories (at item rate)", stock, false],
     ["Total assets", assets, true],
-    ["Owed to vendors", -payables, false],
-    ["Net assets", netAssets, true],
+    ["Difference to reconcile", difference, false],
   ];
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Balance sheet to date</CardTitle></CardHeader>
       <CardContent className="grid gap-3 text-sm">
-        <p className="text-xs text-muted-foreground">Cash starts from the opening cash entered for the company. Net assets is assets less what is owed to vendors. No opening equity is recorded yet, so this is a snapshot and does not reconcile to capital.</p>
+        <p className="text-xs text-muted-foreground">Laid out as Schedule III requires: equity and liabilities, then assets. Enter the share capital from the company&apos;s records. A difference other than zero means some entries are still missing, such as opening balances or fixed assets, and is shown rather than hidden.</p>
+        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const p = setShareCapital(Number(capitalInput) || 0, me); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
+          <Label htmlFor="share-capital" className="grid gap-1 text-xs">Share capital (₹)<Input id="share-capital" type="number" min={0} value={capitalInput} onChange={(e) => setCapitalInput(e.target.value)} className="w-40" /></Label>
+          <Button type="submit" size="sm" variant="secondary">Save share capital</Button>
+        </form>
         <table className="w-full text-sm tabular-nums">
           <tbody>
             {rows.map(([label, value, strong]) => (
@@ -795,7 +812,7 @@ function InvoicesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right tabular-nums">{money(invoiceTotals(invoice).total)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(dueAmount(invoice, creditNotes))}</td>
                     <td className="px-4 py-3"><Badge variant={status === "overdue" ? "warning" : status === "paid" ? "success" : "neutral"}>{status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><Button size="sm" variant="secondary" disabled={status === "paid"} onClick={() => setPaying(invoice)}>Record payment</Button></td>
+                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="secondary" disabled={status === "paid"} onClick={() => setPaying(invoice)}>Record payment</Button>{status === "overdue" ? <Button size="sm" variant="ghost" asChild><Link href={`/workspace/finance-accounting?view=credit-notes&workspace=finance-accounting&invoice=${invoice.id}&kind=write-off`}>Write off</Link></Button> : null}</div></td>
                   </tr>
                 );
               })}
@@ -944,12 +961,14 @@ function CreditNotesView({ me }: { me: string }) {
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const addCreditNote = useFinanceStore((state) => state.addCreditNote);
   const decide = useFinanceStore((state) => state.decideCreditNote);
-  const [invoiceId, setInvoiceId] = React.useState("");
+  // The invoices view links an overdue invoice here with the invoice and type already chosen.
+  const params = useSearchParams();
+  const [invoiceId, setInvoiceId] = React.useState(() => params.get("invoice") ?? "");
   const [amount, setAmount] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [date] = React.useState("2026-10-23");
   const [ticketId, setTicketId] = React.useState("");
-  const [kind, setKind] = React.useState<"credit" | "write-off">("credit");
+  const [kind, setKind] = React.useState<"credit" | "write-off">(() => (params.get("kind") === "write-off" ? "write-off" : "credit"));
   const [docsFor, setDocsFor] = React.useState<CreditNote | null>(null);
   const links = useCrmLinkOptions();
   const invoice = invoices.find((item) => item.id === invoiceId);
@@ -1098,7 +1117,7 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="dr-note">Note</Label><Input id="dr-note" value={drawNote} onChange={(e) => setDrawNote(e.target.value)} /></div>
           </div>
           <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={() => { const p = drawBudget(drawLine, Number(drawAmount), drawNote.trim(), me, "2026-10-23"); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
-          {draws.length > 0 ? <ul className="text-xs text-muted-foreground">{draws.slice(0, 5).map((draw) => <li key={draw.id}>{draw.date} · {lines.find((l) => l.id === draw.lineId)?.name} · {money(draw.amount)} · {draw.note} · by {draw.by}</li>)}</ul> : null}
+          {draws.length > 0 ? <ul className="text-xs text-muted-foreground">{draws.slice(0, 5).map((draw) => <li key={draw.id}>{draw.date} · {lines.find((l) => l.id === draw.lineId)?.name} · {draw.amount < 0 ? `Released ${money(-draw.amount)}` : money(draw.amount)} · {draw.note} · by {draw.by}</li>)}</ul> : null}
         </CardContent>
       </Card>
 

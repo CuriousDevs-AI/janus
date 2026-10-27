@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { scoped } from "@/lib/company";
 
 /**
@@ -34,7 +35,7 @@ export const useWorkflowRulesStore = create<WorkflowRulesState>()(
         return null;
       },
     }),
-    { name: scoped("janus.workflow-rules.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.workflow-rules.v1"), storage: createJSONStorage(() => workspaceStorage) },
   ),
 );
 

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { scoped } from "@/lib/company";
 
 /**
@@ -25,7 +26,7 @@ export const usePeriodLockStore = create<PeriodLockState>()(
         return null;
       },
     }),
-    { name: scoped("janus.period-lock.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.period-lock.v1"), storage: createJSONStorage(() => workspaceStorage) },
   ),
 );
 

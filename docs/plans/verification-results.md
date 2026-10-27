@@ -4,7 +4,7 @@ Run in the preview, mostly as the owner, with Arjun Mehta for second-approver st
 
 | # | Check | Result | Notes |
 |---|---|---|---|
-| 1.1 | Multi-line bill matched to a PO and goods received | FAIL (test data) | PO-2026-0102 belongs to "Multi Vendor Co", which is not in the vendor master, so no bill can be recorded against it. |
+| 1.1 | Multi-line bill matched to a PO and goods received | PASS (after fix) | "Multi Vendor Co" was added to the vendor master. BILL-2026-0106 for ₹400 against PO-2026-0102 (two lines, ₹400 received) shows "matched". |
 | 1.2 | RMA: damaged return does not restock | PASS | RMA-2026-0102 was inspected as damaged. The stock log has no restock movement for it. |
 | 1.3 | Pick, pack and ship: shipping before packing is refused | PASS (UI) | The dispatch row offers only the next stage, so shipping early is not possible from the UI. The store guard ("Mark the goods packed before shipped") was checked by reading the code, not by triggering it. |
 | 1.4 | Milestone acceptance creates an invoice; dispute stops billing | PASS (rebuilt) | Acceptance passes: Arjun Mehta accepted "First festive dispatch", which created INV-2026-0107 for ₹31,860 (₹27,000 plus 18% GST). The completer cannot accept, as intended. Dispute built since: a disputed milestone cannot be accepted or billed until resolved, and resolving it clears the block. |
@@ -28,3 +28,14 @@ Run in the preview, mostly as the owner, with Arjun Mehta for second-approver st
 - Milestone "First festive dispatch" accepted; invoice INV-2026-0107.
 - INC-1006 and INC-1007 (both resolved).
 - Change request for Jaipur dock layout (approved, +₹500, +2 days), creating plan versions v1 and v2.
+
+## Improvements checked in the second round
+
+- **Balance sheet (Schedule III layout):** share capital entered; equity is capital plus reserves; a gap to assets is shown as "Difference to reconcile" (₹27,054 at the time of the check), not hidden.
+- **Write-off:** the overdue invoice's "Write off" link opens the credit notes form with the invoice and type already set. Write-offs are excluded from the GST summary, and the GST note says so.
+- **Plan versions:** a newly created project gets v1 "Plan as first set" (checked on "Version check project", ₹10,000).
+- **Milestone dispute:** a disputed, completed milestone shows "Resolve the dispute to accept" with no Accept button.
+- **Customer health:** every CRM customer is scored, including customers with no renewal (e.g. Mahesh Agarwal, 100/100).
+- **Reorder requisition:** now targets the location holding the least of the item.
+- **Bank details:** only the last four digits are stored in the browser; existing full numbers are removed by a storage migration.
+- **Store sync:** the backend store (workspace_state) passes 5 new tests and the full backend suite (101 tests) passes. The browser is not yet syncing to it end to end: the preview uses demo accounts, which have no backend session. See the report for what remains.

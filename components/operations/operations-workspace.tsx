@@ -617,7 +617,8 @@ function OverviewView() {
       itemId: item.id,
       qty: Math.max(item.reorderLevel * 2 - onHand, 1),
       estimatedRate: item.rate,
-      locationId: locations[0]?.id ?? 0,
+      // The requisition is for the location holding the least of the item, so the goods go where they are short.
+      locationId: locations.reduce((short, l) => (stockOn(movements, item.id, l.id) < stockOn(movements, item.id, short.id) ? l : short), locations[0])?.id ?? 0,
       budgetLineId: warehouseLine?.id ?? "",
       reason: `Reorder: ${item.name} is at ${onHand} ${item.unit}, reorder level ${item.reorderLevel}`,
     }, me);

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 
@@ -17,6 +18,9 @@ export interface Vendor { id: string; name: string; gstin: string; paymentTermsD
 export interface BankChange extends VendorBank { id: string; vendorId: string; vendorName: string; requestedBy: string; status: "pending" | "approved"; approvedBy?: string; date: string }
 
 const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+
+/** Keeps only the last four digits. A value already masked is returned as it is. */
+export const maskAccount = (account: string) => (account.includes("•") ? account : `••••${account.slice(-4)}`);
 
 /** A GSTIN is 15 characters: state code, PAN, entity number, the letter Z, and a check character. */
 export const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -52,7 +56,9 @@ export const useVendorsStore = create<VendorsState>()(
         if (!/^\d{9,18}$/.test(account)) return "A bank account number has 9 to 18 digits.";
         if (!IFSC_PATTERN.test(ifsc)) return "An IFSC code has 11 characters, for example HDFC0001234.";
         if (get().bankChanges.some((c) => c.vendorId === vendorId && c.status === "pending")) return `${vendor.name} already has a bank change waiting approval.`;
-        set((state) => ({ bankChanges: [{ id: `bc-${Date.now()}`, vendorId, vendorName: vendor.name, holder, account, ifsc, requestedBy: by, status: "pending", date }, ...state.bankChanges] }));
+        // Only the last four digits are kept in the browser, so the full number is never stored here (PCI-style masking).
+        const masked = maskAccount(account);
+        set((state) => ({ bankChanges: [{ id: `bc-${Date.now()}`, vendorId, vendorName: vendor.name, holder, account: masked, ifsc, requestedBy: by, status: "pending", date }, ...state.bankChanges] }));
         return null;
       },
       approveBankChange: (id, by) => {
@@ -76,6 +82,19 @@ export const useVendorsStore = create<VendorsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.vendors.v1"), storage: createJSONStorage(() => localStorage) },
+    {
+      name: scoped("janus.vendors.v1"),
+      storage: createJSONStorage(() => workspaceStorage),
+      // Version 2 removes any full account number saved by an earlier build: the browser keeps only the masked form.
+      version: 2,
+      migrate: (persisted) => {
+        const state = persisted as Partial<VendorsState>;
+        return {
+          ...state,
+          vendors: (state.vendors ?? []).map((v) => (v.bank ? { ...v, bank: { ...v.bank, account: maskAccount(v.bank.account) } } : v)),
+          bankChanges: (state.bankChanges ?? []).map((c) => ({ ...c, account: maskAccount(c.account) })),
+        } as VendorsState;
+      },
+    },
   ),
 );

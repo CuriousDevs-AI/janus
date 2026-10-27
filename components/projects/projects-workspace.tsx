@@ -442,7 +442,8 @@ function MilestonesView({ me }: { me: string }) {
                     <td className="px-4 py-3"><Badge variant={m.status === "accepted" ? "success" : m.status === "done" ? "warning" : "neutral"}>{m.status}</Badge>{m.dispute ? <Badge variant="danger" className="ml-1">in dispute</Badge> : null}{m.acceptedBy ? <span className="block text-xs text-muted-foreground">accepted by {m.acceptedBy}</span> : null}</td>
                     <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">
                       {m.status === "planned" ? <Button size="sm" variant="secondary" onClick={() => { const p = complete(m.id, me); if (p) toast.error(p); else toast.success("Marked complete"); }}>Mark complete</Button> : null}
-                      {m.status === "done" ? <Button size="sm" variant="secondary" onClick={() => { const p = accept(m.id, me); if (p) toast.error(p); else toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); }}>Accept</Button> : null}
+                      {m.status === "done" && m.dispute ? <span className="self-center text-xs text-muted-foreground">Resolve the dispute to accept</span> : null}
+                      {m.status === "done" && !m.dispute ? <Button size="sm" variant="secondary" onClick={() => { const p = accept(m.id, me); if (p) toast.error(p); else toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); }}>Accept</Button> : null}
                     </div></td>
                   </tr>
                 );
