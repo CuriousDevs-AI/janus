@@ -16,6 +16,7 @@ from janus_api.core.db import check_database_role
 from janus_api.core.errors import install_errors
 from janus_api.crm.router import router as crm_router
 from janus_api.org.router import router as org_router
+from janus_api.projects.effort import router as effort_router
 from janus_api.projects.planning import router as planning_router
 from janus_api.projects.router import router as project_records_router
 from janus_api.sources.router import router as sources_router
@@ -52,6 +53,7 @@ app.include_router(vault_router)
 app.include_router(timeline_router)
 app.include_router(project_records_router)
 app.include_router(planning_router)
+app.include_router(effort_router)
 
 
 @app.get("/health")

@@ -151,3 +151,9 @@ Not built yet, in plan order:
 - Tasks link to a milestone and to an active company member. Status changes are audited.
 - Verified with four tests, and the full backend suite passes (120 tests).
 - Still open: timesheets, allocations and change requests are not yet typed on the server. The Projects screens do not read these endpoints yet.
+
+**Seventh pass: hours, allocations and change requests on the server (P2, third part):**
+- Migration `0019_timesheets_allocations_changes`: typed hours, allocations and change requests linked to the project record, under row-level security.
+- Hours are capped at 12 a day per person across all projects. Allocations are 0 to 100 percent and update in place. A change is decided by someone other than the requester, once.
+- Verified with four tests. The full backend suite passes (124 tests).
+- Still open: the Projects screens do not read these endpoints yet, so the typed records are not used by the UI. Recording people by account ID from the start, module events on the timeline, the closure summary on the server, the other workspaces, and live updates remain.
