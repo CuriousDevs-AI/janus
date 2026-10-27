@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
@@ -372,7 +373,7 @@ export const useOperationsStore = create<OperationsState>()(
         const available = stockOn(get().movements, item.id, input.locationId, item.trackBatch ? input.batchNo : undefined);
         if (input.qty < 0 && -input.qty > available) return `Only ${available} ${item.unit} is in stock here.`;
         const value = Math.abs(input.qty) * item.rate;
-        const needsApproval = value > ADJUSTMENT_APPROVAL_VALUE;
+        const needsApproval = value > workflowRules().adjustmentApprovalValue;
         const adjustment: Adjustment = { id: `adj-${Date.now()}`, date: TODAY, value, status: needsApproval ? "pending" : "applied", by, ...input, reason: input.reason.trim() };
         const change = `${input.qty > 0 ? "+" : ""}${input.qty} ${item.unit} of ${item.name}`;
         set((state) => ({

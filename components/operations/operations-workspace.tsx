@@ -12,10 +12,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
-import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
+import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
+import { useWorkflowRulesStore, type WorkflowRules } from "@/lib/stores/workflow-rules-store";
 import { useSession } from "@/components/auth/session-provider";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
@@ -26,7 +27,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 const days = (from: string, to: string) => Math.floor((Date.parse(to) - Date.parse(from)) / 86400000);
 
 const comingSoon: Record<string, string> = {
-  workflows: "Operational workflows come after the core stock and dispatch screens are in use.",
 };
 
 export function OperationsWorkspace() {
@@ -34,7 +34,7 @@ export function OperationsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions", counts: "Physical count", transfers: "Transit transfers", reports: "Operations reports" };
+  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions", counts: "Physical count", transfers: "Transit transfers", reports: "Operations reports", workflows: "Workflows" };
 
   if (view in comingSoon) {
     return (
@@ -59,7 +59,8 @@ export function OperationsWorkspace() {
         {view === "counts" && <PhysicalCountView me={me} />}
         {view === "transfers" && <TransfersView me={me} />}
         {view === "reports" && <OperationsReportsView />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers", "reports"].includes(view) && <OverviewView />}
+        {view === "workflows" && <WorkflowsView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers", "reports", "workflows"].includes(view) && <OverviewView />}
         {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers", "reports"].includes(view) && <OperationsTrail />}
       </div>
     </div>
@@ -175,6 +176,59 @@ function OperationsReportsView() {
         <CardHeader><CardTitle className="text-base">Open work</CardTitle></CardHeader>
         <CardContent className="grid gap-2 text-sm tabular-nums">
           {rows.map(([label, value]) => <div key={label} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{label}</span><span className="font-medium">{value}</span></div>)}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Operations workflows: the standard steps, and the rules the owner sets. Each rule is enforced where it applies. */
+function WorkflowsView() {
+  const session = useSession();
+  const isOwner = session.permissions.includes("*");
+  const rules = useWorkflowRulesStore();
+  const [threshold, setThreshold] = React.useState(String(rules.adjustmentApprovalValue));
+  const [tolerance, setTolerance] = React.useState(String(rules.matchTolerancePercent));
+
+  function save(key: keyof WorkflowRules, value: string) {
+    const problem = rules.setRule(key, Number(value), isOwner);
+    if (problem) return toast.error(problem);
+    toast.success("Rule saved");
+  }
+
+  const steps: { title: string; text: string }[] = [
+    { title: "Requisition to order", text: "Someone other than the requester approves, against a budget line that still has money. An approved requisition becomes a purchase order." },
+    { title: "Goods receipt", text: "Goods are received against the order and cannot exceed what is still due on each line. Receipts are posted to stock at the order's location." },
+    { title: "Three-way match", text: "A bill is paid only when it agrees with the goods received, within the tolerance below." },
+    { title: "Stock counts and adjustments", text: "A count difference becomes an adjustment. One worth more than the threshold below needs approval by someone other than the person who counted." },
+    { title: "Transfers", text: "Stock leaves the sending location when sent and arrives when received. A transfer cannot send more than the sending location holds." },
+    { title: "Dispatch and returns", text: "Stock is reduced when a delivery is dispatched and needs proof of delivery. A return in good condition goes back to stock; a damaged one does not." },
+  ];
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Rules the system enforces</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          <p className="text-xs text-muted-foreground">Set by the owner. The stock adjustment and bill match rules read these values.</p>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+            <span>Adjustment approval above (₹)</span>
+            <Input aria-label="Adjustment approval threshold" type="number" min={0} className="h-8 w-40" value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!isOwner} />
+            <Button size="sm" variant="secondary" disabled={!isOwner} onClick={() => save("adjustmentApprovalValue", threshold)}>Save</Button>
+            <span>Bill and goods tolerance (%)</span>
+            <Input aria-label="Match tolerance" type="number" min={0} max={10} step={0.5} className="h-8 w-40" value={tolerance} onChange={(e) => setTolerance(e.target.value)} disabled={!isOwner} />
+            <Button size="sm" variant="secondary" disabled={!isOwner} onClick={() => save("matchTolerancePercent", tolerance)}>Save</Button>
+          </div>
+          {!isOwner ? <p className="text-xs text-muted-foreground">Only the owner can change these rules.</p> : null}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Standard workflows</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          {steps.map((step) => (
+            <p key={step.title}><span className="font-medium">{step.title}.</span> {step.text}</p>
+          ))}
+          <p className="text-xs text-muted-foreground">Based on common practice for small and mid-sized warehouses: approvals by someone other than the requester, goods checked against the order before stock is posted, bills matched to the order and the goods, and count differences approved above a threshold. Not yet built: pick, pack and ship checkpoints, and return merchandise authorisation.</p>
         </CardContent>
       </Card>
     </>
@@ -632,7 +686,7 @@ function InventoryView({ me }: { me: string }) {
     } else {
       const problem = requestAdjustment({ itemId, locationId: Number(locationId), batchNo: item?.trackBatch ? batchNo || null : null, qty: Number(qty), reason }, me);
       if (problem) return toast.error(problem);
-      toast.success(Math.abs(Number(qty)) * (item?.rate ?? 0) > ADJUSTMENT_APPROVAL_VALUE ? "Adjustment sent for approval" : "Adjustment applied");
+      toast.success(Math.abs(Number(qty)) * (item?.rate ?? 0) > useWorkflowRulesStore.getState().adjustmentApprovalValue ? "Adjustment sent for approval" : "Adjustment applied");
     }
     setQty(""); setReason("");
   }
@@ -659,7 +713,7 @@ function InventoryView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5 sm:col-span-3"><Label htmlFor="inv-reason">Reason</Label><Input id="inv-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={mode === "receive" ? "e.g. Supplier invoice 4471" : "e.g. Count difference after cycle count"} /></div>
           </div>
           <Button className="w-fit" disabled={!itemId || !qty || reason.trim().length < 3} onClick={save}>{mode === "receive" ? "Receive stock" : "Record adjustment"}</Button>
-          <p className="text-xs text-muted-foreground">Adjustments above ₹{ADJUSTMENT_APPROVAL_VALUE.toLocaleString("en-IN")} need approval by someone other than the person who requested them.</p>
+          <p className="text-xs text-muted-foreground">Adjustments above ₹{useWorkflowRulesStore((state) => state.adjustmentApprovalValue).toLocaleString("en-IN")} need approval by someone other than the person who requested them.</p>
         </CardContent>
       </Card>
       {adjustments.some((a) => a.status === "pending") ? (

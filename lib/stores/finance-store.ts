@@ -8,6 +8,7 @@ import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { threeWayMatch } from "@/lib/three-way-match";
+import { workflowRules } from "@/lib/stores/workflow-rules-store";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -340,7 +341,7 @@ export const useFinanceStore = create<FinanceState>()(
         if (input.poId) {
           const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === input.poId);
           if (!order) return "The purchase order was not found.";
-          const received = threeWayMatch(input.amount, order);
+          const received = threeWayMatch(input.amount, order, workflowRules().matchTolerancePercent);
           if (received.status === "goods not received") return `No goods have been received against ${order.number} yet.`;
         }
         const number = nextNumber("BILL", get().bills.length);
@@ -358,7 +359,7 @@ export const useFinanceStore = create<FinanceState>()(
         if (!bill) return "Bill not found.";
         if (bill.poId) {
           const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === bill.poId);
-          const match = threeWayMatch(bill.amount, order);
+          const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
           if (!match.matched) return `Payment is held: ${bill.number} does not match its order yet (${match.status}).`;
         }
         const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);

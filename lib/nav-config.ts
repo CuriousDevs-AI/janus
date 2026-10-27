@@ -259,6 +259,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Warehouses & Locations", href: "/workspace/operations-inventory?view=warehouses", icon: Building2 },
       { label: "Physical Count", href: "/workspace/operations-inventory?view=counts", icon: Database },
       { label: "Transit Transfers", href: "/workspace/operations-inventory?view=transfers", icon: Truck },
+      { label: "Workflows", href: "/workspace/operations-inventory?view=workflows", icon: ShieldCheck },
       { label: "Procurement", href: "/workspace/operations-inventory?view=procurement", icon: FileText },
       { label: "Purchase Orders", href: "/workspace/operations-inventory?view=purchase-orders", icon: Receipt },
       { label: "Vendors", href: "/workspace/operations-inventory?view=vendors", icon: Users },

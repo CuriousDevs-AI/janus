@@ -24,6 +24,7 @@ import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
+import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, bookPayments, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -138,7 +139,7 @@ function PayablesView({ me }: { me: string }) {
                 const owed = Math.round((bill.amount - paid) * 100) / 100;
                 const status = owed <= 0 ? "paid" : bill.dueDate < today ? "overdue" : paid > 0 ? "part paid" : "open";
                 const order = purchaseOrders.find((o) => o.id === bill.poId);
-                const match = threeWayMatch(bill.amount, order);
+                const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
                 const held = bill.poId !== undefined && !match.matched && owed > 0;
                 return (
                   <tr key={bill.id} className="border-b border-border last:border-0">
