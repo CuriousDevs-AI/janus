@@ -21,9 +21,9 @@ export interface InvoiceLine { item: string; hsn: string; qty: number; rate: num
 export interface Payment { id: string; amount: number; method: "UPI" | "Bank transfer" | "Cash" | "Cheque"; reference: string; date: string }
 export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
-  sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean;
+  sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
 }
-export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved"; createdBy: string; approvedBy?: string; date: string }
+export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved"; createdBy: string; approvedBy?: string; date: string; ticketId?: string }
 export interface BudgetLine { id: string; name: string; owner: string; allocated: number; drawn: number }
 export interface FundRequest {
   id: string; number: string; purpose: string; amount: number; lineId: string; requestedBy: string; date: string;
@@ -58,7 +58,7 @@ interface FinanceState {
   trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
-  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string }, by: string) => string | null;
+  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
   approveFundRequest: (id: string, step: "owner" | "finance", by: string) => string | null;
