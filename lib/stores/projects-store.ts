@@ -20,6 +20,10 @@ export const PROJECT_TYPES = ["Fixed price", "Time and material", "Internal"] as
 export interface Project { id: string; name: string; client: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
 export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string }
 export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; due: string; status: "todo" | "doing" | "done" }
+/** Hours a person worked on a project on a day. Hours are entered; nothing is estimated from them. */
+export interface Timesheet { id: string; projectId: string; person: string; date: string; hours: number; note: string }
+/** The share of a person's week a project is planned to take (0 to 100). */
+export interface Allocation { id: string; projectId: string; person: string; percent: number }
 export interface ChangeRequest { id: string; projectId: string; description: string; budgetChange: number; dayChange: number; status: "pending" | "approved" | "rejected"; requestedBy: string; decidedBy?: string }
 
 interface ProjectsState {
@@ -27,8 +31,12 @@ interface ProjectsState {
   milestones: Milestone[];
   tasks: Task[];
   changes: ChangeRequest[];
+  timesheets: Timesheet[];
+  allocations: Allocation[];
   trail: TrailEntry[];
   addProject: (input: Omit<Project, "id" | "status" | "createdBy">, by: string) => string | null;
+  setAllocation: (projectId: string, person: string, percent: number, by: string) => string | null;
+  logHours: (input: Omit<Timesheet, "id">, by: string) => string | null;
   addMilestone: (input: Omit<Milestone, "id" | "status">) => string | null;
   completeMilestone: (id: string, by: string) => string | null;
   acceptMilestone: (id: string, by: string) => string | null;
@@ -38,8 +46,8 @@ interface ProjectsState {
   decideChange: (id: string, approve: boolean, by: string) => string | null;
 }
 
-const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes"> => {
-  if (!isFirstCompany) return { projects: [], milestones: [], tasks: [], changes: [] };
+const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => {
+  if (!isFirstCompany) return { projects: [], milestones: [], tasks: [], changes: [], timesheets: [], allocations: [] };
   return {
     projects: [
       { id: "prj-1", name: "Rajasthan distributor onboarding", client: "Rajputana Wholesale Co-op", type: "Fixed price", owner: "Arjun Mehta", start: "2026-10-01", end: "2026-12-15", budget: 42000, budgetLineId: "line-sales", status: "active", createdBy: "Arjun Mehta" },
@@ -56,6 +64,12 @@ const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "chan
       { id: "tk-3", projectId: "prj-2", milestoneId: "ms-3", title: "Order racking from vendor", assignee: "Neha Verma", due: "2026-10-30", status: "todo" },
     ],
     changes: [],
+    timesheets: [],
+    allocations: [
+      { id: "al-1", projectId: "prj-1", person: "Arjun Mehta", percent: 60 },
+      { id: "al-2", projectId: "prj-2", person: "Arjun Mehta", percent: 50 },
+      { id: "al-3", projectId: "prj-2", person: "Neha Verma", percent: 40 },
+    ],
   };
 };
 
@@ -79,6 +93,30 @@ export const useProjectsStore = create<ProjectsState>()(
     (set, get) => ({
       ...seed(),
       trail: [],
+      setAllocation: (projectId, person, percent, by) => {
+        const project = get().projects.find((p) => p.id === projectId);
+        if (!project) return "Project not found.";
+        if (!person) return "Choose the person.";
+        if (!(percent > 0 && percent <= 100)) return "Enter a share between 1 and 100.";
+        const existing = get().allocations.find((a) => a.projectId === projectId && a.person === person);
+        set((state) => ({
+          allocations: existing
+            ? state.allocations.map((a) => a.id === existing.id ? { ...a, percent } : a)
+            : [...state.allocations, { id: `al-${Date.now()}`, projectId, person, percent }],
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Planned ${person} at ${percent}% on ${project.name}`)),
+        }));
+        return null;
+      },
+      logHours: (input, by) => {
+        if (!get().projects.some((p) => p.id === input.projectId)) return "Choose the project.";
+        if (!input.person) return "Choose the person.";
+        if (!(input.hours > 0 && input.hours <= 12)) return "Enter between 0.5 and 12 hours for one day.";
+        if (input.date > TODAY) return "Hours can only be logged for today or earlier.";
+        const dayTotal = get().timesheets.filter((t) => t.person === input.person && t.date === input.date).reduce((sum, t) => sum + t.hours, 0);
+        if (dayTotal + input.hours > 12) return `${input.person} already has ${dayTotal} hours on ${input.date}. A day cannot go over 12.`;
+        set((state) => ({ timesheets: [{ ...input, id: `ts-${Date.now()}`, note: input.note.trim() }, ...state.timesheets] }));
+        return null;
+      },
       addProject: (input, by) => {
         if (input.name.trim().length < 3) return "Enter the project name.";
         if (input.end < input.start) return "The end date cannot be before the start date.";
