@@ -18,6 +18,7 @@ from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.org.models import Membership
 from janus_api.projects.models import Project
+from janus_api.timeline.service import record_event
 
 router = APIRouter(prefix="/v1/project-records", tags=["Project records"])
 Manage = Annotated[Actor, Depends(require("projects:manage"))]
@@ -152,6 +153,14 @@ async def change_status(
         tenant_id=tenant_id,
         ip=request_ip(request),
         details={"external_key": external_key, "from": previous, "to": data.status},
+    )
+    await record_event(
+        db,
+        tenant_id,
+        external_key,
+        "system",
+        f"Status changed from {previous} to {data.status}",
+        {"from": previous, "to": data.status},
     )
     await db.flush()
     return _out(row)

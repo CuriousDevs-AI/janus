@@ -15,6 +15,7 @@ from janus_api.core.errors import ApiError
 from janus_api.org.models import Membership
 from janus_api.projects.models import Project
 from janus_api.projects.planning_models import ProjectMilestone, ProjectTask
+from janus_api.timeline.service import record_event
 
 router = APIRouter(prefix="/v1/project-records", tags=["Project planning"])
 Manage = Annotated[Actor, Depends(require("projects:manage"))]
@@ -200,6 +201,14 @@ async def move_milestone(
         tenant_id=tenant_id,
         ip=request_ip(request),
         details={"project_key": project_key, "milestone": milestone_key, "to": target},
+    )
+    await record_event(
+        db,
+        tenant_id,
+        project_key,
+        "milestone",
+        f"{row.name} is {target}",
+        {"milestone": milestone_key, "amount": str(row.amount), "by": actor.user.name},
     )
     await db.flush()
     return _milestone_out(

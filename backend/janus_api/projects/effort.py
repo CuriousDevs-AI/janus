@@ -20,6 +20,7 @@ from janus_api.core.errors import ApiError
 from janus_api.org.models import Membership
 from janus_api.projects.effort_models import ProjectAllocation, ProjectChange, ProjectTimesheet
 from janus_api.projects.planning import _project
+from janus_api.timeline.service import record_event
 
 router = APIRouter(prefix="/v1/project-records", tags=["Project effort"])
 Manage = Annotated[Actor, Depends(require("projects:manage"))]
@@ -229,6 +230,18 @@ async def decide_change(
         tenant_id=tenant_id,
         ip=request_ip(request),
         details={"project_key": project_key, "change_id": change_id, "status": row.status},
+    )
+    await record_event(
+        db,
+        tenant_id,
+        project_key,
+        "change",
+        f"{row.description} was {row.status}",
+        {
+            "change_id": change_id,
+            "budget_change": str(row.budget_change),
+            "day_change": row.day_change,
+        },
     )
     await db.flush()
     return _change_out(row)

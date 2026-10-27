@@ -18,6 +18,7 @@ from janus_api.auth.service import Actor
 from janus_api.core.deps import CurrentActor, Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.org.models import Membership
+from janus_api.projects.summary import closure_summary
 from janus_api.timeline import service
 from janus_api.timeline.models import ProjectTimeline, ProjectTimelineEntry, ProjectTimelineMember
 
@@ -214,13 +215,14 @@ async def archive_timeline(
             )
         ).all()
     )
+    summary = await closure_summary(db, tenant_id, project_key)
     await service.record_event(
         db,
         tenant_id,
         project_key,
         "closed",
         f"Project closed by {actor.user.name}",
-        {"members": members, "entries": entries, "by": actor.user.name},
+        {"members": members, "entries": entries, "by": actor.user.name, "summary": summary},
     )
     audit.record(
         db,

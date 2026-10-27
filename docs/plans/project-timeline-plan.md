@@ -157,3 +157,9 @@ Not built yet, in plan order:
 - Hours are capped at 12 a day per person across all projects. Allocations are 0 to 100 percent and update in place. A change is decided by someone other than the requester, once.
 - Verified with four tests. The full backend suite passes (124 tests).
 - Still open: the Projects screens do not read these endpoints yet, so the typed records are not used by the UI. Recording people by account ID from the start, module events on the timeline, the closure summary on the server, the other workspaces, and live updates remain.
+
+**Eighth pass: events and the closing summary, written by the server (points 3 and 4):**
+- Milestone completion and acceptance, change decisions, and project status changes each write an entry to the project's timeline, from the server, in the same request. People cannot write these entries themselves.
+- Closing a timeline computes a summary from the typed records (budget, milestones accepted and total, billed amount, hours, approved changes) and stores it with the closing entry. A project that exists only on the screens gets no server summary, and this is recorded as such.
+- Verified: two tests cover the event sequence and the summary, and the full backend suite passes (126 tests).
+- Not yet done: the Projects screens do not read the typed endpoints (point 1), people are still recorded by name (point 2), finance, operations, IT, HR and support do not write timeline events (point 5), and the timeline still polls (point 6). The closing summary is stored on the server, but no screen displays it yet.
