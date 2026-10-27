@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
  * Operations & Inventory (phase 1): item master, stock by location and batch, stock movements,
@@ -31,6 +32,7 @@ interface OperationsState {
   movements: Movement[];
   dispatches: Dispatch[];
   adjustments: Adjustment[];
+  trail: TrailEntry[];
   addItem: (input: Omit<Item, "id">) => string | null;
   receive: (input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string }, by: string) => string | null;
   createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[] }, by: string) => string | null;
@@ -79,6 +81,7 @@ export const useOperationsStore = create<OperationsState>()(
   persist(
     (set, get) => ({
       ...seed(),
+      trail: [],
       addItem: (input) => {
         if (input.name.trim().length < 2) return "Enter the item name.";
         if (!/^\d{4,8}$/.test(input.hsn.trim())) return "HSN code must be 4 to 8 digits.";
@@ -100,7 +103,10 @@ export const useOperationsStore = create<OperationsState>()(
             set((state) => ({ batches: [...state.batches, { id: `bat-${Date.now()}`, itemId: item.id, batchNo: batchNo as string, expiry: input.expiry as string }] }));
           }
         }
-        set((state) => ({ movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "receipt", itemId: item.id, locationId: input.locationId, batchNo: batchNo ?? null, qty: input.qty, reason: input.reason.trim() || "Goods received", by }, ...state.movements] }));
+        set((state) => ({
+          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "receipt", itemId: item.id, locationId: input.locationId, batchNo: batchNo ?? null, qty: input.qty, reason: input.reason.trim() || "Goods received", by }, ...state.movements],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Received ${input.qty} ${item.unit} of ${item.name}${batchNo ? ` (batch ${batchNo})` : ""}`)),
+        }));
         return null;
       },
       createDispatch: (input, by) => {
@@ -123,7 +129,12 @@ export const useOperationsStore = create<OperationsState>()(
         const id = `dsp-${Date.now()}`;
         const dispatch: Dispatch = { id, number, challanNo: `DC-${number.slice(3)}`, date: TODAY, customer: input.customer.trim(), customerCompany: input.customerCompany.trim(), locationId: input.locationId, lines: input.lines, status: "dispatched", createdBy: by };
         const outgoing: Movement[] = input.lines.map((line, i) => ({ id: `mv-${Date.now()}-${i}`, date: TODAY, type: "dispatch", itemId: line.itemId, locationId: input.locationId, batchNo: line.batchNo, qty: -line.qty, reason: `Dispatch ${number}`, by }));
-        set((state) => ({ dispatches: [dispatch, ...state.dispatches], movements: [...outgoing, ...state.movements] }));
+        const units = input.lines.reduce((sum, line) => sum + line.qty, 0);
+        set((state) => ({
+          dispatches: [dispatch, ...state.dispatches],
+          movements: [...outgoing, ...state.movements],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Dispatched ${number} to ${dispatch.customer} · ${units} units`)),
+        }));
         return null;
       },
       markDelivered: (id, proof, by) => {
@@ -131,7 +142,10 @@ export const useOperationsStore = create<OperationsState>()(
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
         if (proof.trim().length < 3) return "Add proof of delivery: receiver name, signed challan number or photo reference.";
-        set((state) => ({ dispatches: state.dispatches.map((d) => d.id === id ? { ...d, status: "delivered", proof: proof.trim(), deliveredBy: by } : d) }));
+        set((state) => ({
+          dispatches: state.dispatches.map((d) => d.id === id ? { ...d, status: "delivered", proof: proof.trim(), deliveredBy: by } : d),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Delivered ${dispatch.number} · proof: ${proof.trim()}`)),
+        }));
         return null;
       },
       recordReturn: (input, by) => {
@@ -141,8 +155,17 @@ export const useOperationsStore = create<OperationsState>()(
         if (!line) return "That item was not on this dispatch.";
         if (input.qty <= 0 || input.qty > line.qty) return `Return between 1 and ${line.qty}.`;
         if (input.reason.trim().length < 3) return "Give the reason for the return.";
+        const item = get().items.find((i) => i.id === input.itemId);
+        const name = item?.name ?? "item";
         if (input.condition === "good") {
-          set((state) => ({ movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "return", itemId: input.itemId, locationId: dispatch.locationId, batchNo: line.batchNo, qty: input.qty, reason: `Return from ${dispatch.number}: ${input.reason.trim()}`, by }, ...state.movements] }));
+          set((state) => ({
+            movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "return", itemId: input.itemId, locationId: dispatch.locationId, batchNo: line.batchNo, qty: input.qty, reason: `Return from ${dispatch.number}: ${input.reason.trim()}`, by }, ...state.movements],
+            trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Returned ${input.qty} ${name} from ${dispatch.number} in good condition`)),
+          }));
+        } else {
+          set((state) => ({
+            trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Returned ${input.qty} ${name} from ${dispatch.number} as damaged; not added to stock`)),
+          }));
         }
         return null;
       },
@@ -156,9 +179,11 @@ export const useOperationsStore = create<OperationsState>()(
         const value = Math.abs(input.qty) * item.rate;
         const needsApproval = value > ADJUSTMENT_APPROVAL_VALUE;
         const adjustment: Adjustment = { id: `adj-${Date.now()}`, date: TODAY, value, status: needsApproval ? "pending" : "applied", by, ...input, reason: input.reason.trim() };
+        const change = `${input.qty > 0 ? "+" : ""}${input.qty} ${item.unit} of ${item.name}`;
         set((state) => ({
           adjustments: [adjustment, ...state.adjustments],
           movements: needsApproval ? state.movements : [{ id: `mv-${Date.now()}`, date: TODAY, type: "adjustment", itemId: item.id, locationId: input.locationId, batchNo: input.batchNo, qty: input.qty, reason: input.reason.trim(), by }, ...state.movements],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, needsApproval ? `Requested adjustment ${change} (₹${value.toLocaleString("en-IN")}), waiting approval` : `Adjusted ${change}`)),
         }));
         return null;
       },
@@ -170,10 +195,11 @@ export const useOperationsStore = create<OperationsState>()(
         set((state) => ({
           adjustments: state.adjustments.map((a) => a.id === id ? { ...a, status: "applied", approvedBy: by } : a),
           movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "adjustment", itemId: adjustment.itemId, locationId: adjustment.locationId, batchNo: adjustment.batchNo, qty: adjustment.qty, reason: adjustment.reason, by }, ...state.movements],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Approved adjustment of ${adjustment.qty > 0 ? "+" : ""}${adjustment.qty} (₹${adjustment.value.toLocaleString("en-IN")})`)),
         }));
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, trail: state.trail }) },
   ),
 );

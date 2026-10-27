@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/components/auth/session-provider";
+import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { PROJECT_TYPES, TODAY, addDays, projectHealth, useProjectsStore, type Project } from "@/lib/stores/projects-store";
 
@@ -49,6 +50,7 @@ export function ProjectsWorkspace() {
         {view === "changes" && <ChangesView me={me} />}
         {view === "client-delivery" && <ClientView />}
         {!["projects", "milestones", "tasks", "changes", "client-delivery"].includes(view) && <OverviewView />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery"].includes(view) && <ProjectsTrail />}
       </div>
     </div>
   );
@@ -56,6 +58,11 @@ export function ProjectsWorkspace() {
 
 function healthTone(health: string) {
   return health === "late" ? "danger" : health === "at risk" ? "warning" : health === "done" ? "success" : "neutral";
+}
+
+function ProjectsTrail() {
+  const trail = useProjectsStore((state) => state.trail);
+  return <TrailPanel entries={trail} />;
 }
 
 function OverviewView() {
