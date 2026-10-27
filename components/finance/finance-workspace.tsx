@@ -18,7 +18,7 @@ import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queu
 import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-store";
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
-import { EXPENSE_CATEGORIES, pettyCashBalance } from "@/lib/stores/finance-store";
+import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
@@ -31,7 +31,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
-  reports: "Financial reports come after invoices, payments and credit notes are in use.",
 };
 
 export function FinanceWorkspace() {
@@ -41,7 +40,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
 
   if (view in comingSoon) {
     return (
@@ -68,8 +67,10 @@ export function FinanceWorkspace() {
         {view === "reconciliation" && <ReconciliationView me={me} />}
         {view === "month-end" && <MonthEndView me={me} />}
         {view === "expenses" && <ExpensesView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses"].includes(view) && <FinanceTrail />}
+        {view === "gst" && <GstView />}
+        {view === "reports" && <ReportsView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses", "gst", "reports"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses", "gst", "reports"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -362,6 +363,91 @@ function ExpensesView({ me }: { me: string }) {
               ))}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** GST summary for one month: output tax on sales by rate, input tax on expenses, and the net to check. */
+function GstView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const months = ["2026-08", "2026-09", "2026-10"];
+  const [month, setMonth] = React.useState("2026-10");
+  const summary = gstSummary(month, invoices, creditNotes, expenses);
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">GST summary · {month}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="flex items-center gap-2"><Label htmlFor="gst-month">Month</Label><select id="gst-month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
+          <p className="text-xs text-muted-foreground">A summary to check the month, not a return. Approved credit notes reduce the output tax. Confirm these figures with the company&apos;s accountant before filing.</p>
+          <table className="w-full text-sm tabular-nums">
+            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">GST rate</th><th className="text-right">Taxable</th><th className="text-right">CGST</th><th className="text-right">SGST</th><th className="text-right">IGST</th></tr></thead>
+            <tbody>
+              {summary.rows.length === 0 ? <tr><td colSpan={5} className="py-4 text-center text-muted-foreground">No sales invoices this month.</td></tr> : null}
+              {summary.rows.map((r) => (
+                <tr key={r.rate} className="border-b border-border last:border-0"><td className="py-2">{r.rate}%</td><td className="text-right">{money(r.taxable)}</td><td className="text-right">{money(r.cgst)}</td><td className="text-right">{money(r.sgst)}</td><td className="text-right">{money(r.igst)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="grid gap-1 text-sm tabular-nums">
+            <div className="flex justify-between"><span>Output tax on sales</span><span>{money(summary.outputTax)}</span></div>
+            <div className="flex justify-between text-xs text-muted-foreground"><span>Less tax on approved credit notes this month</span><span>{money(summary.creditTax)}</span></div>
+            <div className="flex justify-between"><span>Input tax on expenses</span><span>{money(summary.inputTax)}</span></div>
+            <div className="flex justify-between font-semibold"><span>Net to check before filing</span><span>{summary.netPayable < 0 ? `-${money(Math.abs(summary.netPayable))}` : money(summary.netPayable)}</span></div>
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Key figures for the company across the books: profit, what customers and vendors owe, cash and the aging of receivables. */
+function ReportsView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const bills = useFinanceStore((state) => state.bills);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const topUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const openingCash = useFinanceStore((state) => state.openingCash);
+  const pnl = profitAndLoss(invoices, creditNotes, bills, expenses);
+  const live = invoices.filter((i) => !i.cancelled);
+  const receivable = live.reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const overdue = live.filter((i) => i.dueDate < "2026-10-23").reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const owedToVendors = bills.reduce((sum, b) => sum + (b.amount - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
+  const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
+  const closing = months.length > 0 ? months[months.length - 1].closing : openingCash;
+  const buckets = ["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"];
+  const aging = buckets.map((bucket) => ({ bucket, amount: live.filter((i) => agingBucket(i, creditNotes) === bucket).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0) }));
+  const cards: [string, number][] = [
+    ["Sales (ex-GST)", pnl.sales],
+    ["Profit before payroll", pnl.profit],
+    ["Owed by customers", receivable],
+    ["Overdue from customers", overdue],
+    ["Owed to vendors", owedToVendors],
+    ["Closing cash", closing],
+  ];
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {cards.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-border bg-surface p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className={`mt-1 text-xl font-semibold tabular-nums ${value < 0 ? "text-danger" : ""}`}>{money(value)}</p>
+          </div>
+        ))}
+      </div>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Receivables aging</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm tabular-nums">
+          {aging.map((row) => <div key={row.bucket} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{row.bucket}</span><span>{money(row.amount)}</span></div>)}
+          <p className="text-xs text-muted-foreground">Petty cash in hand: {money(pettyCashBalance(topUps, expenses))}. Figures come from the records in this workspace.</p>
         </CardContent>
       </Card>
     </>

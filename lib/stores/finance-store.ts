@@ -444,6 +444,39 @@ function allocate(lineId: string, amount: number) {
  * taxable share of the invoice it refers to. Bills are costs as entered. Payroll and expense claims are
  * not included yet.
  */
+export interface GstRow { rate: number; taxable: number; cgst: number; sgst: number; igst: number }
+
+/**
+ * GST summary for one month (plan §8.7 V2). Output tax is from the sales invoices, by GST rate; approved credit
+ * notes reduce it by their tax share. Input tax is the GST on expenses. This is a summary to check, not a return:
+ * it is confirmed with the company's accountant before filing.
+ */
+export function gstSummary(month: string, invoices: Invoice[], creditNotes: CreditNote[], expenses: Expense[]) {
+  const byRate = new Map<number, GstRow>();
+  const round = (value: number) => Math.round(value * 100) / 100;
+  for (const invoice of invoices.filter((i) => !i.cancelled && i.date.startsWith(month))) {
+    for (const line of invoice.lines) {
+      const { taxable, tax } = lineTotals(line);
+      const row = byRate.get(line.gstRate) ?? { rate: line.gstRate, taxable: 0, cgst: 0, sgst: 0, igst: 0 };
+      row.taxable += taxable;
+      if (invoice.sameState) { row.cgst += tax / 2; row.sgst += tax / 2; } else row.igst += tax;
+      byRate.set(line.gstRate, row);
+    }
+  }
+  const rows = [...byRate.values()].sort((a, b) => a.rate - b.rate).map((r) => ({ rate: r.rate, taxable: round(r.taxable), cgst: round(r.cgst), sgst: round(r.sgst), igst: round(r.igst) }));
+  let creditTax = 0;
+  for (const note of creditNotes.filter((n) => n.status === "approved" && n.date.startsWith(month))) {
+    const invoice = invoices.find((i) => i.id === note.invoiceId);
+    if (!invoice) continue;
+    const totals = invoiceTotals(invoice);
+    if (totals.total > 0) creditTax += note.amount * ((totals.cgst + totals.sgst + totals.igst) / totals.total);
+  }
+  const outputTax = round(rows.reduce((sum, r) => sum + r.cgst + r.sgst + r.igst, 0) - creditTax);
+  const inputExpenses = expenses.filter((e) => e.date.startsWith(month));
+  const inputTax = round(inputExpenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0));
+  return { rows, creditTax: round(creditTax), outputTax, inputTax, netPayable: round(outputTax - inputTax) };
+}
+
 export function pettyCashBalance(topUps: PettyCashTopUp[], expenses: Expense[]) {
   const topped = topUps.reduce((sum, t) => sum + t.amount, 0);
   const spent = expenses.filter((e) => e.paidFrom === "petty cash").reduce((sum, e) => sum + e.amount, 0);
