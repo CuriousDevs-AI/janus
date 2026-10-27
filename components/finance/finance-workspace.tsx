@@ -19,7 +19,7 @@ import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
-import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -301,6 +301,7 @@ function CreditNotesView({ me }: { me: string }) {
   const [reason, setReason] = React.useState("");
   const [date] = React.useState("2026-10-23");
   const [ticketId, setTicketId] = React.useState("");
+  const [docsFor, setDocsFor] = React.useState<CreditNote | null>(null);
   const links = useCrmLinkOptions();
   const invoice = invoices.find((item) => item.id === invoiceId);
 
@@ -312,6 +313,12 @@ function CreditNotesView({ me }: { me: string }) {
   }
   return (
     <>
+      <Dialog open={docsFor !== null} onOpenChange={(open) => !open && setDocsFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Documents for {docsFor?.number}</DialogTitle><DialogDescription>Approval notes, the customer&apos;s letter or the stock report behind this credit note.</DialogDescription></DialogHeader>
+          {docsFor ? <RecordDocuments recordKind="credit-note" recordId={docsFor.id} addedBy={me} today="2026-10-23" /> : null}
+        </DialogContent>
+      </Dialog>
       <Card>
         <CardHeader><CardTitle className="text-base">Raise a credit note</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
@@ -341,7 +348,7 @@ function CreditNotesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>
                     <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : note.status === "rejected" ? "danger" : "warning"}>{note.status}</Badge></td>
-                    <td className="px-4 py-3 text-right">{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { const problem = decide(note.id, me); if (problem) toast.error(problem); else toast.success("Credit note approved"); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
+                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { const problem = decide(note.id, me); if (problem) toast.error(problem); else toast.success("Credit note approved"); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
                   </tr>
                 );
               })}

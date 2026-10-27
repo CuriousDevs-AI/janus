@@ -12,7 +12,7 @@ import { scoped } from "@/lib/company";
 
 export const DOCUMENT_KINDS = ["Invoice copy", "Delivery challan", "Receipt", "Contract", "Other"] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
-export type RecordKind = "invoice" | "dispatch";
+export type RecordKind = "invoice" | "dispatch" | "credit-note";
 
 export interface RecordDocument { id: string; recordKind: RecordKind; recordId: string; name: string; kind: DocumentKind; link: string; addedBy: string; date: string }
 
