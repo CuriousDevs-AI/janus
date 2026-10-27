@@ -629,7 +629,8 @@ function ProfitLossView() {
     ["Sales (ex-GST)", pnl.sales, false],
     ["Less approved credit notes (ex-GST)", -pnl.credits || 0, false],
     ["Net sales", pnl.netSales, true],
-    ["Less bills recorded", -pnl.costs || 0, false],
+    ["Less bills recorded", -(pnl.costs - pnl.writeOffs) || 0, false],
+    ["Less bad debt written off", -pnl.writeOffs || 0, false],
     ["Profit before payroll and expenses", pnl.profit, true],
   ];
   return (
@@ -897,14 +898,15 @@ function CreditNotesView({ me }: { me: string }) {
   const [reason, setReason] = React.useState("");
   const [date] = React.useState("2026-10-23");
   const [ticketId, setTicketId] = React.useState("");
+  const [kind, setKind] = React.useState<"credit" | "write-off">("credit");
   const [docsFor, setDocsFor] = React.useState<CreditNote | null>(null);
   const links = useCrmLinkOptions();
   const invoice = invoices.find((item) => item.id === invoiceId);
 
   function create() {
-    const problem = addCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined }, me);
+    const problem = addCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined, kind }, me);
     if (problem) return toast.error(problem);
-    toast.success("Credit note raised. It takes effect once approved by someone else.");
+    toast.success(kind === "write-off" ? "Write-off raised. It takes effect once approved by someone else." : "Credit note raised. It takes effect once approved by someone else.");
     setAmount(""); setReason(""); setTicketId("");
   }
   return (
@@ -918,7 +920,8 @@ function CreditNotesView({ me }: { me: string }) {
       <Card>
         <CardHeader><CardTitle className="text-base">Raise a credit note</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">Credit notes refer to an original invoice. They reduce what the customer owes once approved. Another person must approve, not the one who raised it.</p>
+          <p className="text-xs text-muted-foreground">Credit notes refer to an original invoice. They reduce what the customer owes once approved. Another person must approve, not the one who raised it. A write-off clears debt the customer will not pay; it is booked as bad debt in profit and loss, not as a cut to sales.</p>
+          <div className="flex flex-col gap-1.5 sm:w-64"><Label htmlFor="cn-kind">Type</Label><select id="cn-kind" className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as "credit" | "write-off")}><option value="credit">Credit note</option><option value="write-off">Write off bad debt</option></select></div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-invoice">Invoice</Label><select id="cn-invoice" className={selectClass} value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}><option value="">Choose…</option>{invoices.map((item) => <option key={item.id} value={item.id}>{item.number} · {item.customer}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-amount">Amount (₹, incl. GST)</Label><Input id="cn-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
@@ -926,7 +929,7 @@ function CreditNotesView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-ticket">Support ticket (optional)</Label><select id="cn-ticket" className={selectClass} value={ticketId} onChange={(e) => setTicketId(e.target.value)}><option value="">None</option>{links.openTickets.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
           </div>
           {invoice ? <p className="text-xs text-muted-foreground">Invoice total {money(invoiceTotals(invoice).total)}.</p> : null}
-          <Button className="w-fit" disabled={!invoiceId || !amount || !reason} onClick={create}>Raise credit note</Button>
+          <Button className="w-fit" disabled={!invoiceId || !amount || !reason} onClick={create}>{kind === "write-off" ? "Raise write-off" : "Raise credit note"}</Button>
         </CardContent>
       </Card>
       <Card>
@@ -939,7 +942,7 @@ function CreditNotesView({ me }: { me: string }) {
                 const original = invoices.find((item) => item.id === note.invoiceId);
                 return (
                   <tr key={note.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3 font-medium">{note.number}</td>
+                    <td className="px-4 py-3 font-medium">{note.number}{note.kind === "write-off" ? <span className="block text-xs font-normal text-muted-foreground">Bad debt write-off</span> : null}</td>
                     <td className="px-4 py-3">{original?.number ?? "—"}{linkedLabel(links.tickets, note.ticketId) ? <span className="block text-xs text-muted-foreground">{linkedLabel(links.tickets, note.ticketId)}</span> : null}</td>
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>

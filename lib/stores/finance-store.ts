@@ -26,7 +26,8 @@ export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
   sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
 }
-export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string }
+/** A write-off is bad debt: it clears what the customer owes, but it is a cost in profit and loss, not a cut to sales. */
+export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string; kind?: "credit" | "write-off" }
 export interface BudgetLine { id: string; name: string; owner: string; allocated: number; drawn: number }
 export interface FundRequest {
   id: string; number: string; purpose: string; amount: number; lineId: string; requestedBy: string; date: string;
@@ -105,7 +106,7 @@ interface FinanceState {
   setBudgetPlan: (lineId: string, fiscalYear: string, quarter: BudgetPlan["quarter"], planned: number, by: string) => string | null;
   addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; poId?: string }, by: string) => string | null;
   recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
-  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
+  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string; kind?: "credit" | "write-off" }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
   rejectCreditNote: (id: string, reason: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
@@ -251,12 +252,17 @@ export const useFinanceStore = create<FinanceState>()(
         const invoice = get().invoices.find((item) => item.id === input.invoiceId);
         if (!invoice) return "Invoice not found.";
         if (input.amount <= 0) return "Enter an amount above zero.";
-        if (input.amount > invoiceTotals(invoice).total - creditedAmount(invoice.id, get().creditNotes, true)) return "A credit note cannot be more than the invoice total left to credit.";
-        if (input.reason.trim().length < 3) return "Give a reason for the credit note.";
-        const number = nextNumber("CN", get().creditNotes.length);
+        const writeOff = input.kind === "write-off";
+        const left = writeOff
+          ? dueAmount(invoice, get().creditNotes)
+          : invoiceTotals(invoice).total - creditedAmount(invoice.id, get().creditNotes, true);
+        if (input.amount > left) return writeOff ? "A write-off cannot be more than what the customer still owes." : "A credit note cannot be more than the invoice total left to credit.";
+        if (input.reason.trim().length < 3) return writeOff ? "Give the reason this debt cannot be recovered." : "Give a reason for the credit note.";
+        const number = nextNumber(writeOff ? "WO" : "CN", get().creditNotes.length);
+        const label = writeOff ? "write-off" : "credit note";
         set((state) => ({
-          creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input }, ...state.creditNotes],
-          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested credit note ${number} of ₹${input.amount.toLocaleString("en-IN")} against ${invoice.number}`)),
+          creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input, kind: writeOff ? "write-off" : "credit" }, ...state.creditNotes],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested ${label} ${number} of ₹${input.amount.toLocaleString("en-IN")} against ${invoice.number}`)),
         }));
         return null;
       },
@@ -488,7 +494,7 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
   const live = invoices.filter((invoice) => !invoice.cancelled);
   const sales = live.reduce((sum, invoice) => sum + invoiceTotals(invoice).taxable, 0);
   const credits = creditNotes
-    .filter((note) => note.status === "approved")
+    .filter((note) => note.status === "approved" && note.kind !== "write-off")
     .reduce((sum, note) => {
       const invoice = invoices.find((item) => item.id === note.invoiceId);
       if (!invoice) return sum;
@@ -496,11 +502,12 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
       const taxableShare = totals.total > 0 ? totals.taxable / totals.total : 0;
       return sum + note.amount * taxableShare;
     }, 0);
-  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0) + expenses.reduce((sum, e) => sum + e.amount, 0);
+  const writeOffs = creditNotes.filter((note) => note.status === "approved" && note.kind === "write-off").reduce((sum, note) => sum + note.amount, 0);
+  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0) + expenses.reduce((sum, e) => sum + e.amount, 0) + writeOffs;
   const round = (value: number) => Math.round(value * 100) / 100;
   const netSales = round(sales - credits);
   const profit = round(netSales - costs);
-  return { sales: round(sales), credits: round(credits), netSales, costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
+  return { sales: round(sales), credits: round(credits), netSales, writeOffs: round(writeOffs), costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
 }
 
 export interface CashFlowMonth { month: string; receipts: number; payments: number; other: number; net: number; closing: number }

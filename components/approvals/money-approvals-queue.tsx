@@ -68,7 +68,7 @@ export function MoneyApprovalsQueue() {
       .map((c) => ({
         key: `cn-${c.id}`,
         module: "Finance" as const,
-        title: `Credit note ${c.number}`,
+        title: `${c.kind === "write-off" ? "Write-off" : "Credit note"} ${c.number}`,
         amount: c.amount,
         requester: c.createdBy,
         reason: c.reason,
