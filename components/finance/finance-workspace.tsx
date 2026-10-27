@@ -15,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/components/auth/session-provider";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
+import { PeriodLockView } from "@/components/finance/period-lock-view";
+import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -37,7 +39,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks" };
 
   if (view in comingSoon) {
     return (
@@ -56,8 +58,9 @@ export function FinanceWorkspace() {
         {view === "credit-notes" && <CreditNotesView me={me} />}
         {view === "funds" && <FundsView me={me} />}
         {view === "approvals" && <MoneyApprovalsQueue />}
-        {!["invoices", "credit-notes", "funds", "approvals"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals"].includes(view) && <FinanceTrail />}
+        {view === "periods" && <PeriodLockView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -177,6 +180,8 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   function save() {
     if (customer.trim().length < 2) return setError("Enter the customer name.");
     if (lines.some((line) => line.item.trim().length < 2 || !/^\d{4,8}$/.test(line.hsn.trim()) || line.qty <= 0 || line.rate <= 0)) return setError("Each line needs an item, an HSN code (4 to 8 digits), a quantity and a rate above zero.");
+    const locked = periodLockProblem(today);
+    if (locked) return setError(locked);
     const number = addInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
     toast.success(`Invoice ${number} created`);
     onClose();

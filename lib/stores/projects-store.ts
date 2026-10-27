@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { useFinanceStore } from "@/lib/stores/finance-store";
+import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
@@ -110,6 +111,10 @@ export const useProjectsStore = create<ProjectsState>()(
         if (!milestone) return "Milestone not found.";
         if (milestone.status !== "done") return "Mark the milestone complete before it can be accepted.";
         if (milestone.completedBy === by) return "The person who completed the milestone cannot accept it.";
+        if (milestone.amount > 0) {
+          const locked = periodLockProblem(TODAY);
+          if (locked) return locked;
+        }
         let invoiceNumber: string | undefined;
         if (milestone.amount > 0) {
           const project = get().projects.find((p) => p.id === milestone.projectId);

@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
@@ -90,6 +91,8 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receive: (input, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
         if (!item) return "Choose an item.";
         if (input.qty <= 0) return "Enter a quantity above zero.";
@@ -110,6 +113,8 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       createDispatch: (input, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
         if (input.customer.trim().length < 2) return "Enter the customer name.";
         if (input.lines.length === 0) return "Add at least one item to the dispatch.";
         const { items, batches, movements } = get();
@@ -149,6 +154,8 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       recordReturn: (input, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
         const dispatch = get().dispatches.find((d) => d.id === input.dispatchId);
         if (!dispatch) return "Choose the dispatch this return belongs to.";
         const line = dispatch.lines.find((l) => l.itemId === input.itemId);
@@ -170,6 +177,8 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       requestAdjustment: (input, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
         if (!item) return "Choose an item.";
         if (input.qty === 0) return "Enter a quantity that is not zero.";
@@ -188,6 +197,8 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       approveAdjustment: (id, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
         const adjustment = get().adjustments.find((a) => a.id === id);
         if (!adjustment) return "Adjustment not found.";
         if (adjustment.status !== "pending") return "This adjustment is already applied.";
