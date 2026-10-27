@@ -28,6 +28,8 @@ export interface Dispatch {
 /** One line of a purchase order: what was ordered, at what rate, and how much has come in. */
 export interface PoLine { itemId: string; qty: number; rate: number; received: number }
 export interface PurchaseOrder { id: string; number: string; vendor: string; date: string; locationId: number; lines: PoLine[]; createdBy: string }
+/** A request to buy an item. Another person approves it; once approved it is turned into a purchase order. */
+export interface Requisition { id: string; number: string; requester: string; itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string; status: "pending" | "approved" | "rejected" | "ordered"; decidedBy?: string; rejectedReason?: string; poNumber?: string; raisedOn: string }
 export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
@@ -37,9 +39,14 @@ interface OperationsState {
   dispatches: Dispatch[];
   adjustments: Adjustment[];
   purchaseOrders: PurchaseOrder[];
+  requisitions: Requisition[];
   trail: TrailEntry[];
   addItem: (input: Omit<Item, "id">) => string | null;
   receive: (input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string }, by: string) => string | null;
+  addRequisition: (input: { itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string }, by: string) => string | null;
+  approveRequisition: (id: string, availableBudget: number, by: string) => string | null;
+  rejectRequisition: (id: string, reason: string, by: string) => string | null;
+  orderRequisition: (id: string, vendor: string, by: string) => string | null;
   addPurchaseOrder: (input: { vendor: string; locationId: number; lines: { itemId: string; qty: number; rate: number }[] }, by: string) => string | null;
   receiveAgainstPO: (poId: string, receipts: { itemId: string; qty: number }[], by: string) => string | null;
   createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[]; dealId?: string }, by: string) => string | null;
@@ -50,8 +57,8 @@ interface OperationsState {
   rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
 
-const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders"> => {
-  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [] };
+const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions"> => {
+  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [] };
   const items: Item[] = [
     { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
     { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
@@ -72,7 +79,7 @@ const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "disp
   const purchaseOrders: PurchaseOrder[] = [
     { id: "po-1", number: "PO-2026-0101", vendor: "Gurugram Packaging Co", date: "2026-10-15", locationId: 2, lines: [{ itemId: "itm-1", qty: 1000, rate: 45, received: 0 }], createdBy: "Neha Verma" },
   ];
-  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders };
+  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [] };
 };
 
 /** Stock on hand for an item at a location (and batch, when the item tracks batches). */
@@ -99,6 +106,57 @@ export const useOperationsStore = create<OperationsState>()(
         if (!/^\d{4,8}$/.test(input.hsn.trim())) return "HSN code must be 4 to 8 digits.";
         if (get().items.some((item) => item.sku.toLowerCase() === input.sku.trim().toLowerCase())) return "This SKU already exists.";
         set((state) => ({ items: [...state.items, { ...input, id: `itm-${Date.now()}` }] }));
+        return null;
+      },
+      addRequisition: (input, by) => {
+        if (!get().items.some((i) => i.id === input.itemId)) return "Choose an item.";
+        if (!(input.qty > 0)) return "Enter a quantity above zero.";
+        if (!(input.estimatedRate >= 0)) return "The estimated rate cannot be negative.";
+        if (!input.budgetLineId) return "Choose the budget line this buying is paid from.";
+        if (input.reason.trim().length < 5) return "Say why it is needed.";
+        const number = nextNumber("REQ", get().requisitions.length);
+        const requisition: Requisition = { ...input, id: `req-${Date.now()}`, number, requester: by, reason: input.reason.trim(), status: "pending", raisedOn: TODAY };
+        set((state) => ({
+          requisitions: [requisition, ...state.requisitions],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Raised requisition ${number} for ${input.qty} of ${get().items.find((i) => i.id === input.itemId)?.name ?? "an item"}`)),
+        }));
+        return null;
+      },
+      approveRequisition: (id, availableBudget, by) => {
+        const req = get().requisitions.find((r) => r.id === id);
+        if (!req) return "Requisition not found.";
+        if (req.status !== "pending") return "Only a pending requisition can be approved.";
+        if (req.requester === by) return "The person who raised a requisition cannot approve it.";
+        const value = req.qty * req.estimatedRate;
+        if (value > availableBudget + 0.001) return `The budget line has ₹${availableBudget.toLocaleString("en-IN")} left; this requisition needs ₹${value.toLocaleString("en-IN")}.`;
+        set((state) => ({
+          requisitions: state.requisitions.map((r) => r.id === id ? { ...r, status: "approved", decidedBy: by } : r),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Approved requisition ${req.number} · ₹${value.toLocaleString("en-IN")}`)),
+        }));
+        return null;
+      },
+      rejectRequisition: (id, reason, by) => {
+        const req = get().requisitions.find((r) => r.id === id);
+        if (!req) return "Requisition not found.";
+        if (req.status !== "pending") return "Only a pending requisition can be rejected.";
+        if (req.requester === by) return "The person who raised a requisition cannot reject it.";
+        if (reason.trim().length < 3) return "Give the reason for rejecting it.";
+        set((state) => ({
+          requisitions: state.requisitions.map((r) => r.id === id ? { ...r, status: "rejected", decidedBy: by, rejectedReason: reason.trim() } : r),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Rejected requisition ${req.number}: ${reason.trim()}`)),
+        }));
+        return null;
+      },
+      orderRequisition: (id, vendor, by) => {
+        const req = get().requisitions.find((r) => r.id === id);
+        if (!req) return "Requisition not found.";
+        if (req.status !== "approved") return "Only an approved requisition can be turned into an order.";
+        const before = get().purchaseOrders.length;
+        const problem = get().addPurchaseOrder({ vendor, locationId: req.locationId, lines: [{ itemId: req.itemId, qty: req.qty, rate: req.estimatedRate }] }, by);
+        if (problem) return problem;
+        const order = get().purchaseOrders[0];
+        if (get().purchaseOrders.length !== before + 1 || !order) return "The order could not be raised.";
+        set((state) => ({ requisitions: state.requisitions.map((r) => r.id === id ? { ...r, status: "ordered", poNumber: order.number } : r) }));
         return null;
       },
       addPurchaseOrder: (input, by) => {
@@ -282,6 +340,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, trail: state.trail }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, trail: state.trail }) },
   ),
 );
