@@ -38,7 +38,7 @@ export interface Incident { id: string; number: string; title: string; severity:
 export interface ITChange { id: string; number: string; title: string; risk: "low" | "medium" | "high"; requestedBy: string; status: "pending" | "approved" | "rejected" | "done"; decidedBy: string | null; raisedOn: string }
 /** A system IT keeps an eye on. Each check records its status; a system marked down opens a critical incident. */
 export interface Monitor { id: string; name: string; kind: "Server" | "Network" | "Application" | "Website" | "Other"; status: "up" | "degraded" | "down"; lastChecked: string; note: string }
-export interface AuditEntry { id: string; at: string; by: string; text: string }
+export interface AuditEntry { id: string; at: string; ts?: string; by: string; text: string }
 
 interface ITState {
   assets: Asset[];
@@ -114,7 +114,7 @@ export function renewalSoon(licence: Licence) {
 export const useITStore = create<ITState>()(
   persist(
     (set, get) => {
-      const record = (by: string, text: string) => ({ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, by, text });
+      const record = (by: string, text: string) => ({ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, ts: new Date().toISOString(), by, text });
       return {
         ...seed(),
         resolveTicket: (id, by) => {

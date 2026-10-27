@@ -15,7 +15,7 @@ import { useITStore } from "@/lib/stores/it-store";
  */
 
 type Source = "Finance" | "Operations" | "Projects" | "IT";
-interface Row { id: string; source: Source; at: string; by: string; text: string }
+interface Row { id: string; source: Source; at: string; ts: string; by: string; text: string }
 
 export default function ActivityPage() {
   const financeTrail = useFinanceStore((s) => s.trail);
@@ -26,11 +26,11 @@ export default function ActivityPage() {
   const [person, setPerson] = React.useState("all");
 
   const rows: Row[] = [
-    ...financeTrail.map((e) => ({ id: e.id, source: "Finance" as const, at: e.at, by: e.by, text: e.text })),
-    ...operationsTrail.map((e) => ({ id: e.id, source: "Operations" as const, at: e.at, by: e.by, text: e.text })),
-    ...projectsTrail.map((e) => ({ id: e.id, source: "Projects" as const, at: e.at, by: e.by, text: e.text })),
-    ...itLog.map((e) => ({ id: e.id, source: "IT" as const, at: e.at, by: e.by, text: e.text })),
-  ].sort((a, b) => b.at.localeCompare(a.at));
+    ...financeTrail.map((e) => ({ id: e.id, source: "Finance" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
+    ...operationsTrail.map((e) => ({ id: e.id, source: "Operations" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
+    ...projectsTrail.map((e) => ({ id: e.id, source: "Projects" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
+    ...itLog.map((e) => ({ id: e.id, source: "IT" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
+  ].sort((a, b) => b.ts.localeCompare(a.ts));
 
   const people = [...new Set(rows.map((r) => r.by))].sort();
   const visible = rows.filter((r) => (source === "all" || r.source === source) && (person === "all" || r.by === person));
@@ -62,7 +62,7 @@ export default function ActivityPage() {
             {visible.map((r) => (
               <p key={r.id} className="flex flex-wrap items-center gap-2">
                 <Badge variant="neutral">{r.source}</Badge>
-                <span className="text-muted-foreground">{r.at} · {r.by} ·</span>
+                <span className="text-muted-foreground">{r.ts.slice(0, 16).replace("T", " ")} · {r.by} ·</span>
                 <span>{r.text}</span>
               </p>
             ))}
