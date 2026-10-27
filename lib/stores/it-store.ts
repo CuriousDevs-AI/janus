@@ -22,7 +22,16 @@ export interface Asset { id: string; name: string; kind: (typeof ASSET_KINDS)[nu
 export interface AccessGrant { id: string; system: string; person: string; level: (typeof ACCESS_LEVELS)[number]; status: "active" | "removed"; grantedBy: string; removedBy?: string }
 export interface Licence { id: string; name: string; vendor: string; seats: number; assigned: string[]; annualCost: number; renewal: string }
 /** An IT request from a person in the company. Raised by the requester, worked by the IT assignee. */
-export interface HelpdeskTicket { id: string; number: string; requester: string; category: (typeof HELPDESK_CATEGORIES)[number]; priority: (typeof HELPDESK_PRIORITIES)[number]; subject: string; status: "open" | "in progress" | "resolved"; assignee: string | null; raisedOn: string }
+export interface HelpdeskTicket {
+  id: string; number: string; requester: string; category: (typeof HELPDESK_CATEGORIES)[number]; priority: (typeof HELPDESK_PRIORITIES)[number];
+  subject: string; status: "open" | "in progress" | "resolved"; assignee: string | null; raisedOn: string;
+  /** Service time: the day the request should be resolved by, set from its priority. */
+  dueOn: string;
+  /** For an Access request: the system and the level wanted. Resolving it grants the access. */
+  system?: string; level?: AccessGrant["level"];
+}
+/** Days to resolve a request, by priority. */
+export const HELPDESK_DUE_DAYS: Record<HelpdeskTicket["priority"], number> = { high: 0, medium: 1, low: 3 };
 export interface AuditEntry { id: string; at: string; by: string; text: string }
 
 interface ITState {
@@ -31,7 +40,8 @@ interface ITState {
   licences: Licence[];
   log: AuditEntry[];
   helpdesk: HelpdeskTicket[];
-  raiseTicket: (input: { requester: string; category: HelpdeskTicket["category"]; priority: HelpdeskTicket["priority"]; subject: string }, by: string) => string | null;
+  raiseTicket: (input: { requester: string; category: HelpdeskTicket["category"]; priority: HelpdeskTicket["priority"]; subject: string; system?: string; level?: AccessGrant["level"] }, by: string) => string | null;
+  resolveTicket: (id: string, by: string) => string | null;
   setTicketStatus: (id: string, status: HelpdeskTicket["status"], by: string) => string | null;
   assignTicket: (id: string, assignee: string, by: string) => string | null;
   addAsset: (input: Omit<Asset, "id" | "status" | "assignedTo">, by: string) => string | null;
@@ -65,7 +75,7 @@ const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpd
     ],
     log: [],
     helpdesk: [
-      { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22" },
+      { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22", dueOn: "2026-10-23" },
     ],
   };
 };
@@ -81,11 +91,37 @@ export const useITStore = create<ITState>()(
       const record = (by: string, text: string) => ({ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, by, text });
       return {
         ...seed(),
+        resolveTicket: (id, by) => {
+          const ticket = get().helpdesk.find((t) => t.id === id);
+          if (!ticket) return "Request not found.";
+          if (ticket.status === "resolved") return "This request is already resolved.";
+          if (!ticket.assignee) return "Assign the request to someone before resolving it.";
+          let note = "";
+          if (ticket.category === "Access" && ticket.system && ticket.level) {
+            const alreadyHas = get().access.some((g) => g.status === "active" && g.person === ticket.requester && g.system === ticket.system);
+            if (alreadyHas) note = " (access was already in place)";
+            else {
+              const grant: AccessGrant = { id: `acc-${Date.now()}`, system: ticket.system, person: ticket.requester, level: ticket.level, status: "active", grantedBy: by };
+              set((state) => ({ access: [...state.access, grant], log: [record(by, `Granted ${ticket.requester} ${ticket.level} access to ${ticket.system} from ${ticket.number}`), ...state.log] }));
+              note = " and access granted";
+            }
+          }
+          set((state) => ({
+            helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status: "resolved" } : t),
+            log: [record(by, `${ticket.number} resolved${note}`), ...state.log],
+          }));
+          return null;
+        },
         raiseTicket: (input, by) => {
           if (!input.requester) return "Choose who the request is for.";
           if (input.subject.trim().length < 5) return "Describe the problem in a few words.";
           const number = `IT-${1001 + get().helpdesk.length}`;
-          const ticket: HelpdeskTicket = { id: `hd-${Date.now()}`, number, requester: input.requester, category: input.category, priority: input.priority, subject: input.subject.trim(), status: "open", assignee: null, raisedOn: TODAY };
+          if (input.category === "Access") {
+            if (!input.system || input.system.trim().length < 2) return "Name the system the access is for.";
+            if (!input.level) return "Choose the access level.";
+          }
+          const dueOn = new Date(Date.parse(TODAY) + HELPDESK_DUE_DAYS[input.priority] * 86400000).toISOString().slice(0, 10);
+          const ticket: HelpdeskTicket = { id: `hd-${Date.now()}`, number, requester: input.requester, category: input.category, priority: input.priority, subject: input.subject.trim(), status: "open", assignee: null, raisedOn: TODAY, dueOn, system: input.category === "Access" ? input.system?.trim() : undefined, level: input.category === "Access" ? input.level : undefined };
           set((state) => ({ helpdesk: [ticket, ...state.helpdesk], log: [record(by, `Raised ${number} for ${input.requester}: ${ticket.subject}`), ...state.log] }));
           return null;
         },
@@ -93,7 +129,8 @@ export const useITStore = create<ITState>()(
           const ticket = get().helpdesk.find((t) => t.id === id);
           if (!ticket) return "Request not found.";
           if (ticket.status === "resolved") return "This request is already resolved.";
-          if ((status === "in progress" || status === "resolved") && !ticket.assignee) return "Assign the request to someone before starting or resolving it.";
+          if (status === "resolved") return "Use Resolve, so an access request is granted as well.";
+          if (status === "in progress" && !ticket.assignee) return "Assign the request to someone before starting or resolving it.";
           set((state) => ({
             helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status } : t),
             log: [record(by, `${ticket.number} is ${status}`), ...state.log],
