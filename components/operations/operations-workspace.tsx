@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
+import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useSession } from "@/components/auth/session-provider";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
@@ -25,7 +26,6 @@ const days = (from: string, to: string) => Math.floor((Date.parse(to) - Date.par
 
 const comingSoon: Record<string, string> = {
   procurement: "Requisitions, purchase approval and budget check come in phase 2, with purchase orders.",
-  vendors: "The vendor list, with GSTIN and payment terms, comes in phase 2.",
   workflows: "Operational workflows come after the core stock and dispatch screens are in use.",
   reports: "Operations reports come once stock and dispatch have history.",
 };
@@ -35,7 +35,7 @@ export function OperationsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders" };
+  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors" };
 
   if (view in comingSoon) {
     return (
@@ -55,8 +55,9 @@ export function OperationsWorkspace() {
         {view === "orders" && <OrdersView me={me} />}
         {view === "warehouses" && <WarehousesView />}
         {view === "purchase-orders" && <PurchaseOrdersView me={me} />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders"].includes(view) && <OverviewView />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders"].includes(view) && <OperationsTrail />}
+        {view === "vendors" && <VendorsView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors"].includes(view) && <OperationsTrail />}
       </div>
     </div>
   );
@@ -69,6 +70,7 @@ function PurchaseOrdersView({ me }: { me: string }) {
   const addPurchaseOrder = useOperationsStore((state) => state.addPurchaseOrder);
   const receiveAgainstPO = useOperationsStore((state) => state.receiveAgainstPO);
   const locations = useLocationsStore((state) => state.locations);
+  const vendors = useVendorsStore((state) => state.vendors);
   const [vendor, setVendor] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
   const [lines, setLines] = React.useState<{ itemId: string; qty: string; rate: string }[]>([{ itemId: "", qty: "", rate: "" }]);
@@ -106,7 +108,7 @@ function PurchaseOrdersView({ me }: { me: string }) {
         <CardContent className="grid gap-3">
           <p className="text-xs text-muted-foreground">Goods received against an order add stock at the location the order names. Each receipt cannot be more than what is still due on its line.</p>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Input aria-label="Vendor" placeholder="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} />
+            <select aria-label="Vendor" className={selectClass} value={vendor} onChange={(e) => setVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select>
             <select aria-label="Deliver to" className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value)}><option value="">Deliver to…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
           </div>
           {lines.map((line, index) => (
@@ -160,6 +162,50 @@ function PurchaseOrdersView({ me }: { me: string }) {
               </div>
             );
           })}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** The vendor master: the names purchase orders and bills pick from, with GSTIN and payment terms. */
+function VendorsView() {
+  const vendors = useVendorsStore((state) => state.vendors);
+  const addVendor = useVendorsStore((state) => state.addVendor);
+  const [name, setName] = React.useState("");
+  const [gstin, setGstin] = React.useState("");
+  const [terms, setTerms] = React.useState("30");
+
+  function save() {
+    const problem = addVendor({ name, gstin, paymentTermsDays: Number(terms) });
+    if (problem) return toast.error(problem);
+    toast.success(`${name.trim()} added`);
+    setName(""); setGstin(""); setTerms("30");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Add a vendor</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Purchase orders and vendor bills pick from this list, so a vendor has one name everywhere. GSTIN is optional; if it is entered it must be in the usual 15-character format.</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input aria-label="Vendor name" placeholder="Vendor name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input aria-label="GSTIN" placeholder="GSTIN (optional)" value={gstin} onChange={(e) => setGstin(e.target.value)} />
+            <Input aria-label="Payment terms in days" type="number" min={0} max={365} placeholder="Payment terms (days)" value={terms} onChange={(e) => setTerms(e.target.value)} />
+            <Button disabled={name.trim().length < 2} onClick={save}>Add vendor</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-2 p-4 text-sm">
+          {vendors.length === 0 ? <p className="text-muted-foreground">No vendors yet.</p> : null}
+          {vendors.map((v) => (
+            <div key={v.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+              <span className="font-medium">{v.name}</span>
+              <span className="text-xs text-muted-foreground">{v.gstin || "GSTIN not added"} · {v.paymentTermsDays} days payment terms</span>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </>

@@ -20,6 +20,7 @@ import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
+import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
@@ -81,6 +82,7 @@ function PayablesView({ me }: { me: string }) {
   const [dueDate, setDueDate] = React.useState("2026-11-15");
   const [poId, setPoId] = React.useState("");
   const purchaseOrders = useOperationsStore((state) => state.purchaseOrders);
+  const vendors = useVendorsStore((state) => state.vendors);
   const [payAmounts, setPayAmounts] = React.useState<Record<string, string>>({});
   const today = "2026-10-23";
 
@@ -105,7 +107,7 @@ function PayablesView({ me }: { me: string }) {
         <CardContent className="grid gap-3">
           <p className="text-xs text-muted-foreground">A bill is what the company owes a vendor. Pay it in one or more payments; each payment cannot be more than the amount still owed.</p>
           <div className="grid gap-3 sm:grid-cols-5">
-            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><Input id="bill-vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><select id="bill-vendor" className={selectClass} value={vendor} onChange={(e) => setVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
