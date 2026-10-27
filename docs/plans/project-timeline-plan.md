@@ -138,3 +138,9 @@ Not built yet, in plan order:
 - Sync uses a recorded account first, and matches by name only for people without one. Matched names are written back to the records.
 - Verified in the browser: an invited company member (Neha Verma) was matched, linked on the owner and task records, and added to the timeline. An unmatched name (Arjun Mehta, no account) was flagged.
 - Still open: names remain the display value. New people chosen from the directory should store the ID from the start.
+
+**Fifth pass: project records on the server (P2, first part):**
+- A **correction to the earlier status:** in real mode, the projects store already syncs to the server as a versioned document (the workspace store added earlier). What was missing was a typed, queryable project record.
+- Migration `0017_projects` and `/v1/project-records` add a typed projects table under row-level security. Create, list and change status need `projects:manage`. Duplicate keys, reversed dates, an owner outside the company, and reopening a done project are refused.
+- Verified: three tests cover these rules, company isolation and the permission check. The full backend suite passes (116 tests).
+- Still open: milestones, tasks, timesheets, allocations and change requests are not yet typed on the server. The screens do not yet read from `/v1/project-records`.
