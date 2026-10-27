@@ -19,7 +19,7 @@ import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
-import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -27,7 +27,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
   expenses: "Expense claims live in HR & People (Expenses & Reimbursements). Finance pay-out and register come next.",
-  budgets: "Budget plans per year and quarter come in phase 2. Budget lines and draws are in Fund requests & budgets.",
   "cash-flow": "Cash flow needs bank statements. Planned for phase 2.",
   reports: "Financial reports come after invoices, payments and credit notes are in use.",
 };
@@ -39,7 +38,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter" };
 
   if (view in comingSoon) {
     return (
@@ -61,8 +60,9 @@ export function FinanceWorkspace() {
         {view === "periods" && <PeriodLockView />}
         {view === "payables" && <PayablesView me={me} />}
         {view === "profit-loss" && <ProfitLossView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss"].includes(view) && <FinanceTrail />}
+        {view === "budgets" && <BudgetsView me={me} />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -146,6 +146,63 @@ function PayablesView({ me }: { me: string }) {
 }
 
 /** Profit and loss to date, from invoices, approved credit notes and bills. Payroll and expense claims come later. */
+/** Plan against actual for each budget line, for one quarter of the financial year. */
+function BudgetsView({ me }: { me: string }) {
+  const lines = useFinanceStore((state) => state.budgetLines);
+  const draws = useFinanceStore((state) => state.draws);
+  const plans = useFinanceStore((state) => state.plans);
+  const setBudgetPlan = useFinanceStore((state) => state.setBudgetPlan);
+  const current = fiscalPeriod("2026-10-23");
+  const [fiscalYear] = React.useState(current.fiscalYear);
+  const [quarter, setQuarter] = React.useState<1 | 2 | 3 | 4>(current.quarter);
+  const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+
+  function save(lineId: string) {
+    const planned = Number(drafts[lineId] ?? "");
+    const problem = setBudgetPlan(lineId, fiscalYear, quarter, planned, me);
+    if (problem) return toast.error(problem);
+    toast.success("Plan saved");
+    setDrafts((current) => ({ ...current, [lineId]: "" }));
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Budget plan, FY {fiscalYear}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Plan what each budget line may spend in a quarter. Actual is the spend recorded in that quarter, from the dated draws on the line.</p>
+          <div className="flex items-center gap-2"><Label htmlFor="bp-quarter">Quarter</Label><select id="bp-quarter" className={selectClass} value={quarter} onChange={(e) => setQuarter(Number(e.target.value) as 1 | 2 | 3 | 4)}>{[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}</select></div>
+          <table className="w-full text-sm tabular-nums">
+            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">Budget line</th><th className="text-right">Planned</th><th className="text-right">Actual</th><th className="text-right">Left</th><th className="text-right">Set plan</th></tr></thead>
+            <tbody>
+              {lines.map((line) => {
+                const plan = plans.find((item) => item.lineId === line.id && item.fiscalYear === fiscalYear && item.quarter === quarter);
+                const actual = draws.filter((draw) => draw.lineId === line.id && fiscalPeriod(draw.date).fiscalYear === fiscalYear && fiscalPeriod(draw.date).quarter === quarter).reduce((sum, draw) => sum + draw.amount, 0);
+                const planned = plan?.planned ?? 0;
+                const left = planned - actual;
+                return (
+                  <tr key={line.id} className="border-b border-border last:border-0">
+                    <td className="py-2">{line.name}<span className="block text-xs text-muted-foreground">{line.owner}</span></td>
+                    <td className="text-right">{plan ? money(planned) : <span className="text-muted-foreground">not planned</span>}</td>
+                    <td className="text-right">{money(actual)}</td>
+                    <td className={`text-right ${plan && left < 0 ? "text-danger" : ""}`}>{plan ? (left < 0 ? `over by ${money(Math.abs(left))}` : money(left)) : "—"}</td>
+                    <td className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Input aria-label={`Plan for ${line.name}`} type="number" min={0} className="h-8 w-28" value={drafts[line.id] ?? ""} onChange={(e) => setDrafts((current) => ({ ...current, [line.id]: e.target.value }))} />
+                        <Button size="sm" variant="secondary" disabled={!(Number(drafts[line.id]) >= 0) || drafts[line.id] === undefined || drafts[line.id] === ""} onClick={() => save(line.id)}>Save</Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 function ProfitLossView() {
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
