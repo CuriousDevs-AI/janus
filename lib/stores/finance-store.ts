@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
@@ -102,6 +103,8 @@ export const useFinanceStore = create<FinanceState>()(
         return number;
       },
       recordPayment: (invoiceId, payment, by) => {
+        const locked = periodLockProblem(payment.date);
+        if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === invoiceId);
         if (!invoice) return "Invoice not found.";
         const due = dueAmount(invoice, get().creditNotes);
@@ -114,6 +117,8 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addCreditNote: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === input.invoiceId);
         if (!invoice) return "Invoice not found.";
         if (input.amount <= 0) return "Enter an amount above zero.";
@@ -181,6 +186,8 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
       drawBudget: (lineId, amount, note, by, date) => {
+        const locked = periodLockProblem(date);
+        if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);
         if (!line) return "Budget line not found.";
         if (amount <= 0) return "Enter an amount above zero.";
