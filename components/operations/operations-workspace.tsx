@@ -18,6 +18,7 @@ import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useWorkflowRulesStore, type WorkflowRules } from "@/lib/stores/workflow-rules-store";
 import { useSession } from "@/components/auth/session-provider";
+import { hasPermission } from "@/lib/demo-persona";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
@@ -660,6 +661,7 @@ function ProductsView() {
 }
 
 function InventoryView({ me }: { me: string }) {
+  const session = useSession();
   const items = useOperationsStore((state) => state.items);
   const batches = useOperationsStore((state) => state.batches);
   const movements = useOperationsStore((state) => state.movements);
@@ -684,6 +686,7 @@ function InventoryView({ me }: { me: string }) {
       if (problem) return toast.error(problem);
       toast.success("Stock received");
     } else {
+      if (!hasPermission(session.permissions, "stock:adjust")) return toast.error("Needs the stock:adjust permission.");
       const problem = requestAdjustment({ itemId, locationId: Number(locationId), batchNo: item?.trackBatch ? batchNo || null : null, qty: Number(qty), reason }, me);
       if (problem) return toast.error(problem);
       toast.success(Math.abs(Number(qty)) * (item?.rate ?? 0) > useWorkflowRulesStore.getState().adjustmentApprovalValue ? "Adjustment sent for approval" : "Adjustment applied");

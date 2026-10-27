@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/components/auth/session-provider";
+import { hasPermission } from "@/lib/demo-persona";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
 import { PeriodLockView } from "@/components/finance/period-lock-view";
@@ -744,6 +745,8 @@ function InvoicesView({ me }: { me: string }) {
 }
 
 function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) {
+  const session = useSession();
+  const canCreate = hasPermission(session.permissions, "invoice:create");
   const addInvoice = useFinanceStore((state) => state.addInvoice);
   const [customer, setCustomer] = React.useState("");
   const [customerCompany, setCustomerCompany] = React.useState("");
@@ -800,7 +803,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
           <div className="flex justify-between font-semibold"><span>Total</span><span>{money(preview.total)}</span></div>
         </div>
         {error ? <p role="alert" className="text-xs text-danger">{error}</p> : null}
-        <DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save}>Create invoice</Button></DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!canCreate} title={canCreate ? undefined : "Needs the invoice:create permission"} onClick={save}>Create invoice</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -16,7 +16,6 @@ const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs"
 const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 const names = users.map((u) => u.name);
 const comingSoon: Record<string, string> = {
-  monitoring: "Infrastructure monitoring needs a connected monitoring source. It is not part of phase 1.",
 };
 
 /** Run a store action: show its error, or the success message when it returns null. */
@@ -29,7 +28,7 @@ function run(problem: string | null, success: string) {
 export function ITWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
-  const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk", incidents: "Incidents", changes: "Change management", reports: "IT reports" };
+  const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk", incidents: "Incidents", changes: "Change management", reports: "IT reports", monitoring: "Infrastructure monitoring" };
 
   if (view in comingSoon) {
     return (
@@ -44,7 +43,7 @@ export function ITWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "IT overview"} description="Assets, the access each person holds, and software licences. Every change is written to the log." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : view === "incidents" ? <IncidentsView /> : view === "changes" ? <ChangesView /> : view === "reports" ? <ITReportsView /> : <OverviewView />}
+        {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : view === "incidents" ? <IncidentsView /> : view === "changes" ? <ChangesView /> : view === "reports" ? <ITReportsView /> : view === "monitoring" ? <MonitoringView /> : <OverviewView />}
       </div>
     </div>
   );
@@ -317,6 +316,65 @@ function ITReportsView() {
         {rows.map(([label, value]) => <div key={label} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{label}</span><span className="font-medium tabular-nums">{value}</span></div>)}
       </CardContent>
     </Card>
+  );
+}
+
+/** Systems IT keeps an eye on. A check records the status; a system marked down opens a critical incident. */
+function MonitoringView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const monitors = useITStore((state) => state.monitors);
+  const addMonitor = useITStore((state) => state.addMonitor);
+  const recordCheck = useITStore((state) => state.recordCheck);
+  const [name, setName] = React.useState("");
+  const [kind, setKind] = React.useState<"Server" | "Network" | "Application" | "Website" | "Other">("Server");
+  const [notes, setNotes] = React.useState<Record<string, string>>({});
+
+  function add() {
+    const problem = addMonitor({ name, kind }, me);
+    if (problem) return toast.error(problem);
+    toast.success("System added to monitoring");
+    setName("");
+  }
+
+  function check(id: string, status: "up" | "degraded" | "down") {
+    const problem = recordCheck(id, status, notes[id] ?? "", me);
+    if (problem) return toast.error(problem);
+    if (status === "down") toast.success("Marked down; a critical incident is open");
+    setNotes((current) => ({ ...current, [id]: "" }));
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Add a system to monitoring</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Janus does not poll systems. IT records each check here. A system marked down opens a critical incident straight away.</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input aria-label="System name" placeholder="System name" value={name} onChange={(e) => setName(e.target.value)} />
+            <select aria-label="System type" className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>{(["Server", "Network", "Application", "Website", "Other"] as const).map((k) => <option key={k} value={k}>{k}</option>)}</select>
+            <Button disabled={name.trim().length < 3} onClick={add}>Add system</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-3 p-4 text-sm">
+          {monitors.length === 0 ? <p className="text-muted-foreground">No systems monitored yet.</p> : null}
+          {monitors.map((m) => (
+            <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
+              <span><span className="font-medium">{m.name}</span> · {m.kind}<span className="block text-xs text-muted-foreground">last checked {m.lastChecked}{m.note ? ` · ${m.note}` : ""}</span></span>
+              <span className="flex flex-wrap items-center gap-2">
+                <Badge variant={m.status === "up" ? "success" : m.status === "degraded" ? "warning" : "danger"}>{m.status}</Badge>
+                <Input aria-label={`Check note for ${m.name}`} className="h-8 w-56" placeholder="What did you see?" value={notes[m.id] ?? ""} onChange={(e) => setNotes((current) => ({ ...current, [m.id]: e.target.value }))} />
+                <Button size="sm" variant="secondary" onClick={() => check(m.id, "up")}>Up</Button>
+                <Button size="sm" variant="ghost" onClick={() => check(m.id, "degraded")}>Degraded</Button>
+                <Button size="sm" variant="outline" onClick={() => check(m.id, "down")}>Down</Button>
+              </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

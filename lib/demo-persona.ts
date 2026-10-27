@@ -65,9 +65,11 @@ export function personaPermissions(account: DemoAccount | undefined): string[] {
   const out = ["hr:self"];
   if (account.hrRole === "hr_manager") out.push("hr:read", "hr:manage", "hr:approve", "hr:team", "hr:payroll:read");
   // A finance executive runs payroll and the books, so the Finance workspace and its approvals are theirs too.
-  if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read", "billing:manage");
+  // Role names from the plan (§8.6): a finance executive can create invoices and approve budget spend.
+  if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read", "billing:manage", "invoice:create", "budget:approve");
   // A manager works with their own team, so the menu offers leave, attendance, reviews and expenses too.
-  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve", "hr:read", "projects:manage");
+  // A reporting manager accepts milestones and adjusts stock in their area, and approves projects they run.
+  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve", "hr:read", "projects:manage", "project:accept", "stock:adjust");
   // These are the backend's own permission names, so the preview behaves like a real role.
   if (account.crm === "team") out.push("leads:read_team", "leads:write", "leads:assign", "reports:read", "approvals:manage");
   if (account.crm === "own") out.push("leads:read_own", "leads:write");
@@ -110,3 +112,8 @@ export function personaMayOpen(account: DemoAccount | undefined, pathname: strin
 export const personaHome = "/workspace/hr-people?view=my-home&workspace=hr-people";
 /** The first screen after signing in. */
 export const homeFor = (account: DemoAccount) => account.hrRole === "owner" ? portfolioHome : account.crm === "support" ? "/tickets?workspace=crm-sales" : account.crm !== "none" ? "/dashboard?workspace=crm-sales" : personaHome;
+
+/** True when the session holds a permission (the owner holds everything). */
+export function hasPermission(permissions: string[], needed: string) {
+  return permissions.includes("*") || permissions.includes(needed);
+}
