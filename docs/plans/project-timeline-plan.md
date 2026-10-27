@@ -163,3 +163,8 @@ Not built yet, in plan order:
 - Closing a timeline computes a summary from the typed records (budget, milestones accepted and total, billed amount, hours, approved changes) and stores it with the closing entry. A project that exists only on the screens gets no server summary, and this is recorded as such.
 - Verified: two tests cover the event sequence and the summary, and the full backend suite passes (126 tests).
 - Not yet done: the Projects screens do not read the typed endpoints (point 1), people are still recorded by name (point 2), finance, operations, IT, HR and support do not write timeline events (point 5), and the timeline still polls (point 6). The closing summary is stored on the server, but no screen displays it yet.
+
+**Ninth pass: the Projects screen mirrors to the server (point 1, partial):**
+- In real mode, creating a project also creates its typed project record on the server, and closing it marks the record done. The record is created with the project key, name, client, status, budget and dates.
+- Verified in the browser: a project created on the screen appeared on the server with status planned and budget 20000.00; closing it changed the server record to done.
+- Not done: the screen still saves locally and draws its budget from the finance store in the browser. Reading the projects list from the server, and moving the budget draw to the server, need finance on the server first (point 5). A failed mirror shows a warning; it does not undo the local change.

@@ -18,6 +18,7 @@ import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
 import { projectPersonRefs } from "@/lib/timeline-team";
+import { createProjectRecord, setProjectRecordStatus } from "@/lib/project-records";
 import { message } from "@/lib/api/client";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -332,6 +333,7 @@ function ProjectsView({ me }: { me: string }) {
     // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
     const created = useProjectsStore.getState().projects.at(-1);
     if (created) {
+      createProjectRecord(created).catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
       syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
         .then((result) => {
           if (result) useProjectsStore.getState().linkPeople(created.id, result.links);
@@ -377,7 +379,7 @@ function ProjectsView({ me }: { me: string }) {
                     <td className="px-4 py-3">{p.end}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(p.budget)}</td>
                     <td className="px-4 py-3"><Badge variant={healthTone(health) as "neutral"}>{health}</Badge></td>
-                    <td className="px-4 py-3 text-right">{p.status === "done" ? <span className="text-xs text-muted-foreground">Closed</span> : <Button size="sm" variant="ghost" onClick={() => { const problem = closeProject(p.id, me); if (problem) toast.error(problem); else { toast.success(`${p.name} closed; unused budget released. Closure summary saved.`); archiveProjectTimeline(p.id).catch((error: unknown) => toast.error(`Timeline not closed: ${message(error)}`)); } }}>Close project</Button>}</td>
+                    <td className="px-4 py-3 text-right">{p.status === "done" ? <span className="text-xs text-muted-foreground">Closed</span> : <Button size="sm" variant="ghost" onClick={() => { const problem = closeProject(p.id, me); if (problem) toast.error(problem); else { toast.success(`${p.name} closed; unused budget released. Closure summary saved.`); archiveProjectTimeline(p.id).catch((error: unknown) => toast.error(`Timeline not closed: ${message(error)}`)); setProjectRecordStatus(p.id, "done").catch((error: unknown) => toast.warning(`Closed here, but not on the server: ${message(error)}`)); } }}>Close project</Button>}</td>
                   </tr>
                 );
               })}
