@@ -15,6 +15,7 @@ import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { DEFAULT_HOURLY_COST, PROJECT_TYPES, TODAY, addDays, projectHealth, projectProfitability, useProjectsStore, type Project } from "@/lib/stores/projects-store";
 import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
+import { TimelineView } from "@/components/projects/project-timeline";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -51,6 +52,7 @@ export function ProjectsWorkspace() {
         {view === "reports" && <ProfitabilityView />}
         {view === "calendar" && <CalendarView />}
         {view === "client-delivery" && <ClientView />}
+        {view === "timeline" && <TimelineView />}
         {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <OverviewView />}
         {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <ProjectsTrail />}
       </div>

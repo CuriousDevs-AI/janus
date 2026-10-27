@@ -100,3 +100,22 @@ Before phase 1, run a cheap test: a clickable prototype of the timeline on the c
 ## 7. Verification of this plan
 
 Checked in the repository on 2026-10-27: the projects store, the HR leave type, the approvals and work pages, the backend router list, the backend role list, and the absence of a closure summary and guest role. Nothing in this plan was verified in production or with users.
+
+## 8. Implementation status (first slice)
+
+Built in this pass, with tests and a browser check in real mode:
+- **Server timeline:** one shared timeline per project, with members, messages, decisions, and system entries. Migration `0016_project_timelines` adds three tables, each under row-level security.
+- **Membership rules:** only members read or post. Non-members get the same 404 as a missing timeline. Adding or removing people needs `projects:manage`, and the person added must be an active member of the company.
+- **Decisions** are audited (`project_timeline.decision`). Creating a timeline, and adding or removing a member, are audited too.
+- **System entries** are written by `record_event` in `janus_api/timeline/service.py`. People cannot create them through the API. No module calls it yet.
+- **Screen:** Projects > Project Timeline. Start a timeline, post updates, mark decisions. It refreshes every 8 seconds.
+- **Tests:** five timeline tests (membership, permissions, company isolation, audit and system entries, blank messages). The full backend suite passes.
+
+Not built yet, in plan order:
+- **P1 identity:** project people are still names. The timeline uses user IDs, but the Projects screens do not.
+- **P2 full persistence:** projects, milestones, tasks and change requests are still browser-only.
+- **M2 membership sync:** nothing adds the owner or assignees automatically, and the screen has no add-member control yet.
+- **M3 approvals in the thread** and **M4 budget and milestone events:** `record_event` exists, but no module calls it yet.
+- **M5 closure summary:** not built.
+- **Live updates:** the screen polls every 8 seconds, not WebSocket.
+- **Deferred:** client guest access, leave alerts, burn forecast, AI summaries.
