@@ -8,13 +8,14 @@ import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useProjectsStore } from "@/lib/stores/projects-store";
 import { useITStore } from "@/lib/stores/it-store";
+import { useAppStore } from "@/lib/stores/app-store";
 
 /**
  * Activity (Phase 4): one feed of what changed across the workspaces, read from their audit trails and logs.
  * Entries are shown in the order each workspace recorded them, newest first, and can be filtered by workspace and person.
  */
 
-type Source = "Finance" | "Operations" | "Projects" | "IT";
+type Source = "Finance" | "Operations" | "Projects" | "IT" | "CRM & Support";
 interface Row { id: string; source: Source; at: string; ts: string; by: string; text: string }
 
 export default function ActivityPage() {
@@ -22,6 +23,7 @@ export default function ActivityPage() {
   const operationsTrail = useOperationsStore((s) => s.trail);
   const projectsTrail = useProjectsStore((s) => s.trail);
   const itLog = useITStore((s) => s.log);
+  const crmActivities = useAppStore((s) => s.activities);
   const [source, setSource] = React.useState<"all" | Source>("all");
   const [person, setPerson] = React.useState("all");
 
@@ -30,6 +32,7 @@ export default function ActivityPage() {
     ...operationsTrail.map((e) => ({ id: e.id, source: "Operations" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
     ...projectsTrail.map((e) => ({ id: e.id, source: "Projects" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
     ...itLog.map((e) => ({ id: e.id, source: "IT" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
+    ...crmActivities.map((a) => ({ id: a.id, source: "CRM & Support" as const, at: a.createdAt.slice(0, 10), ts: a.createdAt, by: a.actor.type === "human" ? a.actor.userName : a.actor.type === "ai" ? a.actor.agentName : "System", text: a.title })),
   ].sort((a, b) => b.ts.localeCompare(a.ts));
 
   const people = [...new Set(rows.map((r) => r.by))].sort();
@@ -47,6 +50,7 @@ export default function ActivityPage() {
               <option value="Operations">Operations</option>
               <option value="Projects">Projects</option>
               <option value="IT">IT</option>
+              <option value="CRM & Support">CRM &amp; Support</option>
             </select>
           </label>
           <label className="flex items-center gap-2">Person
