@@ -22,7 +22,7 @@ import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
-import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -30,7 +30,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
   expenses: "Expense claims live in HR & People (Expenses & Reimbursements). Finance pay-out and register come next.",
-  "cash-flow": "Cash flow needs bank statements. Planned for phase 2.",
   reports: "Financial reports come after invoices, payments and credit notes are in use.",
 };
 
@@ -41,7 +40,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow" };
 
   if (view in comingSoon) {
     return (
@@ -64,8 +63,9 @@ export function FinanceWorkspace() {
         {view === "payables" && <PayablesView me={me} />}
         {view === "profit-loss" && <ProfitLossView />}
         {view === "budgets" && <BudgetsView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets"].includes(view) && <FinanceTrail />}
+        {view === "cash-flow" && <CashFlowView me={me} />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -214,6 +214,89 @@ function BudgetsView({ me }: { me: string }) {
               })}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Cash in and out by month, from the invoice payments and bill payments recorded, plus bank movements entered by hand. */
+function CashFlowView({ me }: { me: string }) {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const openingCash = useFinanceStore((state) => state.openingCash);
+  const setOpeningCash = useFinanceStore((state) => state.setOpeningCash);
+  const addBankEntry = useFinanceStore((state) => state.addBankEntry);
+  const [opening, setOpening] = React.useState(String(openingCash));
+  const [description, setDescription] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [direction, setDirection] = React.useState<"in" | "out">("out");
+  const [date, setDate] = React.useState("2026-10-23");
+  const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash);
+  const lastClosing = months.length > 0 ? months[months.length - 1].closing : openingCash;
+
+  function saveOpening() {
+    const problem = setOpeningCash(Number(opening), me);
+    if (problem) return toast.error(problem);
+    toast.success("Opening cash saved");
+  }
+
+  function saveEntry() {
+    const sign = direction === "in" ? 1 : -1;
+    const problem = addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Bank movement recorded");
+    setDescription(""); setAmount("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Cash position</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Cash in is customer payments recorded on invoices. Cash out is bill payments. Bank charges, loans and other bank movements that are not in the books are entered below. Compare the closing figure with the bank statement; any difference is a movement not yet entered.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="cf-opening">Opening cash (₹)</Label>
+            <Input id="cf-opening" type="number" min={0} className="h-8 w-40" value={opening} onChange={(e) => setOpening(e.target.value)} />
+            <Button size="sm" variant="secondary" onClick={saveOpening}>Save opening cash</Button>
+          </div>
+          <p>Closing cash to date: <span className="font-semibold tabular-nums">{money(lastClosing)}</span></p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[640px] text-sm tabular-nums">
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Month</th><th className="px-4 py-2 text-right">Cash in</th><th className="px-4 py-2 text-right">Cash out</th><th className="px-4 py-2 text-right">Bank movements</th><th className="px-4 py-2 text-right">Net</th><th className="px-4 py-2 text-right">Closing</th></tr></thead>
+            <tbody>
+              {months.length === 0 ? <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No cash movements yet.</td></tr> : null}
+              {months.map((row) => (
+                <tr key={row.month} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3 font-medium">{row.month}</td>
+                  <td className="px-4 py-3 text-right">{money(row.receipts)}</td>
+                  <td className="px-4 py-3 text-right">{money(row.payments)}</td>
+                  <td className={`px-4 py-3 text-right ${row.other < 0 ? "text-danger" : ""}`}>{row.other < 0 ? `-${money(Math.abs(row.other))}` : money(row.other)}</td>
+                  <td className={`px-4 py-3 text-right ${row.net < 0 ? "text-danger" : ""}`}>{row.net < 0 ? `-${money(Math.abs(row.net))}` : money(row.net)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{money(row.closing)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Bank movement not in the books</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-5">
+            <Input aria-label="Bank movement date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input aria-label="Bank movement description" placeholder="e.g. Bank charges, September" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input aria-label="Bank movement amount" type="number" min={0} placeholder="Amount ₹" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <select aria-label="Direction" className={selectClass} value={direction} onChange={(e) => setDirection(e.target.value as "in" | "out")}><option value="out">Money out</option><option value="in">Money in</option></select>
+            <Button disabled={description.trim().length < 3 || !(Number(amount) > 0)} onClick={saveEntry}>Record movement</Button>
+          </div>
+          {bankEntries.map((entry) => (
+            <p key={entry.id} className="text-xs"><span className="text-muted-foreground">{entry.date} · </span>{entry.description} · {entry.amount < 0 ? `-${money(Math.abs(entry.amount))}` : money(entry.amount)}</p>
+          ))}
         </CardContent>
       </Card>
     </>
