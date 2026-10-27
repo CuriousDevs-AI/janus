@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/components/auth/session-provider";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
+import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -36,7 +37,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue" };
 
   if (view in comingSoon) {
     return (
@@ -54,8 +55,9 @@ export function FinanceWorkspace() {
         {view === "invoices" && <InvoicesView me={me} />}
         {view === "credit-notes" && <CreditNotesView me={me} />}
         {view === "funds" && <FundsView me={me} />}
-        {!["invoices", "credit-notes", "funds"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds"].includes(view) && <FinanceTrail />}
+        {view === "approvals" && <MoneyApprovalsQueue />}
+        {!["invoices", "credit-notes", "funds", "approvals"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
