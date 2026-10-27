@@ -149,11 +149,17 @@ export const useITStore = create<ITState>()(
           if (!monitor) return "System not found.";
           const openForIt = get().incidents.some((i) => i.status !== "resolved" && i.title === `${monitor.name} is down`);
           const opens = status === "down" && !openForIt;
+          // A system back up closes its open "is down" incident, so nobody has to remember to do it.
+          const closes = status === "up" && get().incidents.some((i) => i.status !== "resolved" && i.title === `${monitor.name} is down`);
           const number = `INC-${1002 + get().incidents.length}`;
           set((state) => ({
             monitors: state.monitors.map((m) => m.id === id ? { ...m, status, lastChecked: TODAY, note: note.trim() } : m),
-            incidents: opens ? [{ id: `inc-${Date.now()}`, number, title: `${monitor.name} is down`, severity: "critical", status: "open", reportedBy: by, assetId: null, raisedOn: TODAY, updates: note.trim() ? [note.trim()] : [] }, ...state.incidents] : state.incidents,
-            log: [record(by, `${monitor.name} checked: ${status}${opens ? `; opened ${number}` : ""}`), ...state.log],
+            incidents: opens
+              ? [{ id: `inc-${Date.now()}`, number, title: `${monitor.name} is down`, severity: "critical", status: "open", reportedBy: by, assetId: null, raisedOn: TODAY, updates: note.trim() ? [note.trim()] : [] }, ...state.incidents]
+              : closes
+                ? state.incidents.map((i) => i.status !== "resolved" && i.title === `${monitor.name} is down` ? { ...i, status: "resolved", updates: [...i.updates, "Back up at check; closed automatically"] } : i)
+                : state.incidents,
+            log: [record(by, `${monitor.name} checked: ${status}${opens ? `; opened ${number}` : ""}${closes ? "; incident closed automatically" : ""}`), ...state.log],
           }));
           return null;
         },
