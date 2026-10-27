@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { can } from "@/lib/permissions";
 import { demoMode } from "@/lib/demo-mode";
 import { demoAccounts } from "@/lib/demo-accounts";
 import { canSeeOwner } from "@/lib/crm-scope";
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import type { Lead } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
+import { AddLeadDialog } from "@/components/leads/add-lead-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { Badge } from "@/components/ui/badge";
@@ -151,9 +153,10 @@ function EditableValue({
 export default function LeadsPage() {
   const session = useSession();
   const viewer = useDemoAccount();
-  const canWrite = session.permissions.includes("leads:write");
+  const canWrite = can(session, "leads:write");
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
+  const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -204,7 +207,7 @@ export default function LeadsPage() {
   const usingDemo = Boolean(loaded?.error);
   const canEditRows = canWrite && !usingDemo;
   // Owners and managers can hand a lead to someone they manage.
-  const assignees = demoMode && (session.permissions.includes("*") || session.permissions.includes("leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
+  const assignees = demoMode && (session.permissions.includes("*") || can(session, "leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
   const sources = useMemo(
     () => [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])],
     [loaded],
@@ -359,12 +362,15 @@ export default function LeadsPage() {
               <RotateCw className="size-3.5" />
               Refresh
             </Button>
-            {session.permissions.includes("sources:manage") && (
-              <Button size="sm" asChild>
-                <Link href="/lead-sources/new">
-                  <Plus className="size-3.5" />
-                  New lead
-                </Link>
+            {can(session, "leads:write") && (
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus className="size-3.5" />
+                Add lead
+              </Button>
+            )}
+            {can(session, "sources:manage") && (
+              <Button size="sm" variant="secondary" asChild>
+                <Link href="/lead-sources/new">Add lead source</Link>
               </Button>
             )}
           </>
@@ -506,7 +512,7 @@ export default function LeadsPage() {
                   <tr key={lead.id} className={`group border-b border-border transition-colors hover:bg-surface-2/60 ${selected ? "bg-accent/5" : ""}`}>
                     <td className="w-12 min-w-12 px-3 py-4"><Checkbox checked={selected} aria-label={`Select ${displayName}`} onCheckedChange={(checked) => setSelectedIds((current) => checked ? [...new Set([...current, lead.id])] : current.filter((id) => id !== lead.id))} /></td>
                     <td className="w-16 min-w-16 whitespace-nowrap px-2 py-4"><span className="font-mono text-xs font-semibold text-foreground">#{String(index + 1).padStart(2, "0")}</span><span className="mt-1 block text-[10px] text-muted-foreground">ID {lead.id}</span></td>
-                    <td className="w-40 min-w-40 px-3 py-4"><div className="flex items-center gap-2">{usingDemo ? <span className="block truncate font-semibold text-foreground">{displayName}</span> : <Link href={`/leads/${lead.id}`} className="block truncate font-semibold text-foreground hover:text-accent">{displayName}</Link>}{canEditRows && <button type="button" title="Edit name" onClick={() => openEdit(row)} className="shrink-0 text-muted-foreground hover:text-accent"><Pencil className="size-3" /></button>}</div><span className="mt-1 block text-[11px] text-muted-foreground">{lead.contactName ? "Customer name" : "Using mobile as name"}</span></td>
+                    <td className="w-40 min-w-40 px-3 py-4"><div className="flex items-center gap-2">{usingDemo ? <span className="block truncate font-semibold text-foreground">{displayName}</span> : <Link href={`/leads/${lead.id}`} className="block truncate font-semibold text-foreground hover:text-accent">{displayName}</Link>}{canEditRows && <button type="button" title="Edit name" onClick={() => openEdit(row)} className="shrink-0 text-muted-foreground hover:text-accent"><Pencil className="size-3" /></button>}</div>{lead.contactName ? null : <span className="mt-1 block text-[11px] text-muted-foreground">Using mobile as name</span>}</td>
                     <td className="w-28 min-w-28 whitespace-nowrap px-3 py-4"><span className="inline-flex whitespace-nowrap rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs font-medium text-foreground">{phone.countryCode}</span></td>
                     <td className="w-32 min-w-32 whitespace-nowrap px-3 py-4 font-medium text-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{phone.mobile}</EditableValue> : phone.mobile}</td>
                     <td className="w-28 min-w-28 px-3 py-4">{canEditRows ? <EditableValue onClick={() => openEdit(row)}><Badge variant="neutral">{label(lead.stage)}</Badge></EditableValue> : <Badge variant="neutral">{label(lead.stage)}</Badge>}</td>
@@ -537,6 +543,8 @@ export default function LeadsPage() {
       )}
 
       <div className="flex gap-2 p-6"><Button size="sm" variant="ghost" onClick={() => { setAfter("0"); setVersion((value) => value + 1); }}>First page</Button><Button size="sm" variant="secondary" disabled={!loaded || loaded.rows.length !== 50} onClick={() => setAfter(loaded!.rows.at(-1)!.lead.id)}>Next 50</Button></div>
+
+      <AddLeadDialog open={adding} onOpenChange={setAdding} onAdded={() => { setAfter("0"); setVersion((value) => value + 1); }} />
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>

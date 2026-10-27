@@ -68,7 +68,7 @@ export function NotificationsSection() {
                   <td className="py-2.5 pr-3 text-foreground">{cat.label}</td>
                   {notifChannels.map((c) => (
                     <td key={c} className="py-2.5 px-3 text-center">
-                      <Switch checked={matrix[cat.key][c]} onCheckedChange={() => toggle(cat.key, c)} />
+                      <Switch aria-label={`${cat.label} notifications by ${c}`} checked={matrix[cat.key][c]} onCheckedChange={() => toggle(cat.key, c)} />
                     </td>
                   ))}
                 </tr>

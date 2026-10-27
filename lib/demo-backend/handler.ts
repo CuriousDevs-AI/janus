@@ -4,7 +4,8 @@ import { APIError } from "@/lib/api/client";
 import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
 import { canSeeOwner } from "@/lib/crm-scope";
 import { demoAccounts } from "@/lib/demo-accounts";
-import { readView } from "@/lib/demo-persona";
+import { conversations } from "@/lib/demo-universe";
+import { personaPermissions, readView } from "@/lib/demo-persona";
 import { activeCompany, updateCompany } from "@/lib/company";
 import { useDemoCrmStore } from "@/lib/demo-backend/crm-store";
 
@@ -41,6 +42,22 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
     const account = crmAccount();
     const visible = () => store.leads.filter((item) => canSeeOwner(account, item.ownerId));
     if (parts.length === 1 && method === "GET") return page(sorted(visible()), params);
+    if (parts.length === 1 && method === "POST") {
+      const granted = personaPermissions(account);
+      if (!granted.includes("*") && !granted.includes("leads:write")) throw forbidden("adding leads");
+      const data = body(init);
+      const name = text(data.name);
+      if (name.length < 2) throw invalid("Enter the customer's name.");
+      const phone = text(data.phone) || null;
+      const email = text(data.email) || null;
+      if (!phone && !email) throw invalid("Add a phone number or an email.");
+      const now = new Date().toISOString();
+      const id = `lead-${Date.now()}`;
+      const customerId = `cus-${Date.now()}`;
+      const lead: Lead = { dealId: null, id, customerId, contactName: name, phone, email, company: text(data.company), whatsappOptIn: false, doNotContact: false, consentSource: null, consentUpdatedAt: null, source: "manual", stage: "new", ownerId: account.crmUserId, ownerName: account.name, requirement: text(data.requirement), campaign: null, recordingUrl: null, recordingReference: null, createdAt: now, lastActivityAt: now };
+      store.addLead(lead, { id: customerId, name, phone, email, company: lead.company, whatsappOptIn: false, doNotContact: false, consentSource: null, consentUpdatedAt: null });
+      return lead;
+    }
     const lead = store.leads.find((item) => item.id === parts[1]);
     if (!lead || !canSeeOwner(account, lead.ownerId)) throw missing("That lead");
     if (method === "GET") return lead;
@@ -111,6 +128,13 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
       store.patchContact(contact.id, { whatsappOptIn: Boolean(data.whatsappOptIn), doNotContact: Boolean(data.doNotContact), consentSource: text(data.consentSource) || "customer_record", consentUpdatedAt: new Date().toISOString() });
       return useDemoCrmStore.getState().contacts.find((item) => item.id === contact.id);
     }
+  }
+
+  if (parts[0] === "whatsapp" && parts[1] === "conversations" && parts.length === 2 && method === "GET") {
+    // Chats for the customer pages: only customers this person is allowed to see.
+    const account = readView();
+    if (!account || account.crm === "none") throw forbidden("chats");
+    return conversations.filter((item) => store.leads.some((lead) => lead.customerId === item.contactId && canSeeOwner(account, lead.ownerId)));
   }
 
   if (parts[0] === "workspaces" && parts.length === 1) {

@@ -1,6 +1,10 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { usePersistedState } from "@/lib/use-persisted-state";
+import { isFirstCompany } from "@/lib/companies";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
 import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +101,14 @@ function isManagementRole(role: Role) {
 
 export function BusinessPeopleAccess({ initialSection = "members" }: { initialSection?: string }) {
   const [section, setSection] = React.useState<string>(initialSection);
-  const [members, setMembers] = React.useState<AccessMember[]>(initialMembers);
+  const [members, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", () => {
+    // Everyone in the HR directory belongs here too, so people added while setting a company up are not missing.
+    const known = new Set(initialMembers.flatMap((item) => [item.email.toLowerCase(), item.name.toLowerCase()]));
+    const fromHr = useHrPeopleStore.getState().employees
+      .filter((item) => item.status !== "archived" && !known.has(item.email.toLowerCase()) && !known.has(item.name.toLowerCase()))
+      .map((item): AccessMember => ({ id: item.id, name: item.name, email: item.email, role: "read_only", department: item.department, status: "Active", businessAccess: false, workspaces: ["hr-people"], permissions: rolePermissions.read_only, lastActive: "Not yet" }));
+    return [...initialMembers, ...fromHr];
+  });
   const workspacesApi = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const [storedWorkspace, setStoredWorkspace] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -114,13 +125,12 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     return workspaceOptions.filter(([key]) => active.has(key));
   }, [storedWorkspace, workspacesApi.data]);
   const activeWorkspaceKeys = React.useMemo(() => new Set(activeWorkspaceOptions.map(([key]) => key)), [activeWorkspaceOptions]);
-  const [invites, setInvites] = React.useState<PendingInvite[]>([
-    { id: "invite-1", name: "Arjun Mehta", email: "arjun@curiousdevs.ai", role: "sales_manager", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
-    { id: "invite-2", name: "Priya Shah", email: "priya@curiousdevs.ai", role: "analyst", businessAccess: false, workspaces: ["crm-sales", "finance-accounting"], invitedAt: "Yesterday", status: "Pending" },
-    { id: "invite-3", name: "Nikhil Verma", email: "nikhil@acmetrader.in", role: "business_manager", businessAccess: true, workspaces: [], invitedAt: "Today, 08:45", status: "Pending" },
-  ]);
-  const [roles, setRoles] = React.useState<RoleRecord[]>(initialRoles);
-  const [departments, setDepartments] = React.useState(["Management", "Sales", "Finance", "Customer Support", "Operations"]);
+  const [invites, setInvites] = usePersistedState<PendingInvite[]>("janus.business-invites.v1", isFirstCompany ? [
+    { id: "invite-1", name: "Tarun Sethi", email: "tarun@acmetraders.in", role: "sales_agent", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
+    { id: "invite-2", name: "Priya Shah", email: "priya@acmetraders.in", role: "analyst", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Yesterday", status: "Pending" },
+  ] : []);
+  const [roles, setRoles] = usePersistedState<RoleRecord[]>("janus.business-roles.v1", initialRoles);
+  const [departments, setDepartments] = usePersistedState<string[]>("janus.business-departments.v1", () => [...new Set(useHrPeopleStore.getState().employees.filter((item) => item.status !== "archived").map((item) => item.department))]);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [memberDialog, setMemberDialog] = React.useState<"invite" | "edit" | null>(null);
   const [editingMemberId, setEditingMemberId] = React.useState<string | null>(null);
@@ -184,7 +194,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
   function saveDepartment(event: React.FormEvent) { event.preventDefault(); if (!departmentName.trim()) return; setDepartments((current) => [...current, departmentName.trim()]); setDepartmentName(""); setDepartmentDialog(false); setNotice("Department added."); }
 
   return <div className="flex flex-col gap-5">
-    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">People & Access</h2><p className="mt-1 text-sm text-muted-foreground">Manage company-level managers separately from CRM, HR and department members.</p></div><Button size="sm" onClick={openInvite}><UserPlus className="size-3.5" />Add person</Button></div></div>
+    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">People & Access</h2><p className="mt-1 text-sm text-muted-foreground">Who can sign in to this company, what they can open and their role. Employee records are kept in <Link href="/workspace/hr-people?view=people&workspace=hr-people" className="text-accent underline-offset-2 hover:underline">HR &amp; People</Link>.</p></div><Button size="sm" onClick={openInvite}><UserPlus className="size-3.5" />Add person</Button></div></div>
     <div className="janus-tab-strip sticky top-0 z-20 flex gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1">{sections.map(([value, label]) => <button key={value} type="button" onClick={() => setSection(value)} className={`shrink-0 rounded-sm px-3 py-2 text-[12px] transition-colors ${section === value ? "bg-white font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"}`}>{label}{value === "invitations" && invites.length > 0 ? <span className="ml-1.5 rounded-full bg-accent-muted px-1.5 py-0.5 text-[10px] text-accent">{invites.length}</span> : null}</button>)}</div>
     <div className="flex items-start gap-3 rounded-lg border border-accent-border bg-accent-muted/60 px-4 py-3 text-xs"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent" /><p><strong>Access is independent.</strong> Select Business Management access and active department workspaces separately. People only see the areas that are checked for them.</p></div>
     {notice && <div role="status" className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent">{notice}</div>}
@@ -258,12 +268,12 @@ function DepartmentsSection({ departments, onAdd }: { departments: string[]; onA
 }
 
 function RequestsSection({ onNotice }: { onNotice: (message: string) => void }) {
-  const requests = [["Aman Verma", "Finance & Accounting", "Needs read access to invoices", "Today"], ["Sana Iyer", "Customer Support & Success", "Needs report access", "Yesterday"]];
+  const requests = isFirstCompany ? [["Aman Verma", "Finance & Accounting", "Needs read access to invoices", "Today"]] : [];
   return <SectionCard title="Access requests" description="Review requests before a member receives access to another workspace."><div className="flex flex-col divide-y divide-border">{requests.map(([name, workspace, reason, date]) => <div key={name} className="flex flex-wrap items-center gap-3 py-4 first:pt-0 last:pb-0"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{name} · {workspace}</p><p className="mt-1 text-xs text-muted-foreground">{reason} · {date}</p></div><Button size="sm" variant="secondary" onClick={() => onNotice(`${name} request approved in the demo.`)}>Approve</Button><Button size="sm" variant="ghost" onClick={() => onNotice(`${name} request declined in the demo.`)}>Decline</Button></div>)}</div></SectionCard>;
 }
 
 function AuditSection() {
-  const logs = [["Pankaj updated Riya Kapoor’s workspace access", "Today, 09:32", "Access"], ["Karan Bhatt role changed to Sales Manager", "Yesterday, 16:10", "Role"], ["Invite sent to arjun@curiousdevs.ai", "Today, 10:20", "Invitation"], ["Finance workspace access removed from a demo member", "18 Oct, 14:42", "Access"]];
+  const logs = isFirstCompany ? [["Pankaj Neema updated Meera Singh’s workspace access", "Today, 09:32", "Access"], ["Arjun Mehta’s role changed to Sales Manager", "Yesterday, 16:10", "Role"], ["Invite sent to tarun@acmetraders.in", "Today, 10:20", "Invitation"]] : [];
   return <SectionCard title="Audit logs" description="A clear record of people, role and workspace changes for owner review."><div className="flex flex-col divide-y divide-border">{logs.map(([event, date, type]) => <div key={event} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex size-7 items-center justify-center rounded-md bg-accent-muted text-accent"><ShieldCheck className="size-3.5" /></span><div className="min-w-0 flex-1"><p className="text-sm">{event}</p><p className="mt-1 text-[11px] text-muted-foreground">{date}</p></div><Badge variant="neutral">{type}</Badge></div>)}</div></SectionCard>;
 }
 

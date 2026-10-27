@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { activeSpec } from "@/lib/companies";
 import type { VariantProps } from "class-variance-authority";
 import { MessageCircle, Building2, CalendarClock, ShoppingBag, LayoutGrid, LifeBuoy, Code2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -65,15 +66,17 @@ export const integrationPermissions: Record<Integration["category"], string[]> =
  * Plausible masked account labels used only when the prototype "connects" an
  * integration that has never been connected before (no seeded connectedAccount).
  */
+/** The company's handle on those services, like "acmetraders". */
+const handle = activeSpec.company.domain.split(".")[0];
 export const mockAccountLabel: Record<string, string> = {
-  "int-hubspot": "curiousdevs.hubspot.com",
-  "int-salesforce": "curiousdevs.my.salesforce.com",
-  "int-shopify": "curiousdevs.myshopify.com",
+  "int-hubspot": `${handle}.hubspot.com`,
+  "int-salesforce": `${handle}.my.salesforce.com`,
+  "int-shopify": `${handle}.myshopify.com`,
   "int-razorpay": "rzp_live_••••4821", "int-tally": "TallyPrime-GGN-01",
-  "int-zendesk": "curiousdevs.zendesk.com",
-  "int-freshdesk": "curiousdevs.freshdesk.com",
-  "int-intercom": "curiousdevs (workspace)",
-  "int-jira-service-desk": "curiousdevs.atlassian.net",
+  "int-zendesk": `${handle}.zendesk.com`,
+  "int-freshdesk": `${handle}.freshdesk.com`,
+  "int-intercom": `${handle} (workspace)`,
+  "int-jira-service-desk": `${handle}.atlassian.net`,
   "int-rest-api": "Platform API",
 };
 
