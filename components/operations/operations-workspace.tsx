@@ -15,6 +15,7 @@ import { GST_RATES } from "@/lib/stores/finance-store";
 import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useSession } from "@/components/auth/session-provider";
+import { TrailPanel } from "@/components/shared/audit-trail-panel";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -53,9 +54,15 @@ export function OperationsWorkspace() {
         {view === "orders" && <OrdersView me={me} />}
         {view === "warehouses" && <WarehousesView />}
         {!["products", "inventory", "orders", "warehouses"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses"].includes(view) && <OperationsTrail />}
       </div>
     </div>
   );
+}
+
+function OperationsTrail() {
+  const trail = useOperationsStore((state) => state.trail);
+  return <TrailPanel entries={trail} />;
 }
 
 function OverviewView() {

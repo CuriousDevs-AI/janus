@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -53,8 +54,9 @@ interface FinanceState {
   budgetLines: BudgetLine[];
   fundRequests: FundRequest[];
   draws: Draw[];
+  trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
-  recordPayment: (invoiceId: string, payment: Omit<Payment, "id">) => string | null;
+  recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
@@ -90,19 +92,25 @@ export const useFinanceStore = create<FinanceState>()(
   persist(
     (set, get) => ({
       ...seedFinance(),
+      trail: [],
       addInvoice: (input, by) => {
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
-        set((state) => ({ invoices: [{ ...input, id, number, payments: [], createdBy: by }, ...state.invoices] }));
+        const invoice: Invoice = { ...input, id, number, payments: [], createdBy: by };
+        const total = invoiceTotals(invoice).total;
+        set((state) => ({ invoices: [invoice, ...state.invoices], trail: withTrail(state.trail, trailEntry("finance", today, by, `Created invoice ${number} for ${input.customer} · ₹${total.toLocaleString("en-IN")}`)) }));
         return number;
       },
-      recordPayment: (invoiceId, payment) => {
+      recordPayment: (invoiceId, payment, by) => {
         const invoice = get().invoices.find((item) => item.id === invoiceId);
         if (!invoice) return "Invoice not found.";
         const due = dueAmount(invoice, get().creditNotes);
         if (payment.amount <= 0) return "Enter an amount above zero.";
         if (payment.amount > due + 0.001) return `Payment is more than the ₹${due.toLocaleString("en-IN")} still due.`;
-        set((state) => ({ invoices: state.invoices.map((item) => item.id === invoiceId ? { ...item, payments: [...item.payments, { ...payment, id: `pay-${Date.now()}` }] } : item) }));
+        set((state) => ({
+          invoices: state.invoices.map((item) => item.id === invoiceId ? { ...item, payments: [...item.payments, { ...payment, id: `pay-${Date.now()}` }] } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by,`Payment ₹${payment.amount.toLocaleString("en-IN")} recorded on ${invoice.number} (${payment.method})`)),
+        }));
         return null;
       },
       addCreditNote: (input, by) => {
@@ -112,19 +120,28 @@ export const useFinanceStore = create<FinanceState>()(
         if (input.amount > invoiceTotals(invoice).total - creditedAmount(invoice.id, get().creditNotes, true)) return "A credit note cannot be more than the invoice total left to credit.";
         if (input.reason.trim().length < 3) return "Give a reason for the credit note.";
         const number = nextNumber("CN", get().creditNotes.length);
-        set((state) => ({ creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input }, ...state.creditNotes] }));
+        set((state) => ({
+          creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input }, ...state.creditNotes],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested credit note ${number} of ₹${input.amount.toLocaleString("en-IN")} against ${invoice.number}`)),
+        }));
         return null;
       },
       decideCreditNote: (id, by) => {
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.createdBy === by) return "The person who created a credit note cannot approve it.";
-        set((state) => ({ creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "approved", approvedBy: by } : item) }));
+        set((state) => ({
+          creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "approved", approvedBy: by } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Approved credit note ${note.number} of ₹${note.amount.toLocaleString("en-IN")}`)),
+        }));
         return null;
       },
       addFundRequest: (input, by) => {
         const number = nextNumber("FR", get().fundRequests.length);
-        set((state) => ({ fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests] }));
+        set((state) => ({
+          fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested funds ${number} of ₹${input.amount.toLocaleString("en-IN")}: ${input.purpose}`)),
+        }));
       },
       approveFundRequest: (id, step, by) => {
         const request = get().fundRequests.find((item) => item.id === id);
@@ -133,21 +150,35 @@ export const useFinanceStore = create<FinanceState>()(
         if (step === "owner") {
           if (request.status !== "pending") return "This request is not waiting for the owner.";
           const needsFinance = request.amount > FUND_OWNER_LIMIT;
-          set((state) => ({ fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, ownerApprovedBy: by, status: needsFinance ? "awaiting_finance" : "approved" } : item) }));
+          const text = needsFinance ? `Owner approved ${request.number}; waiting for finance` : `Owner approved ${request.number}; budget allocated`;
+          set((state) => ({
+            fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, ownerApprovedBy: by, status: needsFinance ? "awaiting_finance" : "approved" } : item),
+            trail: withTrail(state.trail, trailEntry("finance", today, by, text)),
+          }));
           if (!needsFinance) allocate(request.lineId, request.amount);
           return null;
         }
         if (request.status !== "awaiting_finance") return "This request is not waiting for finance.";
         if (request.ownerApprovedBy === by) return "The approver must be a different person from the owner's approval.";
-        set((state) => ({ fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, financeApprovedBy: by, status: "approved" } : item) }));
+        set((state) => ({
+          fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, financeApprovedBy: by, status: "approved" } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Finance approved ${request.number}; budget allocated`)),
+        }));
         allocate(request.lineId, request.amount);
         return null;
       },
       rejectFundRequest: (id, reason, by) => {
-        set((state) => ({ fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item) }));
+        const request = get().fundRequests.find((item) => item.id === id);
+        set((state) => ({
+          fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Rejected ${request?.number ?? "a fund request"}: ${reason}`)),
+        }));
       },
       addBudgetLine: (input) => {
-        set((state) => ({ budgetLines: [...state.budgetLines, { id: `line-${Date.now()}`, drawn: 0, ...input }] }));
+        set((state) => ({
+          budgetLines: [...state.budgetLines, { id: `line-${Date.now()}`, drawn: 0, ...input }],
+          trail: withTrail(state.trail, trailEntry("finance", today, "Finance", `Added budget line ${input.name} · ₹${input.allocated.toLocaleString("en-IN")}`)),
+        }));
       },
       drawBudget: (lineId, amount, note, by, date) => {
         const line = get().budgetLines.find((item) => item.id === lineId);
@@ -157,11 +188,12 @@ export const useFinanceStore = create<FinanceState>()(
         set((state) => ({
           budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, drawn: item.drawn + amount } : item),
           draws: [{ id: `draw-${Date.now()}`, lineId, amount, note, by, date }, ...state.draws],
+          trail: withTrail(state.trail, trailEntry("finance", date, by, `Drew ₹${amount.toLocaleString("en-IN")} from ${line.name} for ${note}`)),
         }));
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, trail: state.trail }) },
   ),
 );
 
