@@ -17,6 +17,7 @@ import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
 import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -166,6 +167,8 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   const addInvoice = useFinanceStore((state) => state.addInvoice);
   const [customer, setCustomer] = React.useState("");
   const [customerCompany, setCustomerCompany] = React.useState("");
+  const [dealId, setDealId] = React.useState("");
+  const links = useCrmLinkOptions();
   const [sameState, setSameState] = React.useState(true);
   const [dueDays, setDueDays] = React.useState("30");
   const [lines, setLines] = React.useState<InvoiceLine[]>([{ item: "", hsn: "", qty: 1, rate: 0, gstRate: 18 }]);
@@ -182,7 +185,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
     if (lines.some((line) => line.item.trim().length < 2 || !/^\d{4,8}$/.test(line.hsn.trim()) || line.qty <= 0 || line.rate <= 0)) return setError("Each line needs an item, an HSN code (4 to 8 digits), a quantity and a rate above zero.");
     const locked = periodLockProblem(today);
     if (locked) return setError(locked);
-    const number = addInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
+    const number = addInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), dealId: dealId || undefined, date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
     toast.success(`Invoice ${number} created`);
     onClose();
   }
@@ -194,6 +197,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-customer">Customer</Label><Input id="inv-customer" value={customer} onChange={(e) => setCustomer(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-company">Company</Label><Input id="inv-company" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} /></div>
+          <div className="flex flex-col gap-1.5"><Label htmlFor="inv-deal">CRM deal (optional)</Label><select id="inv-deal" className={selectClass} value={dealId} onChange={(e) => setDealId(e.target.value)}><option value="">None</option>{links.deals.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-supply">Place of supply</Label><select id="inv-supply" className={selectClass} value={sameState ? "same" : "other"} onChange={(e) => setSameState(e.target.value === "same")}><option value="same">Same state (CGST + SGST)</option><option value="other">Other state (IGST)</option></select></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-due">Payment due in (days)</Label><Input id="inv-due" type="number" min={0} value={dueDays} onChange={(e) => setDueDays(e.target.value)} /></div>
         </div>
@@ -257,11 +261,13 @@ function PaymentDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => 
 
 function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const links = useCrmLinkOptions();
+  const deal = linkedLabel(links.deals, invoice.dealId);
   const totals = invoiceTotals(invoice);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>{invoice.number}</DialogTitle><DialogDescription>{invoice.customer}, {invoice.customerCompany} · due {invoice.dueDate}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{invoice.number}</DialogTitle><DialogDescription>{invoice.customer}, {invoice.customerCompany} · due {invoice.dueDate}{deal ? ` · deal: ${deal}` : ""}</DialogDescription></DialogHeader>
         <table className="w-full text-sm">
           <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">Item</th><th>HSN</th><th className="text-right">Qty</th><th className="text-right">Rate</th><th className="text-right">GST</th></tr></thead>
           <tbody>{invoice.lines.map((line, i) => <tr key={i} className="border-b border-border last:border-0"><td className="py-2">{line.item}</td><td>{line.hsn}</td><td className="text-right">{line.qty}</td><td className="text-right tabular-nums">{money(line.rate)}</td><td className="text-right">{line.gstRate}%</td></tr>)}</tbody>
@@ -290,13 +296,15 @@ function CreditNotesView({ me }: { me: string }) {
   const [amount, setAmount] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [date] = React.useState("2026-10-23");
+  const [ticketId, setTicketId] = React.useState("");
+  const links = useCrmLinkOptions();
   const invoice = invoices.find((item) => item.id === invoiceId);
 
   function create() {
-    const problem = addCreditNote({ invoiceId, amount: Number(amount), reason, date }, me);
+    const problem = addCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Credit note raised. It takes effect once approved by someone else.");
-    setAmount(""); setReason("");
+    setAmount(""); setReason(""); setTicketId("");
   }
   return (
     <>
@@ -308,6 +316,7 @@ function CreditNotesView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-invoice">Invoice</Label><select id="cn-invoice" className={selectClass} value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}><option value="">Choose…</option>{invoices.map((item) => <option key={item.id} value={item.id}>{item.number} · {item.customer}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-amount">Amount (₹, incl. GST)</Label><Input id="cn-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-reason">Reason</Label><Input id="cn-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. 4 cartons damaged in transit" /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="cn-ticket">Support ticket (optional)</Label><select id="cn-ticket" className={selectClass} value={ticketId} onChange={(e) => setTicketId(e.target.value)}><option value="">None</option>{links.openTickets.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
           </div>
           {invoice ? <p className="text-xs text-muted-foreground">Invoice total {money(invoiceTotals(invoice).total)}.</p> : null}
           <Button className="w-fit" disabled={!invoiceId || !amount || !reason} onClick={create}>Raise credit note</Button>
@@ -324,7 +333,7 @@ function CreditNotesView({ me }: { me: string }) {
                 return (
                   <tr key={note.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{note.number}</td>
-                    <td className="px-4 py-3">{original?.number ?? "—"}</td>
+                    <td className="px-4 py-3">{original?.number ?? "—"}{linkedLabel(links.tickets, note.ticketId) ? <span className="block text-xs text-muted-foreground">{linkedLabel(links.tickets, note.ticketId)}</span> : null}</td>
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>
                     <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : "warning"}>{note.status}</Badge></td>

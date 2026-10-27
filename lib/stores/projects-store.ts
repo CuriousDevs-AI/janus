@@ -17,7 +17,7 @@ import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail
 export const TODAY = "2026-10-23";
 export const PROJECT_TYPES = ["Fixed price", "Time and material", "Internal"] as const;
 
-export interface Project { id: string; name: string; client: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
+export interface Project { id: string; name: string; client: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
 export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string }
 export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; due: string; status: "todo" | "doing" | "done" }
 export interface ChangeRequest { id: string; projectId: string; description: string; budgetChange: number; dayChange: number; status: "pending" | "approved" | "rejected"; requestedBy: string; decidedBy?: string }
