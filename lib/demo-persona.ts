@@ -58,7 +58,7 @@ export function personaPermissions(account: DemoAccount | undefined): string[] {
   const out = ["hr:self"];
   if (account.hrRole === "hr_manager") out.push("hr:read", "hr:manage", "hr:approve", "hr:team", "hr:payroll:read");
   if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read");
-  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve");
+  if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve", "projects:manage");
   // These are the backend's own permission names, so the preview behaves like a real role.
   if (account.crm === "team") out.push("leads:read_team", "leads:write", "leads:assign", "reports:read", "approvals:manage");
   if (account.crm === "own") out.push("leads:read_own", "leads:write");
@@ -79,6 +79,10 @@ export function personaMayOpen(account: DemoAccount | undefined, pathname: strin
   if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return account.hrRole === "owner";
   if (account.hrRole === "owner" && readCompanies().length === 0) return pathname === "/setup" || pathname.startsWith("/setup/");
   if (pathname.startsWith("/workspace/hr-people")) return true;
+  if (pathname.startsWith("/workspace/projects-delivery")) {
+    const granted = personaPermissions(account);
+    return granted.includes("*") || granted.includes("projects:manage");
+  }
   const crmCore = ["/dashboard", "/leads", "/deals", "/customers", "/inbox", "/tickets", "/lead-sources"];
   // A company that has not switched on CRM has no CRM pages for anyone, including the Owner.
   if (crmCore.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) && !activeCompany().workspaces.includes("crm-sales")) return false;

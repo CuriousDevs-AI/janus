@@ -17,11 +17,12 @@ import { FinanceWorkspace } from "@/components/finance/finance-workspace";
 import { OperationsWorkspace } from "@/components/operations/operations-workspace";
 import { ProjectsWorkspace } from "@/components/projects/projects-workspace";
 import { SupportWorkspace } from "@/components/support/support-workspace";
+import { ITWorkspace } from "@/components/it/it-workspace";
 
 const workspacePermissions: Record<string, string> = {
   "hr-people": "hr:self",
   "finance-accounting": "billing:manage",
-  "projects-delivery": "settings:manage",
+  "projects-delivery": "projects:manage",
   "customer-support": "leads:read_team",
   "operations-inventory": "settings:manage",
   "it-infrastructure": "settings:manage",
@@ -76,6 +77,10 @@ function WorkspacePageInner({
 
   if (routeWorkspaceId === "customer-support") {
     return <SupportWorkspace />;
+  }
+
+  if (routeWorkspaceId === "it-infrastructure") {
+    return <ITWorkspace />;
   }
 
   const selectedWorkspace = getWorkspaceDefinition(routeWorkspaceId);
