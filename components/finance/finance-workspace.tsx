@@ -22,7 +22,7 @@ import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
-import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, bookPayments, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -40,7 +40,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation" };
 
   if (view in comingSoon) {
     return (
@@ -64,8 +64,9 @@ export function FinanceWorkspace() {
         {view === "profit-loss" && <ProfitLossView />}
         {view === "budgets" && <BudgetsView me={me} />}
         {view === "cash-flow" && <CashFlowView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow"].includes(view) && <FinanceTrail />}
+        {view === "reconciliation" && <ReconciliationView me={me} />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -214,6 +215,74 @@ function BudgetsView({ me }: { me: string }) {
               })}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Bank statement lines matched to the payments recorded in the books. A match needs the same amount and direction. */
+function ReconciliationView({ me }: { me: string }) {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankLines = useFinanceStore((state) => state.bankLines);
+  const importBankStatement = useFinanceStore((state) => state.importBankStatement);
+  const matchBankLine = useFinanceStore((state) => state.matchBankLine);
+  const [text, setText] = React.useState("");
+  const [errors, setErrors] = React.useState<string[]>([]);
+  const payments = bookPayments(invoices, bills);
+  const matchedKeys = new Set(bankLines.filter((l) => l.matchedKey).map((l) => l.matchedKey));
+  const unmatchedPayments = payments.filter((p) => !matchedKeys.has(p.key));
+  const unmatchedLines = bankLines.filter((l) => !l.matchedKey).length;
+
+  function save() {
+    const result = importBankStatement(text, me);
+    setErrors(result.errors);
+    if (result.imported > 0) {
+      toast.success(`${result.imported} line${result.imported === 1 ? "" : "s"} imported`);
+      setText("");
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Import a bank statement</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Paste one line per bank entry: date, description, amount. Use a plus for money in and a minus for money out, for example 2026-10-20,NEFT from Kavita Rao,30000 or 2026-10-21,NEFT to Vendor Co,-12500.</p>
+          <Textarea aria-label="Bank statement lines" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="2026-10-20,NEFT from Kavita Rao,30000" />
+          {errors.length > 0 ? <ul className="list-disc pl-5 text-xs text-danger">{errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
+          <Button className="w-fit" disabled={text.trim().length === 0} onClick={save}>Import lines</Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Statement lines · {unmatchedLines} not matched</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm">
+          {bankLines.length === 0 ? <p className="text-muted-foreground">No statement lines yet.</p> : null}
+          {bankLines.map((line) => {
+            const options = payments.filter((p) => (p.direction === 1) === (line.amount > 0) && (!matchedKeys.has(p.key) || p.key === line.matchedKey));
+            return (
+              <div key={line.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+                <span>
+                  <span className="text-muted-foreground">{line.date} · </span>{line.description} · <span className="tabular-nums">{line.amount < 0 ? `-${money(Math.abs(line.amount))}` : money(line.amount)}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant={line.matchedKey ? "success" : "warning"}>{line.matchedKey ? "matched" : "not matched"}</Badge>
+                  <select aria-label={`Match ${line.description}`} className={selectClass} value={line.matchedKey ?? ""} onChange={(e) => { const p = matchBankLine(line.id, e.target.value || null, me); if (p) toast.error(p); }}>
+                    <option value="">{line.matchedKey ? "Unmatch…" : "Match to a payment…"}</option>
+                    {options.map((o) => <option key={o.key} value={o.key}>{o.label} · {money(o.amount)} · {o.date}</option>)}
+                  </select>
+                </span>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Payments in the books not on a statement line · {unmatchedPayments.length}</CardTitle></CardHeader>
+        <CardContent className="grid gap-1 text-sm">
+          {unmatchedPayments.length === 0 ? <p className="text-muted-foreground">Every recorded payment is on a statement line.</p> : null}
+          {unmatchedPayments.map((p) => <p key={p.key}><span className="text-muted-foreground">{p.date} · </span>{p.label} · {money(p.amount)}</p>)}
         </CardContent>
       </Card>
     </>
