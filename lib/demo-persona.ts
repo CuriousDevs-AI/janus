@@ -65,6 +65,8 @@ export function personaPermissions(account: DemoAccount | undefined): string[] {
   const out = ["hr:self"];
   if (account.hrRole === "hr_manager") out.push("hr:read", "hr:manage", "hr:approve", "hr:team", "hr:payroll:read");
   // A finance executive runs payroll and the books, so the Finance workspace and its approvals are theirs too.
+  // A finance viewer can open the Finance workspace to read it, but cannot create invoices or approve budget spend.
+  if (account.hrRole === "finance_viewer") out.push("hr:self", "billing:manage");
   // Role names from the plan (§8.6): a finance executive can create invoices and approve budget spend.
   if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read", "billing:manage", "invoice:create", "budget:approve");
   // A manager works with their own team, so the menu offers leave, attendance, reviews and expenses too.

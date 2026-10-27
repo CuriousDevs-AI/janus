@@ -189,6 +189,7 @@ export type HrDemoRole =
   | "hr_manager"
   | "reporting_manager"
   | "payroll_admin"
+  | "finance_viewer"
   | "employee";
 
 export type EmployeeStatus = "active" | "onboarding" | "notice" | "archived";
