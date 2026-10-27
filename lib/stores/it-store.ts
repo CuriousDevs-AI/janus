@@ -36,6 +36,8 @@ export const HELPDESK_DUE_DAYS: Record<HelpdeskTicket["priority"], number> = { h
 export interface Incident { id: string; number: string; title: string; severity: "minor" | "major" | "critical"; status: "open" | "investigating" | "resolved"; reportedBy: string; assetId: string | null; raisedOn: string; updates: string[] }
 /** A planned change to IT: approved by someone other than the person who asked for it, then carried out. */
 export interface ITChange { id: string; number: string; title: string; risk: "low" | "medium" | "high"; requestedBy: string; status: "pending" | "approved" | "rejected" | "done"; decidedBy: string | null; raisedOn: string }
+/** A system IT keeps an eye on. Each check records its status; a system marked down opens a critical incident. */
+export interface Monitor { id: string; name: string; kind: "Server" | "Network" | "Application" | "Website" | "Other"; status: "up" | "degraded" | "down"; lastChecked: string; note: string }
 export interface AuditEntry { id: string; at: string; by: string; text: string }
 
 interface ITState {
@@ -45,7 +47,10 @@ interface ITState {
   log: AuditEntry[];
   helpdesk: HelpdeskTicket[];
   incidents: Incident[];
+  monitors: Monitor[];
   changes: ITChange[];
+  addMonitor: (input: { name: string; kind: Monitor["kind"] }, by: string) => string | null;
+  recordCheck: (id: string, status: Monitor["status"], note: string, by: string) => string | null;
   raiseIncident: (input: { title: string; severity: Incident["severity"]; assetId: string | null }, by: string) => string | null;
   updateIncident: (id: string, status: Incident["status"], note: string, by: string) => string | null;
   requestChange: (input: { title: string; risk: ITChange["risk"] }, by: string) => string | null;
@@ -67,8 +72,8 @@ interface ITState {
   freeSeat: (licenceId: string, person: string, by: string) => string | null;
 }
 
-const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes"> => {
-  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [] };
+const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => {
+  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [] };
   return {
     assets: [
       { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta" },
@@ -85,6 +90,10 @@ const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpd
       { id: "lic-2", name: "Tally Prime", vendor: "Tally Solutions", seats: 2, assigned: ["Aman Verma"], annualCost: 22500, renewal: "2027-03-31" },
     ],
     log: [],
+    monitors: [
+      { id: "mon-1", name: "Head office network", kind: "Network", status: "up", lastChecked: "2026-10-23", note: "" },
+      { id: "mon-2", name: "Payroll server", kind: "Server", status: "up", lastChecked: "2026-10-23", note: "" },
+    ],
     incidents: [
       { id: "inc-1", number: "INC-1001", title: "Warehouse printer offline", severity: "minor", status: "investigating", reportedBy: "Vikas Jain", assetId: "ast-3", raisedOn: "2026-10-22", updates: ["Printer reported offline; checking the network cable."] },
     ],
@@ -126,6 +135,25 @@ export const useITStore = create<ITState>()(
           set((state) => ({
             helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status: "resolved" } : t),
             log: [record(by, `${ticket.number} resolved${note}`), ...state.log],
+          }));
+          return null;
+        },
+        addMonitor: (input, by) => {
+          if (input.name.trim().length < 3) return "Enter the system's name.";
+          if (get().monitors.some((m) => m.name.toLowerCase() === input.name.trim().toLowerCase())) return `${input.name.trim()} is already being monitored.`;
+          set((state) => ({ monitors: [...state.monitors, { id: `mon-${Date.now()}`, name: input.name.trim(), kind: input.kind, status: "up", lastChecked: TODAY, note: "" }], log: [record(by, `Added ${input.name.trim()} to monitoring`), ...state.log] }));
+          return null;
+        },
+        recordCheck: (id, status, note, by) => {
+          const monitor = get().monitors.find((m) => m.id === id);
+          if (!monitor) return "System not found.";
+          const openForIt = get().incidents.some((i) => i.status !== "resolved" && i.title === `${monitor.name} is down`);
+          const opens = status === "down" && !openForIt;
+          const number = `INC-${1002 + get().incidents.length}`;
+          set((state) => ({
+            monitors: state.monitors.map((m) => m.id === id ? { ...m, status, lastChecked: TODAY, note: note.trim() } : m),
+            incidents: opens ? [{ id: `inc-${Date.now()}`, number, title: `${monitor.name} is down`, severity: "critical", status: "open", reportedBy: by, assetId: null, raisedOn: TODAY, updates: note.trim() ? [note.trim()] : [] }, ...state.incidents] : state.incidents,
+            log: [record(by, `${monitor.name} checked: ${status}${opens ? `; opened ${number}` : ""}`), ...state.log],
           }));
           return null;
         },
