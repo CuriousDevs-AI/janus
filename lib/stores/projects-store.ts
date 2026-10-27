@@ -24,6 +24,9 @@ export interface Task { id: string; projectId: string; milestoneId: string | nul
 export interface Timesheet { id: string; projectId: string; person: string; date: string; hours: number; note: string }
 /** The share of a person's week a project is planned to take (0 to 100). */
 export interface Allocation { id: string; projectId: string; person: string; percent: number }
+/** What one hour of a person costs the company. Used for project cost; a person without a rate uses the default. */
+export interface CostRate { person: string; hourlyCost: number }
+export const DEFAULT_HOURLY_COST = 500;
 export interface ChangeRequest { id: string; projectId: string; description: string; budgetChange: number; dayChange: number; status: "pending" | "approved" | "rejected"; requestedBy: string; decidedBy?: string }
 
 interface ProjectsState {
@@ -33,9 +36,11 @@ interface ProjectsState {
   changes: ChangeRequest[];
   timesheets: Timesheet[];
   allocations: Allocation[];
+  rates: CostRate[];
   trail: TrailEntry[];
   addProject: (input: Omit<Project, "id" | "status" | "createdBy">, by: string) => string | null;
   setAllocation: (projectId: string, person: string, percent: number, by: string) => string | null;
+  setCostRate: (person: string, hourlyCost: number, by: string) => string | null;
   logHours: (input: Omit<Timesheet, "id">, by: string) => string | null;
   addMilestone: (input: Omit<Milestone, "id" | "status">) => string | null;
   completeMilestone: (id: string, by: string) => string | null;
@@ -74,6 +79,16 @@ const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "chan
 };
 
 /** Delivery health from dates and open work, never typed in by hand. */
+/** Profit on a project to date: milestones accepted and billed, against the cost of the hours logged on it. */
+export function projectProfitability(project: Project, milestones: Milestone[], timesheets: Timesheet[], rates: CostRate[]) {
+  const billed = milestones.filter((m) => m.projectId === project.id && m.status === "accepted").reduce((sum, m) => sum + m.amount, 0);
+  const logged = timesheets.filter((t) => t.projectId === project.id);
+  const hours = logged.reduce((sum, t) => sum + t.hours, 0);
+  const cost = logged.reduce((sum, t) => sum + t.hours * (rates.find((r) => r.person === t.person)?.hourlyCost ?? DEFAULT_HOURLY_COST), 0);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return { billed: round(billed), hours: round(hours), cost: round(cost), margin: billed > 0 ? round(((billed - cost) / billed) * 100) : null };
+}
+
 export function projectHealth(project: Project, milestones: Milestone[], tasks: Task[]) {
   const open = tasks.filter((t) => t.projectId === project.id && t.status !== "done");
   const overdue = open.filter((t) => t.due < TODAY).length;
@@ -93,6 +108,16 @@ export const useProjectsStore = create<ProjectsState>()(
     (set, get) => ({
       ...seed(),
       trail: [],
+      rates: [],
+      setCostRate: (person, hourlyCost, by) => {
+        if (!person) return "Choose the person.";
+        if (!(hourlyCost >= 0 && hourlyCost <= 100000)) return "Enter a cost per hour between 0 and 1,00,000.";
+        set((state) => ({
+          rates: [...state.rates.filter((r) => r.person !== person), { person, hourlyCost }],
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Set ${person}'s cost at ₹${hourlyCost.toLocaleString("en-IN")} an hour`)),
+        }));
+        return null;
+      },
       setAllocation: (projectId, person, percent, by) => {
         const project = get().projects.find((p) => p.id === projectId);
         if (!project) return "Project not found.";
