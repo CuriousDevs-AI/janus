@@ -4,6 +4,8 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { api, message } from "@/lib/api/client";
+import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -513,29 +515,12 @@ function VendorsView() {
   const [name, setName] = React.useState("");
   const [gstin, setGstin] = React.useState("");
   const [terms, setTerms] = React.useState("30");
-  const session = useSession();
-  const me = session.user.name ?? session.user.email ?? "You";
-  const bankChanges = useVendorsStore((state) => state.bankChanges);
-  const requestBankChange = useVendorsStore((state) => state.requestBankChange);
-  const approveBankChange = useVendorsStore((state) => state.approveBankChange);
-  const [bankVendor, setBankVendor] = React.useState("");
-  const [holder, setHolder] = React.useState("");
-  const [account, setAccount] = React.useState("");
-  const [ifsc, setIfsc] = React.useState("");
-  const pending = bankChanges.filter((c) => c.status === "pending");
 
   function save() {
     const problem = addVendor({ name, gstin, paymentTermsDays: Number(terms) });
     if (problem) return toast.error(problem);
     toast.success(`${name.trim()} added`);
     setName(""); setGstin(""); setTerms("30");
-  }
-
-  function requestBank() {
-    const problem = requestBankChange(bankVendor, { holder, account, ifsc }, new Date().toISOString().slice(0, 10), me);
-    if (problem) return toast.error(problem);
-    toast.success("Bank change sent for approval. It takes effect once someone else approves it.");
-    setHolder(""); setAccount(""); setIfsc("");
   }
 
   return (
@@ -558,21 +543,110 @@ function VendorsView() {
           {vendors.map((v) => (
             <div key={v.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
               <span className="font-medium">{v.name}</span>
-              <span className="text-xs text-muted-foreground">{v.gstin || "GSTIN not added"} · {v.paymentTermsDays} days payment terms · {v.bank ? `bank ••••${v.bank.account.slice(-4)}` : "no bank details"}</span>
+              <span className="text-xs text-muted-foreground">{v.gstin || "GSTIN not added"} · {v.paymentTermsDays} days payment terms</span>
             </div>
           ))}
         </CardContent>
       </Card>
+      <VendorBankSection vendors={vendors.map((v) => ({ id: v.id, name: v.name }))} />
+    </>
+  );
+}
+
+/** A vendor's bank details live on the server, encrypted. The screen shows only the last four digits and the approval state. */
+type BankAccount = {
+  id: string;
+  vendor_id: string;
+  vendor_name: string;
+  holder: string;
+  masked_account: string;
+  ifsc: string;
+  status: "pending" | "approved" | "rejected";
+  requested_by: string;
+  approved_by: string | null;
+};
+
+function VendorBankSection({ vendors }: { vendors: { id: string; name: string }[] }) {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const [accounts, setAccounts] = React.useState<BankAccount[] | null>(null);
+  const [vendorId, setVendorId] = React.useState("");
+  const [holder, setHolder] = React.useState("");
+  const [account, setAccount] = React.useState("");
+  const [ifsc, setIfsc] = React.useState("");
+  // Bumping this counter reloads the list from the server after a change.
+  const [reload, setReload] = React.useState(0);
+  React.useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api<BankAccount[]>("/vendor-bank-accounts");
+        if (!cancelled) setAccounts(list);
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(message(error));
+          setAccounts([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reload]);
+
+  if (demoMode) {
+    return <Card><CardContent className="p-4 text-sm text-muted-foreground">Bank details are kept on the server in a live workspace, so the preview has none to show.</CardContent></Card>;
+  }
+  const list = accounts ?? [];
+  const pending = list.filter((a) => a.status === "pending");
+  const active = (id: string) => list.find((a) => a.vendor_id === id && a.status === "approved");
+
+  async function request() {
+    try {
+      await api("/vendor-bank-accounts", {
+        method: "POST",
+        body: JSON.stringify({ vendor_id: vendorId, vendor_name: vendors.find((v) => v.id === vendorId)?.name ?? "", holder, account, ifsc }),
+      });
+      toast.success("Bank change sent for approval. It takes effect once someone else approves it.");
+      setHolder(""); setAccount(""); setIfsc("");
+      setReload((n) => n + 1);
+    } catch (error) {
+      toast.error(message(error));
+    }
+  }
+
+  async function decide(id: string, action: "approve" | "reject") {
+    try {
+      await api(`/vendor-bank-accounts/${id}/${action}`, {
+        method: "POST",
+        body: action === "reject" ? JSON.stringify({ reason: "Rejected from the vendors screen" }) : undefined,
+      });
+      toast.success(action === "approve" ? "Bank details updated" : "Bank change rejected");
+      setReload((n) => n + 1);
+    } catch (error) {
+      toast.error(message(error));
+    }
+  }
+
+  return (
+    <>
       <Card>
-        <CardHeader><CardTitle className="text-base">Change a vendor&apos;s bank details</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Vendor bank details</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">Bank details are where payments go, so a change needs approval by someone other than the person who asked. Only the last four digits of the account are shown.</p>
+          <p className="text-xs text-muted-foreground">Bank details decide where payments go. A change needs approval by someone other than the person who asked, and only the last four digits are ever shown.</p>
           <div className="grid gap-3 sm:grid-cols-5">
-            <select aria-label="Vendor for bank change" className={selectClass} value={bankVendor} onChange={(e) => setBankVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+            <select aria-label="Vendor for bank change" className={selectClass} value={vendorId} onChange={(e) => setVendorId(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
             <Input aria-label="Account holder" placeholder="Account holder" value={holder} onChange={(e) => setHolder(e.target.value)} />
             <Input aria-label="Account number" placeholder="Account number" value={account} onChange={(e) => setAccount(e.target.value)} />
             <Input aria-label="IFSC" placeholder="IFSC" value={ifsc} onChange={(e) => setIfsc(e.target.value)} />
-            <Button disabled={!bankVendor || !holder || !account || !ifsc} onClick={requestBank}>Request change</Button>
+            <Button disabled={!vendorId || !holder || !account || !ifsc} onClick={request}>Request change</Button>
+          </div>
+          <div className="grid gap-2 text-sm">
+            {vendors.map((v) => {
+              const bank = active(v.id);
+              return <p key={v.id}><span className="font-medium">{v.name}</span> · <span className="text-muted-foreground">{bank ? `${bank.masked_account} · IFSC ${bank.ifsc} · approved by ${bank.approved_by ?? "—"}` : "no approved bank details"}</span></p>;
+            })}
           </div>
         </CardContent>
       </Card>
@@ -582,8 +656,11 @@ function VendorsView() {
           {pending.length === 0 ? <p className="text-muted-foreground">No bank change is waiting.</p> : null}
           {pending.map((c) => (
             <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
-              <span>{c.vendorName} · account ••••{c.account.slice(-4)} · IFSC {c.ifsc}<span className="block text-xs text-muted-foreground">Requested by {c.requestedBy} on {c.date}</span></span>
-              <Button size="sm" variant="secondary" disabled={c.requestedBy === me} onClick={() => { const problem = approveBankChange(c.id, me); if (problem) toast.error(problem); else toast.success("Bank details updated"); }}>{c.requestedBy === me ? "Waiting for someone else" : "Approve"}</Button>
+              <span>{c.vendor_name} · {c.masked_account} · IFSC {c.ifsc}<span className="block text-xs text-muted-foreground">Requested by {c.requested_by}</span></span>
+              <span className="flex gap-1">
+                <Button size="sm" variant="secondary" disabled={c.requested_by === me} onClick={() => decide(c.id, "approve")}>{c.requested_by === me ? "Waiting for someone else" : "Approve"}</Button>
+                <Button size="sm" variant="ghost" disabled={c.requested_by === me} onClick={() => decide(c.id, "reject")}>Reject</Button>
+              </span>
             </div>
           ))}
         </CardContent>

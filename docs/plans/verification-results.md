@@ -49,3 +49,12 @@ Run against the backend (uvicorn on the test database) and the app in real mode 
 - **Permissions:** the server now gates each store on the permission its screen checks. Managers can write operations and projects, and cannot write finance (backend test).
 - **CRM activity:** the CRM records store, which holds activities, is now synced with the same versioned saves.
 - **Not built:** a bank payment vault. Full account numbers are never stored, so making payments needs a secure backend vault first.
+
+## Fourth round: bank payment vault
+
+- **Encrypted at rest:** the full account number is stored with the backend's cipher (`JANUS_ENCRYPTION_KEY`). The stored value starts with the Fernet prefix and does not contain the digits (backend test).
+- **Never returned:** the API returns only "••••9012" and the IFSC. The browser page, its storage, and the API response were all checked: the full number appears in none of them.
+- **Separation of duties:** the requester cannot approve their own change (403, backend test). The Vendors screen disables the requester's Approve button ("Waiting for someone else").
+- **Audit:** request, approval and rejection each write an audit entry (backend test).
+- **Permission:** only members with billing permission can request, approve or reject. An agent is refused (backend test).
+- **Browser:** a request for Vault Vendor appeared as "••••9012, requested by Vault Owner" after the bridge allowlist was fixed (the first attempt returned 404 because the route was not allowed).

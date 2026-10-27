@@ -108,3 +108,16 @@ Per plan §5 step 6, the backend follows the accepted screens. Nothing in this l
 - No record from one company is visible in another.
 - `npx tsc --noEmit` and `npx eslint` are clean.
 - One PR per group, stacked on the previous one, as before.
+
+## 5. Decisions taken by default (no owner answer yet)
+
+These are the defaults the code now follows. Each can be changed later.
+
+| # | Decision | Default taken | Basis |
+|---|---|---|---|
+| 4.2 | Role names | The names in plan §8.6 as implemented (`budget:approve`, `invoice:create`, `stock:adjust`, `project:accept`, `projects:manage`), with managers holding the stock and project permissions | Matches the screens; least privilege for finance actions |
+| 4.3 | Phase 4 scope | Closed at the work inbox, activity feed, audit timestamps and CRM activity sync. Nothing further until the owner asks | Scope control |
+| 4.1 | Notifications | Parked. WhatsApp reminders exist in the backend, but customer reminders are not switched on | Needs an owner decision before messages go to customers |
+| 4.4 | Health score rules | Start at 100; minus 10 per open ticket, 20 per escalation, 10 per SLA breach, 20 per overdue invoice, 10 if the contract ends within 60 days | Simple, explainable rules |
+| 4.6 | Balance sheet opening balances | Share capital entered by the owner; no other opening balances; any gap shown as a difference | Schedule III layout, no invented figures |
+| 4.5 | Logistics timing | Delivery proof and status are built; route planning is not | Built what the screens need now |
