@@ -29,6 +29,7 @@ export const SYNCED_STORES = new Set([
   "janus.renewals.v1",
   "janus.feedback.v1",
   "janus.record-documents.v1",
+  "janus.crm-records.v1",
 ]);
 
 const DEBOUNCE_MS = 400;
@@ -78,7 +79,7 @@ async function send(name: string, value: string): Promise<boolean> {
   } catch (error) {
     if (error instanceof APIError && error.code === "version_conflict") {
       setDirty(name, true);
-      toast.warning(`${name} was changed somewhere else. Your edits here are kept until you choose.`, {
+      toast.warning("Someone else saved changes to this workspace on another device. Your edits here are kept until you choose.", {
         duration: Infinity,
         action: {
           label: "Load the latest",

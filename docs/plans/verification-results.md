@@ -39,3 +39,13 @@ Run in the preview, mostly as the owner, with Arjun Mehta for second-approver st
 - **Reorder requisition:** now targets the location holding the least of the item.
 - **Bank details:** only the last four digits are stored in the browser; existing full numbers are removed by a storage migration.
 - **Store sync:** the backend store (workspace_state) passes 5 new tests and the full backend suite (101 tests) passes. The browser is not yet syncing to it end to end: the preview uses demo accounts, which have no backend session. See the report for what remains.
+
+## Third round: backend sync, verified end to end
+
+Run against the backend (uvicorn on the test database) and the app in real mode (not the demo preview).
+
+- **Save and reload:** a vendor added in the browser was saved to the server (version 1). With the browser's local copy cleared, reloading showed the vendor, so the server is the source.
+- **Stale save refused:** another device saved version 2 with its own vendor. A stale save from this browser was refused, the warning appeared with "Load the latest", and the server kept version 2 without the stale edit.
+- **Permissions:** the server now gates each store on the permission its screen checks. Managers can write operations and projects, and cannot write finance (backend test).
+- **CRM activity:** the CRM records store, which holds activities, is now synced with the same versioned saves.
+- **Not built:** a bank payment vault. Full account numbers are never stored, so making payments needs a secure backend vault first.

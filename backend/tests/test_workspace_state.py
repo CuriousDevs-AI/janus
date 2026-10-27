@@ -90,3 +90,23 @@ async def test_member_without_the_module_permission_cannot_write(
         json={"data": {"x": 1}, "expected_version": 0},
     )
     assert write.status_code == 403
+
+
+async def test_manager_can_run_stock_and_projects_but_not_finance(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    manager = await accept_new(
+        client, await invite(client, mailbox, owner, "manager@example.com", role="manager")
+    )
+    for key, expected in [
+        ("janus.operations.v1", 200),
+        ("janus.projects.v1", 200),
+        ("janus.finance.v1", 403),
+    ]:
+        response = await client.put(
+            f"/v1/workspace-state/{key}",
+            headers=manager,
+            json={"data": {"ok": True}, "expected_version": 0},
+        )
+        assert response.status_code == expected, (key, response.text)

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { scoped } from "@/lib/company";
 import type {
   Lead,
@@ -628,7 +629,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
 }), {
   // Tickets, approvals, notifications and the rest survive a reload, like leads and HR records do.
-  name: scoped("janus.crm-records.v1"), version: 1, storage: createJSONStorage(() => localStorage),
+  name: scoped("janus.crm-records.v1"), version: 1, storage: createJSONStorage(() => workspaceStorage),
   partialize: (state) => ({ leads: state.leads, deals: state.deals, tickets: state.tickets, approvals: state.approvals, automations: state.automations, notifications: state.notifications, conversations: state.conversations, messages: state.messages, activities: state.activities, agents: state.agents, knowledgeDocuments: state.knowledgeDocuments, customers: state.customers, companies: state.companies }),
 }));
 

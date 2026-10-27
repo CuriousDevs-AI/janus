@@ -19,17 +19,19 @@ router = APIRouter(prefix="/v1", tags=["Workspace state"])
 
 # Store keys the operational workspaces may save, each with the permission a write needs.
 STORE_PERMISSIONS: dict[str, str] = {
+    # Each permission is the one the owning screen checks, so the server agrees with the screen.
     "janus.finance.v1": "billing:manage",
-    "janus.vendors.v1": "billing:manage",
     "janus.period-lock.v1": "billing:manage",
-    "janus.workflow-rules.v1": "settings:manage",
-    "janus.operations.v1": "settings:manage",
+    "janus.vendors.v1": "stock:adjust",
+    "janus.operations.v1": "stock:adjust",
+    "janus.projects.v1": "projects:manage",
+    "janus.renewals.v1": "leads:read_team",
+    "janus.feedback.v1": "leads:read_team",
     "janus.locations.v1": "settings:manage",
-    "janus.projects.v1": "settings:manage",
+    "janus.workflow-rules.v1": "settings:manage",
     "janus.it.v1": "settings:manage",
-    "janus.renewals.v1": "settings:manage",
-    "janus.feedback.v1": "settings:manage",
     "janus.record-documents.v1": "settings:manage",
+    "janus.crm-records.v1": "leads:write",
 }
 MAX_DOCUMENT_BYTES = 4_000_000
 
