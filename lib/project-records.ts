@@ -79,3 +79,32 @@ export async function mirrorNewProject(
   });
   return ownerUserId ? { [ownerName.trim()]: ownerUserId } : {};
 }
+
+/**
+ * Brings the core fields of projects that exist on the server into the screen data: name, client, status,
+ * budget and dates. Projects only on the screens are left as they are. Milestones, tasks and the budget line
+ * stay where they are until those move to the server too.
+ */
+export async function refreshProjectRecords(): Promise<void> {
+  if (demoMode) return;
+  const records = await api<
+    { external_key: string; name: string; client: string; status: string; budget: string; start_on: string; end_on: string }[]
+  >("/project-records");
+  const { useProjectsStore } = await import("@/lib/stores/projects-store");
+  const byKey = new Map(records.map((r) => [r.external_key, r]));
+  useProjectsStore.setState((state) => ({
+    projects: state.projects.map((p) => {
+      const r = byKey.get(p.id);
+      if (!r) return p;
+      return {
+        ...p,
+        name: r.name,
+        client: r.client,
+        status: r.status as typeof p.status,
+        budget: Number(r.budget),
+        start: r.start_on,
+        end: r.end_on,
+      };
+    }),
+  }));
+}

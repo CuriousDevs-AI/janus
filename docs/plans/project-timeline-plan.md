@@ -179,3 +179,8 @@ Not built yet, in plan order:
 - The new-project form offers the company directory as the owner list in real mode, so the owner is chosen by account, not typed. The chosen account ID is stored on the server record and on the screen data.
 - Verified in the browser: a project created with "Picked Person" as owner was stored with that person's account ID.
 - Not done: task assignees and allocations still take names when they are set, and the typed fallback remains for demo mode.
+
+**Twelfth pass: the Projects screen reads core fields from the server (point 1, done for core fields):**
+- On opening the Projects screen in real mode, each project that exists on the server has its name, client, status, budget and dates updated from the server.
+- Verified in the browser: a project was marked done on the server, outside the screen; after a reload, the screen showed it as done and closed.
+- Limits: projects that exist only on the screens still come from the browser copy, and milestones, tasks and the budget line still live in the browser until they move to the server.

@@ -20,7 +20,7 @@ import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
 import { projectPersonRefs } from "@/lib/timeline-team";
-import { mirrorNewProject, setProjectRecordStatus } from "@/lib/project-records";
+import { mirrorNewProject, refreshProjectRecords, setProjectRecordStatus } from "@/lib/project-records";
 import { message } from "@/lib/api/client";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -324,6 +324,13 @@ function ProjectsView({ me }: { me: string }) {
   const closeProject = useProjectsStore((state) => state.closeProject);
   const lines = useFinanceStore((state) => state.budgetLines);
   const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, ownerId: "", start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  // The server's copy of each project's core fields is loaded when the screen opens (real mode only).
+  React.useEffect(() => {
+    if (demoMode) return;
+    refreshProjectRecords().catch(() => {
+      /* the screen keeps its own copy if the server cannot be reached */
+    });
+  }, []);
   // The company directory, for choosing an owner by account (real mode only).
   const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
   React.useEffect(() => {
