@@ -13,6 +13,8 @@ import { getWorkspaceDefinition, isWorkspaceId } from "@/lib/workspace-config";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { useSession } from "@/components/auth/session-provider";
 import { HrPeopleWorkspace } from "@/components/hr-people/workspace";
+import { FinanceWorkspace } from "@/components/finance/finance-workspace";
+import { OperationsWorkspace } from "@/components/operations/operations-workspace";
 
 const workspacePermissions: Record<string, string> = {
   "hr-people": "hr:self",
@@ -56,6 +58,14 @@ function WorkspacePageInner({
 
   if (routeWorkspaceId === "hr-people") {
     return <HrPeopleWorkspace />;
+  }
+
+  if (routeWorkspaceId === "finance-accounting") {
+    return <FinanceWorkspace />;
+  }
+
+  if (routeWorkspaceId === "operations-inventory") {
+    return <OperationsWorkspace />;
   }
 
   const selectedWorkspace = getWorkspaceDefinition(routeWorkspaceId);

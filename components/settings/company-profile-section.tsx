@@ -15,8 +15,9 @@ import { SectionCard, FieldRow } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { useSession } from "@/components/auth/session-provider";
+import { useLocationsStore, type CompanyLocation } from "@/lib/stores/company-locations-store";
 
-type Location = { id: number; name: string; kind: string; address: string; people: number; gst: string };
+type Location = CompanyLocation;
 type CompanyProfile = {
   displayName: string; legalName: string; industry: string; size: string; founded: string; website: string;
   description: string; email: string; phone: string; whatsapp: string; address1: string; address2: string;
@@ -32,7 +33,6 @@ const initialProfile: CompanyProfile = {
   address1: profile.address1, address2: profile.address2, city: profile.city, state: profile.state, pin: profile.pin, billingSame: true,
 };
 
-const initialLocations: Location[] = profile.locations.map((item, index) => ({ ...item, people: index === 0 ? 0 : 0 }));
 
 export function CompanyProfileSection() {
   const session = useSession();
@@ -57,7 +57,8 @@ export function CompanyProfileSection() {
   const initial = demoMode ? initialProfile : connectedProfile;
   const [draft, setDraft] = React.useState(initial);
   const [saved, setSaved] = React.useState(initial);
-  const [locations, setLocations] = React.useState<Location[]>(() => demoMode ? initialLocations.map((place) => ({ ...place, people: useHrPeopleStore.getState().employees.filter((person) => person.status !== "archived" && place.address.includes(person.branch)).length })) : []);
+  const locations = useLocationsStore((state) => state.locations);
+  const saveLocationToStore = useLocationsStore((state) => state.saveLocation);
   const [logo, setLogo] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState(false);
   const [locationOpen, setLocationOpen] = React.useState(false);
@@ -95,7 +96,7 @@ export function CompanyProfileSection() {
   }
   function openLocation(location?: Location) { setEditingLocation(location ?? null); setLocationOpen(true); }
   function saveLocation(value: Location) {
-    setLocations((current) => current.some((item) => item.id === value.id) ? current.map((item) => item.id === value.id ? value : item) : [...current, value]);
+    saveLocationToStore(value);
     setLocationOpen(false);
     toast.success(value.id ? "Location updated" : "Location added");
   }
