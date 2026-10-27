@@ -10,6 +10,8 @@ import { api, APIError, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { hasPermission } from "@/lib/demo-persona";
 import { useProjectsStore } from "@/lib/stores/projects-store";
+import { syncProjectTimeline, describeUnmatched } from "@/lib/timeline-sync";
+import { type DirectoryPerson, projectPeople } from "@/lib/timeline-team";
 
 /**
  * A project's timeline: the shared conversation and the record of what happened, on the server.
@@ -28,6 +30,11 @@ export function TimelineView() {
   const me = session.user.name ?? session.user.email ?? "You";
   const canManage = hasPermission(session.permissions, "projects:manage");
   const projects = useProjectsStore((state) => state.projects);
+  const tasks = useProjectsStore((state) => state.tasks);
+  const allocations = useProjectsStore((state) => state.allocations);
+  const [members, setMembers] = React.useState<{ user_id: string; name: string }[]>([]);
+  const [directory, setDirectory] = React.useState<DirectoryPerson[]>([]);
+  const [addId, setAddId] = React.useState("");
   const [projectId, setProjectId] = React.useState("");
   const selected = projects.find((p) => p.id === projectId) ?? projects[0];
   const key = selected?.id ?? "";
@@ -83,6 +90,62 @@ export function TimelineView() {
       window.clearInterval(timer);
     };
   }, [key, timeline]);
+
+  // The team on this timeline, and (for managers) the company directory to add people from.
+  React.useEffect(() => {
+    if (demoMode || !key || !timeline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api<{ user_id: string; name: string }[]>(`/project-timelines/${encodeURIComponent(key)}/members`);
+        if (!cancelled) setMembers(list);
+        if (canManage) {
+          const people = await api<DirectoryPerson[]>("/project-timelines/directory");
+          if (!cancelled) setDirectory(people);
+        }
+      } catch {
+        /* the team panel shows what it has; the next change reloads it */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [key, timeline, canManage, reload]);
+
+  async function addPerson() {
+    if (!addId || !key) return;
+    try {
+      await api(`/project-timelines/${encodeURIComponent(key)}/members`, { method: "POST", body: JSON.stringify({ user_id: addId }) });
+      toast.success("Added to the project timeline");
+      setAddId("");
+      setReload((n) => n + 1);
+    } catch (error) {
+      toast.error(message(error));
+    }
+  }
+
+  async function removePerson(userId: string) {
+    try {
+      await api(`/project-timelines/${encodeURIComponent(key)}/members/${userId}`, { method: "DELETE" });
+      setReload((n) => n + 1);
+    } catch (error) {
+      toast.error(message(error));
+    }
+  }
+
+  async function syncTeam() {
+    if (!selected) return;
+    try {
+      const result = await syncProjectTimeline(selected, projectPeople(selected, tasks, allocations, selected.id));
+      if (result) {
+        toast.success(result.added > 0 ? `Added ${result.added} from the project team` : "The team is already up to date");
+        if (result.unmatched.length > 0) toast.warning(`Could not match: ${describeUnmatched(result.unmatched)}`);
+      }
+      setReload((n) => n + 1);
+    } catch (error) {
+      toast.error(message(error));
+    }
+  }
 
   async function start() {
     if (!selected) return;
@@ -189,6 +252,31 @@ export function TimelineView() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      ) : null}
+      {timeline ? (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Team on this timeline</CardTitle></CardHeader>
+          <CardContent className="grid gap-3 text-sm">
+            <ul className="grid gap-1">
+              {members.map((m) => (
+                <li key={m.user_id} className="flex items-center justify-between gap-2">
+                  <span>{m.name}</span>
+                  {canManage ? <Button size="sm" variant="ghost" onClick={() => removePerson(m.user_id)}>Remove</Button> : null}
+                </li>
+              ))}
+            </ul>
+            {canManage ? (
+              <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
+                <select aria-label="Person to add" className="h-9 rounded-md border border-input bg-surface px-3 text-sm" value={addId} onChange={(e) => setAddId(e.target.value)}>
+                  <option value="">Add a person…</option>
+                  {directory.filter((p) => !members.some((m) => m.user_id === p.user_id)).map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
+                </select>
+                <Button size="sm" disabled={!addId} onClick={addPerson}>Add</Button>
+                <Button size="sm" variant="secondary" onClick={syncTeam}>Sync team from project</Button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}

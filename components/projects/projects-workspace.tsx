@@ -16,6 +16,9 @@ import { DEFAULT_HOURLY_COST, PROJECT_TYPES, TODAY, addDays, projectHealth, proj
 import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
+import { describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
+import { projectPeople } from "@/lib/timeline-team";
+import { message } from "@/lib/api/client";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -326,6 +329,15 @@ function ProjectsView({ me }: { me: string }) {
     if (problem) return toast.error(problem);
     toast.success("Project created; its budget is drawn from the fund line");
     setForm({ ...form, name: "", client: "", customerId: "", budget: "" });
+    // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
+    const created = useProjectsStore.getState().projects.at(-1);
+    if (created) {
+      syncProjectTimeline(created, projectPeople(created, [], [], created.id))
+        .then((result) => {
+          if (result && result.unmatched.length > 0) toast.warning(`Timeline created. Could not match: ${describeUnmatched(result.unmatched)}. Fix the names, then sync the team.`);
+        })
+        .catch((error: unknown) => toast.error(`Timeline not created: ${message(error)}`));
+    }
   }
 
   return (
