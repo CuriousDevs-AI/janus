@@ -35,7 +35,7 @@ export function OperationsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions" };
+  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions", counts: "Physical count" };
 
   if (view in comingSoon) {
     return (
@@ -57,10 +57,76 @@ export function OperationsWorkspace() {
         {view === "purchase-orders" && <PurchaseOrdersView me={me} />}
         {view === "vendors" && <VendorsView />}
         {view === "procurement" && <RequisitionsView me={me} />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement"].includes(view) && <OverviewView />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement"].includes(view) && <OperationsTrail />}
+        {view === "counts" && <PhysicalCountView me={me} />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts"].includes(view) && <OperationsTrail />}
       </div>
     </div>
+  );
+}
+
+/** Physical count: count the items at one location and record the differences against the system. */
+function PhysicalCountView({ me }: { me: string }) {
+  const items = useOperationsStore((state) => state.items);
+  const movements = useOperationsStore((state) => state.movements);
+  const counts = useOperationsStore((state) => state.counts);
+  const recordCount = useOperationsStore((state) => state.recordCount);
+  const locations = useLocationsStore((state) => state.locations);
+  const [locationId, setLocationId] = React.useState("");
+  const [entries, setEntries] = React.useState<Record<string, string>>({});
+  const countable = items.filter((i) => !i.trackBatch);
+
+  function submit() {
+    const rows = countable.filter((i) => entries[i.id] !== undefined && entries[i.id] !== "").map((i) => ({ itemId: i.id, counted: Number(entries[i.id]) }));
+    const problem = recordCount(Number(locationId), rows, me);
+    if (problem) return toast.error(problem);
+    toast.success("Count recorded; any differences went to adjustment approval");
+    setEntries({});
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Count a location</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Enter what you counted for each item; leave an item blank if you did not count it. A difference becomes a stock adjustment, and one above ₹10,000 needs approval from someone else. Batch-tracked items are counted batch by batch.</p>
+          <select aria-label="Count location" className={selectClass} value={locationId} onChange={(e) => { setLocationId(e.target.value); setEntries({}); }}><option value="">Location…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+          {locationId !== "" ? (
+            <>
+              <table className="w-full text-sm tabular-nums">
+                <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">Item</th><th className="text-right">System</th><th className="text-right">Counted</th><th className="text-right">Difference</th></tr></thead>
+                <tbody>
+                  {countable.map((item) => {
+                    const system = stockOn(movements, item.id, Number(locationId));
+                    const counted = entries[item.id];
+                    const diff = counted === undefined || counted === "" ? null : Number(counted) - system;
+                    return (
+                      <tr key={item.id} className="border-b border-border last:border-0">
+                        <td className="py-2">{item.name}<span className="block text-xs text-muted-foreground">{item.unit}</span></td>
+                        <td className="text-right">{system}</td>
+                        <td className="text-right"><Input aria-label={`Counted ${item.name}`} type="number" min={0} className="ml-auto h-8 w-24" value={counted ?? ""} onChange={(e) => setEntries((current) => ({ ...current, [item.id]: e.target.value }))} /></td>
+                        <td className={`text-right ${diff !== null && diff !== 0 ? "text-danger" : ""}`}>{diff === null ? "—" : diff > 0 ? `+${diff}` : diff}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <Button className="w-fit" onClick={submit}>Record count</Button>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Past counts</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm">
+          {counts.length === 0 ? <p className="text-muted-foreground">No counts yet.</p> : null}
+          {counts.map((c) => {
+            const diffs = c.lines.filter((l) => l.variance !== 0).length;
+            return <p key={c.id}><span className="font-medium">{c.number}</span> · {locations.find((l) => l.id === c.locationId)?.name ?? "location"} · {c.date} · {c.lines.length} counted · {diffs} difference{diffs === 1 ? "" : "s"} · by {c.by}</p>;
+          })}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

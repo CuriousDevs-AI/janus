@@ -30,6 +30,8 @@ export interface PoLine { itemId: string; qty: number; rate: number; received: n
 export interface PurchaseOrder { id: string; number: string; vendor: string; date: string; locationId: number; lines: PoLine[]; createdBy: string }
 /** A request to buy an item. Another person approves it; once approved it is turned into a purchase order. */
 export interface Requisition { id: string; number: string; requester: string; itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string; status: "pending" | "approved" | "rejected" | "ordered"; decidedBy?: string; rejectedReason?: string; poNumber?: string; raisedOn: string }
+/** A physical count of one location: what the system said, what was counted, and the difference. */
+export interface StockCount { id: string; number: string; date: string; locationId: number; lines: { itemId: string; system: number; counted: number; variance: number }[]; by: string }
 export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
@@ -40,6 +42,7 @@ interface OperationsState {
   adjustments: Adjustment[];
   purchaseOrders: PurchaseOrder[];
   requisitions: Requisition[];
+  counts: StockCount[];
   trail: TrailEntry[];
   addItem: (input: Omit<Item, "id">) => string | null;
   receive: (input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string }, by: string) => string | null;
@@ -53,12 +56,13 @@ interface OperationsState {
   markDelivered: (id: string, proof: string, by: string) => string | null;
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
+  recordCount: (locationId: number, counts: { itemId: string; counted: number }[], by: string) => string | null;
   approveAdjustment: (id: string, by: string) => string | null;
   rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
 
-const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions"> => {
-  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [] };
+const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts"> => {
+  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [] };
   const items: Item[] = [
     { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
     { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
@@ -79,7 +83,7 @@ const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "disp
   const purchaseOrders: PurchaseOrder[] = [
     { id: "po-1", number: "PO-2026-0101", vendor: "Gurugram Packaging Co", date: "2026-10-15", locationId: 2, lines: [{ itemId: "itm-1", qty: 1000, rate: 45, received: 0 }], createdBy: "Neha Verma" },
   ];
-  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [] };
+  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [], counts: [] };
 };
 
 /** Stock on hand for an item at a location (and batch, when the item tracks batches). */
@@ -293,6 +297,28 @@ export const useOperationsStore = create<OperationsState>()(
         }
         return null;
       },
+      recordCount: (locationId, counts, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
+        if (counts.length === 0) return "Count at least one item.";
+        const number = nextNumber("CNT", get().counts.length);
+        const lines: StockCount["lines"] = [];
+        for (const row of counts) {
+          const item = get().items.find((i) => i.id === row.itemId);
+          if (!item) return "An item in the count was not found.";
+          if (item.trackBatch) return `${item.name} is batch tracked. Count it batch by batch.`;
+          if (!(row.counted >= 0)) return `The count for ${item.name} cannot be negative.`;
+          const system = stockOn(get().movements, item.id, locationId);
+          lines.push({ itemId: item.id, system, counted: row.counted, variance: row.counted - system });
+        }
+        set((state) => ({ counts: [{ id: `cnt-${Date.now()}`, number, date: TODAY, locationId, lines, by }, ...state.counts] }));
+        for (const line of lines.filter((l) => l.variance !== 0)) {
+          const problem = get().requestAdjustment({ itemId: line.itemId, locationId, batchNo: null, qty: line.variance, reason: `Physical count ${number}` }, by);
+          if (problem) return `Count recorded, but the adjustment for one item was refused: ${problem}`;
+        }
+        set((state) => ({ trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Counted ${number}: ${lines.filter((l) => l.variance !== 0).length} difference${lines.filter((l) => l.variance !== 0).length === 1 ? "" : "s"}`)) }));
+        return null;
+      },
       requestAdjustment: (input, by) => {
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
@@ -340,6 +366,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, trail: state.trail }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, trail: state.trail }) },
   ),
 );
