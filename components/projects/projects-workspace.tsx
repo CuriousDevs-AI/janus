@@ -20,7 +20,6 @@ const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFr
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
 const comingSoon: Record<string, string> = {
-  calendar: "The project calendar comes in phase 2, with meetings.",
 };
 
 export function ProjectsWorkspace() {
@@ -28,7 +27,7 @@ export function ProjectsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
+  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", calendar: "Project calendar", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
 
   if (view in comingSoon) {
     return (
@@ -50,9 +49,10 @@ export function ProjectsWorkspace() {
         {view === "timesheets" && <TimesheetsView me={me} />}
         {view === "resources" && <ResourcesView />}
         {view === "reports" && <ProfitabilityView />}
+        {view === "calendar" && <CalendarView />}
         {view === "client-delivery" && <ClientView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports"].includes(view) && <OverviewView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports"].includes(view) && <ProjectsTrail />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <OverviewView />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <ProjectsTrail />}
       </div>
     </div>
   );
@@ -235,6 +235,42 @@ function ProfitabilityView() {
           </table>
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+/** Dated work over the next eight weeks: milestones due, tasks due, and project end dates, grouped by the week they fall in. */
+function CalendarView() {
+  const projects = useProjectsStore((state) => state.projects);
+  const milestones = useProjectsStore((state) => state.milestones);
+  const tasks = useProjectsStore((state) => state.tasks);
+  const start = addDays(TODAY, -((new Date(Date.parse(TODAY)).getUTCDay() + 6) % 7));
+  const weeks = Array.from({ length: 8 }, (_, i) => addDays(start, i * 7));
+  type Entry = { date: string; label: string; kind: "milestone" | "task" | "project end" };
+  const entries: Entry[] = [
+    ...milestones.filter((m) => m.status !== "accepted").map((m) => ({ date: m.due, label: `${m.name} · ${projects.find((p) => p.id === m.projectId)?.name ?? "project"}`, kind: "milestone" as const })),
+    ...tasks.filter((t) => t.status !== "done").map((t) => ({ date: t.due, label: `${t.title} · ${t.assignee}`, kind: "task" as const })),
+    ...projects.filter((p) => p.status !== "done").map((p) => ({ date: p.end, label: p.name, kind: "project end" as const })),
+  ];
+
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">Open milestones, open tasks and project end dates for the next eight weeks, from the Monday of this week. Overdue items are listed in the first week.</p>
+      {weeks.map((weekStart, index) => {
+        const weekEnd = addDays(weekStart, 6);
+        const inWeek = entries.filter((e) => (index === 0 ? e.date <= weekEnd : e.date >= weekStart && e.date <= weekEnd)).sort((a, b) => a.date.localeCompare(b.date));
+        return (
+          <Card key={weekStart}>
+            <CardHeader><CardTitle className="text-base">Week of {weekStart}{index === 0 ? " (including overdue)" : ""}</CardTitle></CardHeader>
+            <CardContent className="grid gap-1 text-sm">
+              {inWeek.length === 0 ? <p className="text-muted-foreground">Nothing due.</p> : null}
+              {inWeek.map((e, i) => (
+                <p key={`${e.kind}-${i}-${e.label}`}><span className="text-muted-foreground">{e.date} · {e.kind} · </span>{e.label}{e.date < TODAY ? " · overdue" : ""}</p>
+              ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </>
   );
 }
