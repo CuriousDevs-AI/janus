@@ -210,6 +210,8 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Bills & Payables", href: "/workspace/finance-accounting?view=payables", icon: FileText },
       { label: "Budgets", href: "/workspace/finance-accounting?view=budgets", icon: Gauge },
       { label: "Cash Flow", href: "/workspace/finance-accounting?view=cash-flow", icon: BarChart3 },
+      { label: "Bank Reconciliation", href: "/workspace/finance-accounting?view=reconciliation", icon: Handshake },
+      { label: "Month-End Close", href: "/workspace/finance-accounting?view=month-end", icon: ShieldCheck },
       { label: "Profit & Loss", href: "/workspace/finance-accounting?view=profit-loss", icon: FileText },
       { label: "Financial Reports", href: "/workspace/finance-accounting?view=reports", icon: BarChart3 },
       { label: "Finance AI Chat", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
