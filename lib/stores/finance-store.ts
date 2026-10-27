@@ -23,7 +23,7 @@ export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
   sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
 }
-export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved"; createdBy: string; approvedBy?: string; date: string; ticketId?: string }
+export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string }
 export interface BudgetLine { id: string; name: string; owner: string; allocated: number; drawn: number }
 export interface FundRequest {
   id: string; number: string; purpose: string; amount: number; lineId: string; requestedBy: string; date: string;
@@ -60,6 +60,7 @@ interface FinanceState {
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
+  rejectCreditNote: (id: string, reason: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
   approveFundRequest: (id: string, step: "owner" | "finance", by: string) => string | null;
   rejectFundRequest: (id: string, reason: string, by: string) => void;
@@ -141,6 +142,18 @@ export const useFinanceStore = create<FinanceState>()(
         }));
         return null;
       },
+      rejectCreditNote: (id, reason, by) => {
+        const note = get().creditNotes.find((item) => item.id === id);
+        if (!note) return "Credit note not found.";
+        if (note.status !== "pending") return "Only a pending credit note can be rejected.";
+        if (note.createdBy === by) return "The person who created a credit note cannot reject it.";
+        if (reason.trim().length < 3) return "Give the reason for rejecting it.";
+        set((state) => ({
+          creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason.trim() } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Rejected credit note ${note.number}: ${reason.trim()}`)),
+        }));
+        return null;
+      },
       addFundRequest: (input, by) => {
         const number = nextNumber("FR", get().fundRequests.length);
         set((state) => ({
@@ -210,7 +223,7 @@ function allocate(lineId: string, amount: number) {
 
 /** Credit notes reduce what the customer owes. Pending notes are counted only when `ignorePending` is false. */
 export function creditedAmount(invoiceId: string, notes: CreditNote[], includePending: boolean) {
-  return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || includePending)).reduce((sum, note) => sum + note.amount, 0);
+  return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || (includePending && note.status === "pending"))).reduce((sum, note) => sum + note.amount, 0);
 }
 
 export function dueAmount(invoice: Invoice, notes: CreditNote[], options: { ignorePending?: boolean } = {}) {

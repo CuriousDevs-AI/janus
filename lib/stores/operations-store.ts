@@ -25,7 +25,7 @@ export interface Dispatch {
   id: string; number: string; challanNo: string; date: string; customer: string; customerCompany: string; locationId: number;
   lines: DispatchLine[]; status: "dispatched" | "delivered"; proof?: string; createdBy: string; deliveredBy?: string; dealId?: string;
 }
-export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied"; by: string; approvedBy?: string; value: number }
+export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
   items: Item[];
@@ -41,6 +41,7 @@ interface OperationsState {
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
   approveAdjustment: (id: string, by: string) => string | null;
+  rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
 
 const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments"> => {
@@ -193,6 +194,18 @@ export const useOperationsStore = create<OperationsState>()(
           adjustments: [adjustment, ...state.adjustments],
           movements: needsApproval ? state.movements : [{ id: `mv-${Date.now()}`, date: TODAY, type: "adjustment", itemId: item.id, locationId: input.locationId, batchNo: input.batchNo, qty: input.qty, reason: input.reason.trim(), by }, ...state.movements],
           trail: withTrail(state.trail, trailEntry("operations", TODAY, by, needsApproval ? `Requested adjustment ${change} (₹${value.toLocaleString("en-IN")}), waiting approval` : `Adjusted ${change}`)),
+        }));
+        return null;
+      },
+      rejectAdjustment: (id, reason, by) => {
+        const adjustment = get().adjustments.find((a) => a.id === id);
+        if (!adjustment) return "Adjustment not found.";
+        if (adjustment.status !== "pending") return "Only a pending adjustment can be rejected.";
+        if (adjustment.by === by) return "The person who requested an adjustment cannot reject it.";
+        if (reason.trim().length < 3) return "Give the reason for rejecting it.";
+        set((state) => ({
+          adjustments: state.adjustments.map((a) => a.id === id ? { ...a, status: "rejected", rejectedBy: by } : a),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Rejected adjustment of ${adjustment.qty > 0 ? "+" : ""}${adjustment.qty}: ${reason.trim()}`)),
         }));
         return null;
       },

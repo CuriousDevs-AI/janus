@@ -37,11 +37,13 @@ export function MoneyApprovalsQueue() {
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const fundRequests = useFinanceStore((state) => state.fundRequests);
   const approveCreditNote = useFinanceStore((state) => state.decideCreditNote);
+  const rejectCreditNote = useFinanceStore((state) => state.rejectCreditNote);
   const approveFund = useFinanceStore((state) => state.approveFundRequest);
   const rejectFund = useFinanceStore((state) => state.rejectFundRequest);
   const adjustments = useOperationsStore((state) => state.adjustments);
   const items = useOperationsStore((state) => state.items);
   const approveAdjustment = useOperationsStore((state) => state.approveAdjustment);
+  const rejectAdjustment = useOperationsStore((state) => state.rejectAdjustment);
   const changes = useProjectsStore((state) => state.changes);
   const projects = useProjectsStore((state) => state.projects);
   const decideChange = useProjectsStore((state) => state.decideChange);
@@ -73,6 +75,7 @@ export function MoneyApprovalsQueue() {
         date: c.date,
         waitingFor: "Approver",
         approve: (by: string) => approveCreditNote(c.id, by),
+        reject: (by: string) => rejectCreditNote(c.id, "Rejected from the approvals queue", by),
       })),
     ...adjustments
       .filter((a) => a.status === "pending")
@@ -86,6 +89,7 @@ export function MoneyApprovalsQueue() {
         date: a.date,
         waitingFor: "Approver",
         approve: (by: string) => approveAdjustment(a.id, by),
+        reject: (by: string) => rejectAdjustment(a.id, "Rejected from the approvals queue", by),
       })),
     ...changes
       .filter((c) => c.status === "pending")

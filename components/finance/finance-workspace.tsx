@@ -336,7 +336,7 @@ function CreditNotesView({ me }: { me: string }) {
                     <td className="px-4 py-3">{original?.number ?? "—"}{linkedLabel(links.tickets, note.ticketId) ? <span className="block text-xs text-muted-foreground">{linkedLabel(links.tickets, note.ticketId)}</span> : null}</td>
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>
-                    <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : "warning"}>{note.status}</Badge></td>
+                    <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : note.status === "rejected" ? "danger" : "warning"}>{note.status}</Badge></td>
                     <td className="px-4 py-3 text-right">{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { const problem = decide(note.id, me); if (problem) toast.error(problem); else toast.success("Credit note approved"); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
                   </tr>
                 );
