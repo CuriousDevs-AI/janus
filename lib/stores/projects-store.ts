@@ -49,6 +49,8 @@ interface ProjectsState {
   setTaskStatus: (id: string, status: Task["status"]) => void;
   requestChange: (input: { projectId: string; description: string; budgetChange: number; dayChange: number }, by: string) => string | null;
   decideChange: (id: string, approve: boolean, by: string) => string | null;
+  /** Closes a project and hands back the part of its budget the logged hours did not use (plan §8.3AE). */
+  closeProject: (id: string, by: string) => string | null;
 }
 
 const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => {
@@ -200,6 +202,21 @@ export const useProjectsStore = create<ProjectsState>()(
       requestChange: (input, by) => {
         if (input.description.trim().length < 5) return "Describe the change.";
         set((state) => ({ changes: [{ id: `chg-${Date.now()}`, status: "pending", requestedBy: by, ...input, description: input.description.trim() }, ...state.changes] }));
+        return null;
+      },
+      closeProject: (id, by) => {
+        const project = get().projects.find((p) => p.id === id);
+        if (!project) return "Project not found.";
+        if (project.status === "done") return "This project is already closed.";
+        const { timesheets, rates } = get();
+        const { cost } = projectProfitability(project, get().milestones, timesheets, rates);
+        const unused = Math.max(0, Math.round((project.budget - cost) * 100) / 100);
+        const released = unused > 0 ? useFinanceStore.getState().releaseBudget(project.budgetLineId, unused, `Project: ${project.name}`, by, TODAY) : null;
+        if (released) return `Budget: ${released}`;
+        set((state) => ({
+          projects: state.projects.map((p) => p.id === id ? { ...p, status: "done" } : p),
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Closed ${project.name}; ₹${unused.toLocaleString("en-IN")} of budget released`)),
+        }));
         return null;
       },
       decideChange: (id, approve, by) => {

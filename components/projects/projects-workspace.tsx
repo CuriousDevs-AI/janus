@@ -313,6 +313,7 @@ function ProjectsView({ me }: { me: string }) {
   const milestones = useProjectsStore((state) => state.milestones);
   const tasks = useProjectsStore((state) => state.tasks);
   const addProject = useProjectsStore((state) => state.addProject);
+  const closeProject = useProjectsStore((state) => state.closeProject);
   const lines = useFinanceStore((state) => state.budgetLines);
   const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
   const links = useCrmLinkOptions();
@@ -348,7 +349,7 @@ function ProjectsView({ me }: { me: string }) {
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[760px] text-sm">
-            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Project</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Owner</th><th className="px-4 py-2">End</th><th className="px-4 py-2 text-right">Budget</th><th className="px-4 py-2">Health</th></tr></thead>
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Project</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Owner</th><th className="px-4 py-2">End</th><th className="px-4 py-2 text-right">Budget</th><th className="px-4 py-2">Health</th><th className="px-4 py-2" /></tr></thead>
             <tbody>
               {projects.length === 0 ? <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No projects yet.</td></tr> : null}
               {projects.map((p) => {
@@ -361,6 +362,7 @@ function ProjectsView({ me }: { me: string }) {
                     <td className="px-4 py-3">{p.end}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(p.budget)}</td>
                     <td className="px-4 py-3"><Badge variant={healthTone(health) as "neutral"}>{health}</Badge></td>
+                    <td className="px-4 py-3 text-right">{p.status === "done" ? <span className="text-xs text-muted-foreground">Closed</span> : <Button size="sm" variant="ghost" onClick={() => { const problem = closeProject(p.id, me); if (problem) toast.error(problem); else toast.success(`${p.name} closed; unused budget released to its fund line`); }}>Close project</Button>}</td>
                   </tr>
                 );
               })}

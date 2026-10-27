@@ -114,6 +114,8 @@ interface FinanceState {
   rejectFundRequest: (id: string, reason: string, by: string) => void;
   addBudgetLine: (input: { name: string; owner: string; allocated: number }) => void;
   drawBudget: (lineId: string, amount: number, note: string, by: string, date: string) => string | null;
+  /** Hands unused money back to a budget line, for example when a project closes under budget. */
+  releaseBudget: (lineId: string, amount: number, note: string, by: string, date: string) => string | null;
 }
 
 const today = "2026-10-23";
@@ -433,6 +435,20 @@ export const useFinanceStore = create<FinanceState>()(
           budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, drawn: item.drawn + amount } : item),
           draws: [{ id: `draw-${Date.now()}`, lineId, amount, note, by, date }, ...state.draws],
           trail: withTrail(state.trail, trailEntry("finance", date, by, `Drew ₹${amount.toLocaleString("en-IN")} from ${line.name} for ${note}`)),
+        }));
+        return null;
+      },
+      releaseBudget: (lineId, amount, note, by, date) => {
+        const locked = periodLockProblem(date);
+        if (locked) return locked;
+        const line = get().budgetLines.find((item) => item.id === lineId);
+        if (!line) return "Budget line not found.";
+        if (amount <= 0) return "Nothing to release.";
+        if (amount > line.drawn) return `Only ₹${line.drawn.toLocaleString("en-IN")} is drawn on this line.`;
+        set((state) => ({
+          budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, drawn: item.drawn - amount } : item),
+          draws: [{ id: `draw-${Date.now()}`, lineId, amount: -amount, note, by, date }, ...state.draws],
+          trail: withTrail(state.trail, trailEntry("finance", date, by, `Released ₹${amount.toLocaleString("en-IN")} to ${line.name} from ${note}`)),
         }));
         return null;
       },
