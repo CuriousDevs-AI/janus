@@ -9,6 +9,7 @@ export const hrRoleLabels: Record<HrDemoRole, string> = {
   hr_manager: "HR Manager",
   reporting_manager: "Reporting Manager",
   payroll_admin: "Finance",
+  finance_viewer: "Finance Viewer",
   employee: "Employee",
 };
 
@@ -57,6 +58,7 @@ export function demoActorId(role: HrDemoRole) {
     business_manager: "emp-003",
     reporting_manager: "emp-005",
     payroll_admin: "emp-007",
+    finance_viewer: "emp-010",
     employee: "emp-006",
   };
   return actors[role];
