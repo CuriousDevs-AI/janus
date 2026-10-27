@@ -262,6 +262,30 @@ function allocate(lineId: string, amount: number) {
 }
 
 /** Credit notes reduce what the customer owes. Pending notes are counted only when `ignorePending` is false. */
+/**
+ * Profit and loss to date (plan §8.7 V2). Sales are ex-GST. An approved credit note reduces sales by its
+ * taxable share of the invoice it refers to. Bills are costs as entered. Payroll and expense claims are
+ * not included yet.
+ */
+export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bills: Bill[]) {
+  const live = invoices.filter((invoice) => !invoice.cancelled);
+  const sales = live.reduce((sum, invoice) => sum + invoiceTotals(invoice).taxable, 0);
+  const credits = creditNotes
+    .filter((note) => note.status === "approved")
+    .reduce((sum, note) => {
+      const invoice = invoices.find((item) => item.id === note.invoiceId);
+      if (!invoice) return sum;
+      const totals = invoiceTotals(invoice);
+      const taxableShare = totals.total > 0 ? totals.taxable / totals.total : 0;
+      return sum + note.amount * taxableShare;
+    }, 0);
+  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  const netSales = round(sales - credits);
+  const profit = round(netSales - costs);
+  return { sales: round(sales), credits: round(credits), netSales, costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
+}
+
 export function creditedAmount(invoiceId: string, notes: CreditNote[], includePending: boolean) {
   return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || (includePending && note.status === "pending"))).reduce((sum, note) => sum + note.amount, 0);
 }
