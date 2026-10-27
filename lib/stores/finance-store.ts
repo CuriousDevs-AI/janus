@@ -6,6 +6,8 @@ import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
+import { useOperationsStore } from "@/lib/stores/operations-store";
+import { threeWayMatch } from "@/lib/three-way-match";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -42,7 +44,7 @@ export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2
   return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
 }
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
-export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string }
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;
@@ -74,7 +76,7 @@ interface FinanceState {
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   setBudgetPlan: (lineId: string, fiscalYear: string, quarter: BudgetPlan["quarter"], planned: number, by: string) => string | null;
-  addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number }, by: string) => string | null;
+  addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; poId?: string }, by: string) => string | null;
   recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
@@ -197,8 +199,14 @@ export const useFinanceStore = create<FinanceState>()(
         if (input.vendorBillNo.trim().length < 2) return "Enter the vendor's bill number.";
         if (!(input.amount > 0)) return "Enter an amount above zero.";
         if (input.dueDate < input.date) return "The due date cannot be before the bill date.";
+        if (input.poId) {
+          const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === input.poId);
+          if (!order) return "The purchase order was not found.";
+          const received = threeWayMatch(input.amount, order);
+          if (received.status === "goods not received") return `No goods have been received against ${order.number} yet.`;
+        }
         const number = nextNumber("BILL", get().bills.length);
-        const bill: Bill = { id: `bill-${Date.now()}`, number, vendor: input.vendor.trim(), vendorBillNo: input.vendorBillNo.trim(), date: input.date, dueDate: input.dueDate, amount: input.amount, payments: [], createdBy: by };
+        const bill: Bill = { id: `bill-${Date.now()}`, number, vendor: input.vendor.trim(), vendorBillNo: input.vendorBillNo.trim(), date: input.date, dueDate: input.dueDate, amount: input.amount, payments: [], createdBy: by, poId: input.poId };
         set((state) => ({
           bills: [bill, ...state.bills],
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Recorded bill ${number} from ${bill.vendor} · ₹${input.amount.toLocaleString("en-IN")}`)),
@@ -210,6 +218,11 @@ export const useFinanceStore = create<FinanceState>()(
         if (locked) return locked;
         const bill = get().bills.find((item) => item.id === billId);
         if (!bill) return "Bill not found.";
+        if (bill.poId) {
+          const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === bill.poId);
+          const match = threeWayMatch(bill.amount, order);
+          if (!match.matched) return `Payment is held: ${bill.number} does not match its order yet (${match.status}).`;
+        }
         const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
         const due = Math.round((bill.amount - paid) * 100) / 100;
         if (payment.amount <= 0) return "Enter an amount above zero.";

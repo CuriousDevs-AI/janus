@@ -19,6 +19,8 @@ import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
+import { useOperationsStore } from "@/lib/stores/operations-store";
+import { threeWayMatch } from "@/lib/three-way-match";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -77,14 +79,16 @@ function PayablesView({ me }: { me: string }) {
   const [vendorBillNo, setVendorBillNo] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState("2026-11-15");
+  const [poId, setPoId] = React.useState("");
+  const purchaseOrders = useOperationsStore((state) => state.purchaseOrders);
   const [payAmounts, setPayAmounts] = React.useState<Record<string, string>>({});
   const today = "2026-10-23";
 
   function create() {
-    const problem = addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount) }, me);
+    const problem = addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
-    setVendor(""); setVendorBillNo(""); setAmount("");
+    setVendor(""); setVendorBillNo(""); setAmount(""); setPoId("");
   }
 
   function pay(billId: string) {
@@ -105,6 +109,7 @@ function PayablesView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-po">Purchase order (optional)</Label><select id="bill-po" className={selectClass} value={poId} onChange={(e) => setPoId(e.target.value)}><option value="">No order</option>{purchaseOrders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.vendor}</option>)}</select></div>
             <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0)} onClick={create}>Record bill</Button>
           </div>
         </CardContent>
@@ -112,13 +117,16 @@ function PayablesView({ me }: { me: string }) {
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] text-sm">
-            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Bill</th><th className="px-4 py-2">Due</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2 text-right">Owed</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Pay</th></tr></thead>
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Bill</th><th className="px-4 py-2">Due</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2 text-right">Owed</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Order match</th><th className="px-4 py-2">Pay</th></tr></thead>
             <tbody>
-              {bills.length === 0 ? <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No bills yet.</td></tr> : null}
+              {bills.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No bills yet.</td></tr> : null}
               {bills.map((bill) => {
                 const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
                 const owed = Math.round((bill.amount - paid) * 100) / 100;
                 const status = owed <= 0 ? "paid" : bill.dueDate < today ? "overdue" : paid > 0 ? "part paid" : "open";
+                const order = purchaseOrders.find((o) => o.id === bill.poId);
+                const match = threeWayMatch(bill.amount, order);
+                const held = bill.poId !== undefined && !match.matched && owed > 0;
                 return (
                   <tr key={bill.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{bill.number}<span className="block text-xs font-normal text-muted-foreground">{bill.vendor} · {bill.vendorBillNo}</span></td>
@@ -126,11 +134,12 @@ function PayablesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(owed)}</td>
                     <td className="px-4 py-3"><Badge variant={status === "paid" ? "success" : status === "overdue" ? "danger" : "warning"}>{status}</Badge></td>
+                    <td className="px-4 py-3 text-xs">{order ? <span className={match.matched ? "text-success" : "text-warning"}>{order.number}: {match.status}</span> : <span className="text-muted-foreground">no order</span>}</td>
                     <td className="px-4 py-3">
                       {owed > 0 ? (
                         <div className="flex items-center gap-2">
                           <Input aria-label={`Amount to pay on ${bill.number}`} type="number" min={0} className="h-8 w-28" value={payAmounts[bill.id] ?? ""} onChange={(e) => setPayAmounts((current) => ({ ...current, [bill.id]: e.target.value }))} />
-                          <Button size="sm" variant="secondary" disabled={!(Number(payAmounts[bill.id]) > 0)} onClick={() => pay(bill.id)}>Pay</Button>
+                          <Button size="sm" variant="secondary" disabled={held || !(Number(payAmounts[bill.id]) > 0)} title={held ? `Held: ${match.status}` : undefined} onClick={() => pay(bill.id)}>Pay</Button>
                         </div>
                       ) : <span className="text-xs text-muted-foreground">Settled</span>}
                     </td>
