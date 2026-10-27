@@ -126,3 +126,9 @@ Not built yet, in plan order:
 - **M5 closure summary:** not built.
 - **Live updates:** the screen polls every 8 seconds, not WebSocket.
 - **Deferred:** client guest access, leave alerts, burn forecast, AI summaries.
+
+**Third pass: closing (M5, partial):**
+- Closing a project captures a **closure summary** from the records: milestones accepted and billed, budget, cost of logged hours, unused budget released, hours, plan versions and approved changes, and margin. The summary is a snapshot taken when the project closes, so it does not change afterwards.
+- Closing also **archives the project's timeline** on the server. Nobody can post on it afterwards. The closing is written as a system entry (kind `closed`) with the member and entry counts, and it is audited.
+- Verified: backend tests cover archive, the closing entry, refused posts after archive, and the audit entry (113 backend tests pass). In the browser, closing a project showed "closed, read only" on its timeline, the closing entry, and the summary.
+- Limitation: the summary lives in the browser store, not on the server, until projects move to the server (P2). Only the timeline archive is server-side.

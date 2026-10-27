@@ -191,6 +191,54 @@ async def list_entries(
     ]
 
 
+@router.post("/{project_key}/archive", response_model=TimelineOut)
+async def archive_timeline(
+    project_key: str, actor: Manage, db: Db, request: Request
+) -> TimelineOut:
+    """Closes the timeline: nobody can post on it afterwards. The closing is written as a system
+    entry, so the record of when and by whom the project closed stays with the conversation."""
+    tenant_id = actor.session.tenant_id
+    timeline = await service.timeline_for(db, tenant_id, project_key)
+    await service.require_member(db, timeline, actor.user.id)
+    if timeline.archived_at is not None:
+        raise ApiError("already_archived", "This timeline is already closed.", 409)
+    timeline.archived_at = datetime.now().astimezone()
+    await db.flush()
+    members = await _member_count(db, timeline)
+    entries = len(
+        (
+            await db.scalars(
+                select(ProjectTimelineEntry.id).where(
+                    ProjectTimelineEntry.timeline_id == timeline.id
+                )
+            )
+        ).all()
+    )
+    await service.record_event(
+        db,
+        tenant_id,
+        project_key,
+        "closed",
+        f"Project closed by {actor.user.name}",
+        {"members": members, "entries": entries, "by": actor.user.name},
+    )
+    audit.record(
+        db,
+        "project_timeline.archived",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"project_key": project_key},
+    )
+    return TimelineOut(
+        project_key=timeline.project_key,
+        name=timeline.name,
+        archived=True,
+        members=members,
+        you_are_member=True,
+    )
+
+
 @router.post("/{project_key}/entries", response_model=EntryOut, status_code=201)
 async def post_entry(
     project_key: str, data: EntryCreate, actor: CurrentActor, db: Db, request: Request

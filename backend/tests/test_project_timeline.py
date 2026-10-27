@@ -199,3 +199,54 @@ async def test_project_managers_see_the_company_directory_only(
     names = {row["name"] for row in listed.json()}
     assert "Owner" in names and "Member" in names
     assert (await client.get("/v1/project-timelines/directory", headers=agent)).status_code == 403
+
+
+async def test_archiving_records_the_closing_and_stops_new_posts(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    owner = await signup(client, mailbox)
+    teammate = await accept_new(client, await invite(client, mailbox, owner, "team@example.com"))
+    await client.post(
+        "/v1/project-timelines", headers=owner.headers, json={"project_key": KEY, "name": "Closing"}
+    )
+    await client.post(
+        f"/v1/project-timelines/{KEY}/members",
+        headers=owner.headers,
+        json={"user_id": await _user_id(client, teammate)},
+    )
+    await client.post(
+        f"/v1/project-timelines/{KEY}/entries",
+        headers=owner.headers,
+        json={"body": "Final invoice sent"},
+    )
+    archived = await client.post(f"/v1/project-timelines/{KEY}/archive", headers=owner.headers)
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["archived"] is True
+
+    entries = (
+        await client.get(f"/v1/project-timelines/{KEY}/entries", headers=owner.headers)
+    ).json()
+    closing = [e for e in entries if e["kind"] == "event"]
+    assert len(closing) == 1
+    assert closing[0]["payload"]["members"] == 2
+    assert closing[0]["payload"]["event"] == "closed"
+
+    refused = await client.post(
+        f"/v1/project-timelines/{KEY}/entries", headers=teammate, json={"body": "one more"}
+    )
+    assert refused.status_code == 409
+    assert (
+        await client.post(f"/v1/project-timelines/{KEY}/archive", headers=owner.headers)
+    ).status_code == 409
+
+    async with admin_engine.connect() as admin:
+        actions = (
+            (
+                await admin.execute(
+                    text("SELECT action FROM audit_log WHERE action = 'project_timeline.archived'")
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert actions == ["project_timeline.archived"]
