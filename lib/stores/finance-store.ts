@@ -81,10 +81,13 @@ interface FinanceState {
   bankEntries: BankEntry[];
   openingCash: number;
   bankLines: BankLine[];
+  /** Checks a person has signed off for a month, e.g. "2026-10:variances". */
+  closeReviews: string[];
   trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   addBankEntry: (input: Omit<BankEntry, "id">, by: string) => string | null;
+  markCloseReviewed: (month: string, item: string, by: string) => string | null;
   importBankStatement: (text: string, by: string) => { imported: number; errors: string[] };
   matchBankLine: (lineId: string, key: string | null, by: string) => string | null;
   setOpeningCash: (amount: number, by: string) => string | null;
@@ -102,8 +105,8 @@ interface FinanceState {
 }
 
 const today = "2026-10-23";
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines"> => {
-  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [] };
+const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews"> => {
+  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [] };
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
@@ -130,7 +133,7 @@ const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetL
     { id: "bl-2", date: "2026-10-11", description: "NEFT Udyog Electricals", amount: -12500, matchedKey: "bill:bill-2:bpay-1" },
     { id: "bl-3", date: "2026-10-18", description: "NEFT from unknown remitter", amount: 5000, matchedKey: null },
   ];
-  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines };
+  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines, closeReviews: [] };
 };
 
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
@@ -268,6 +271,15 @@ export const useFinanceStore = create<FinanceState>()(
         }));
         return null;
       },
+      markCloseReviewed: (month, item, by) => {
+        const key = `${month}:${item}`;
+        if (get().closeReviews.includes(key)) return "This check is already signed off.";
+        set((state) => ({
+          closeReviews: [...state.closeReviews, key],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Signed off ${item} for ${month}`)),
+        }));
+        return null;
+      },
       setBudgetPlan: (lineId, fiscalYear, quarter, planned, by) => {
         const line = get().budgetLines.find((item) => item.id === lineId);
         if (!line) return "Budget line not found.";
@@ -380,7 +392,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, bankLines: state.bankLines, trail: state.trail }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, bankLines: state.bankLines, closeReviews: state.closeReviews, trail: state.trail }) },
   ),
 );
 
