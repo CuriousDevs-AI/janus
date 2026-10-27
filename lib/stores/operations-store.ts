@@ -25,6 +25,9 @@ export interface Dispatch {
   id: string; number: string; challanNo: string; date: string; customer: string; customerCompany: string; locationId: number;
   lines: DispatchLine[]; status: "dispatched" | "delivered"; proof?: string; createdBy: string; deliveredBy?: string; dealId?: string;
 }
+/** One line of a purchase order: what was ordered, at what rate, and how much has come in. */
+export interface PoLine { itemId: string; qty: number; rate: number; received: number }
+export interface PurchaseOrder { id: string; number: string; vendor: string; date: string; locationId: number; lines: PoLine[]; createdBy: string }
 export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
@@ -33,9 +36,12 @@ interface OperationsState {
   movements: Movement[];
   dispatches: Dispatch[];
   adjustments: Adjustment[];
+  purchaseOrders: PurchaseOrder[];
   trail: TrailEntry[];
   addItem: (input: Omit<Item, "id">) => string | null;
   receive: (input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string }, by: string) => string | null;
+  addPurchaseOrder: (input: { vendor: string; locationId: number; lines: { itemId: string; qty: number; rate: number }[] }, by: string) => string | null;
+  receiveAgainstPO: (poId: string, receipts: { itemId: string; qty: number }[], by: string) => string | null;
   createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[]; dealId?: string }, by: string) => string | null;
   markDelivered: (id: string, proof: string, by: string) => string | null;
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
@@ -44,8 +50,8 @@ interface OperationsState {
   rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
 
-const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments"> => {
-  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [] };
+const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders"> => {
+  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [] };
   const items: Item[] = [
     { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
     { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
@@ -63,7 +69,10 @@ const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "disp
     { id: "mv-4", date: "2026-10-02", type: "receipt", itemId: "itm-4", locationId: 2, batchNo: "FC-2609-A", qty: 180, reason: "Goods received", by: "Neha Verma" },
     { id: "mv-5", date: "2026-10-02", type: "receipt", itemId: "itm-4", locationId: 2, batchNo: "FC-2507-B", qty: 30, reason: "Goods received", by: "Neha Verma" },
   ];
-  return { items, batches, movements, dispatches: [], adjustments: [] };
+  const purchaseOrders: PurchaseOrder[] = [
+    { id: "po-1", number: "PO-2026-0101", vendor: "Gurugram Packaging Co", date: "2026-10-15", locationId: 2, lines: [{ itemId: "itm-1", qty: 1000, rate: 45, received: 0 }], createdBy: "Neha Verma" },
+  ];
+  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders };
 };
 
 /** Stock on hand for an item at a location (and batch, when the item tracks batches). */
@@ -84,11 +93,60 @@ export const useOperationsStore = create<OperationsState>()(
     (set, get) => ({
       ...seed(),
       trail: [],
+      purchaseOrders: seed().purchaseOrders,
       addItem: (input) => {
         if (input.name.trim().length < 2) return "Enter the item name.";
         if (!/^\d{4,8}$/.test(input.hsn.trim())) return "HSN code must be 4 to 8 digits.";
         if (get().items.some((item) => item.sku.toLowerCase() === input.sku.trim().toLowerCase())) return "This SKU already exists.";
         set((state) => ({ items: [...state.items, { ...input, id: `itm-${Date.now()}` }] }));
+        return null;
+      },
+      addPurchaseOrder: (input, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
+        if (input.vendor.trim().length < 2) return "Enter the vendor name.";
+        if (input.lines.length === 0) return "Add at least one item to the order.";
+        for (const line of input.lines) {
+          const item = get().items.find((i) => i.id === line.itemId);
+          if (!item) return "An item on the order was not found.";
+          if (!(line.qty > 0)) return `Enter a quantity above zero for ${item.name}.`;
+          if (!(line.rate >= 0)) return `The rate for ${item.name} cannot be negative.`;
+        }
+        const number = nextNumber("PO", get().purchaseOrders.length);
+        const order: PurchaseOrder = { id: `po-${Date.now()}`, number, vendor: input.vendor.trim(), date: TODAY, locationId: input.locationId, lines: input.lines.map((line) => ({ ...line, received: 0 })), createdBy: by };
+        const value = input.lines.reduce((sum, line) => sum + line.qty * line.rate, 0);
+        set((state) => ({
+          purchaseOrders: [order, ...state.purchaseOrders],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Raised purchase order ${number} to ${order.vendor} · ₹${value.toLocaleString("en-IN")}`)),
+        }));
+        return null;
+      },
+      receiveAgainstPO: (poId, receipts, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
+        const order = get().purchaseOrders.find((o) => o.id === poId);
+        if (!order) return "Purchase order not found.";
+        for (const receipt of receipts) {
+          const line = order.lines.find((l) => l.itemId === receipt.itemId);
+          if (!line) return "That item is not on this order.";
+          const item = get().items.find((i) => i.id === receipt.itemId);
+          if (!item) return "Item not found.";
+          if (item.trackBatch) return `${item.name} tracks batches. Receive it with its batch number from Receive stock.`;
+          if (!(receipt.qty > 0)) return `Enter a quantity above zero for ${item.name}.`;
+          if (receipt.qty > line.qty - line.received) return `Only ${line.qty - line.received} ${item.unit} of ${item.name} is still due on this order.`;
+        }
+        const moves = receipts.filter((r) => r.qty > 0);
+        set((state) => ({
+          movements: [
+            ...moves.map((r, i) => ({ id: `mv-${Date.now()}-${i}`, date: TODAY, type: "receipt" as const, itemId: r.itemId, locationId: order.locationId, batchNo: null, qty: r.qty, reason: `Goods received against ${order.number}`, by })),
+            ...state.movements,
+          ],
+          purchaseOrders: state.purchaseOrders.map((o) => o.id === poId ? { ...o, lines: o.lines.map((l) => {
+            const got = moves.find((r) => r.itemId === l.itemId);
+            return got ? { ...l, received: l.received + got.qty } : l;
+          }) } : o),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Received goods against ${order.number}: ${moves.map((r) => `${r.qty} ${get().items.find((i) => i.id === r.itemId)?.unit ?? ""}`).join(", ")}`)),
+        }));
         return null;
       },
       receive: (input, by) => {
@@ -224,6 +282,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, trail: state.trail }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, trail: state.trail }) },
   ),
 );
