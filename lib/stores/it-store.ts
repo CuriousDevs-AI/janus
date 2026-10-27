@@ -15,10 +15,14 @@ import { addDays } from "@/lib/stores/projects-store";
 export const TODAY = "2026-10-23";
 export const ASSET_KINDS = ["Laptop", "Desktop", "Phone", "Monitor", "Printer", "Other"] as const;
 export const ACCESS_LEVELS = ["view", "edit", "admin"] as const;
+export const HELPDESK_CATEGORIES = ["Laptop or phone", "Access", "Software", "Network or printer", "Other"] as const;
+export const HELPDESK_PRIORITIES = ["low", "medium", "high"] as const;
 
 export interface Asset { id: string; name: string; kind: (typeof ASSET_KINDS)[number]; serial: string; purchaseDate: string; cost: number; status: "in stock" | "assigned" | "retired"; assignedTo: string | null }
 export interface AccessGrant { id: string; system: string; person: string; level: (typeof ACCESS_LEVELS)[number]; status: "active" | "removed"; grantedBy: string; removedBy?: string }
 export interface Licence { id: string; name: string; vendor: string; seats: number; assigned: string[]; annualCost: number; renewal: string }
+/** An IT request from a person in the company. Raised by the requester, worked by the IT assignee. */
+export interface HelpdeskTicket { id: string; number: string; requester: string; category: (typeof HELPDESK_CATEGORIES)[number]; priority: (typeof HELPDESK_PRIORITIES)[number]; subject: string; status: "open" | "in progress" | "resolved"; assignee: string | null; raisedOn: string }
 export interface AuditEntry { id: string; at: string; by: string; text: string }
 
 interface ITState {
@@ -26,6 +30,10 @@ interface ITState {
   access: AccessGrant[];
   licences: Licence[];
   log: AuditEntry[];
+  helpdesk: HelpdeskTicket[];
+  raiseTicket: (input: { requester: string; category: HelpdeskTicket["category"]; priority: HelpdeskTicket["priority"]; subject: string }, by: string) => string | null;
+  setTicketStatus: (id: string, status: HelpdeskTicket["status"], by: string) => string | null;
+  assignTicket: (id: string, assignee: string, by: string) => string | null;
   addAsset: (input: Omit<Asset, "id" | "status" | "assignedTo">, by: string) => string | null;
   assignAsset: (id: string, person: string, by: string) => string | null;
   returnAsset: (id: string, by: string) => string | null;
@@ -38,8 +46,8 @@ interface ITState {
   freeSeat: (licenceId: string, person: string, by: string) => string | null;
 }
 
-const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log"> => {
-  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [] };
+const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk"> => {
+  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [], helpdesk: [] };
   return {
     assets: [
       { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta" },
@@ -56,6 +64,9 @@ const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log"> => {
       { id: "lic-2", name: "Tally Prime", vendor: "Tally Solutions", seats: 2, assigned: ["Aman Verma"], annualCost: 22500, renewal: "2027-03-31" },
     ],
     log: [],
+    helpdesk: [
+      { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22" },
+    ],
   };
 };
 
@@ -70,6 +81,35 @@ export const useITStore = create<ITState>()(
       const record = (by: string, text: string) => ({ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, by, text });
       return {
         ...seed(),
+        raiseTicket: (input, by) => {
+          if (!input.requester) return "Choose who the request is for.";
+          if (input.subject.trim().length < 5) return "Describe the problem in a few words.";
+          const number = `IT-${1001 + get().helpdesk.length}`;
+          const ticket: HelpdeskTicket = { id: `hd-${Date.now()}`, number, requester: input.requester, category: input.category, priority: input.priority, subject: input.subject.trim(), status: "open", assignee: null, raisedOn: TODAY };
+          set((state) => ({ helpdesk: [ticket, ...state.helpdesk], log: [record(by, `Raised ${number} for ${input.requester}: ${ticket.subject}`), ...state.log] }));
+          return null;
+        },
+        setTicketStatus: (id, status, by) => {
+          const ticket = get().helpdesk.find((t) => t.id === id);
+          if (!ticket) return "Request not found.";
+          if (ticket.status === "resolved") return "This request is already resolved.";
+          if ((status === "in progress" || status === "resolved") && !ticket.assignee) return "Assign the request to someone before starting or resolving it.";
+          set((state) => ({
+            helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status } : t),
+            log: [record(by, `${ticket.number} is ${status}`), ...state.log],
+          }));
+          return null;
+        },
+        assignTicket: (id, assignee, by) => {
+          const ticket = get().helpdesk.find((t) => t.id === id);
+          if (!ticket) return "Request not found.";
+          if (ticket.status === "resolved") return "A resolved request cannot be reassigned.";
+          set((state) => ({
+            helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, assignee } : t),
+            log: [record(by, `${ticket.number} assigned to ${assignee}`), ...state.log],
+          }));
+          return null;
+        },
         addAsset: (input, by) => {
           if (input.name.trim().length < 3) return "Enter the asset name.";
           if (input.serial.trim().length < 3) return "Enter the serial number.";

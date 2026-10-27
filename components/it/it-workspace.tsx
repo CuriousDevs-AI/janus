@@ -10,13 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/components/auth/session-provider";
 import { users } from "@/lib/mock-data";
-import { ACCESS_LEVELS, ASSET_KINDS, TODAY, renewalSoon, useITStore } from "@/lib/stores/it-store";
+import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore } from "@/lib/stores/it-store";
 
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
 const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 const names = users.map((u) => u.name);
 const comingSoon: Record<string, string> = {
-  helpdesk: "IT helpdesk reuses the ticket queue with an IT category. It comes after the asset and access register is in use.",
   monitoring: "Infrastructure monitoring needs a connected monitoring source. It is not part of phase 1.",
   incidents: "Incidents come with monitoring, once there are alerts to work from.",
   changes: "IT change management comes after the helpdesk, using the same approval queue as Projects.",
@@ -33,7 +32,7 @@ function run(problem: string | null, success: string) {
 export function ITWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
-  const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences" };
+  const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk" };
 
   if (view in comingSoon) {
     return (
@@ -48,7 +47,7 @@ export function ITWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "IT overview"} description="Assets, the access each person holds, and software licences. Every change is written to the log." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : <OverviewView />}
+        {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : <OverviewView />}
       </div>
     </div>
   );
@@ -92,6 +91,71 @@ function OverviewView() {
         <CardContent className="grid gap-2 text-sm">
           {log.length === 0 ? <p className="text-muted-foreground">No changes yet. Assignments, returns and access changes appear here.</p> : null}
           {log.slice(0, 12).map((entry) => <p key={entry.id}><span className="text-muted-foreground">{entry.at} · {entry.by} · </span>{entry.text}</p>)}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** IT requests from people in the company: raised, assigned, started and resolved. */
+function HelpdeskView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const tickets = useITStore((state) => state.helpdesk);
+  const raiseTicket = useITStore((state) => state.raiseTicket);
+  const setTicketStatus = useITStore((state) => state.setTicketStatus);
+  const assignTicket = useITStore((state) => state.assignTicket);
+  const [requester, setRequester] = React.useState("");
+  const [category, setCategory] = React.useState<(typeof HELPDESK_CATEGORIES)[number]>("Laptop or phone");
+  const [priority, setPriority] = React.useState<(typeof HELPDESK_PRIORITIES)[number]>("medium");
+  const [subject, setSubject] = React.useState("");
+
+  function raise() {
+    const problem = raiseTicket({ requester, category, priority, subject }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Request raised");
+    setSubject("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Raise a request</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Requests from people in the company. Each one is worked by an IT assignee until it is resolved.</p>
+          <div className="grid gap-3 sm:grid-cols-5">
+            <select aria-label="Requester" className={selectClass} value={requester} onChange={(e) => setRequester(e.target.value)}><option value="">Requester…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Category" className={selectClass} value={category} onChange={(e) => setCategory(e.target.value as (typeof HELPDESK_CATEGORIES)[number])}>{HELPDESK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            <select aria-label="Priority" className={selectClass} value={priority} onChange={(e) => setPriority(e.target.value as (typeof HELPDESK_PRIORITIES)[number])}>{HELPDESK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
+            <Input aria-label="Problem" placeholder="What is the problem?" value={subject} onChange={(e) => setSubject(e.target.value)} />
+            <Button disabled={!requester || subject.trim().length < 5} onClick={raise}>Raise request</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-3 p-4 text-sm">
+          {tickets.length === 0 ? <p className="text-muted-foreground">No requests yet.</p> : null}
+          {tickets.map((t) => (
+            <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
+              <span>
+                <span className="font-medium">{t.number}</span> · {t.subject}
+                <span className="block text-xs text-muted-foreground">{t.requester} · {t.category} · {t.priority} priority · raised {t.raisedOn}{t.assignee ? ` · with ${t.assignee}` : " · not assigned"}</span>
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                <Badge variant={t.status === "resolved" ? "success" : t.status === "in progress" ? "warning" : "neutral"}>{t.status}</Badge>
+                {t.status !== "resolved" ? (
+                  <>
+                    <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assignee ?? ""} onChange={(e) => { if (e.target.value) assignTicket(t.id, e.target.value, me); }}>
+                      <option value="">Assign to…</option>
+                      {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                    </select>
+                    {t.status === "open" ? <Button size="sm" variant="secondary" onClick={() => { const p = setTicketStatus(t.id, "in progress", me); if (p) toast.error(p); }}>Start</Button> : null}
+                    <Button size="sm" variant="outline" onClick={() => { const p = setTicketStatus(t.id, "resolved", me); if (p) toast.error(p); else toast.success(`${t.number} resolved`); }}>Resolve</Button>
+                  </>
+                ) : null}
+              </span>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </>
