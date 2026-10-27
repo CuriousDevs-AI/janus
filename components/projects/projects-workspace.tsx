@@ -382,13 +382,35 @@ function MilestonesView({ me }: { me: string }) {
   const accept = useProjectsStore((state) => state.acceptMilestone);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const raiseDispute = useProjectsStore((state) => state.raiseDispute);
+  const resolveDispute = useProjectsStore((state) => state.resolveDispute);
+  const [disputeFor, setDisputeFor] = React.useState("");
+  const [disputeReason, setDisputeReason] = React.useState("");
   const [projectId, setProjectId] = React.useState("");
   const [name, setName] = React.useState("");
   const [due, setDue] = React.useState(TODAY);
   const [amount, setAmount] = React.useState("");
 
+  const open = milestones.filter((m) => m.dispute);
   return (
     <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Disputes · {open.length} open</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">A disputed milestone cannot be accepted or billed until the dispute is resolved. An accepted milestone is already billed, so it is handled as a credit note in Finance.</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <select aria-label="Milestone in dispute" className={selectClass} value={disputeFor} onChange={(e) => setDisputeFor(e.target.value)}><option value="">Milestone…</option>{milestones.filter((m) => m.status !== "accepted" && !m.dispute).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+            <Input aria-label="What is in dispute" placeholder="What is in dispute" value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} />
+            <Button disabled={!disputeFor || disputeReason.trim().length < 5} onClick={() => { const p = raiseDispute(disputeFor, disputeReason, me); if (p) toast.error(p); else { toast.success("Milestone is in dispute; billing is stopped"); setDisputeFor(""); setDisputeReason(""); } }}>Raise dispute</Button>
+          </div>
+          {open.map((m) => (
+            <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+              <span>{m.name} · <span className="text-muted-foreground">{m.dispute?.reason} · raised by {m.dispute?.raisedBy} on {m.dispute?.date}</span></span>
+              <Button size="sm" variant="secondary" onClick={() => { const p = resolveDispute(m.id, me); if (p) toast.error(p); else toast.success("Dispute resolved"); }}>Resolve dispute</Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader><CardTitle className="text-base">Add a milestone</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
@@ -417,7 +439,7 @@ function MilestonesView({ me }: { me: string }) {
                     <td className="px-4 py-3">{project?.name}</td>
                     <td className="px-4 py-3">{m.due}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(m.amount)}</td>
-                    <td className="px-4 py-3"><Badge variant={m.status === "accepted" ? "success" : m.status === "done" ? "warning" : "neutral"}>{m.status}</Badge>{m.acceptedBy ? <span className="block text-xs text-muted-foreground">accepted by {m.acceptedBy}</span> : null}</td>
+                    <td className="px-4 py-3"><Badge variant={m.status === "accepted" ? "success" : m.status === "done" ? "warning" : "neutral"}>{m.status}</Badge>{m.dispute ? <Badge variant="danger" className="ml-1">in dispute</Badge> : null}{m.acceptedBy ? <span className="block text-xs text-muted-foreground">accepted by {m.acceptedBy}</span> : null}</td>
                     <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">
                       {m.status === "planned" ? <Button size="sm" variant="secondary" onClick={() => { const p = complete(m.id, me); if (p) toast.error(p); else toast.success("Marked complete"); }}>Mark complete</Button> : null}
                       {m.status === "done" ? <Button size="sm" variant="secondary" onClick={() => { const p = accept(m.id, me); if (p) toast.error(p); else toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); }}>Accept</Button> : null}
@@ -481,6 +503,7 @@ function ChangesView({ me }: { me: string }) {
   const changes = useProjectsStore((state) => state.changes);
   const requestChange = useProjectsStore((state) => state.requestChange);
   const decide = useProjectsStore((state) => state.decideChange);
+  const versions = useProjectsStore((state) => state.versions);
   const [projectId, setProjectId] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [budgetChange, setBudgetChange] = React.useState("0");
@@ -488,6 +511,21 @@ function ChangesView({ me }: { me: string }) {
 
   return (
     <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Plan versions</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Each approved change adds a version. Earlier versions are kept, so the plan can be read as it was before any change.</p>
+          {versions.length === 0 ? <p className="text-muted-foreground">No change has been approved yet, so there is only the plan as first set.</p> : null}
+          {projects.filter((p) => versions.some((v) => v.projectId === p.id)).map((p) => (
+            <div key={p.id} className="grid gap-1">
+              <p className="font-medium">{p.name}</p>
+              {versions.filter((v) => v.projectId === p.id).map((v) => (
+                <p key={v.id} className="text-xs text-muted-foreground">v{v.number} · budget {money(v.budget)} · ends {v.end} · {v.note} · by {v.by} on {v.date}</p>
+              ))}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader><CardTitle className="text-base">Request a change</CardTitle></CardHeader>
         <CardContent className="grid gap-3">

@@ -18,7 +18,12 @@ export const TODAY = "2026-10-23";
 export const PROJECT_TYPES = ["Fixed price", "Time and material", "Internal"] as const;
 
 export interface Project { id: string; name: string; client: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
-export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string }
+/** A dispute stops acceptance, and so billing, until someone resolves it (plan §8.3Z step 4). */
+export interface MilestoneDispute { reason: string; raisedBy: string; date: string }
+export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string; dispute?: MilestoneDispute }
+
+/** One version of a project's plan. Version 1 is the plan as first set; each approved change adds the next one (plan §8.3Y step 4). */
+export interface PlanVersion { id: string; projectId: string; number: number; budget: number; end: string; note: string; by: string; date: string }
 export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; due: string; status: "todo" | "doing" | "done" }
 /** Hours a person worked on a project on a day. Hours are entered; nothing is estimated from them. */
 export interface Timesheet { id: string; projectId: string; person: string; date: string; hours: number; note: string }
@@ -34,6 +39,7 @@ interface ProjectsState {
   milestones: Milestone[];
   tasks: Task[];
   changes: ChangeRequest[];
+  versions: PlanVersion[];
   timesheets: Timesheet[];
   allocations: Allocation[];
   rates: CostRate[];
@@ -45,6 +51,8 @@ interface ProjectsState {
   addMilestone: (input: Omit<Milestone, "id" | "status">) => string | null;
   completeMilestone: (id: string, by: string) => string | null;
   acceptMilestone: (id: string, by: string) => string | null;
+  raiseDispute: (id: string, reason: string, by: string) => string | null;
+  resolveDispute: (id: string, by: string) => string | null;
   addTask: (input: Omit<Task, "id" | "status">) => string | null;
   setTaskStatus: (id: string, status: Task["status"]) => void;
   requestChange: (input: { projectId: string; description: string; budgetChange: number; dayChange: number }, by: string) => string | null;
@@ -111,6 +119,7 @@ export const useProjectsStore = create<ProjectsState>()(
       ...seed(),
       trail: [],
       rates: [],
+      versions: [],
       setCostRate: (person, hourlyCost, by) => {
         if (!person) return "Choose the person.";
         if (!(hourlyCost >= 0 && hourlyCost <= 100000)) return "Enter a cost per hour between 0 and 1,00,000.";
@@ -175,6 +184,7 @@ export const useProjectsStore = create<ProjectsState>()(
         const milestone = get().milestones.find((m) => m.id === id);
         if (!milestone) return "Milestone not found.";
         if (milestone.status !== "done") return "Mark the milestone complete before it can be accepted.";
+        if (milestone.dispute) return "This milestone is in dispute. Resolve the dispute before it is accepted or billed.";
         if (milestone.completedBy === by) return "The person who completed the milestone cannot accept it.";
         if (milestone.amount > 0) {
           const locked = periodLockProblem(TODAY);
@@ -190,6 +200,28 @@ export const useProjectsStore = create<ProjectsState>()(
         set((state) => ({
           milestones: state.milestones.map((m) => m.id === id ? { ...m, status: "accepted", acceptedBy: by, invoiceNumber } : m),
           trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Accepted milestone ${milestone.name}${billed}`)),
+        }));
+        return null;
+      },
+      raiseDispute: (id, reason, by) => {
+        const milestone = get().milestones.find((m) => m.id === id);
+        if (!milestone) return "Milestone not found.";
+        if (milestone.status === "accepted") return "An accepted milestone is already billed; raise a credit note in Finance instead.";
+        if (milestone.dispute) return "This milestone is already in dispute.";
+        if (reason.trim().length < 5) return "Say what is in dispute.";
+        set((state) => ({
+          milestones: state.milestones.map((m) => m.id === id ? { ...m, dispute: { reason: reason.trim(), raisedBy: by, date: TODAY } } : m),
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Disputed milestone ${milestone.name}: ${reason.trim()}`)),
+        }));
+        return null;
+      },
+      resolveDispute: (id, by) => {
+        const milestone = get().milestones.find((m) => m.id === id);
+        if (!milestone) return "Milestone not found.";
+        if (!milestone.dispute) return "This milestone is not in dispute.";
+        set((state) => ({
+          milestones: state.milestones.map((m) => m.id === id ? { ...m, dispute: undefined } : m),
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Resolved the dispute on milestone ${milestone.name}`)),
         }));
         return null;
       },
@@ -223,7 +255,18 @@ export const useProjectsStore = create<ProjectsState>()(
         const change = get().changes.find((c) => c.id === id);
         if (!change) return "Change request not found.";
         if (change.requestedBy === by) return "The person who asked for the change cannot approve it.";
+        const project = get().projects.find((p) => p.id === change.projectId);
+        const earlier = get().versions.filter((v) => v.projectId === change.projectId);
+        // The first approved change keeps the plan as it was before it, so the original is never lost.
+        const original: PlanVersion[] = approve && project && earlier.length === 0
+          ? [{ id: `pv-${Date.now()}-0`, projectId: change.projectId, number: 1, budget: project.budget, end: project.end, note: "Plan as first set", by: project.createdBy, date: TODAY }]
+          : [];
+        const base = [...earlier, ...original];
+        const next = approve && project
+          ? [{ id: `pv-${Date.now()}`, projectId: change.projectId, number: base.length + 1, budget: Math.max(0, project.budget + change.budgetChange), end: addDays(project.end, change.dayChange), note: change.description, by, date: TODAY }]
+          : [];
         set((state) => ({
+          versions: [...state.versions, ...original, ...next],
           trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `${approve ? "Approved" : "Rejected"} change for ${state.projects.find((p) => p.id === change.projectId)?.name ?? "a project"}: ${change.description}`)),
           changes: state.changes.map((c) => c.id === id ? { ...c, status: approve ? "approved" : "rejected", decidedBy: by } : c),
           projects: approve ? state.projects.map((p) => p.id === change.projectId ? { ...p, budget: Math.max(0, p.budget + change.budgetChange), end: addDays(p.end, change.dayChange) } : p) : state.projects,
