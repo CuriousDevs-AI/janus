@@ -174,3 +174,8 @@ Not built yet, in plan order:
 - A name with no single account, or with two, is left unlinked and is not guessed.
 - Verified in the browser: a project created for the signed-in owner was stored with that account's ID.
 - Not done: the owner field is still typed as free text. Choosing the owner from the company directory, and recording task assignees and allocations by ID at the time they are set, remain open.
+
+**Eleventh pass: owner chosen by account (point 2, mostly done):**
+- The new-project form offers the company directory as the owner list in real mode, so the owner is chosen by account, not typed. The chosen account ID is stored on the server record and on the screen data.
+- Verified in the browser: a project created with "Picked Person" as owner was stored with that person's account ID.
+- Not done: task assignees and allocations still take names when they are set, and the typed fallback remains for demo mode.

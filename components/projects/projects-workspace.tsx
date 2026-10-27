@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { demoMode } from "@/lib/demo-mode";
+import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -321,11 +323,29 @@ function ProjectsView({ me }: { me: string }) {
   const addProject = useProjectsStore((state) => state.addProject);
   const closeProject = useProjectsStore((state) => state.closeProject);
   const lines = useFinanceStore((state) => state.budgetLines);
-  const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, ownerId: "", start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  // The company directory, for choosing an owner by account (real mode only).
+  const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
+  React.useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api<{ user_id: string; name: string }[]>("/project-timelines/directory");
+        if (!cancelled) setPeople(list);
+      } catch {
+        /* without the directory the owner is typed as before */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const links = useCrmLinkOptions();
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
 
   function save() {
+    const ownerChosen = form.ownerId || undefined;
     const problem = addProject({ name: form.name, client: form.client.trim() || "Internal", customerId: form.customerId || undefined, type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
     if (problem) return toast.error(problem);
     toast.success("Project created; its budget is drawn from the fund line");
@@ -333,7 +353,7 @@ function ProjectsView({ me }: { me: string }) {
     // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
     const created = useProjectsStore.getState().projects.at(-1);
     if (created) {
-      mirrorNewProject(created, created.owner)
+      mirrorNewProject(created, created.owner, ownerChosen)
         .then((links) => { if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(created.id, links); })
         .catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
       syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
@@ -356,7 +376,7 @@ function ProjectsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-client">Client (blank for internal)</Label><Input id="pj-client" value={form.client} onChange={(e) => set({ client: e.target.value, customerId: "" })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-customer">CRM customer (optional)</Label><select id="pj-customer" className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={form.customerId} onChange={(e) => { const picked = links.customers.find((c) => c.id === e.target.value); set({ customerId: e.target.value, client: picked?.label ?? form.client }); }}><option value="">None</option>{links.customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-type">Type</Label><select id="pj-type" className={selectClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>{PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-owner">Owner</Label><Input id="pj-owner" value={form.owner} onChange={(e) => set({ owner: e.target.value })} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-owner">Owner</Label>{demoMode || people.length === 0 ? <Input id="pj-owner" value={form.owner} onChange={(e) => set({ owner: e.target.value, ownerId: "" })} /> : <select id="pj-owner" className={selectClass} value={form.ownerId} onChange={(e) => { const person = people.find((p) => p.user_id === e.target.value); set({ owner: person?.name ?? "", ownerId: e.target.value }); }}><option value="">Choose a person…</option>{people.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}</select>}</div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-start">Start</Label><Input id="pj-start" type="date" value={form.start} onChange={(e) => set({ start: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-end">End</Label><Input id="pj-end" type="date" value={form.end} onChange={(e) => set({ end: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-budget">Budget (₹)</Label><Input id="pj-budget" type="number" min={0} value={form.budget} onChange={(e) => set({ budget: e.target.value })} /></div>
