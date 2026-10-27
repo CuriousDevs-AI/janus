@@ -13,14 +13,13 @@ import { useSession } from "@/components/auth/session-provider";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { PROJECT_TYPES, TODAY, addDays, projectHealth, useProjectsStore, type Project } from "@/lib/stores/projects-store";
+import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
 const comingSoon: Record<string, string> = {
-  resources: "Resource allocation across projects, with over-allocation warnings, comes in phase 2.",
-  timesheets: "Timesheets and billing from approved hours come in phase 2.",
   calendar: "The project calendar comes in phase 2, with meetings.",
   reports: "Project reports and profitability come after timesheets and costs are in use.",
 };
@@ -30,7 +29,7 @@ export function ProjectsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Delivery overview", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
+  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
 
   if (view in comingSoon) {
     return (
@@ -49,9 +48,11 @@ export function ProjectsWorkspace() {
         {view === "milestones" && <MilestonesView me={me} />}
         {view === "tasks" && <TasksView />}
         {view === "changes" && <ChangesView me={me} />}
+        {view === "timesheets" && <TimesheetsView me={me} />}
+        {view === "resources" && <ResourcesView />}
         {view === "client-delivery" && <ClientView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery"].includes(view) && <OverviewView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery"].includes(view) && <ProjectsTrail />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources"].includes(view) && <OverviewView />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources"].includes(view) && <ProjectsTrail />}
       </div>
     </div>
   );
@@ -64,6 +65,120 @@ function healthTone(health: string) {
 function ProjectsTrail() {
   const trail = useProjectsStore((state) => state.trail);
   return <TrailPanel entries={trail} />;
+}
+
+/** Hours people worked on projects. Logged by day; a person cannot log more than 12 hours in a day. */
+function TimesheetsView({ me }: { me: string }) {
+  const projects = useProjectsStore((state) => state.projects);
+  const timesheets = useProjectsStore((state) => state.timesheets);
+  const logHours = useProjectsStore((state) => state.logHours);
+  const [projectId, setProjectId] = React.useState("");
+  const [person, setPerson] = React.useState(me);
+  const [date, setDate] = React.useState(TODAY);
+  const [hours, setHours] = React.useState("");
+  const [note, setNote] = React.useState("");
+
+  function save() {
+    const problem = logHours({ projectId, person, date, hours: Number(hours), note }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Hours logged");
+    setHours(""); setNote("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Log hours</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Log the hours a person worked on a project, by day. Hours are entered, not estimated. A day cannot go over 12 hours for one person.</p>
+          <div className="grid gap-3 sm:grid-cols-6">
+            <select aria-label="Project" className={selectClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Project…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <select aria-label="Person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <Input aria-label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input aria-label="Hours" type="number" min={0.5} max={12} step={0.5} placeholder="Hours" value={hours} onChange={(e) => setHours(e.target.value)} />
+            <Input aria-label="Note" placeholder="What was done" value={note} onChange={(e) => setNote(e.target.value)} />
+            <Button disabled={!projectId || !person || !(Number(hours) > 0)} onClick={save}>Log hours</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Date</th><th className="px-4 py-2">Person</th><th className="px-4 py-2">Project</th><th className="px-4 py-2 text-right">Hours</th><th className="px-4 py-2">Note</th></tr></thead>
+            <tbody>
+              {timesheets.length === 0 ? <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No hours logged yet.</td></tr> : null}
+              {timesheets.map((t) => (
+                <tr key={t.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3">{t.date}</td>
+                  <td className="px-4 py-3">{t.person}</td>
+                  <td className="px-4 py-3">{projects.find((p) => p.id === t.projectId)?.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{t.hours}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{t.note || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Planned share of each person's week across projects, with the hours they logged this week. Over 100% is flagged. */
+function ResourcesView() {
+  const projects = useProjectsStore((state) => state.projects);
+  const allocations = useProjectsStore((state) => state.allocations);
+  const timesheets = useProjectsStore((state) => state.timesheets);
+  const setAllocation = useProjectsStore((state) => state.setAllocation);
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const [projectId, setProjectId] = React.useState("");
+  const [person, setPerson] = React.useState("");
+  const [percent, setPercent] = React.useState("");
+  const weekStart = addDays(TODAY, -6);
+
+  function save() {
+    const problem = setAllocation(projectId, person, Number(percent), me);
+    if (problem) return toast.error(problem);
+    toast.success("Allocation saved");
+    setPercent("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Plan a share of someone&apos;s week</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <select aria-label="Allocation project" className={selectClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Project…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <select aria-label="Allocation person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <Input aria-label="Share of week" type="number" min={1} max={100} placeholder="% of week" value={percent} onChange={(e) => setPercent(e.target.value)} />
+            <Button disabled={!projectId || !person || !(Number(percent) > 0)} onClick={save}>Save share</Button>
+          </div>
+        </CardContent>
+      </Card>
+      {users.map((u) => {
+        const mine = allocations.filter((a) => a.person === u.name);
+        const total = mine.reduce((sum, a) => sum + a.percent, 0);
+        const logged = timesheets.filter((t) => t.person === u.name && t.date >= weekStart && t.date <= TODAY).reduce((sum, t) => sum + t.hours, 0);
+        if (mine.length === 0 && logged === 0) return null;
+        return (
+          <Card key={u.id}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                {u.name}
+                <Badge variant={total > 100 ? "danger" : "neutral"}>{total}% planned</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-1 text-sm">
+              {mine.map((a) => <p key={a.id}>{projects.find((p) => p.id === a.projectId)?.name ?? "Project"} · {a.percent}%</p>)}
+              <p className="text-xs text-muted-foreground">{logged} hours logged in the last 7 days.{total > 100 ? " Over-allocated: the planned shares add up to more than the week." : ""}</p>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </>
+  );
 }
 
 function OverviewView() {
