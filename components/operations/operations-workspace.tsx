@@ -686,6 +686,8 @@ function OrdersView({ me }: { me: string }) {
   const [customer, setCustomer] = React.useState("");
   const [company, setCompany] = React.useState("");
   const [dealId, setDealId] = React.useState("");
+  const [transporter, setTransporter] = React.useState("");
+  const [lrNumber, setLrNumber] = React.useState("");
   const links = useCrmLinkOptions();
   const [locationId, setLocationId] = React.useState<number | "">("");
   const [lines, setLines] = React.useState<{ itemId: string; batchNo: string; qty: string }[]>([{ itemId: "", batchNo: "", qty: "" }]);
@@ -700,10 +702,10 @@ function OrdersView({ me }: { me: string }) {
 
   function create() {
     if (locationId === "") return toast.error("Choose the location to dispatch from.");
-    const problem = createDispatch({ customer, customerCompany: company, dealId: dealId || undefined, locationId: Number(locationId), lines: lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, batchNo: l.batchNo || null, qty: Number(l.qty), rate: items.find((i) => i.id === l.itemId)?.rate ?? 0 })) }, me);
+    const problem = createDispatch({ customer, customerCompany: company, dealId: dealId || undefined, transporter, lrNumber, locationId: Number(locationId), lines: lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, batchNo: l.batchNo || null, qty: Number(l.qty), rate: items.find((i) => i.id === l.itemId)?.rate ?? 0 })) }, me);
     if (problem) return toast.error(problem);
     toast.success("Dispatch created with delivery challan");
-    setCustomer(""); setCompany(""); setDealId(""); setLines([{ itemId: "", batchNo: "", qty: "" }]);
+    setCustomer(""); setCompany(""); setDealId(""); setTransporter(""); setLrNumber(""); setLines([{ itemId: "", batchNo: "", qty: "" }]);
   }
 
   return (
@@ -715,6 +717,8 @@ function OrdersView({ me }: { me: string }) {
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="flex flex-col gap-1.5"><Label htmlFor="ds-cust">Customer</Label><Input id="ds-cust" value={customer} onChange={(e) => setCustomer(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="ds-comp">Company</Label><Input id="ds-comp" value={company} onChange={(e) => setCompany(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="ds-transporter">Transporter (optional)</Label><Input id="ds-transporter" value={transporter} onChange={(e) => setTransporter(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="ds-lr">LR number (optional)</Label><Input id="ds-lr" value={lrNumber} onChange={(e) => setLrNumber(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="ds-deal">CRM deal (optional)</Label><select id="ds-deal" className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={dealId} onChange={(e) => setDealId(e.target.value)}><option value="">None</option>{links.deals.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="ds-loc">Dispatch from</Label><select id="ds-loc" className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value === "" ? "" : Number(e.target.value))}><option value="">Choose…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
           </div>
@@ -744,7 +748,7 @@ function OrdersView({ me }: { me: string }) {
               {dispatches.map((d) => (
                 <tr key={d.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 font-medium">{d.number}<span className="block text-xs text-muted-foreground">Challan {d.challanNo} · {d.date}</span></td>
-                  <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span>{linkedLabel(links.deals, d.dealId) ? <span className="block text-xs text-muted-foreground">Deal: {linkedLabel(links.deals, d.dealId)}</span> : null}</td>
+                  <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span>{linkedLabel(links.deals, d.dealId) ? <span className="block text-xs text-muted-foreground">Deal: {linkedLabel(links.deals, d.dealId)}</span> : null}{d.transporter || d.lrNumber ? <span className="block text-xs text-muted-foreground">{d.transporter ?? "Transporter not given"}{d.lrNumber ? ` · LR ${d.lrNumber}` : ""}</span> : null}</td>
                   <td className="px-4 py-3 text-xs">{d.lines.map((l) => `${items.find((i) => i.id === l.itemId)?.name} × ${l.qty}${l.batchNo ? ` (${l.batchNo})` : ""}`).join(", ")}</td>
                   <td className="px-4 py-3"><Badge variant={d.status === "delivered" ? "success" : "warning"}>{d.status}</Badge>{d.proof ? <span className="block text-xs text-muted-foreground">{d.proof}</span> : null}</td>
                   <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>

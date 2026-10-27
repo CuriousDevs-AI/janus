@@ -32,6 +32,10 @@ export interface HelpdeskTicket {
 }
 /** Days to resolve a request, by priority. */
 export const HELPDESK_DUE_DAYS: Record<HelpdeskTicket["priority"], number> = { high: 0, medium: 1, low: 3 };
+/** An IT incident: something that is down or wrong, with severity, a timeline of updates, and the asset it touches if any. */
+export interface Incident { id: string; number: string; title: string; severity: "minor" | "major" | "critical"; status: "open" | "investigating" | "resolved"; reportedBy: string; assetId: string | null; raisedOn: string; updates: string[] }
+/** A planned change to IT: approved by someone other than the person who asked for it, then carried out. */
+export interface ITChange { id: string; number: string; title: string; risk: "low" | "medium" | "high"; requestedBy: string; status: "pending" | "approved" | "rejected" | "done"; decidedBy: string | null; raisedOn: string }
 export interface AuditEntry { id: string; at: string; by: string; text: string }
 
 interface ITState {
@@ -40,6 +44,13 @@ interface ITState {
   licences: Licence[];
   log: AuditEntry[];
   helpdesk: HelpdeskTicket[];
+  incidents: Incident[];
+  changes: ITChange[];
+  raiseIncident: (input: { title: string; severity: Incident["severity"]; assetId: string | null }, by: string) => string | null;
+  updateIncident: (id: string, status: Incident["status"], note: string, by: string) => string | null;
+  requestChange: (input: { title: string; risk: ITChange["risk"] }, by: string) => string | null;
+  decideChange: (id: string, approve: boolean, by: string) => string | null;
+  completeChange: (id: string, by: string) => string | null;
   raiseTicket: (input: { requester: string; category: HelpdeskTicket["category"]; priority: HelpdeskTicket["priority"]; subject: string; system?: string; level?: AccessGrant["level"] }, by: string) => string | null;
   resolveTicket: (id: string, by: string) => string | null;
   setTicketStatus: (id: string, status: HelpdeskTicket["status"], by: string) => string | null;
@@ -56,8 +67,8 @@ interface ITState {
   freeSeat: (licenceId: string, person: string, by: string) => string | null;
 }
 
-const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk"> => {
-  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [], helpdesk: [] };
+const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes"> => {
+  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [] };
   return {
     assets: [
       { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta" },
@@ -74,6 +85,12 @@ const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpd
       { id: "lic-2", name: "Tally Prime", vendor: "Tally Solutions", seats: 2, assigned: ["Aman Verma"], annualCost: 22500, renewal: "2027-03-31" },
     ],
     log: [],
+    incidents: [
+      { id: "inc-1", number: "INC-1001", title: "Warehouse printer offline", severity: "minor", status: "investigating", reportedBy: "Vikas Jain", assetId: "ast-3", raisedOn: "2026-10-22", updates: ["Printer reported offline; checking the network cable."] },
+    ],
+    changes: [
+      { id: "chg-1", number: "CHG-1001", title: "Move the payroll server to the new backup schedule", risk: "medium", requestedBy: "Aman Verma", status: "pending", decidedBy: null, raisedOn: "2026-10-23" },
+    ],
     helpdesk: [
       { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22", dueOn: "2026-10-23" },
     ],
@@ -109,6 +126,53 @@ export const useITStore = create<ITState>()(
           set((state) => ({
             helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status: "resolved" } : t),
             log: [record(by, `${ticket.number} resolved${note}`), ...state.log],
+          }));
+          return null;
+        },
+        raiseIncident: (input, by) => {
+          if (input.title.trim().length < 5) return "Describe the incident in a few words.";
+          const number = `INC-${1002 + get().incidents.length}`;
+          const incident: Incident = { id: `inc-${Date.now()}`, number, title: input.title.trim(), severity: input.severity, status: "open", reportedBy: by, assetId: input.assetId, raisedOn: TODAY, updates: [] };
+          set((state) => ({ incidents: [incident, ...state.incidents], log: [record(by, `Opened ${number} (${input.severity}): ${incident.title}`), ...state.log] }));
+          return null;
+        },
+        updateIncident: (id, status, note, by) => {
+          const incident = get().incidents.find((i) => i.id === id);
+          if (!incident) return "Incident not found.";
+          if (incident.status === "resolved") return "This incident is already resolved.";
+          if (status === "resolved" && note.trim().length < 3) return "Say how it was resolved.";
+          const updates = note.trim() ? [...incident.updates, note.trim()] : incident.updates;
+          set((state) => ({
+            incidents: state.incidents.map((i) => i.id === id ? { ...i, status, updates } : i),
+            log: [record(by, `${incident.number} is ${status}`), ...state.log],
+          }));
+          return null;
+        },
+        requestChange: (input, by) => {
+          if (input.title.trim().length < 5) return "Describe the change.";
+          const number = `CHG-${1002 + get().changes.length}`;
+          const change: ITChange = { id: `chg-${Date.now()}`, number, title: input.title.trim(), risk: input.risk, requestedBy: by, status: "pending", decidedBy: null, raisedOn: TODAY };
+          set((state) => ({ changes: [change, ...state.changes], log: [record(by, `Requested ${number}: ${change.title}`), ...state.log] }));
+          return null;
+        },
+        decideChange: (id, approve, by) => {
+          const change = get().changes.find((c) => c.id === id);
+          if (!change) return "Change not found.";
+          if (change.status !== "pending") return "Only a pending change can be decided.";
+          if (change.requestedBy === by) return "The person who asked for a change cannot approve it.";
+          set((state) => ({
+            changes: state.changes.map((c) => c.id === id ? { ...c, status: approve ? "approved" : "rejected", decidedBy: by } : c),
+            log: [record(by, `${approve ? "Approved" : "Rejected"} ${change.number}`), ...state.log],
+          }));
+          return null;
+        },
+        completeChange: (id, by) => {
+          const change = get().changes.find((c) => c.id === id);
+          if (!change) return "Change not found.";
+          if (change.status !== "approved") return "Only an approved change can be carried out.";
+          set((state) => ({
+            changes: state.changes.map((c) => c.id === id ? { ...c, status: "done" } : c),
+            log: [record(by, `${change.number} carried out`), ...state.log],
           }));
           return null;
         },

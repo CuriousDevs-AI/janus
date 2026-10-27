@@ -10,16 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/components/auth/session-provider";
 import { users } from "@/lib/mock-data";
-import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore } from "@/lib/stores/it-store";
+import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore, type ITChange, type Incident } from "@/lib/stores/it-store";
 
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
 const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 const names = users.map((u) => u.name);
 const comingSoon: Record<string, string> = {
   monitoring: "Infrastructure monitoring needs a connected monitoring source. It is not part of phase 1.",
-  incidents: "Incidents come with monitoring, once there are alerts to work from.",
-  changes: "IT change management comes after the helpdesk, using the same approval queue as Projects.",
-  reports: "IT reports come once assets, access and licences have history.",
 };
 
 /** Run a store action: show its error, or the success message when it returns null. */
@@ -32,7 +29,7 @@ function run(problem: string | null, success: string) {
 export function ITWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
-  const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk" };
+  const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk", incidents: "Incidents", changes: "Change management", reports: "IT reports" };
 
   if (view in comingSoon) {
     return (
@@ -47,7 +44,7 @@ export function ITWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "IT overview"} description="Assets, the access each person holds, and software licences. Every change is written to the log." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : <OverviewView />}
+        {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : view === "incidents" ? <IncidentsView /> : view === "changes" ? <ChangesView /> : view === "reports" ? <ITReportsView /> : <OverviewView />}
       </div>
     </div>
   );
@@ -168,6 +165,158 @@ function HelpdeskView() {
         </CardContent>
       </Card>
     </>
+  );
+}
+
+/** IT incidents: something down or wrong, raised, updated with a timeline, and resolved. */
+function IncidentsView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const incidents = useITStore((state) => state.incidents);
+  const assets = useITStore((state) => state.assets);
+  const raiseIncident = useITStore((state) => state.raiseIncident);
+  const updateIncident = useITStore((state) => state.updateIncident);
+  const [title, setTitle] = React.useState("");
+  const [severity, setSeverity] = React.useState<"minor" | "major" | "critical">("minor");
+  const [assetId, setAssetId] = React.useState("");
+  const [notes, setNotes] = React.useState<Record<string, string>>({});
+
+  function raise() {
+    const problem = raiseIncident({ title, severity, assetId: assetId || null }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Incident opened");
+    setTitle(""); setAssetId("");
+  }
+
+  function update(id: string, status: Incident["status"]) {
+    const problem = updateIncident(id, status, notes[id] ?? "", me);
+    if (problem) return toast.error(problem);
+    setNotes((current) => ({ ...current, [id]: "" }));
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Open an incident</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Something that is down or wrong: a device, a system or the network. Each incident keeps a timeline of what was done.</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input aria-label="Incident title" placeholder="What is wrong?" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <select aria-label="Severity" className={selectClass} value={severity} onChange={(e) => setSeverity(e.target.value as Incident["severity"])}><option value="minor">Minor</option><option value="major">Major</option><option value="critical">Critical</option></select>
+            <select aria-label="Affected asset" className={selectClass} value={assetId} onChange={(e) => setAssetId(e.target.value)}><option value="">No asset</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+            <Button disabled={title.trim().length < 5} onClick={raise}>Open incident</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-4 p-4 text-sm">
+          {incidents.length === 0 ? <p className="text-muted-foreground">No incidents.</p> : null}
+          {incidents.map((i) => {
+            const asset = assets.find((a) => a.id === i.assetId);
+            return (
+              <div key={i.id} className="grid gap-2 border-b border-border pb-3 last:border-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span><span className="font-medium">{i.number}</span> · {i.title}<span className="block text-xs text-muted-foreground">{i.severity} · reported by {i.reportedBy} on {i.raisedOn}{asset ? ` · ${asset.name}` : ""}</span></span>
+                  <span className="flex items-center gap-2">
+                    <Badge variant={i.severity === "critical" ? "danger" : i.severity === "major" ? "warning" : "neutral"}>{i.severity}</Badge>
+                    <Badge variant={i.status === "resolved" ? "success" : "warning"}>{i.status}</Badge>
+                  </span>
+                </div>
+                {i.updates.map((u, idx) => <p key={idx} className="pl-3 text-xs text-muted-foreground">• {u}</p>)}
+                {i.status !== "resolved" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input aria-label={`Update for ${i.number}`} className="h-8 w-72" placeholder="What was done" value={notes[i.id] ?? ""} onChange={(e) => setNotes((current) => ({ ...current, [i.id]: e.target.value }))} />
+                    {i.status === "open" ? <Button size="sm" variant="secondary" onClick={() => update(i.id, "investigating")}>Investigating</Button> : null}
+                    <Button size="sm" variant="outline" onClick={() => update(i.id, "resolved")}>Resolve</Button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** IT changes: a planned change is approved by someone other than the person who asked for it, then carried out. */
+function ChangesView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const changes = useITStore((state) => state.changes);
+  const requestChange = useITStore((state) => state.requestChange);
+  const decideChange = useITStore((state) => state.decideChange);
+  const completeChange = useITStore((state) => state.completeChange);
+  const [title, setTitle] = React.useState("");
+  const [risk, setRisk] = React.useState<ITChange["risk"]>("low");
+
+  function request() {
+    const problem = requestChange({ title, risk }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Change requested");
+    setTitle("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Request a change</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">A change to systems or devices. Someone other than the person who asked approves it, then it is carried out and marked done.</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input aria-label="Change title" placeholder="What will change?" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <select aria-label="Change risk" className={selectClass} value={risk} onChange={(e) => setRisk(e.target.value as ITChange["risk"])}><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select>
+            <Button disabled={title.trim().length < 5} onClick={request}>Request change</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-3 p-4 text-sm">
+          {changes.length === 0 ? <p className="text-muted-foreground">No changes requested.</p> : null}
+          {changes.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
+              <span><span className="font-medium">{c.number}</span> · {c.title}<span className="block text-xs text-muted-foreground">{c.risk} risk · requested by {c.requestedBy} on {c.raisedOn}{c.decidedBy ? ` · decided by ${c.decidedBy}` : ""}</span></span>
+              <span className="flex flex-wrap items-center gap-2">
+                <Badge variant={c.status === "done" || c.status === "approved" ? "success" : c.status === "rejected" ? "danger" : "warning"}>{c.status}</Badge>
+                {c.status === "pending" ? (
+                  <>
+                    <Button size="sm" variant="secondary" onClick={() => { const p = decideChange(c.id, true, me); if (p) toast.error(p); }}>Approve</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { const p = decideChange(c.id, false, me); if (p) toast.error(p); }}>Reject</Button>
+                  </>
+                ) : null}
+                {c.status === "approved" ? <Button size="sm" onClick={() => { const p = completeChange(c.id, me); if (p) toast.error(p); }}>Mark carried out</Button> : null}
+              </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** IT in numbers: assets, requests, incidents and changes. */
+function ITReportsView() {
+  const assets = useITStore((state) => state.assets);
+  const helpdesk = useITStore((state) => state.helpdesk);
+  const incidents = useITStore((state) => state.incidents);
+  const changes = useITStore((state) => state.changes);
+  const licences = useITStore((state) => state.licences);
+  const rows: [string, string][] = [
+    ["Assets in stock", String(assets.filter((a) => a.status === "in stock").length)],
+    ["Assets with someone", String(assets.filter((a) => a.assignedTo).length)],
+    ["Requests open or in progress", String(helpdesk.filter((h) => h.status !== "resolved").length)],
+    ["Requests overdue", String(helpdesk.filter((h) => h.status !== "resolved" && h.dueOn < TODAY).length)],
+    ["Incidents open", String(incidents.filter((i) => i.status !== "resolved").length)],
+    ["Critical incidents open", String(incidents.filter((i) => i.status !== "resolved" && i.severity === "critical").length)],
+    ["Changes waiting approval", String(changes.filter((c) => c.status === "pending").length)],
+    ["Licences renewing in 30 days", String(licences.filter(renewalSoon).length)],
+  ];
+  return (
+    <Card>
+      <CardContent className="grid gap-2 p-4 text-sm">
+        {rows.map(([label, value]) => <div key={label} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{label}</span><span className="font-medium tabular-nums">{value}</span></div>)}
+      </CardContent>
+    </Card>
   );
 }
 
