@@ -19,7 +19,7 @@ import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
-import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -29,7 +29,6 @@ const comingSoon: Record<string, string> = {
   expenses: "Expense claims live in HR & People (Expenses & Reimbursements). Finance pay-out and register come next.",
   budgets: "Budget plans per year and quarter come in phase 2. Budget lines and draws are in Fund requests & budgets.",
   "cash-flow": "Cash flow needs bank statements. Planned for phase 2.",
-  "profit-loss": "Profit and loss needs expenses and bills. Planned for phase 2.",
   reports: "Financial reports come after invoices, payments and credit notes are in use.",
 };
 
@@ -40,7 +39,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss" };
 
   if (view in comingSoon) {
     return (
@@ -61,8 +60,9 @@ export function FinanceWorkspace() {
         {view === "approvals" && <MoneyApprovalsQueue />}
         {view === "periods" && <PeriodLockView />}
         {view === "payables" && <PayablesView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables"].includes(view) && <FinanceTrail />}
+        {view === "profit-loss" && <ProfitLossView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -139,6 +139,45 @@ function PayablesView({ me }: { me: string }) {
               })}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Profit and loss to date, from invoices, approved credit notes and bills. Payroll and expense claims come later. */
+function ProfitLossView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const bills = useFinanceStore((state) => state.bills);
+  const pnl = profitAndLoss(invoices, creditNotes, bills);
+  // `|| 0` turns a negative zero into zero, so an empty line does not read "-₹0".
+  const rows: [string, number, boolean][] = [
+    ["Sales (ex-GST)", pnl.sales, false],
+    ["Less approved credit notes (ex-GST)", -pnl.credits || 0, false],
+    ["Net sales", pnl.netSales, true],
+    ["Less bills recorded", -pnl.costs || 0, false],
+    ["Profit before payroll and expenses", pnl.profit, true],
+  ];
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Profit and loss to date</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">
+            Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs as they were entered. Payroll and expense claims are not in this figure yet.
+          </p>
+          <table className="w-full text-sm tabular-nums">
+            <tbody>
+              {rows.map(([label, value, strong]) => (
+                <tr key={label} className={`border-b border-border last:border-0 ${strong ? "font-semibold" : ""}`}>
+                  <td className="py-2">{label}</td>
+                  <td className={`py-2 text-right ${value < 0 ? "text-danger" : ""}`}>{value < 0 ? `-${money(Math.abs(value))}` : money(value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-sm">Margin on net sales: {pnl.margin === null ? "not available yet" : `${pnl.margin}%`}</p>
         </CardContent>
       </Card>
     </>
