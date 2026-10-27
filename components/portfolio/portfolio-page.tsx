@@ -12,6 +12,7 @@ import { CompanyLogo } from "@/components/shared/company-logo";
 import { LogoPicker } from "@/components/shared/logo-picker";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
 import { activeCompanyId, readCompanies, removeCompany, seedCompanies, subscribeCompanies, switchCompany, updateCompany, type CompanyRecord } from "@/lib/company";
 import { summarise, type CompanySummary } from "@/lib/group-summary";
@@ -28,7 +29,7 @@ const titles: Record<string, [string, string]> = {
   companies: ["Companies", "Set up, switch on workspaces, open or remove a company."],
   intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
   notifications: ["Notifications", "What needs you, from every company."],
-  people: ["People & access", "Who else can see the Portfolio."],
+  people: ["Portfolio access", "Who else can see the Portfolio. Each company's own people and roles are in its Business Management."],
 };
 const palette = ["#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626"];
 const tone = { high: "danger", medium: "warning", low: "neutral" } as const;
@@ -48,7 +49,9 @@ export function PortfolioPage() {
   const login = useLoginAccount();
   const { summaries, hydrated } = usePortfolio();
   const [title, description] = titles[view] ?? titles.overview;
-  if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under People & access.</div>;
+  // The Portfolio runs on the preview's company records. A live account has none yet.
+  if (!demoMode) return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is not available yet for live accounts.</div>;
+  if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under Portfolio access.</div>;
   return <div className="mx-auto flex max-w-[1240px] flex-col">
     <PageHeader title={title} description={description} actions={<Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button>} />
     <div className="flex flex-col gap-6 px-6 pb-10">

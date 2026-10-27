@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { can } from "@/lib/permissions";
 import { useState } from "react";
 import { FileSpreadsheet, Globe, Key, MessageCircle, Phone, Plus, Settings2, Webhook } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
@@ -13,7 +14,7 @@ import { formatDateTime } from "@/lib/utils";
 export default function LeadSourcesPage() {
   const session = useSession();
   const allowed =
-    session.permissions.includes("sources:manage") &&
+    can(session, "sources:manage") &&
     Boolean(session.user.email_verified_at);
   const [after, setAfter] = useState("0");
   const sources = useApi<Source[]>(
@@ -48,7 +49,7 @@ export default function LeadSourcesPage() {
         }
       />
       <div className="flex flex-col gap-6 px-6 pb-6">
-        {!session.permissions.includes("sources:manage") && (
+        {!can(session, "sources:manage") && (
           <p className="text-sm text-muted-foreground">
             Ask an owner or admin to configure lead sources.
           </p>

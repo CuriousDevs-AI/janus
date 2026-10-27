@@ -10,7 +10,6 @@ import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { HealthBadge, TicketStatusBadge } from "@/components/shared/status-badge";
 import { formatCurrencyINR, formatRelativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 

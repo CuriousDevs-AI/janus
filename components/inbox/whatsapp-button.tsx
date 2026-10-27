@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { can } from "@/lib/permissions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
@@ -18,7 +19,7 @@ export function WhatsAppButton({
   const session = useSession();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  if (!session.permissions.includes("leads:write")) return null;
+  if (!can(session, "leads:write")) return null;
   return (
     <Button
       size="sm"

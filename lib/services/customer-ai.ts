@@ -1,5 +1,4 @@
 import type { Customer, Deal, Ticket, MemoryItem, Activity } from "@/lib/types";
-import { formatCurrencyINR } from "@/lib/utils";
 
 export interface CustomerAIAnswer {
   text: string;

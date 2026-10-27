@@ -48,7 +48,7 @@ export function SecuritySection() {
           </Select>
         </SettingRow>
         <SettingRow label="Require 2FA for admins" description="Owner and admin roles must enroll in two-factor authentication.">
-          <Switch checked={require2fa} onCheckedChange={setRequire2fa} />
+          <Switch aria-label="Require 2FA for admins" checked={require2fa} onCheckedChange={setRequire2fa} />
         </SettingRow>
       </SectionCard>
 

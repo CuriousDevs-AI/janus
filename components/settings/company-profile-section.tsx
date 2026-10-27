@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+import { companyProfile } from "@/lib/company-profile";
 import { MapPin, Plus, ShieldCheck, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +24,13 @@ type CompanyProfile = {
   city: string; state: string; pin: string; billingSame: boolean;
 };
 
+const profile = companyProfile();
 const initialProfile: CompanyProfile = {
-  displayName: "Acme Traders", legalName: "Acme Traders Private Limited", industry: "Wholesale & distribution",
-  size: "41–50 people", founded: "2016", website: "https://acmetraders.in",
-  description: "Wholesale supplier of packaging material and industrial fans to manufacturers across North India since 2016.",
-  email: "hello@acmetraders.in", phone: "+91 98100 00000", whatsapp: "+91 98100 00001",
-  address1: "Plot 14, Udyog Vihar Phase 4", address2: "Near Sector 18 Metro", city: "Gurugram", state: "Haryana", pin: "122015", billingSame: true,
+  displayName: profile.short, legalName: profile.legalName, industry: profile.industry,
+  size: profile.size, founded: profile.founded, website: profile.website,
+  description: profile.description,
+  email: profile.email, phone: profile.phone, whatsapp: profile.whatsapp,
+  address1: profile.address1, address2: profile.address2, city: profile.city, state: profile.state, pin: profile.pin, billingSame: true,
 };
 
 
@@ -98,7 +102,7 @@ export function CompanyProfileSection() {
   }
 
   const taxRecords = demoMode
-    ? [["GSTIN", "06AAB1234567891Z5", "Verified"], ["PAN", "AABCT1234F", "Verified"], ["CIN", "U51909HR2016PTC123456", "Added"], ["Udyam (MSME)", "", "Not added"]]
+    ? [["GSTIN", profile.gstin, profile.gstin ? "Verified" : "Not added"], ["PAN", profile.pan, profile.pan ? "Verified" : "Not added"], ["CIN", profile.cin, profile.cin ? "Added" : "Not added"], ["Udyam (MSME)", "", "Not added"]]
     : [["GSTIN", "", "Not connected"], ["PAN", "", "Not connected"], ["CIN", "", "Not connected"], ["Udyam (MSME)", "", "Not connected"]];
 
   return <div className="flex flex-col gap-5">
@@ -106,7 +110,7 @@ export function CompanyProfileSection() {
 
     <SectionCard title="Company details" description="Basic information about your business.">
       <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-4 border-b border-border pb-5"><div className="flex size-16 items-center justify-center overflow-hidden rounded-xl bg-foreground text-xl font-semibold text-background">{logo ? <img src={logo} alt="Company logo" className="size-full object-cover" /> : "AT"}</div><div><p className="text-sm font-semibold">Company logo</p><p className="mt-1 text-xs text-muted-foreground">PNG or SVG, at least 256 × 256 px. Used on invoices and reports.</p><div className="mt-2 flex gap-2"><label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface-2"><Upload className="size-3.5" />Upload new<input type="file" accept="image/png,image/svg+xml" className="sr-only" onChange={upload} /></label>{logo && <Button size="sm" variant="ghost" onClick={() => setLogo(null)}><X className="size-3.5" />Remove</Button>}</div></div></div>
+        <div className="flex flex-wrap items-center gap-4 border-b border-border pb-5"><div className="relative flex size-16 items-center justify-center overflow-hidden rounded-xl bg-foreground text-xl font-semibold text-background">{logo ? <Image src={logo} alt="Company logo" fill unoptimized sizes="64px" className="object-cover" /> : "AT"}</div><div><p className="text-sm font-semibold">Company logo</p><p className="mt-1 text-xs text-muted-foreground">PNG or SVG, at least 256 × 256 px. Used on invoices and reports.</p><div className="mt-2 flex gap-2"><label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface-2"><Upload className="size-3.5" />Upload new<input type="file" accept="image/png,image/svg+xml" className="sr-only" onChange={upload} /></label>{logo && <Button size="sm" variant="ghost" onClick={() => setLogo(null)}><X className="size-3.5" />Remove</Button>}</div></div></div>
         <div className="grid gap-4 sm:grid-cols-3"><FieldRow label="Display name"><Input value={draft.displayName} onChange={(e) => set("displayName", e.target.value)} /></FieldRow><FieldRow label="Legal name"><Input value={draft.legalName} onChange={(e) => set("legalName", e.target.value)} /></FieldRow><FieldRow label="Industry"><Input value={draft.industry} onChange={(e) => set("industry", e.target.value)} /></FieldRow><FieldRow label="Company size"><Input value={draft.size} onChange={(e) => set("size", e.target.value)} /></FieldRow><FieldRow label="Founded"><Input value={draft.founded} onChange={(e) => set("founded", e.target.value)} inputMode="numeric" /></FieldRow><FieldRow label="Website"><Input value={draft.website} onChange={(e) => set("website", e.target.value)} type="url" /></FieldRow></div>
         <FieldRow label="Short description"><Textarea value={draft.description} onChange={(e) => set("description", e.target.value)} className="min-h-24" /><span className="text-[11px] text-muted-foreground">Janus uses this to understand your business when answering questions.</span></FieldRow>
       </div>
