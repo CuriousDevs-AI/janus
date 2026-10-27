@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -39,13 +39,15 @@ export function CreateAutomationDialog({ open, onOpenChange }: { open: boolean; 
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<AutomationFormValues>({
     resolver: zodResolver(automationSchema),
     defaultValues: { name: "", description: "", trigger: triggerOptions[0][0] },
   });
+
+  const trigger = useWatch({ control, name: "trigger" });
 
   function onSubmit(values: AutomationFormValues) {
     const id = createAutomation({
@@ -79,7 +81,7 @@ export function CreateAutomationDialog({ open, onOpenChange }: { open: boolean; 
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Trigger</Label>
-            <Select value={watch("trigger")} onValueChange={(v) => setValue("trigger", v)}>
+            <Select value={trigger} onValueChange={(v) => setValue("trigger", v)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

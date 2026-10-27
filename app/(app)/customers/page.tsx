@@ -38,6 +38,8 @@ function ownerLabel(ownerId: string | null, ownerName: string | null) {
   return ownerName || (ownerId ? `Member #${ownerId}` : "Unassigned");
 }
 
+const stageOrder = ["lost", "new", "contacted", "qualified", "demo", "proposal", "negotiation", "approval", "won"];
+
 export default function CustomersPage() {
   const router = useRouter();
   const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
@@ -159,7 +161,9 @@ export default function CustomersPage() {
             {visibleRows.map(({ contact, leads: customerLeads, deals: customerDeals }) => {
               const dealValue = customerDeals.filter((deal) => deal.stage !== "lost").reduce((sum, deal) => sum + Number(deal.amount), 0);
               const lastLead = [...customerLeads].sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1))[0];
-              const currentStage = lastLead?.stage ?? "new";
+              // A customer is as far along as their most advanced enquiry, not just the newest one.
+              const furthest = [...customerLeads].sort((a, b) => stageOrder.indexOf(b.stage) - stageOrder.indexOf(a.stage))[0];
+              const currentStage = furthest?.stage ?? "new";
               return (
                 <TableRow key={contact.id} className={usingDemo ? "" : "cursor-pointer"} onClick={usingDemo ? undefined : () => router.push(`/customers/${contact.id}`)}>
                   <TableCell>

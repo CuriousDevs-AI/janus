@@ -4,7 +4,6 @@ import * as React from "react";
 import { useCrmAccess } from "@/lib/use-crm-access";
 import { use } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   UserRoundCog,
@@ -19,7 +18,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
-import { users, currentUser } from "@/lib/mock-data";
+import { users } from "@/lib/mock-data";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { TicketStatusBadge, TicketPriorityBadge } from "@/components/shared/status-badge";
 import { AIConfidence } from "@/components/shared/ai-indicator";
@@ -36,7 +35,6 @@ import {
 
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
   const access = useCrmAccess();
   const found = useAppStore((s) => s.tickets.find((t) => t.id === id));
   const ticket = found && access.ticketVisible(found) ? found : undefined;

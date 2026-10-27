@@ -19,7 +19,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="text-[10px] text-muted-foreground">Janus</span>
         </span>
       </Link>
-      <div className="relative z-10 w-full max-w-[380px]">{children}</div>
+      <main className="relative z-10 w-full max-w-[380px]">{children}</main>
     </div>
   );
 }

@@ -48,7 +48,7 @@ export function AttentionCenter() {
     });
   }
 
-  for (const a of approvals.filter((a) => a.status === "pending").sort((x, y) => (x.risk === "high" ? -1 : 1))) {
+  for (const a of approvals.filter((a) => a.status === "pending").sort((x) => (x.risk === "high" ? -1 : 1))) {
     const customer = getCustomerById(a.customerId);
     if (!customer) continue;
     items.push({

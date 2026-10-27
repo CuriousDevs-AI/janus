@@ -139,7 +139,7 @@ export const portfolioNavSections: NavSection[] = [
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
   ] },
   { title: "Access", items: [
-    { label: "People & access", href: "/portfolio?view=people", icon: Users },
+    { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
   ] },
 ];
 

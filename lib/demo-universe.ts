@@ -4,11 +4,12 @@
  * and institutions in Delhi NCR and Rajasthan. Its people are the HR demo employees.
  * Change a record here and CRM, Business Management and the dashboards follow.
  */
+import "@/lib/demo-clock";
 import type { DealStage } from "@/lib/types";
 import type { Deal, Lead, WhatsAppConversation, WhatsAppMessage } from "@/lib/api/types";
 
 /** The demo "today". HR demo records use the same date. */
-export const DEMO_TODAY = "2026-10-24";
+export const DEMO_TODAY = "2026-10-23";
 export const at = (daysAgo: number, time = "11:00") => {
   const day = new Date(`${DEMO_TODAY}T12:00:00+05:30`);
   day.setDate(day.getDate() - daysAgo);
@@ -82,7 +83,7 @@ const history = Math.min(1, leadRows.length / 24);
 export const monthlyLeads = [{ label: "May", leads: Math.round(11 * history), deals: Math.round(6 * history) }, { label: "Jun", leads: Math.round(14 * history), deals: Math.round(8 * history) }, { label: "Jul", leads: Math.round(15 * history), deals: Math.round(9 * history) }, { label: "Aug", leads: Math.round(13 * history), deals: Math.round(8 * history) }, { label: "Sep", leads: Math.round(17 * history), deals: Math.round(11 * history) }, { label: "Oct", leads: leadRows.filter((item) => item.createdAt >= "2026-10-01").length, deals: dealRows.filter((item) => item.createdAt >= "2026-10-01").length }];
 
 /** WhatsApp chats for the leads that came in on WhatsApp. */
-const chatLeads = leadRows.filter((item) => item.source === "whatsapp" && item.stage !== "lost").slice(0, 6);
+const chatLeads = leadRows.filter((item) => item.source === "whatsapp" && item.stage !== "lost").sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt)).slice(0, 10);
 const opening = (lead: Lead) => lead.requirement.replace(/^Wants/, "We want").replace(/^Asking/, "We are asking").replace(/^Negotiating/, "We are negotiating");
 export const conversations: WhatsAppConversation[] = chatLeads.map((lead, index) => ({
   id: `wa-${index + 1}`, contactId: lead.customerId, name: lead.contactName, phone: lead.phone ?? "", company: lead.company,

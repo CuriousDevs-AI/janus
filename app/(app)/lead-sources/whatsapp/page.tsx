@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useApi } from "@/lib/api/use-api";
@@ -16,7 +17,7 @@ import { formatDateTime } from "@/lib/utils";
 export default function WhatsAppSetup() {
   const session = useSession();
   const allowed =
-    session.permissions.includes("sources:manage") &&
+    can(session, "sources:manage") &&
     !!session.user.email_verified_at;
   const connection = useApi<WhatsAppConnection | null>(
     allowed ? "/whatsapp/connection" : null,

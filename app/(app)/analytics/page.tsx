@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { activeSpec } from "@/lib/companies";
 import { useSession } from "@/components/auth/session-provider";
 import { lakh, stats as crm } from "@/lib/demo-universe";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
@@ -40,8 +41,8 @@ const demoCustomReports: CustomReport[] = [
 ];
 
 const demoScheduledReports: ScheduledReport[] = [
-  { id: "demo-schedule-sales", report: "Sales summary", recipients: "owner@acmetraders.in, sales@acmetraders.in", channel: "Email", frequency: "Weekly · 09:00", lastSent: "Today · 09:00", status: "Active" },
-  { id: "demo-schedule-pipeline", report: "Pipeline", recipients: "owner@acmetraders.in", channel: "Email", frequency: "Monthly · 09:00", lastSent: "1 Oct 2026", status: "Paused" },
+  { id: "demo-schedule-sales", report: "Sales summary", recipients: `owner@${activeSpec.company.domain}, sales@${activeSpec.company.domain}`, channel: "Email", frequency: "Weekly · 09:00", lastSent: "Today · 09:00", status: "Active" },
+  { id: "demo-schedule-pipeline", report: "Pipeline", recipients: `owner@${activeSpec.company.domain}`, channel: "Email", frequency: "Monthly · 09:00", lastSent: "1 Oct 2026", status: "Paused" },
 ];
 
 export default function AnalyticsPage() {
