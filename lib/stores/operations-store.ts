@@ -27,6 +27,8 @@ export interface Dispatch {
   lines: DispatchLine[]; status: "dispatched" | "delivered"; proof?: string; createdBy: string; deliveredBy?: string; dealId?: string;
   /** Logistics: who carries the goods and the transporter's LR (docket) number, when given. */
   transporter?: string; lrNumber?: string;
+  /** Pick, pack and ship checkpoints, each with who did it. A delivery needs the goods shipped first. */
+  picked?: string; packed?: string; shipped?: string;
 }
 /** One line of a purchase order: what was ordered, at what rate, and how much has come in. */
 export interface PoLine { itemId: string; qty: number; rate: number; received: number }
@@ -37,6 +39,8 @@ export interface Requisition { id: string; number: string; requester: string; it
 export interface StockCount { id: string; number: string; date: string; locationId: number; lines: { itemId: string; batchNo: string | null; system: number; counted: number; variance: number }[]; by: string }
 /** Stock moved from one location to another. It leaves the sending location when it is sent, and arrives when it is received. */
 export interface Transfer { id: string; number: string; date: string; itemId: string; qty: number; batchNo: string | null; fromLocationId: number; toLocationId: number; transporter: string; lrNumber: string; status: "in transit" | "received"; by: string }
+/** A return authorised before the goods come back (RMA). Stock changes only after inspection, and only if the goods are good. */
+export interface Return { id: string; number: string; dispatchId: string; itemId: string; batchNo: string | null; qty: number; reason: string; status: "authorised" | "inspected"; condition?: "good" | "damaged"; raisedBy: string; inspectedBy?: string; locationId: number }
 export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
@@ -49,6 +53,7 @@ interface OperationsState {
   requisitions: Requisition[];
   counts: StockCount[];
   transfers: Transfer[];
+  returns: Return[];
   trail: TrailEntry[];
   addItem: (input: Omit<Item, "id">) => string | null;
   receive: (input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string }, by: string) => string | null;
@@ -60,7 +65,9 @@ interface OperationsState {
   receiveAgainstPO: (poId: string, receipts: { itemId: string; qty: number }[], by: string) => string | null;
   createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[]; dealId?: string; transporter?: string; lrNumber?: string }, by: string) => string | null;
   markDelivered: (id: string, proof: string, by: string) => string | null;
-  recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
+  checkpointDispatch: (id: string, stage: "picked" | "packed" | "shipped", by: string) => string | null;
+  authoriseReturn: (input: { dispatchId: string; itemId: string; qty: number; reason: string }, by: string) => string | null;
+  inspectReturn: (id: string, condition: "good" | "damaged", by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
   sendTransfer: (input: Omit<Transfer, "id" | "number" | "date" | "status" | "by" | "batchNo"> & { batchNo?: string | null }, by: string) => string | null;
   receiveTransfer: (id: string, by: string) => string | null;
@@ -69,8 +76,8 @@ interface OperationsState {
   rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
 
-const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts" | "transfers"> => {
-  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [] };
+const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts" | "transfers" | "returns"> => {
+  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [], returns: [] };
   const items: Item[] = [
     { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
     { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
@@ -91,7 +98,7 @@ const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "disp
   const purchaseOrders: PurchaseOrder[] = [
     { id: "po-1", number: "PO-2026-0101", vendor: "Gurugram Packaging Co", date: "2026-10-15", locationId: 2, lines: [{ itemId: "itm-1", qty: 1000, rate: 45, received: 0 }], createdBy: "Neha Verma" },
   ];
-  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [], counts: [], transfers: [] };
+  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [], counts: [], transfers: [], returns: [] };
 };
 
 /** Stock on hand for an item at a location (and batch, when the item tracks batches). */
@@ -271,10 +278,26 @@ export const useOperationsStore = create<OperationsState>()(
         }));
         return null;
       },
+      checkpointDispatch: (id, stage, by) => {
+        const dispatch = get().dispatches.find((d) => d.id === id);
+        if (!dispatch) return "Dispatch not found.";
+        if (dispatch.status === "delivered") return "This dispatch is already delivered.";
+        const order = ["picked", "packed", "shipped"] as const;
+        const index = order.indexOf(stage);
+        const previous = index > 0 ? order[index - 1] : null;
+        if (dispatch[stage]) return `${stage[0].toUpperCase()}${stage.slice(1)} already.`;
+        if (previous && !dispatch[previous]) return `Mark the goods ${previous} before ${stage}.`;
+        set((state) => ({
+          dispatches: state.dispatches.map((d) => d.id === id ? { ...d, [stage]: by } : d),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `${dispatch.number} ${stage}`)),
+        }));
+        return null;
+      },
       markDelivered: (id, proof, by) => {
         const dispatch = get().dispatches.find((d) => d.id === id);
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
+        if (!dispatch.shipped) return "Ship the goods before recording delivery.";
         if (proof.trim().length < 3) return "Add proof of delivery: receiver name, signed challan number or photo reference.";
         set((state) => ({
           dispatches: state.dispatches.map((d) => d.id === id ? { ...d, status: "delivered", proof: proof.trim(), deliveredBy: by } : d),
@@ -282,7 +305,7 @@ export const useOperationsStore = create<OperationsState>()(
         }));
         return null;
       },
-      recordReturn: (input, by) => {
+      authoriseReturn: (input, by) => {
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const dispatch = get().dispatches.find((d) => d.id === input.dispatchId);
@@ -291,18 +314,29 @@ export const useOperationsStore = create<OperationsState>()(
         if (!line) return "That item was not on this dispatch.";
         if (input.qty <= 0 || input.qty > line.qty) return `Return between 1 and ${line.qty}.`;
         if (input.reason.trim().length < 3) return "Give the reason for the return.";
+        const number = nextNumber("RMA", get().returns.length);
+        const rma: Return = { id: `rma-${Date.now()}`, number, dispatchId: dispatch.id, itemId: input.itemId, batchNo: line.batchNo, qty: input.qty, reason: input.reason.trim(), status: "authorised", raisedBy: by, locationId: dispatch.locationId };
         const item = get().items.find((i) => i.id === input.itemId);
+        set((state) => ({
+          returns: [rma, ...state.returns],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Authorised ${number} for ${input.qty} ${item?.name ?? "item"} from ${dispatch.number}`)),
+        }));
+        return null;
+      },
+      inspectReturn: (id, condition, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
+        const rma = get().returns.find((r) => r.id === id);
+        if (!rma) return "Return not found.";
+        if (rma.status !== "authorised") return "This return has already been inspected.";
+        const item = get().items.find((i) => i.id === rma.itemId);
         const name = item?.name ?? "item";
-        if (input.condition === "good") {
-          set((state) => ({
-            movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "return", itemId: input.itemId, locationId: dispatch.locationId, batchNo: line.batchNo, qty: input.qty, reason: `Return from ${dispatch.number}: ${input.reason.trim()}`, by }, ...state.movements],
-            trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Returned ${input.qty} ${name} from ${dispatch.number} in good condition`)),
-          }));
-        } else {
-          set((state) => ({
-            trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Returned ${input.qty} ${name} from ${dispatch.number} as damaged; not added to stock`)),
-          }));
-        }
+        const restock = condition === "good";
+        set((state) => ({
+          returns: state.returns.map((r) => r.id === id ? { ...r, status: "inspected", condition, inspectedBy: by } : r),
+          movements: restock ? [{ id: `mv-${Date.now()}`, date: TODAY, type: "return", itemId: rma.itemId, locationId: rma.locationId, batchNo: rma.batchNo, qty: rma.qty, reason: `Return ${rma.number} inspected good`, by }, ...state.movements] : state.movements,
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Inspected ${rma.number}: ${rma.qty} ${name} ${restock ? "back to stock" : "not restocked (damaged)"}`)),
+        }));
         return null;
       },
       sendTransfer: (input, by) => {
@@ -410,6 +444,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, transfers: state.transfers, trail: state.trail }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, transfers: state.transfers, returns: state.returns, trail: state.trail }) },
   ),
 );
