@@ -133,6 +133,7 @@ export const portfolioNavSections: NavSection[] = [
     { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard },
     { label: "Analytics", href: "/portfolio?view=analytics", icon: BarChart3 },
     { label: "Finance", href: "/portfolio?view=finance", icon: WalletCards },
+    { label: "Work inbox", href: "/work", icon: ShieldCheck },
   ] },
   { title: "Manage", items: [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
