@@ -513,12 +513,29 @@ function VendorsView() {
   const [name, setName] = React.useState("");
   const [gstin, setGstin] = React.useState("");
   const [terms, setTerms] = React.useState("30");
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const bankChanges = useVendorsStore((state) => state.bankChanges);
+  const requestBankChange = useVendorsStore((state) => state.requestBankChange);
+  const approveBankChange = useVendorsStore((state) => state.approveBankChange);
+  const [bankVendor, setBankVendor] = React.useState("");
+  const [holder, setHolder] = React.useState("");
+  const [account, setAccount] = React.useState("");
+  const [ifsc, setIfsc] = React.useState("");
+  const pending = bankChanges.filter((c) => c.status === "pending");
 
   function save() {
     const problem = addVendor({ name, gstin, paymentTermsDays: Number(terms) });
     if (problem) return toast.error(problem);
     toast.success(`${name.trim()} added`);
     setName(""); setGstin(""); setTerms("30");
+  }
+
+  function requestBank() {
+    const problem = requestBankChange(bankVendor, { holder, account, ifsc }, new Date().toISOString().slice(0, 10), me);
+    if (problem) return toast.error(problem);
+    toast.success("Bank change sent for approval. It takes effect once someone else approves it.");
+    setHolder(""); setAccount(""); setIfsc("");
   }
 
   return (
@@ -541,7 +558,32 @@ function VendorsView() {
           {vendors.map((v) => (
             <div key={v.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
               <span className="font-medium">{v.name}</span>
-              <span className="text-xs text-muted-foreground">{v.gstin || "GSTIN not added"} · {v.paymentTermsDays} days payment terms</span>
+              <span className="text-xs text-muted-foreground">{v.gstin || "GSTIN not added"} · {v.paymentTermsDays} days payment terms · {v.bank ? `bank ••••${v.bank.account.slice(-4)}` : "no bank details"}</span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Change a vendor&apos;s bank details</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">Bank details are where payments go, so a change needs approval by someone other than the person who asked. Only the last four digits of the account are shown.</p>
+          <div className="grid gap-3 sm:grid-cols-5">
+            <select aria-label="Vendor for bank change" className={selectClass} value={bankVendor} onChange={(e) => setBankVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+            <Input aria-label="Account holder" placeholder="Account holder" value={holder} onChange={(e) => setHolder(e.target.value)} />
+            <Input aria-label="Account number" placeholder="Account number" value={account} onChange={(e) => setAccount(e.target.value)} />
+            <Input aria-label="IFSC" placeholder="IFSC" value={ifsc} onChange={(e) => setIfsc(e.target.value)} />
+            <Button disabled={!bankVendor || !holder || !account || !ifsc} onClick={requestBank}>Request change</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Bank changes waiting approval · {pending.length}</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 p-4 text-sm">
+          {pending.length === 0 ? <p className="text-muted-foreground">No bank change is waiting.</p> : null}
+          {pending.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+              <span>{c.vendorName} · account ••••{c.account.slice(-4)} · IFSC {c.ifsc}<span className="block text-xs text-muted-foreground">Requested by {c.requestedBy} on {c.date}</span></span>
+              <Button size="sm" variant="secondary" disabled={c.requestedBy === me} onClick={() => { const problem = approveBankChange(c.id, me); if (problem) toast.error(problem); else toast.success("Bank details updated"); }}>{c.requestedBy === me ? "Waiting for someone else" : "Approve"}</Button>
             </div>
           ))}
         </CardContent>

@@ -10,14 +10,23 @@ import { scoped } from "@/lib/company";
  * list, so a name is spelled the same way everywhere. Each company keeps its own vendors.
  */
 
-export interface Vendor { id: string; name: string; gstin: string; paymentTermsDays: number }
+export interface VendorBank { holder: string; account: string; ifsc: string }
+export interface Vendor { id: string; name: string; gstin: string; paymentTermsDays: number; bank?: VendorBank }
+
+/** A change to a vendor's bank details. It takes effect only when someone other than the requester approves it (plan §8.2S). */
+export interface BankChange extends VendorBank { id: string; vendorId: string; vendorName: string; requestedBy: string; status: "pending" | "approved"; approvedBy?: string; date: string }
+
+const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 /** A GSTIN is 15 characters: state code, PAN, entity number, the letter Z, and a check character. */
 export const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 interface VendorsState {
   vendors: Vendor[];
+  bankChanges: BankChange[];
   addVendor: (input: { name: string; gstin: string; paymentTermsDays: number }) => string | null;
+  requestBankChange: (vendorId: string, input: VendorBank, date: string, by: string) => string | null;
+  approveBankChange: (id: string, by: string) => string | null;
 }
 
 const seed = (): Vendor[] => {
@@ -32,6 +41,30 @@ export const useVendorsStore = create<VendorsState>()(
   persist(
     (set, get) => ({
       vendors: seed(),
+      bankChanges: [],
+      requestBankChange: (vendorId, input, date, by) => {
+        const vendor = get().vendors.find((v) => v.id === vendorId);
+        if (!vendor) return "Choose a vendor.";
+        const holder = input.holder.trim();
+        const account = input.account.replace(/\s/g, "");
+        const ifsc = input.ifsc.trim().toUpperCase();
+        if (holder.length < 2) return "Enter the account holder's name.";
+        if (!/^\d{9,18}$/.test(account)) return "A bank account number has 9 to 18 digits.";
+        if (!IFSC_PATTERN.test(ifsc)) return "An IFSC code has 11 characters, for example HDFC0001234.";
+        if (get().bankChanges.some((c) => c.vendorId === vendorId && c.status === "pending")) return `${vendor.name} already has a bank change waiting approval.`;
+        set((state) => ({ bankChanges: [{ id: `bc-${Date.now()}`, vendorId, vendorName: vendor.name, holder, account, ifsc, requestedBy: by, status: "pending", date }, ...state.bankChanges] }));
+        return null;
+      },
+      approveBankChange: (id, by) => {
+        const change = get().bankChanges.find((c) => c.id === id);
+        if (!change || change.status !== "pending") return "This bank change is not waiting for approval.";
+        if (change.requestedBy === by) return "The person who requested a bank change cannot approve it.";
+        set((state) => ({
+          bankChanges: state.bankChanges.map((c) => c.id === id ? { ...c, status: "approved", approvedBy: by } : c),
+          vendors: state.vendors.map((v) => v.id === change.vendorId ? { ...v, bank: { holder: change.holder, account: change.account, ifsc: change.ifsc } } : v),
+        }));
+        return null;
+      },
       addVendor: (input) => {
         const name = input.name.trim();
         const gstin = input.gstin.trim().toUpperCase();
