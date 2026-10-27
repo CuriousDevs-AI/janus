@@ -15,6 +15,7 @@ import { GST_RATES } from "@/lib/stores/finance-store";
 import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
+import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useSession } from "@/components/auth/session-provider";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
@@ -25,7 +26,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 const days = (from: string, to: string) => Math.floor((Date.parse(to) - Date.parse(from)) / 86400000);
 
 const comingSoon: Record<string, string> = {
-  procurement: "Requisitions, purchase approval and budget check come in phase 2, with purchase orders.",
   workflows: "Operational workflows come after the core stock and dispatch screens are in use.",
   reports: "Operations reports come once stock and dispatch have history.",
 };
@@ -35,7 +35,7 @@ export function OperationsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors" };
+  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions" };
 
   if (view in comingSoon) {
     return (
@@ -56,10 +56,107 @@ export function OperationsWorkspace() {
         {view === "warehouses" && <WarehousesView />}
         {view === "purchase-orders" && <PurchaseOrdersView me={me} />}
         {view === "vendors" && <VendorsView />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors"].includes(view) && <OverviewView />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors"].includes(view) && <OperationsTrail />}
+        {view === "procurement" && <RequisitionsView me={me} />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement"].includes(view) && <OperationsTrail />}
       </div>
     </div>
+  );
+}
+
+/** Requisitions: a request to buy, approved by someone else against a budget line, then turned into a purchase order. */
+function RequisitionsView({ me }: { me: string }) {
+  const items = useOperationsStore((state) => state.items);
+  const requisitions = useOperationsStore((state) => state.requisitions);
+  const addRequisition = useOperationsStore((state) => state.addRequisition);
+  const approveRequisition = useOperationsStore((state) => state.approveRequisition);
+  const rejectRequisition = useOperationsStore((state) => state.rejectRequisition);
+  const orderRequisition = useOperationsStore((state) => state.orderRequisition);
+  const locations = useLocationsStore((state) => state.locations);
+  const vendors = useVendorsStore((state) => state.vendors);
+  const budgetLines = useFinanceStore((state) => state.budgetLines);
+  const [itemId, setItemId] = React.useState("");
+  const [qty, setQty] = React.useState("");
+  const [rate, setRate] = React.useState("");
+  const [locationId, setLocationId] = React.useState("");
+  const [budgetLineId, setBudgetLineId] = React.useState("");
+  const [reason, setReason] = React.useState("");
+  const [vendorFor, setVendorFor] = React.useState<Record<string, string>>({});
+
+  function raise() {
+    const problem = addRequisition({ itemId, qty: Number(qty), estimatedRate: Number(rate), locationId: Number(locationId), budgetLineId, reason }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Requisition raised");
+    setQty(""); setRate(""); setReason("");
+  }
+
+  function approve(id: string, lineId: string) {
+    const line = budgetLines.find((l) => l.id === lineId);
+    const available = line ? line.allocated - line.drawn : 0;
+    const problem = approveRequisition(id, available, me);
+    if (problem) return toast.error(problem);
+    toast.success("Requisition approved");
+  }
+
+  function order(id: string) {
+    const vendor = vendorFor[id] ?? vendors[0]?.name ?? "";
+    if (!vendor) return toast.error("Add a vendor first.");
+    const problem = orderRequisition(id, vendor, me);
+    if (problem) return toast.error(problem);
+    toast.success("Purchase order raised from the requisition");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Raise a requisition</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">A requisition is a request to buy. It is approved by someone other than the person who raised it, against a budget line that still has money left. An approved requisition becomes a purchase order.</p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <select aria-label="Requisition item" className={selectClass} value={itemId} onChange={(e) => setItemId(e.target.value)}><option value="">Item…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+            <Input aria-label="Requisition quantity" type="number" min={0} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
+            <Input aria-label="Estimated rate" type="number" min={0} placeholder="Estimated rate ₹" value={rate} onChange={(e) => setRate(e.target.value)} />
+            <select aria-label="Requisition location" className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value)}><option value="">Deliver to…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+            <select aria-label="Budget line" className={selectClass} value={budgetLineId} onChange={(e) => setBudgetLineId(e.target.value)}><option value="">Budget line…</option>{budgetLines.map((l) => <option key={l.id} value={l.id}>{l.name} · ₹{(l.allocated - l.drawn).toLocaleString("en-IN")} left</option>)}</select>
+            <Input aria-label="Reason" placeholder="Why it is needed" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <Button disabled={!itemId || !(Number(qty) > 0) || !locationId || !budgetLineId || reason.trim().length < 5} onClick={raise}>Raise requisition</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-3 p-4 text-sm">
+          {requisitions.length === 0 ? <p className="text-muted-foreground">No requisitions yet.</p> : null}
+          {requisitions.map((r) => {
+            const item = items.find((i) => i.id === r.itemId);
+            const line = budgetLines.find((l) => l.id === r.budgetLineId);
+            const value = r.qty * r.estimatedRate;
+            return (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
+                <span>
+                  <span className="font-medium">{r.number}</span> · {item?.name ?? "Item"} × {r.qty} · ₹{value.toLocaleString("en-IN")}
+                  <span className="block text-xs text-muted-foreground">{r.requester} · {line?.name ?? "budget line"} · {r.reason}{r.rejectedReason ? ` · rejected: ${r.rejectedReason}` : ""}{r.poNumber ? ` · ${r.poNumber}` : ""}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant={r.status === "approved" || r.status === "ordered" ? "success" : r.status === "rejected" ? "danger" : "warning"}>{r.status}</Badge>
+                  {r.status === "pending" ? (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => approve(r.id, r.budgetLineId)}>Approve</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { const p = rejectRequisition(r.id, "Rejected from requisitions", me); if (p) toast.error(p); }}>Reject</Button>
+                    </>
+                  ) : null}
+                  {r.status === "approved" ? (
+                    <>
+                      <select aria-label={`Vendor for ${r.number}`} className={selectClass} value={vendorFor[r.id] ?? vendors[0]?.name ?? ""} onChange={(e) => setVendorFor((current) => ({ ...current, [r.id]: e.target.value }))}>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select>
+                      <Button size="sm" onClick={() => order(r.id)}>Raise purchase order</Button>
+                    </>
+                  ) : null}
+                </span>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
