@@ -38,6 +38,12 @@ export interface BankEntry { id: string; date: string; description: string; amou
 /** A line from the bank statement. Amount is signed: + credit (money in), − debit (money out). */
 export interface BankLine { id: string; date: string; description: string; amount: number; matchedKey: string | null }
 
+/** A business expense: paid from the petty cash float or from the bank. Amount is ex-GST, as entered. */
+export interface Expense { id: string; date: string; category: (typeof EXPENSE_CATEGORIES)[number]; payee: string; amount: number; gstRate: number; paidFrom: "petty cash" | "bank"; by: string }
+/** Money moved from the bank into the petty cash float. */
+export interface PettyCashTopUp { id: string; date: string; amount: number; by: string }
+export const EXPENSE_CATEGORIES = ["Travel", "Office", "Utilities", "Repairs", "Other"] as const;
+
 /** The planned spend for one budget line in one quarter of an Indian financial year (April to March). */
 export interface BudgetPlan { id: string; lineId: string; fiscalYear: string; quarter: 1 | 2 | 3 | 4; planned: number }
 
@@ -83,11 +89,15 @@ interface FinanceState {
   bankLines: BankLine[];
   /** Checks a person has signed off for a month, e.g. "2026-10:variances". */
   closeReviews: string[];
+  expenses: Expense[];
+  pettyCashTopUps: PettyCashTopUp[];
   trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   addBankEntry: (input: Omit<BankEntry, "id">, by: string) => string | null;
   markCloseReviewed: (month: string, item: string, by: string) => string | null;
+  addExpense: (input: Omit<Expense, "id" | "by">, by: string) => string | null;
+  topUpPettyCash: (input: { date: string; amount: number }, by: string) => string | null;
   importBankStatement: (text: string, by: string) => { imported: number; errors: string[] };
   matchBankLine: (lineId: string, key: string | null, by: string) => string | null;
   setOpeningCash: (amount: number, by: string) => string | null;
@@ -105,8 +115,8 @@ interface FinanceState {
 }
 
 const today = "2026-10-23";
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews"> => {
-  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [] };
+const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps"> => {
+  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [] };
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
@@ -133,7 +143,7 @@ const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetL
     { id: "bl-2", date: "2026-10-11", description: "NEFT Udyog Electricals", amount: -12500, matchedKey: "bill:bill-2:bpay-1" },
     { id: "bl-3", date: "2026-10-18", description: "NEFT from unknown remitter", amount: 5000, matchedKey: null },
   ];
-  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines, closeReviews: [] };
+  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines, closeReviews: [], expenses: [], pettyCashTopUps: [] };
 };
 
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
@@ -271,6 +281,34 @@ export const useFinanceStore = create<FinanceState>()(
         }));
         return null;
       },
+      addExpense: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (input.payee.trim().length < 2) return "Enter who was paid.";
+        if (!(input.amount > 0)) return "Enter an amount above zero.";
+        if (!(input.gstRate >= 0 && input.gstRate <= 28)) return "GST rate must be between 0 and 28.";
+        if (input.paidFrom === "petty cash") {
+          const balance = pettyCashBalance(get().pettyCashTopUps, get().expenses);
+          if (input.amount > balance + 0.001) return `Petty cash has ₹${balance.toLocaleString("en-IN")}. Top it up before paying ₹${input.amount.toLocaleString("en-IN")} from it.`;
+        }
+        const expense: Expense = { ...input, id: `exp-${Date.now()}`, payee: input.payee.trim(), by };
+        set((state) => ({
+          expenses: [expense, ...state.expenses],
+          trail: withTrail(state.trail, trailEntry("finance", input.date, by, `Expense ${input.category}: ₹${input.amount.toLocaleString("en-IN")} to ${expense.payee}, paid from ${input.paidFrom}`)),
+        }));
+        return null;
+      },
+      topUpPettyCash: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (!(input.amount > 0)) return "Enter an amount above zero.";
+        const topUp: PettyCashTopUp = { id: `pct-${Date.now()}`, date: input.date, amount: input.amount, by };
+        set((state) => ({
+          pettyCashTopUps: [topUp, ...state.pettyCashTopUps],
+          trail: withTrail(state.trail, trailEntry("finance", input.date, by, `Moved ₹${input.amount.toLocaleString("en-IN")} from the bank to petty cash`)),
+        }));
+        return null;
+      },
       markCloseReviewed: (month, item, by) => {
         const key = `${month}:${item}`;
         if (get().closeReviews.includes(key)) return "This check is already signed off.";
@@ -392,7 +430,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, bankLines: state.bankLines, closeReviews: state.closeReviews, trail: state.trail }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
   ),
 );
 
@@ -406,7 +444,13 @@ function allocate(lineId: string, amount: number) {
  * taxable share of the invoice it refers to. Bills are costs as entered. Payroll and expense claims are
  * not included yet.
  */
-export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bills: Bill[]) {
+export function pettyCashBalance(topUps: PettyCashTopUp[], expenses: Expense[]) {
+  const topped = topUps.reduce((sum, t) => sum + t.amount, 0);
+  const spent = expenses.filter((e) => e.paidFrom === "petty cash").reduce((sum, e) => sum + e.amount, 0);
+  return Math.round((topped - spent) * 100) / 100;
+}
+
+export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bills: Bill[], expenses: Expense[] = []) {
   const live = invoices.filter((invoice) => !invoice.cancelled);
   const sales = live.reduce((sum, invoice) => sum + invoiceTotals(invoice).taxable, 0);
   const credits = creditNotes
@@ -418,7 +462,7 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
       const taxableShare = totals.total > 0 ? totals.taxable / totals.total : 0;
       return sum + note.amount * taxableShare;
     }, 0);
-  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0) + expenses.reduce((sum, e) => sum + e.amount, 0);
   const round = (value: number) => Math.round(value * 100) / 100;
   const netSales = round(sales - credits);
   const profit = round(netSales - costs);
@@ -431,7 +475,7 @@ export interface CashFlowMonth { month: string; receipts: number; payments: numb
  * Cash flow by month (plan §8.7 V2). Receipts are customer payments recorded on invoices; payments are bill
  * payments; other is bank movements entered by hand. Closing cash starts from the opening cash.
  */
-export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries: BankEntry[], openingCash: number): CashFlowMonth[] {
+export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries: BankEntry[], openingCash: number, expenses: Expense[] = [], topUps: PettyCashTopUp[] = []): CashFlowMonth[] {
   const byMonth = new Map<string, { receipts: number; payments: number; other: number }>();
   const add = (date: string, key: "receipts" | "payments" | "other", amount: number) => {
     const month = date.slice(0, 7);
@@ -442,6 +486,8 @@ export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries:
   for (const invoice of invoices.filter((i) => !i.cancelled)) for (const payment of invoice.payments) add(payment.date, "receipts", payment.amount);
   for (const bill of bills) for (const payment of bill.payments) add(payment.date, "payments", payment.amount);
   for (const entry of bankEntries) add(entry.date, "other", entry.amount);
+  for (const expense of expenses.filter((e) => e.paidFrom === "bank")) add(expense.date, "payments", expense.amount * (1 + expense.gstRate / 100));
+  for (const topUp of topUps) add(topUp.date, "payments", topUp.amount);
   const round = (value: number) => Math.round(value * 100) / 100;
   let closing = openingCash;
   return [...byMonth.keys()].sort().map((month) => {
