@@ -18,7 +18,7 @@ export const TODAY = "2026-10-23";
 
 export interface Item { id: string; name: string; sku: string; unit: string; hsn: string; rate: number; gstRate: number; reorderLevel: number; trackBatch: boolean }
 export interface Batch { id: string; itemId: string; batchNo: string; expiry: string }
-export type MovementType = "receipt" | "dispatch" | "return" | "adjustment";
+export type MovementType = "receipt" | "dispatch" | "return" | "adjustment" | "transfer";
 export interface Movement { id: string; date: string; type: MovementType; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; by: string }
 export interface DispatchLine { itemId: string; batchNo: string | null; qty: number; rate: number }
 export interface Dispatch {
@@ -32,6 +32,8 @@ export interface PurchaseOrder { id: string; number: string; vendor: string; dat
 export interface Requisition { id: string; number: string; requester: string; itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string; status: "pending" | "approved" | "rejected" | "ordered"; decidedBy?: string; rejectedReason?: string; poNumber?: string; raisedOn: string }
 /** A physical count of one location: what the system said, what was counted, and the difference. */
 export interface StockCount { id: string; number: string; date: string; locationId: number; lines: { itemId: string; system: number; counted: number; variance: number }[]; by: string }
+/** Stock moved from one location to another. It leaves the sending location when it is sent, and arrives when it is received. */
+export interface Transfer { id: string; number: string; date: string; itemId: string; qty: number; fromLocationId: number; toLocationId: number; transporter: string; lrNumber: string; status: "in transit" | "received"; by: string }
 export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
@@ -43,6 +45,7 @@ interface OperationsState {
   purchaseOrders: PurchaseOrder[];
   requisitions: Requisition[];
   counts: StockCount[];
+  transfers: Transfer[];
   trail: TrailEntry[];
   addItem: (input: Omit<Item, "id">) => string | null;
   receive: (input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string }, by: string) => string | null;
@@ -56,13 +59,15 @@ interface OperationsState {
   markDelivered: (id: string, proof: string, by: string) => string | null;
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
+  sendTransfer: (input: Omit<Transfer, "id" | "number" | "date" | "status" | "by">, by: string) => string | null;
+  receiveTransfer: (id: string, by: string) => string | null;
   recordCount: (locationId: number, counts: { itemId: string; counted: number }[], by: string) => string | null;
   approveAdjustment: (id: string, by: string) => string | null;
   rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
 
-const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts"> => {
-  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [] };
+const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts" | "transfers"> => {
+  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [] };
   const items: Item[] = [
     { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
     { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
@@ -83,7 +88,7 @@ const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "disp
   const purchaseOrders: PurchaseOrder[] = [
     { id: "po-1", number: "PO-2026-0101", vendor: "Gurugram Packaging Co", date: "2026-10-15", locationId: 2, lines: [{ itemId: "itm-1", qty: 1000, rate: 45, received: 0 }], createdBy: "Neha Verma" },
   ];
-  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [], counts: [] };
+  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [], counts: [], transfers: [] };
 };
 
 /** Stock on hand for an item at a location (and batch, when the item tracks batches). */
@@ -297,6 +302,40 @@ export const useOperationsStore = create<OperationsState>()(
         }
         return null;
       },
+      sendTransfer: (input, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
+        const item = get().items.find((i) => i.id === input.itemId);
+        if (!item) return "Choose an item.";
+        if (item.trackBatch) return `${item.name} is batch tracked. Move it batch by batch.`;
+        if (input.fromLocationId === input.toLocationId) return "The item is already at that location.";
+        if (!(input.qty > 0)) return "Enter a quantity above zero.";
+        if (input.transporter.trim().length < 2) return "Name the transporter.";
+        const available = stockOn(get().movements, item.id, input.fromLocationId);
+        if (input.qty > available) return `Only ${available} ${item.unit} of ${item.name} is at the sending location.`;
+        const number = nextNumber("TRF", get().transfers.length);
+        const transfer: Transfer = { ...input, id: `trf-${Date.now()}`, number, date: TODAY, status: "in transit", by, transporter: input.transporter.trim(), lrNumber: input.lrNumber.trim() };
+        set((state) => ({
+          transfers: [transfer, ...state.transfers],
+          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "transfer", itemId: item.id, locationId: input.fromLocationId, batchNo: null, qty: -input.qty, reason: `Sent ${number}`, by }, ...state.movements],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Sent ${input.qty} ${item.unit} of ${item.name} under ${number}`)),
+        }));
+        return null;
+      },
+      receiveTransfer: (id, by) => {
+        const locked = periodLockProblem(TODAY);
+        if (locked) return locked;
+        const transfer = get().transfers.find((t) => t.id === id);
+        if (!transfer) return "Transfer not found.";
+        if (transfer.status !== "in transit") return "This transfer has already been received.";
+        const item = get().items.find((i) => i.id === transfer.itemId);
+        set((state) => ({
+          transfers: state.transfers.map((t) => t.id === id ? { ...t, status: "received" } : t),
+          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "transfer", itemId: transfer.itemId, locationId: transfer.toLocationId, batchNo: null, qty: transfer.qty, reason: `Received ${transfer.number}`, by }, ...state.movements],
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Received ${transfer.number}: ${transfer.qty} ${item?.unit ?? ""} of ${item?.name ?? "item"}`)),
+        }));
+        return null;
+      },
       recordCount: (locationId, counts, by) => {
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
@@ -366,6 +405,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, trail: state.trail }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, transfers: state.transfers, trail: state.trail }) },
   ),
 );
