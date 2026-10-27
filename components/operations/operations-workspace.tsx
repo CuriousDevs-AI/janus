@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
-import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PoLine } from "@/lib/stores/operations-store";
+import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useSession } from "@/components/auth/session-provider";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
@@ -71,24 +71,32 @@ function PurchaseOrdersView({ me }: { me: string }) {
   const locations = useLocationsStore((state) => state.locations);
   const [vendor, setVendor] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
-  const [itemId, setItemId] = React.useState("");
-  const [qty, setQty] = React.useState("");
-  const [rate, setRate] = React.useState("");
-  const [receiveQty, setReceiveQty] = React.useState<Record<string, string>>({});
+  const [lines, setLines] = React.useState<{ itemId: string; qty: string; rate: string }[]>([{ itemId: "", qty: "", rate: "" }]);
+  const [receipts, setReceipts] = React.useState<Record<string, string>>({});
+
+  const ready = vendor.trim().length >= 2 && locationId !== "" && lines.every((line) => line.itemId && Number(line.qty) > 0 && Number(line.rate) >= 0);
+
+  function setLine(index: number, patch: Partial<{ itemId: string; qty: string; rate: string }>) {
+    setLines((current) => current.map((line, i) => i === index ? { ...line, ...patch } : line));
+  }
 
   function create() {
     if (locationId === "") return toast.error("Choose the location the goods come to.");
-    const problem = addPurchaseOrder({ vendor, locationId: Number(locationId), lines: [{ itemId, qty: Number(qty), rate: Number(rate) }] }, me);
+    const problem = addPurchaseOrder({ vendor, locationId: Number(locationId), lines: lines.map((line) => ({ itemId: line.itemId, qty: Number(line.qty), rate: Number(line.rate) })) }, me);
     if (problem) return toast.error(problem);
     toast.success("Purchase order raised");
-    setVendor(""); setItemId(""); setQty(""); setRate("");
+    setVendor(""); setLines([{ itemId: "", qty: "", rate: "" }]);
   }
 
-  function receive(orderId: string, line: PoLine) {
-    const problem = receiveAgainstPO(orderId, [{ itemId: line.itemId, qty: Number(receiveQty[orderId]) }], me);
+  function receive(orderId: string, order: PurchaseOrder) {
+    const entries = order.lines
+      .map((line) => ({ itemId: line.itemId, qty: Number(receipts[`${orderId}:${line.itemId}`] ?? 0) }))
+      .filter((entry) => entry.qty > 0);
+    if (entries.length === 0) return toast.error("Enter the quantity received on at least one line.");
+    const problem = receiveAgainstPO(orderId, entries, me);
     if (problem) return toast.error(problem);
     toast.success("Goods received");
-    setReceiveQty((current) => ({ ...current, [orderId]: "" }));
+    setReceipts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${orderId}:`))));
   }
 
   return (
@@ -96,40 +104,59 @@ function PurchaseOrdersView({ me }: { me: string }) {
       <Card>
         <CardHeader><CardTitle className="text-base">Raise a purchase order</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">One item per order for now. Goods received against it add stock at the location the order names.</p>
-          <div className="grid gap-3 sm:grid-cols-6">
+          <p className="text-xs text-muted-foreground">Goods received against an order add stock at the location the order names. Each receipt cannot be more than what is still due on its line.</p>
+          <div className="grid gap-3 sm:grid-cols-3">
             <Input aria-label="Vendor" placeholder="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} />
             <select aria-label="Deliver to" className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value)}><option value="">Deliver to…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-            <select aria-label="Item" className={selectClass} value={itemId} onChange={(e) => setItemId(e.target.value)}><option value="">Item…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
-            <Input aria-label="Quantity ordered" type="number" min={0} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
-            <Input aria-label="Rate" type="number" min={0} placeholder="Rate ₹" value={rate} onChange={(e) => setRate(e.target.value)} />
-            <Button disabled={!vendor || !itemId || !(Number(qty) > 0)} onClick={create}>Raise order</Button>
+          </div>
+          {lines.map((line, index) => (
+            <div key={index} className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+              <select aria-label={`Item line ${index + 1}`} className={selectClass} value={line.itemId} onChange={(e) => setLine(index, { itemId: e.target.value })}><option value="">Item…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+              <Input aria-label={`Quantity line ${index + 1}`} type="number" min={0} placeholder="Qty" value={line.qty} onChange={(e) => setLine(index, { qty: e.target.value })} />
+              <Input aria-label={`Rate line ${index + 1}`} type="number" min={0} placeholder="Rate ₹" value={line.rate} onChange={(e) => setLine(index, { rate: e.target.value })} />
+              <Button size="sm" variant="ghost" disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((_, i) => i !== index))}>Remove</Button>
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setLines((current) => [...current, { itemId: "", qty: "", rate: "" }])}>Add item line</Button>
+            <Button disabled={!ready} onClick={create}>Raise order</Button>
           </div>
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="grid gap-3 p-4 text-sm">
+        <CardContent className="grid gap-4 p-4 text-sm">
           {orders.length === 0 ? <p className="text-muted-foreground">No purchase orders yet.</p> : null}
           {orders.map((order) => {
-            const line = order.lines[0];
-            const item = items.find((i) => i.id === line?.itemId);
-            const due = line ? line.qty - line.received : 0;
-            const status = !line ? "" : line.received >= line.qty ? "received" : line.received > 0 ? "part received" : "open";
+            const value = order.lines.reduce((sum, line) => sum + line.qty * line.rate, 0);
+            const received = order.lines.reduce((sum, line) => sum + line.received * line.rate, 0);
+            const status = order.lines.every((line) => line.received >= line.qty) ? "received" : order.lines.some((line) => line.received > 0) ? "part received" : "open";
             return (
-              <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
-                <span>
-                  <span className="font-medium">{order.number}</span> · {order.vendor} · {locations.find((l) => l.id === order.locationId)?.name ?? "—"}
-                  <span className="block text-xs text-muted-foreground">{item?.name ?? "Item"}: ordered {line?.qty ?? 0}, received {line?.received ?? 0}, at ₹{line?.rate ?? 0} · {order.date}</span>
-                </span>
-                <span className="flex flex-wrap items-center gap-2">
+              <div key={order.id} className="grid gap-2 border-b border-border pb-3 last:border-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <span className="font-medium">{order.number}</span> · {order.vendor} · {locations.find((l) => l.id === order.locationId)?.name ?? "—"} · {order.date}
+                    <span className="block text-xs text-muted-foreground">Value ₹{value.toLocaleString("en-IN")} · received ₹{received.toLocaleString("en-IN")}</span>
+                  </span>
                   <Badge variant={status === "received" ? "success" : status === "part received" ? "warning" : "neutral"}>{status}</Badge>
-                  {due > 0 && line ? (
-                    <>
-                      <Input aria-label={`Receive on ${order.number}`} type="number" min={0} className="h-8 w-24" placeholder={`Max ${due}`} value={receiveQty[order.id] ?? ""} onChange={(e) => setReceiveQty((current) => ({ ...current, [order.id]: e.target.value }))} />
-                      <Button size="sm" variant="secondary" disabled={!(Number(receiveQty[order.id]) > 0)} onClick={() => receive(order.id, line)}>Receive goods</Button>
-                    </>
-                  ) : null}
-                </span>
+                </div>
+                {order.lines.map((line) => {
+                  const item = items.find((i) => i.id === line.itemId);
+                  const due = line.qty - line.received;
+                  const key = `${order.id}:${line.itemId}`;
+                  return (
+                    <div key={line.itemId} className="flex flex-wrap items-center justify-between gap-2 pl-4 text-xs">
+                      <span>{item?.name ?? "Item"}: ordered {line.qty}, received {line.received}, at ₹{line.rate}</span>
+                      {due > 0 ? (
+                        <span className="flex items-center gap-2">
+                          <Input aria-label={`Receive ${item?.name ?? "item"} on ${order.number}`} type="number" min={0} className="h-8 w-24" placeholder={`Max ${due}`} value={receipts[key] ?? ""} onChange={(e) => setReceipts((current) => ({ ...current, [key]: e.target.value }))} />
+                        </span>
+                      ) : <span className="text-muted-foreground">complete</span>}
+                    </div>
+                  );
+                })}
+                {order.lines.some((line) => line.qty > line.received) ? (
+                  <div className="pl-4"><Button size="sm" variant="secondary" onClick={() => receive(order.id, order)}>Receive goods</Button></div>
+                ) : null}
               </div>
             );
           })}
