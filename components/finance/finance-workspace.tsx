@@ -22,7 +22,7 @@ import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
-import { useOperationsStore } from "@/lib/stores/operations-store";
+import { stockOn, useOperationsStore } from "@/lib/stores/operations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
@@ -659,7 +659,58 @@ function ProfitLossView() {
           <p className="text-sm">Margin on net sales: {pnl.margin === null ? "not available yet" : `${pnl.margin}%`}</p>
         </CardContent>
       </Card>
+      <BalanceSheetCard />
     </>
+  );
+}
+
+/**
+ * Balance sheet to date (plan §8.7 V2). Every figure comes from a record: cash from the cash flow closing balance,
+ * receivables from invoices still owed, stock at the item rate, and payables from bills still owed. Net assets is
+ * what is left after liabilities; it already includes the profit in the profit and loss view.
+ */
+function BalanceSheetCard() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const openingCash = useFinanceStore((state) => state.openingCash);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const topUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const items = useOperationsStore((state) => state.items);
+  const movements = useOperationsStore((state) => state.movements);
+  const flow = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
+  const cash = flow.length > 0 ? flow[flow.length - 1].closing : openingCash;
+  const receivables = invoices.filter((i) => !i.cancelled).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const stock = items.reduce((sum, item) => sum + stockOn(movements, item.id) * item.rate, 0);
+  const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
+  const assets = cash + receivables + stock;
+  const netAssets = assets - payables;
+  const rows: [string, number, boolean][] = [
+    ["Cash and bank", cash, false],
+    ["Owed by customers", receivables, false],
+    ["Stock at item rate", stock, false],
+    ["Total assets", assets, true],
+    ["Owed to vendors", -payables, false],
+    ["Net assets", netAssets, true],
+  ];
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Balance sheet to date</CardTitle></CardHeader>
+      <CardContent className="grid gap-3 text-sm">
+        <p className="text-xs text-muted-foreground">Cash starts from the opening cash entered for the company. Net assets is assets less what is owed to vendors. No opening equity is recorded yet, so this is a snapshot and does not reconcile to capital.</p>
+        <table className="w-full text-sm tabular-nums">
+          <tbody>
+            {rows.map(([label, value, strong]) => (
+              <tr key={label} className={`border-b border-border last:border-0 ${strong ? "font-semibold" : ""}`}>
+                <td className="py-2">{label}</td>
+                <td className={`py-2 text-right ${value < 0 ? "text-danger" : ""}`}>{value < 0 ? `-${money(Math.abs(value))}` : money(value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   );
 }
 
