@@ -32,6 +32,9 @@ export interface FundRequest {
   status: "pending" | "awaiting_finance" | "approved" | "rejected"; ownerApprovedBy?: string; financeApprovedBy?: string; rejectedBy?: string; rejectedReason?: string;
 }
 export interface Draw { id: string; lineId: string; amount: number; note: string; by: string; date: string }
+/** A bank movement that is not in the books: bank charges, loan instalments, capital in. Amount is signed: + in, − out. */
+export interface BankEntry { id: string; date: string; description: string; amount: number }
+
 /** The planned spend for one budget line in one quarter of an Indian financial year (April to March). */
 export interface BudgetPlan { id: string; lineId: string; fiscalYear: string; quarter: 1 | 2 | 3 | 4; planned: number }
 
@@ -72,9 +75,13 @@ interface FinanceState {
   draws: Draw[];
   bills: Bill[];
   plans: BudgetPlan[];
+  bankEntries: BankEntry[];
+  openingCash: number;
   trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
+  addBankEntry: (input: Omit<BankEntry, "id">, by: string) => string | null;
+  setOpeningCash: (amount: number, by: string) => string | null;
   setBudgetPlan: (lineId: string, fiscalYear: string, quarter: BudgetPlan["quarter"], planned: number, by: string) => string | null;
   addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; poId?: string }, by: string) => string | null;
   recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
@@ -89,8 +96,8 @@ interface FinanceState {
 }
 
 const today = "2026-10-23";
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills"> => {
-  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [] };
+const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash"> => {
+  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0 };
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
@@ -109,7 +116,10 @@ const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetL
     { id: "bill-1", number: "BILL-2026-0101", vendor: "Gurugram Packaging Co", vendorBillNo: "GPC/2610/88", date: "2026-10-15", dueDate: "2026-10-30", amount: 45000, payments: [], createdBy: "Aman Verma" },
     { id: "bill-2", number: "BILL-2026-0102", vendor: "Udyog Electricals", vendorBillNo: "UE-4471", date: "2026-10-01", dueDate: "2026-10-12", amount: 12500, payments: [{ id: "bpay-1", amount: 12500, method: "Bank transfer", reference: "NEFT-55201", date: "2026-10-11" }], createdBy: "Aman Verma" },
   ];
-  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills };
+  const bankEntries: BankEntry[] = [
+    { id: "bank-1", date: "2026-10-05", description: "Bank charges, September", amount: -850 },
+  ];
+  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000 };
 };
 
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
@@ -121,6 +131,23 @@ export const useFinanceStore = create<FinanceState>()(
       trail: [],
       bills: seedFinance().bills,
       plans: [],
+      setOpeningCash: (amount, by) => {
+        if (!(amount >= 0)) return "The opening cash cannot be negative.";
+        set((state) => ({ openingCash: amount, trail: withTrail(state.trail, trailEntry("finance", today, by, `Set opening cash to ₹${amount.toLocaleString("en-IN")}`)) }));
+        return null;
+      },
+      addBankEntry: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (input.description.trim().length < 3) return "Describe the bank movement.";
+        if (!(input.amount !== 0)) return "Enter an amount.";
+        const entry: BankEntry = { id: `bank-${Date.now()}`, date: input.date, description: input.description.trim(), amount: input.amount };
+        set((state) => ({
+          bankEntries: [entry, ...state.bankEntries],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Bank ${input.amount > 0 ? "in" : "out"} ₹${Math.abs(input.amount).toLocaleString("en-IN")}: ${entry.description}`)),
+        }));
+        return null;
+      },
       addInvoice: (input, by) => {
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
@@ -292,7 +319,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, trail: state.trail }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, trail: state.trail }) },
   ),
 );
 
@@ -323,6 +350,33 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
   const netSales = round(sales - credits);
   const profit = round(netSales - costs);
   return { sales: round(sales), credits: round(credits), netSales, costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
+}
+
+export interface CashFlowMonth { month: string; receipts: number; payments: number; other: number; net: number; closing: number }
+
+/**
+ * Cash flow by month (plan §8.7 V2). Receipts are customer payments recorded on invoices; payments are bill
+ * payments; other is bank movements entered by hand. Closing cash starts from the opening cash.
+ */
+export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries: BankEntry[], openingCash: number): CashFlowMonth[] {
+  const byMonth = new Map<string, { receipts: number; payments: number; other: number }>();
+  const add = (date: string, key: "receipts" | "payments" | "other", amount: number) => {
+    const month = date.slice(0, 7);
+    const row = byMonth.get(month) ?? { receipts: 0, payments: 0, other: 0 };
+    row[key] += amount;
+    byMonth.set(month, row);
+  };
+  for (const invoice of invoices.filter((i) => !i.cancelled)) for (const payment of invoice.payments) add(payment.date, "receipts", payment.amount);
+  for (const bill of bills) for (const payment of bill.payments) add(payment.date, "payments", payment.amount);
+  for (const entry of bankEntries) add(entry.date, "other", entry.amount);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  let closing = openingCash;
+  return [...byMonth.keys()].sort().map((month) => {
+    const row = byMonth.get(month)!;
+    const net = round(row.receipts - row.payments + row.other);
+    closing = round(closing + net);
+    return { month, receipts: round(row.receipts), payments: round(row.payments), other: round(row.other), net, closing };
+  });
 }
 
 export function creditedAmount(invoiceId: string, notes: CreditNote[], includePending: boolean) {
