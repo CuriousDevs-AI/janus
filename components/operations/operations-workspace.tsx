@@ -743,6 +743,7 @@ function OrdersView({ me }: { me: string }) {
   const dispatches = useOperationsStore((state) => state.dispatches);
   const createDispatch = useOperationsStore((state) => state.createDispatch);
   const markDelivered = useOperationsStore((state) => state.markDelivered);
+  const checkpointDispatch = useOperationsStore((state) => state.checkpointDispatch);
   const recordReturn = useOperationsStore((state) => state.recordReturn);
   const locations = useLocationsStore((state) => state.locations);
   const [customer, setCustomer] = React.useState("");
@@ -813,7 +814,7 @@ function OrdersView({ me }: { me: string }) {
                   <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span>{linkedLabel(links.deals, d.dealId) ? <span className="block text-xs text-muted-foreground">Deal: {linkedLabel(links.deals, d.dealId)}</span> : null}{d.transporter || d.lrNumber ? <span className="block text-xs text-muted-foreground">{d.transporter ?? "Transporter not given"}{d.lrNumber ? ` · LR ${d.lrNumber}` : ""}</span> : null}</td>
                   <td className="px-4 py-3 text-xs">{d.lines.map((l) => `${items.find((i) => i.id === l.itemId)?.name} × ${l.qty}${l.batchNo ? ` (${l.batchNo})` : ""}`).join(", ")}</td>
                   <td className="px-4 py-3"><Badge variant={d.status === "delivered" ? "success" : "warning"}>{d.status}</Badge>{d.proof ? <span className="block text-xs text-muted-foreground">{d.proof}</span> : null}</td>
-                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
+                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" && !d.picked ? <Button size="sm" variant="ghost" onClick={() => { const p = checkpointDispatch(d.id, "picked", me); if (p) toast.error(p); }}>Picked</Button> : null}{d.status === "dispatched" && d.picked && !d.packed ? <Button size="sm" variant="ghost" onClick={() => { const p = checkpointDispatch(d.id, "packed", me); if (p) toast.error(p); }}>Packed</Button> : null}{d.status === "dispatched" && d.packed && !d.shipped ? <Button size="sm" variant="ghost" onClick={() => { const p = checkpointDispatch(d.id, "shipped", me); if (p) toast.error(p); }}>Shipped</Button> : null}{d.status === "dispatched" && d.shipped ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
                 </tr>
               ))}
             </tbody>

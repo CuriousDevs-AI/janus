@@ -27,6 +27,8 @@ export interface Dispatch {
   lines: DispatchLine[]; status: "dispatched" | "delivered"; proof?: string; createdBy: string; deliveredBy?: string; dealId?: string;
   /** Logistics: who carries the goods and the transporter's LR (docket) number, when given. */
   transporter?: string; lrNumber?: string;
+  /** Pick, pack and ship checkpoints, each with who did it. A delivery needs the goods shipped first. */
+  picked?: string; packed?: string; shipped?: string;
 }
 /** One line of a purchase order: what was ordered, at what rate, and how much has come in. */
 export interface PoLine { itemId: string; qty: number; rate: number; received: number }
@@ -60,6 +62,7 @@ interface OperationsState {
   receiveAgainstPO: (poId: string, receipts: { itemId: string; qty: number }[], by: string) => string | null;
   createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[]; dealId?: string; transporter?: string; lrNumber?: string }, by: string) => string | null;
   markDelivered: (id: string, proof: string, by: string) => string | null;
+  checkpointDispatch: (id: string, stage: "picked" | "packed" | "shipped", by: string) => string | null;
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
   sendTransfer: (input: Omit<Transfer, "id" | "number" | "date" | "status" | "by" | "batchNo"> & { batchNo?: string | null }, by: string) => string | null;
@@ -271,10 +274,26 @@ export const useOperationsStore = create<OperationsState>()(
         }));
         return null;
       },
+      checkpointDispatch: (id, stage, by) => {
+        const dispatch = get().dispatches.find((d) => d.id === id);
+        if (!dispatch) return "Dispatch not found.";
+        if (dispatch.status === "delivered") return "This dispatch is already delivered.";
+        const order = ["picked", "packed", "shipped"] as const;
+        const index = order.indexOf(stage);
+        const previous = index > 0 ? order[index - 1] : null;
+        if (dispatch[stage]) return `${stage[0].toUpperCase()}${stage.slice(1)} already.`;
+        if (previous && !dispatch[previous]) return `Mark the goods ${previous} before ${stage}.`;
+        set((state) => ({
+          dispatches: state.dispatches.map((d) => d.id === id ? { ...d, [stage]: by } : d),
+          trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `${dispatch.number} ${stage}`)),
+        }));
+        return null;
+      },
       markDelivered: (id, proof, by) => {
         const dispatch = get().dispatches.find((d) => d.id === id);
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
+        if (!dispatch.shipped) return "Ship the goods before recording delivery.";
         if (proof.trim().length < 3) return "Add proof of delivery: receiver name, signed challan number or photo reference.";
         set((state) => ({
           dispatches: state.dispatches.map((d) => d.id === id ? { ...d, status: "delivered", proof: proof.trim(), deliveredBy: by } : d),
