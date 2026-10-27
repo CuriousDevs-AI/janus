@@ -144,3 +144,10 @@ Not built yet, in plan order:
 - Migration `0017_projects` and `/v1/project-records` add a typed projects table under row-level security. Create, list and change status need `projects:manage`. Duplicate keys, reversed dates, an owner outside the company, and reopening a done project are refused.
 - Verified: three tests cover these rules, company isolation and the permission check. The full backend suite passes (116 tests).
 - Still open: milestones, tasks, timesheets, allocations and change requests are not yet typed on the server. The screens do not yet read from `/v1/project-records`.
+
+**Sixth pass: milestones and tasks on the server (P2, second part):**
+- Migration `0018_milestones_and_tasks`: typed milestones and tasks, linked to the project record, under row-level security.
+- Milestones move planned, then done, then accepted. The person who completes a milestone cannot accept it, and accepted is final. Accepting before completion is refused.
+- Tasks link to a milestone and to an active company member. Status changes are audited.
+- Verified with four tests, and the full backend suite passes (120 tests).
+- Still open: timesheets, allocations and change requests are not yet typed on the server. The Projects screens do not read these endpoints yet.
