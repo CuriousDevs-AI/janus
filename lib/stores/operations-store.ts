@@ -33,9 +33,9 @@ export interface PurchaseOrder { id: string; number: string; vendor: string; dat
 /** A request to buy an item. Another person approves it; once approved it is turned into a purchase order. */
 export interface Requisition { id: string; number: string; requester: string; itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string; status: "pending" | "approved" | "rejected" | "ordered"; decidedBy?: string; rejectedReason?: string; poNumber?: string; raisedOn: string }
 /** A physical count of one location: what the system said, what was counted, and the difference. */
-export interface StockCount { id: string; number: string; date: string; locationId: number; lines: { itemId: string; system: number; counted: number; variance: number }[]; by: string }
+export interface StockCount { id: string; number: string; date: string; locationId: number; lines: { itemId: string; batchNo: string | null; system: number; counted: number; variance: number }[]; by: string }
 /** Stock moved from one location to another. It leaves the sending location when it is sent, and arrives when it is received. */
-export interface Transfer { id: string; number: string; date: string; itemId: string; qty: number; fromLocationId: number; toLocationId: number; transporter: string; lrNumber: string; status: "in transit" | "received"; by: string }
+export interface Transfer { id: string; number: string; date: string; itemId: string; qty: number; batchNo: string | null; fromLocationId: number; toLocationId: number; transporter: string; lrNumber: string; status: "in transit" | "received"; by: string }
 export interface Adjustment { id: string; date: string; itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string; status: "pending" | "applied" | "rejected"; by: string; approvedBy?: string; rejectedBy?: string; value: number }
 
 interface OperationsState {
@@ -61,9 +61,9 @@ interface OperationsState {
   markDelivered: (id: string, proof: string, by: string) => string | null;
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
-  sendTransfer: (input: Omit<Transfer, "id" | "number" | "date" | "status" | "by">, by: string) => string | null;
+  sendTransfer: (input: Omit<Transfer, "id" | "number" | "date" | "status" | "by" | "batchNo"> & { batchNo?: string | null }, by: string) => string | null;
   receiveTransfer: (id: string, by: string) => string | null;
-  recordCount: (locationId: number, counts: { itemId: string; counted: number }[], by: string) => string | null;
+  recordCount: (locationId: number, counts: { itemId: string; batchNo?: string | null; counted: number }[], by: string) => string | null;
   approveAdjustment: (id: string, by: string) => string | null;
   rejectAdjustment: (id: string, reason: string, by: string) => string | null;
 }
@@ -309,17 +309,18 @@ export const useOperationsStore = create<OperationsState>()(
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
         if (!item) return "Choose an item.";
-        if (item.trackBatch) return `${item.name} is batch tracked. Move it batch by batch.`;
+        const batchNo = item.trackBatch ? (input.batchNo ?? null) : null;
+        if (item.trackBatch && !batchNo) return `${item.name} is batch tracked. Choose the batch to move.`;
         if (input.fromLocationId === input.toLocationId) return "The item is already at that location.";
         if (!(input.qty > 0)) return "Enter a quantity above zero.";
         if (input.transporter.trim().length < 2) return "Name the transporter.";
-        const available = stockOn(get().movements, item.id, input.fromLocationId);
-        if (input.qty > available) return `Only ${available} ${item.unit} of ${item.name} is at the sending location.`;
+        const available = stockOn(get().movements, item.id, input.fromLocationId, item.trackBatch ? batchNo : undefined);
+        if (input.qty > available) return `Only ${available} ${item.unit} of ${item.name}${batchNo ? ` (batch ${batchNo})` : ""} is at the sending location.`;
         const number = nextNumber("TRF", get().transfers.length);
-        const transfer: Transfer = { ...input, id: `trf-${Date.now()}`, number, date: TODAY, status: "in transit", by, transporter: input.transporter.trim(), lrNumber: input.lrNumber.trim() };
+        const transfer: Transfer = { ...input, batchNo, id: `trf-${Date.now()}`, number, date: TODAY, status: "in transit", by, transporter: input.transporter.trim(), lrNumber: input.lrNumber.trim() };
         set((state) => ({
           transfers: [transfer, ...state.transfers],
-          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "transfer", itemId: item.id, locationId: input.fromLocationId, batchNo: null, qty: -input.qty, reason: `Sent ${number}`, by }, ...state.movements],
+          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "transfer", itemId: item.id, locationId: input.fromLocationId, batchNo, qty: -input.qty, reason: `Sent ${number}`, by }, ...state.movements],
           trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Sent ${input.qty} ${item.unit} of ${item.name} under ${number}`)),
         }));
         return null;
@@ -333,7 +334,7 @@ export const useOperationsStore = create<OperationsState>()(
         const item = get().items.find((i) => i.id === transfer.itemId);
         set((state) => ({
           transfers: state.transfers.map((t) => t.id === id ? { ...t, status: "received" } : t),
-          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "transfer", itemId: transfer.itemId, locationId: transfer.toLocationId, batchNo: null, qty: transfer.qty, reason: `Received ${transfer.number}`, by }, ...state.movements],
+          movements: [{ id: `mv-${Date.now()}`, date: TODAY, type: "transfer", itemId: transfer.itemId, locationId: transfer.toLocationId, batchNo: transfer.batchNo, qty: transfer.qty, reason: `Received ${transfer.number}`, by }, ...state.movements],
           trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Received ${transfer.number}: ${transfer.qty} ${item?.unit ?? ""} of ${item?.name ?? "item"}`)),
         }));
         return null;
@@ -347,14 +348,15 @@ export const useOperationsStore = create<OperationsState>()(
         for (const row of counts) {
           const item = get().items.find((i) => i.id === row.itemId);
           if (!item) return "An item in the count was not found.";
-          if (item.trackBatch) return `${item.name} is batch tracked. Count it batch by batch.`;
+          const batchNo = item.trackBatch ? (row.batchNo ?? null) : null;
+          if (item.trackBatch && !batchNo) return `${item.name} is batch tracked. Count it batch by batch.`;
           if (!(row.counted >= 0)) return `The count for ${item.name} cannot be negative.`;
-          const system = stockOn(get().movements, item.id, locationId);
-          lines.push({ itemId: item.id, system, counted: row.counted, variance: row.counted - system });
+          const system = stockOn(get().movements, item.id, locationId, item.trackBatch ? batchNo : undefined);
+          lines.push({ itemId: item.id, batchNo, system, counted: row.counted, variance: row.counted - system });
         }
         set((state) => ({ counts: [{ id: `cnt-${Date.now()}`, number, date: TODAY, locationId, lines, by }, ...state.counts] }));
         for (const line of lines.filter((l) => l.variance !== 0)) {
-          const problem = get().requestAdjustment({ itemId: line.itemId, locationId, batchNo: null, qty: line.variance, reason: `Physical count ${number}` }, by);
+          const problem = get().requestAdjustment({ itemId: line.itemId, locationId, batchNo: line.batchNo, qty: line.variance, reason: `Physical count ${number}` }, by);
           if (problem) return `Count recorded, but the adjustment for one item was refused: ${problem}`;
         }
         set((state) => ({ trail: withTrail(state.trail, trailEntry("operations", TODAY, by, `Counted ${number}: ${lines.filter((l) => l.variance !== 0).length} difference${lines.filter((l) => l.variance !== 0).length === 1 ? "" : "s"}`)) }));
