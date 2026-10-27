@@ -17,6 +17,7 @@ from janus_api.core.errors import install_errors
 from janus_api.crm.router import router as crm_router
 from janus_api.org.router import router as org_router
 from janus_api.sources.router import router as sources_router
+from janus_api.state.router import router as state_router
 from janus_api.whatsapp.router import router as whatsapp_router
 
 
@@ -42,6 +43,7 @@ app.include_router(org_router)
 app.include_router(sources_router)
 app.include_router(crm_router)
 app.include_router(whatsapp_router)
+app.include_router(state_router)
 
 
 @app.get("/health")

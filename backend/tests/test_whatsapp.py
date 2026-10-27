@@ -124,6 +124,13 @@ async def test_whatsapp_flow(
                 json={"kind": "text", "body": "Hi"},
             )
         ).status_code == 422
+        # A template needs the recorded WhatsApp opt-in, not only the per-message confirmation.
+        consent = await client.patch(
+            f"/v1/contacts/{leads[0]['customerId']}/consent",
+            headers=owner.headers,
+            json={"whatsappOptIn": True, "consentSource": "test"},
+        )
+        assert consent.status_code == 200, consent.text
         message = {
             "kind": "template",
             "templateName": "enquiry",
