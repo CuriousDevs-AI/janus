@@ -18,6 +18,7 @@ import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queu
 import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
+import { RecordDocuments } from "@/components/shared/record-documents";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -263,6 +264,8 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => 
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const links = useCrmLinkOptions();
   const deal = linkedLabel(links.deals, invoice.dealId);
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
   const totals = invoiceTotals(invoice);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -280,6 +283,7 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => 
           <div className="flex justify-between"><span>Credited (approved)</span><span>{money(creditNotes.filter((n) => n.invoiceId === invoice.id && n.status === "approved").reduce((s, n) => s + n.amount, 0))}</span></div>
           <div className="flex justify-between font-semibold"><span>Due now</span><span>{money(dueAmount(invoice, creditNotes))}</span></div>
         </div>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-sm font-medium">Documents</p><RecordDocuments recordKind="invoice" recordId={invoice.id} addedBy={me} today="2026-10-23" /></div>
         <p className="text-xs text-muted-foreground">Created by {invoice.createdBy}. Tax rules to be confirmed by the company&apos;s accountant before filing.</p>
         <DialogFooter><Button variant="secondary" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>

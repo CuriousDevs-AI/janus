@@ -16,6 +16,7 @@ import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStor
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useSession } from "@/components/auth/session-provider";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
+import { RecordDocuments } from "@/components/shared/record-documents";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -270,6 +271,7 @@ function OrdersView({ me }: { me: string }) {
   const [returnQty, setReturnQty] = React.useState("");
   const [returnCondition, setReturnCondition] = React.useState<"good" | "damaged">("good");
   const [returnReason, setReturnReason] = React.useState("");
+  const [docsFor, setDocsFor] = React.useState<Dispatch | null>(null);
 
   function create() {
     if (locationId === "") return toast.error("Choose the location to dispatch from.");
@@ -320,13 +322,20 @@ function OrdersView({ me }: { me: string }) {
                   <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span>{linkedLabel(links.deals, d.dealId) ? <span className="block text-xs text-muted-foreground">Deal: {linkedLabel(links.deals, d.dealId)}</span> : null}</td>
                   <td className="px-4 py-3 text-xs">{d.lines.map((l) => `${items.find((i) => i.id === l.itemId)?.name} × ${l.qty}${l.batchNo ? ` (${l.batchNo})` : ""}`).join(", ")}</td>
                   <td className="px-4 py-3"><Badge variant={d.status === "delivered" ? "success" : "warning"}>{d.status}</Badge>{d.proof ? <span className="block text-xs text-muted-foreground">{d.proof}</span> : null}</td>
-                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
+                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </CardContent>
       </Card>
+
+      <Dialog open={docsFor !== null} onOpenChange={(open) => !open && setDocsFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Documents for {docsFor?.number}</DialogTitle><DialogDescription>Challans, receipts and contracts for this dispatch.</DialogDescription></DialogHeader>
+          {docsFor ? <RecordDocuments recordKind="dispatch" recordId={docsFor.id} addedBy={me} today="2026-10-23" /> : null}
+        </DialogContent>
+      </Dialog>
 
       {proofFor ? (
         <Dialog open onOpenChange={(open) => !open && setProofFor(null)}>
