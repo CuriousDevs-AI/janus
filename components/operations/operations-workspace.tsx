@@ -27,7 +27,6 @@ const days = (from: string, to: string) => Math.floor((Date.parse(to) - Date.par
 
 const comingSoon: Record<string, string> = {
   workflows: "Operational workflows come after the core stock and dispatch screens are in use.",
-  reports: "Operations reports come once stock and dispatch have history.",
 };
 
 export function OperationsWorkspace() {
@@ -35,7 +34,7 @@ export function OperationsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions", counts: "Physical count", transfers: "Transit transfers" };
+  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders", vendors: "Vendors", procurement: "Requisitions", counts: "Physical count", transfers: "Transit transfers", reports: "Operations reports" };
 
   if (view in comingSoon) {
     return (
@@ -59,8 +58,9 @@ export function OperationsWorkspace() {
         {view === "procurement" && <RequisitionsView me={me} />}
         {view === "counts" && <PhysicalCountView me={me} />}
         {view === "transfers" && <TransfersView me={me} />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers"].includes(view) && <OverviewView />}
-        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers"].includes(view) && <OperationsTrail />}
+        {view === "reports" && <OperationsReportsView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers", "reports"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders", "vendors", "procurement", "counts", "transfers", "reports"].includes(view) && <OperationsTrail />}
       </div>
     </div>
   );
@@ -124,6 +124,53 @@ function TransfersView({ me }: { me: string }) {
               </div>
             );
           })}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Operations in numbers: stock value by location, low stock, dispatches not yet delivered, and orders and requisitions still open. */
+function OperationsReportsView() {
+  const items = useOperationsStore((state) => state.items);
+  const movements = useOperationsStore((state) => state.movements);
+  const dispatches = useOperationsStore((state) => state.dispatches);
+  const orders = useOperationsStore((state) => state.purchaseOrders);
+  const requisitions = useOperationsStore((state) => state.requisitions);
+  const transfers = useOperationsStore((state) => state.transfers);
+  const adjustments = useOperationsStore((state) => state.adjustments);
+  const locations = useLocationsStore((state) => state.locations);
+  const byLocation = locations.map((l) => {
+    const value = items.filter((i) => !i.trackBatch).reduce((sum, i) => sum + stockOn(movements, i.id, l.id) * i.rate, 0);
+    return { name: l.name, value };
+  });
+  const lowStock = items.filter((i) => !i.trackBatch && stockOn(movements, i.id) <= i.reorderLevel).length;
+  const undelivered = dispatches.filter((d) => d.status === "dispatched").length;
+  const openOrderValue = orders.reduce((sum, o) => sum + o.lines.reduce((s2, l) => s2 + (l.qty - l.received) * l.rate, 0), 0);
+  const pendingRequisitions = requisitions.filter((r) => r.status === "pending").length;
+  const inTransit = transfers.filter((t) => t.status === "in transit").length;
+  const waitingAdjustments = adjustments.filter((a) => a.status === "pending").length;
+  const rows: [string, string][] = [
+    ["Items with stock at or below reorder level", String(lowStock)],
+    ["Dispatches not yet delivered", String(undelivered)],
+    ["Value of open purchase orders", money(openOrderValue)],
+    ["Requisitions waiting for approval", String(pendingRequisitions)],
+    ["Transfers in transit", String(inTransit)],
+    ["Adjustments waiting for approval", String(waitingAdjustments)],
+  ];
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Stock value by location</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm tabular-nums">
+          {byLocation.map((row) => <div key={row.name} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{row.name}</span><span>{money(row.value)}</span></div>)}
+          <p className="text-xs text-muted-foreground">Valued at each item&apos;s rate. Batch-tracked items are not included in these totals.</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Open work</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm tabular-nums">
+          {rows.map(([label, value]) => <div key={label} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{label}</span><span className="font-medium">{value}</span></div>)}
         </CardContent>
       </Card>
     </>
