@@ -25,7 +25,7 @@ const workspacePermissions: Record<string, string> = {
   "finance-accounting": "billing:manage",
   "projects-delivery": "projects:manage",
   "customer-support": "leads:read_team",
-  "operations-inventory": "settings:manage",
+  "operations-inventory": "stock:adjust",
   "it-infrastructure": "settings:manage",
 };
 
