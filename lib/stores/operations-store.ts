@@ -24,6 +24,8 @@ export interface DispatchLine { itemId: string; batchNo: string | null; qty: num
 export interface Dispatch {
   id: string; number: string; challanNo: string; date: string; customer: string; customerCompany: string; locationId: number;
   lines: DispatchLine[]; status: "dispatched" | "delivered"; proof?: string; createdBy: string; deliveredBy?: string; dealId?: string;
+  /** Logistics: who carries the goods and the transporter's LR (docket) number, when given. */
+  transporter?: string; lrNumber?: string;
 }
 /** One line of a purchase order: what was ordered, at what rate, and how much has come in. */
 export interface PoLine { itemId: string; qty: number; rate: number; received: number }
@@ -55,7 +57,7 @@ interface OperationsState {
   orderRequisition: (id: string, vendor: string, by: string) => string | null;
   addPurchaseOrder: (input: { vendor: string; locationId: number; lines: { itemId: string; qty: number; rate: number }[] }, by: string) => string | null;
   receiveAgainstPO: (poId: string, receipts: { itemId: string; qty: number }[], by: string) => string | null;
-  createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[]; dealId?: string }, by: string) => string | null;
+  createDispatch: (input: { customer: string; customerCompany: string; locationId: number; lines: DispatchLine[]; dealId?: string; transporter?: string; lrNumber?: string }, by: string) => string | null;
   markDelivered: (id: string, proof: string, by: string) => string | null;
   recordReturn: (input: { dispatchId: string; itemId: string; qty: number; condition: "good" | "damaged"; reason: string }, by: string) => string | null;
   requestAdjustment: (input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string }, by: string) => string | null;
@@ -258,7 +260,7 @@ export const useOperationsStore = create<OperationsState>()(
         }
         const number = nextNumber("DN", get().dispatches.length);
         const id = `dsp-${Date.now()}`;
-        const dispatch: Dispatch = { id, number, challanNo: `DC-${number.slice(3)}`, date: TODAY, customer: input.customer.trim(), customerCompany: input.customerCompany.trim(), locationId: input.locationId, lines: input.lines, status: "dispatched", createdBy: by, dealId: input.dealId };
+        const dispatch: Dispatch = { id, number, challanNo: `DC-${number.slice(3)}`, date: TODAY, customer: input.customer.trim(), customerCompany: input.customerCompany.trim(), locationId: input.locationId, lines: input.lines, status: "dispatched", createdBy: by, dealId: input.dealId, transporter: input.transporter?.trim() || undefined, lrNumber: input.lrNumber?.trim() || undefined };
         const outgoing: Movement[] = input.lines.map((line, i) => ({ id: `mv-${Date.now()}-${i}`, date: TODAY, type: "dispatch", itemId: line.itemId, locationId: input.locationId, batchNo: line.batchNo, qty: -line.qty, reason: `Dispatch ${number}`, by }));
         const units = input.lines.reduce((sum, line) => sum + line.qty, 0);
         set((state) => ({
