@@ -90,7 +90,7 @@ interface AppState {
 
   // tickets
   updateTicketStatus: (ticketId: string, status: TicketStatus) => void;
-  assignTicket: (ticketId: string, userId: string) => void;
+  assignTicket: (ticketId: string, userId: string, by?: string) => void;
   takeOverConversation: (ticketId: string) => void;
   resolveTicket: (ticketId: string, reason?: string) => void;
 
@@ -306,13 +306,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  assignTicket: (ticketId, userId) => {
+  assignTicket: (ticketId, userId, by) => {
     const ticket = get().tickets.find((t) => t.id === ticketId);
     if (!ticket) return;
     set((s) => ({
       tickets: s.tickets.map((t) => (t.id === ticketId ? { ...t, assigneeId: userId, updatedAt: new Date().toISOString() } : t)),
     }));
-    get().addActivity(ticket.customerId, "human_action", HUMAN_ACTOR, `Ticket ${ticket.number} assigned`, {
+    // The person who made the change is recorded, not the fixed demo user.
+    const actor: ActivityActor = by ? { ...HUMAN_ACTOR, userName: by } : HUMAN_ACTOR;
+    get().addActivity(ticket.customerId, "human_action", actor, `Ticket ${ticket.number} assigned`, {
       relatedId: ticketId,
       relatedKind: "ticket",
     });

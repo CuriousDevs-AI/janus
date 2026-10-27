@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/stores/app-store";
 import { users } from "@/lib/mock-data";
 import type { Ticket } from "@/lib/types";
@@ -87,7 +88,28 @@ function OverviewView() {
         </CardContent>
       </Card>
       <p className="text-xs text-muted-foreground">Open a ticket in <Link href="/tickets?workspace=customer-support" className="underline">Tickets</Link> to reply, escalate or resolve it.</p>
+      <AssignmentsTrail />
     </>
+  );
+}
+
+/** Recent ticket assignments with the person who made each one. */
+function AssignmentsTrail() {
+  const activities = useAppStore((state) => state.activities);
+  const rows = activities.filter((a) => a.relatedKind === "ticket" && a.title.endsWith("assigned")).slice(0, 12);
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Assignment trail</CardTitle></CardHeader>
+      <CardContent className="grid gap-2 text-sm">
+        {rows.length === 0 ? <p className="text-muted-foreground">No assignments yet. Changes to who holds a ticket appear here.</p> : null}
+        {rows.map((a) => (
+          <p key={a.id}>
+            <span className="text-muted-foreground">{a.createdAt.slice(0, 10)} · {a.actor.type === "human" ? a.actor.userName : a.actor.type === "ai" ? a.actor.agentName : "System"} · </span>
+            {a.title}
+          </p>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -101,6 +123,8 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "war
 }
 
 function QueuesView() {
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
   const open = useOpenTickets();
   const assign = useAppStore((state) => state.assignTicket);
   const customers = useAppStore((state) => state.customers);
@@ -124,7 +148,7 @@ function QueuesView() {
                   <span><span className="font-medium">{t.number}</span> · {t.subject}<span className="block text-xs text-muted-foreground">{customer?.name ?? "Customer"} · {t.priority} · {t.status.replaceAll("_", " ")}</span></span>
                   <span className="flex items-center gap-2">
                     <Badge variant={slaTone(slaState(t)) as "neutral"}>{slaState(t)}</Badge>
-                    <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assigneeId ?? ""} onChange={(e) => { if (!e.target.value) return; assign(t.id, e.target.value); toast.success(`${t.number} assigned`); }}>
+                    <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assigneeId ?? ""} onChange={(e) => { if (!e.target.value) return; assign(t.id, e.target.value, me); toast.success(`${t.number} assigned`); }}>
                       <option value="">Assign to…</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
