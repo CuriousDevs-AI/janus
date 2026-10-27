@@ -614,7 +614,16 @@ function ProfitLossView() {
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const bills = useFinanceStore((state) => state.bills);
   const expenses = useFinanceStore((state) => state.expenses);
-  const pnl = profitAndLoss(invoices, creditNotes, bills, expenses);
+  const [from, setFrom] = React.useState("");
+  const [to, setTo] = React.useState("");
+  // A blank end leaves that side open, so the default is still "to date".
+  const inPeriod = (date: string) => (!from || date >= from) && (!to || date <= to);
+  const pnl = profitAndLoss(
+    invoices.filter((i) => inPeriod(i.date)),
+    creditNotes.filter((c) => inPeriod(c.date)),
+    bills.filter((b) => inPeriod(b.date)),
+    expenses.filter((e) => inPeriod(e.date)),
+  );
   // `|| 0` turns a negative zero into zero, so an empty line does not read "-₹0".
   const rows: [string, number, boolean][] = [
     ["Sales (ex-GST)", pnl.sales, false],
@@ -626,8 +635,13 @@ function ProfitLossView() {
   return (
     <>
       <Card>
-        <CardHeader><CardTitle className="text-base">Profit and loss to date</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Profit and loss{from || to ? " for the period" : " to date"}</CardTitle></CardHeader>
         <CardContent className="grid gap-3 text-sm">
+          <div className="flex flex-wrap items-end gap-3 text-xs">
+            <label className="grid gap-1">From <Input type="date" aria-label="Period from" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+            <label className="grid gap-1">To <Input type="date" aria-label="Period to" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+            {from || to ? <Button size="sm" variant="ghost" onClick={() => { setFrom(""); setTo(""); }}>Clear period</Button> : null}
+          </div>
           <p className="text-xs text-muted-foreground">
             Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs as they were entered. Payroll and expense claims are not in this figure yet.
           </p>
