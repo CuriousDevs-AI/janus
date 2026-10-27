@@ -13,6 +13,8 @@ import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/stores/app-store";
 import { useRenewalsStore } from "@/lib/stores/renewals-store";
 import { useFeedbackStore } from "@/lib/stores/feedback-store";
+import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
+import { customerHealth } from "@/lib/customer-health";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { users } from "@/lib/mock-data";
 import type { Ticket } from "@/lib/types";
@@ -90,8 +92,49 @@ function OverviewView() {
         </CardContent>
       </Card>
       <p className="text-xs text-muted-foreground">Open a ticket in <Link href="/tickets?workspace=customer-support" className="underline">Tickets</Link> to reply, escalate or resolve it.</p>
+      <HealthCard />
       <AssignmentsTrail />
     </>
+  );
+}
+
+/** Customer health for every customer on the renewals list: open tickets, escalations, SLA breaches, overdue invoices and renewal timing. */
+function HealthCard() {
+  const open = useOpenTickets();
+  const renewals = useRenewalsStore((state) => state.renewals);
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const rows = renewals.map((r) => {
+    const mine = open.filter((t) => t.customerId === r.customerId);
+    const overdueInvoices = invoices.filter((i) => !i.cancelled && i.customer === r.customerName && i.dueDate < TODAY && dueAmount(i, creditNotes) > 0.001).length;
+    const health = customerHealth({
+      openTickets: mine.length,
+      escalatedTickets: mine.filter((t) => t.status === "escalated").length,
+      breachedTickets: mine.filter((t) => slaState(t) === "breached").length,
+      overdueInvoices,
+      renewalDays: daysBetween(TODAY, r.contractEnd),
+    });
+    return { renewal: r, health };
+  });
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Customer health</CardTitle></CardHeader>
+      <CardContent className="grid gap-2 text-sm">
+        {rows.length === 0 ? <p className="text-muted-foreground">No customers on the renewals list yet, so there is no health to show.</p> : null}
+        {rows.map(({ renewal, health }) => (
+          <div key={renewal.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+            <span>
+              <span className="font-medium">{renewal.customerName}</span>
+              <span className="block text-xs text-muted-foreground">{health.reasons.length > 0 ? health.reasons.join(" · ") : "No issues on record"}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="tabular-nums">{health.score}/100</span>
+              <Badge variant={health.band === "healthy" ? "success" : health.band === "watch" ? "warning" : "danger"}>{health.band}</Badge>
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
