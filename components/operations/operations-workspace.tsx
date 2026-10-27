@@ -73,20 +73,23 @@ function TransfersView({ me }: { me: string }) {
   const sendTransfer = useOperationsStore((state) => state.sendTransfer);
   const receiveTransfer = useOperationsStore((state) => state.receiveTransfer);
   const locations = useLocationsStore((state) => state.locations);
+  const batches = useOperationsStore((state) => state.batches);
   const [itemId, setItemId] = React.useState("");
+  const [batchNo, setBatchNo] = React.useState("");
   const [qty, setQty] = React.useState("");
   const [fromId, setFromId] = React.useState("");
   const [toId, setToId] = React.useState("");
   const [transporter, setTransporter] = React.useState("");
   const [lrNumber, setLrNumber] = React.useState("");
-  const countable = items.filter((i) => !i.trackBatch);
+  const selected = items.find((i) => i.id === itemId);
+  const itemBatches = batches.filter((b) => b.itemId === itemId);
   const locationName = (id: number) => locations.find((l) => l.id === id)?.name ?? "location";
 
   function send() {
-    const problem = sendTransfer({ itemId, qty: Number(qty), fromLocationId: Number(fromId), toLocationId: Number(toId), transporter, lrNumber }, me);
+    const problem = sendTransfer({ itemId, batchNo: batchNo || null, qty: Number(qty), fromLocationId: Number(fromId), toLocationId: Number(toId), transporter, lrNumber }, me);
     if (problem) return toast.error(problem);
     toast.success("Transfer sent; the stock is in transit");
-    setQty(""); setTransporter(""); setLrNumber("");
+    setQty(""); setTransporter(""); setLrNumber(""); setBatchNo("");
   }
 
   return (
@@ -94,15 +97,16 @@ function TransfersView({ me }: { me: string }) {
       <Card>
         <CardHeader><CardTitle className="text-base">Send stock to another location</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">Stock leaves the sending location now and arrives when it is received. Batch-tracked items are moved batch by batch, not here.</p>
+          <p className="text-xs text-muted-foreground">Stock leaves the sending location now and arrives when it is received. A batch-tracked item moves batch by batch.</p>
           <div className="grid gap-3 sm:grid-cols-4">
-            <select aria-label="Transfer item" className={selectClass} value={itemId} onChange={(e) => setItemId(e.target.value)}><option value="">Item…</option>{countable.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+            <select aria-label="Transfer item" className={selectClass} value={itemId} onChange={(e) => { setItemId(e.target.value); setBatchNo(""); }}><option value="">Item…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name}{i.trackBatch ? " (batch)" : ""}</option>)}</select>
+            {selected?.trackBatch ? <select aria-label="Transfer batch" className={selectClass} value={batchNo} onChange={(e) => setBatchNo(e.target.value)}><option value="">Batch…</option>{itemBatches.map((b) => <option key={b.id} value={b.batchNo}>{b.batchNo}</option>)}</select> : null}
             <Input aria-label="Transfer quantity" type="number" min={0} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
             <select aria-label="From location" className={selectClass} value={fromId} onChange={(e) => setFromId(e.target.value)}><option value="">From…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
             <select aria-label="To location" className={selectClass} value={toId} onChange={(e) => setToId(e.target.value)}><option value="">To…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
             <Input aria-label="Transporter" placeholder="Transporter" value={transporter} onChange={(e) => setTransporter(e.target.value)} />
             <Input aria-label="LR number" placeholder="LR / docket number" value={lrNumber} onChange={(e) => setLrNumber(e.target.value)} />
-            <Button disabled={!itemId || !(Number(qty) > 0) || !fromId || !toId || transporter.trim().length < 2} onClick={send}>Send transfer</Button>
+            <Button disabled={!itemId || (selected?.trackBatch && !batchNo) || !(Number(qty) > 0) || !fromId || !toId || transporter.trim().length < 2} onClick={send}>Send transfer</Button>
           </div>
         </CardContent>
       </Card>
@@ -186,11 +190,15 @@ function PhysicalCountView({ me }: { me: string }) {
   const locations = useLocationsStore((state) => state.locations);
   const [locationId, setLocationId] = React.useState("");
   const [entries, setEntries] = React.useState<Record<string, string>>({});
-  const countable = items.filter((i) => !i.trackBatch);
+  const batches = useOperationsStore((state) => state.batches);
+  // One row per item, and one row per batch for a batch-tracked item.
+  const rows = items.flatMap((item) => item.trackBatch
+    ? batches.filter((b) => b.itemId === item.id).map((b) => ({ key: `${item.id}|${b.batchNo}`, item, batchNo: b.batchNo as string | null }))
+    : [{ key: `${item.id}|`, item, batchNo: null as string | null }]);
 
   function submit() {
-    const rows = countable.filter((i) => entries[i.id] !== undefined && entries[i.id] !== "").map((i) => ({ itemId: i.id, counted: Number(entries[i.id]) }));
-    const problem = recordCount(Number(locationId), rows, me);
+    const counted = rows.filter((r) => entries[r.key] !== undefined && entries[r.key] !== "").map((r) => ({ itemId: r.item.id, batchNo: r.batchNo, counted: Number(entries[r.key]) }));
+    const problem = recordCount(Number(locationId), counted, me);
     if (problem) return toast.error(problem);
     toast.success("Count recorded; any differences went to adjustment approval");
     setEntries({});
@@ -208,15 +216,15 @@ function PhysicalCountView({ me }: { me: string }) {
               <table className="w-full text-sm tabular-nums">
                 <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">Item</th><th className="text-right">System</th><th className="text-right">Counted</th><th className="text-right">Difference</th></tr></thead>
                 <tbody>
-                  {countable.map((item) => {
-                    const system = stockOn(movements, item.id, Number(locationId));
-                    const counted = entries[item.id];
+                  {rows.map(({ key, item, batchNo }) => {
+                    const system = stockOn(movements, item.id, Number(locationId), item.trackBatch ? batchNo : undefined);
+                    const counted = entries[key];
                     const diff = counted === undefined || counted === "" ? null : Number(counted) - system;
                     return (
-                      <tr key={item.id} className="border-b border-border last:border-0">
-                        <td className="py-2">{item.name}<span className="block text-xs text-muted-foreground">{item.unit}</span></td>
+                      <tr key={key} className="border-b border-border last:border-0">
+                        <td className="py-2">{item.name}<span className="block text-xs text-muted-foreground">{item.unit}{batchNo ? ` · batch ${batchNo}` : ""}</span></td>
                         <td className="text-right">{system}</td>
-                        <td className="text-right"><Input aria-label={`Counted ${item.name}`} type="number" min={0} className="ml-auto h-8 w-24" value={counted ?? ""} onChange={(e) => setEntries((current) => ({ ...current, [item.id]: e.target.value }))} /></td>
+                        <td className="text-right"><Input aria-label={`Counted ${item.name}${batchNo ? ` batch ${batchNo}` : ""}`} type="number" min={0} className="ml-auto h-8 w-24" value={counted ?? ""} onChange={(e) => setEntries((current) => ({ ...current, [key]: e.target.value }))} /></td>
                         <td className={`text-right ${diff !== null && diff !== 0 ? "text-danger" : ""}`}>{diff === null ? "—" : diff > 0 ? `+${diff}` : diff}</td>
                       </tr>
                     );
