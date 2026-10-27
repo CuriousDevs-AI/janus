@@ -214,6 +214,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Month-End Close", href: "/workspace/finance-accounting?view=month-end", icon: ShieldCheck },
       { label: "Profit & Loss", href: "/workspace/finance-accounting?view=profit-loss", icon: FileText },
       { label: "Financial Reports", href: "/workspace/finance-accounting?view=reports", icon: BarChart3 },
+      { label: "GST Summary", href: "/workspace/finance-accounting?view=gst", icon: FileText },
       { label: "Finance AI Chat", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
       { label: "Finance Settings", href: "/settings?tab=billing", icon: Settings2, requiredPermission: "billing:manage" },
     ] },
