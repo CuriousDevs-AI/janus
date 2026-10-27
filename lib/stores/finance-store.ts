@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -19,15 +21,17 @@ export interface InvoiceLine { item: string; hsn: string; qty: number; rate: num
 export interface Payment { id: string; amount: number; method: "UPI" | "Bank transfer" | "Cash" | "Cheque"; reference: string; date: string }
 export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
-  sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean;
+  sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
 }
-export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved"; createdBy: string; approvedBy?: string; date: string }
+export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string }
 export interface BudgetLine { id: string; name: string; owner: string; allocated: number; drawn: number }
 export interface FundRequest {
   id: string; number: string; purpose: string; amount: number; lineId: string; requestedBy: string; date: string;
   status: "pending" | "awaiting_finance" | "approved" | "rejected"; ownerApprovedBy?: string; financeApprovedBy?: string; rejectedBy?: string; rejectedReason?: string;
 }
 export interface Draw { id: string; lineId: string; amount: number; note: string; by: string; date: string }
+/** A bill from a vendor: money the company owes, paid in one or more payments. */
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;
@@ -53,10 +57,15 @@ interface FinanceState {
   budgetLines: BudgetLine[];
   fundRequests: FundRequest[];
   draws: Draw[];
+  bills: Bill[];
+  trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
-  recordPayment: (invoiceId: string, payment: Omit<Payment, "id">) => string | null;
-  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string }, by: string) => string | null;
+  recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
+  addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number }, by: string) => string | null;
+  recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
+  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
+  rejectCreditNote: (id: string, reason: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
   approveFundRequest: (id: string, step: "owner" | "finance", by: string) => string | null;
   rejectFundRequest: (id: string, reason: string, by: string) => void;
@@ -65,8 +74,8 @@ interface FinanceState {
 }
 
 const today = "2026-10-23";
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws"> => {
-  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [] };
+const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills"> => {
+  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [] };
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
@@ -81,7 +90,11 @@ const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetL
     { id: "fund-1", number: "FR-2026-0007", purpose: "Trade fair stall for Rajasthan distributors", amount: 42000, lineId: "line-sales", requestedBy: "Arjun Mehta", date: "2026-10-20", status: "pending" },
     { id: "fund-2", number: "FR-2026-0008", purpose: "Warehouse racking for Jaipur dock", amount: 78000, lineId: "line-ops", requestedBy: "Neha Verma", date: "2026-10-21", status: "awaiting_finance", ownerApprovedBy: "Pankaj Neema" },
   ];
-  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [] };
+  const bills: Bill[] = [
+    { id: "bill-1", number: "BILL-2026-0101", vendor: "Gurugram Packaging Co", vendorBillNo: "GPC/2610/88", date: "2026-10-15", dueDate: "2026-10-30", amount: 45000, payments: [], createdBy: "Aman Verma" },
+    { id: "bill-2", number: "BILL-2026-0102", vendor: "Udyog Electricals", vendorBillNo: "UE-4471", date: "2026-10-01", dueDate: "2026-10-12", amount: 12500, payments: [{ id: "bpay-1", amount: 12500, method: "Bank transfer", reference: "NEFT-55201", date: "2026-10-11" }], createdBy: "Aman Verma" },
+  ];
+  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills };
 };
 
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
@@ -90,41 +103,103 @@ export const useFinanceStore = create<FinanceState>()(
   persist(
     (set, get) => ({
       ...seedFinance(),
+      trail: [],
+      bills: seedFinance().bills,
       addInvoice: (input, by) => {
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
-        set((state) => ({ invoices: [{ ...input, id, number, payments: [], createdBy: by }, ...state.invoices] }));
+        const invoice: Invoice = { ...input, id, number, payments: [], createdBy: by };
+        const total = invoiceTotals(invoice).total;
+        set((state) => ({ invoices: [invoice, ...state.invoices], trail: withTrail(state.trail, trailEntry("finance", today, by, `Created invoice ${number} for ${input.customer} · ₹${total.toLocaleString("en-IN")}`)) }));
         return number;
       },
-      recordPayment: (invoiceId, payment) => {
+      recordPayment: (invoiceId, payment, by) => {
+        const locked = periodLockProblem(payment.date);
+        if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === invoiceId);
         if (!invoice) return "Invoice not found.";
         const due = dueAmount(invoice, get().creditNotes);
         if (payment.amount <= 0) return "Enter an amount above zero.";
         if (payment.amount > due + 0.001) return `Payment is more than the ₹${due.toLocaleString("en-IN")} still due.`;
-        set((state) => ({ invoices: state.invoices.map((item) => item.id === invoiceId ? { ...item, payments: [...item.payments, { ...payment, id: `pay-${Date.now()}` }] } : item) }));
+        set((state) => ({
+          invoices: state.invoices.map((item) => item.id === invoiceId ? { ...item, payments: [...item.payments, { ...payment, id: `pay-${Date.now()}` }] } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by,`Payment ₹${payment.amount.toLocaleString("en-IN")} recorded on ${invoice.number} (${payment.method})`)),
+        }));
         return null;
       },
       addCreditNote: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === input.invoiceId);
         if (!invoice) return "Invoice not found.";
         if (input.amount <= 0) return "Enter an amount above zero.";
         if (input.amount > invoiceTotals(invoice).total - creditedAmount(invoice.id, get().creditNotes, true)) return "A credit note cannot be more than the invoice total left to credit.";
         if (input.reason.trim().length < 3) return "Give a reason for the credit note.";
         const number = nextNumber("CN", get().creditNotes.length);
-        set((state) => ({ creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input }, ...state.creditNotes] }));
+        set((state) => ({
+          creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input }, ...state.creditNotes],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested credit note ${number} of ₹${input.amount.toLocaleString("en-IN")} against ${invoice.number}`)),
+        }));
         return null;
       },
       decideCreditNote: (id, by) => {
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.createdBy === by) return "The person who created a credit note cannot approve it.";
-        set((state) => ({ creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "approved", approvedBy: by } : item) }));
+        set((state) => ({
+          creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "approved", approvedBy: by } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Approved credit note ${note.number} of ₹${note.amount.toLocaleString("en-IN")}`)),
+        }));
+        return null;
+      },
+      rejectCreditNote: (id, reason, by) => {
+        const note = get().creditNotes.find((item) => item.id === id);
+        if (!note) return "Credit note not found.";
+        if (note.status !== "pending") return "Only a pending credit note can be rejected.";
+        if (note.createdBy === by) return "The person who created a credit note cannot reject it.";
+        if (reason.trim().length < 3) return "Give the reason for rejecting it.";
+        set((state) => ({
+          creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason.trim() } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Rejected credit note ${note.number}: ${reason.trim()}`)),
+        }));
+        return null;
+      },
+      addBill: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (input.vendor.trim().length < 2) return "Enter the vendor name.";
+        if (input.vendorBillNo.trim().length < 2) return "Enter the vendor's bill number.";
+        if (!(input.amount > 0)) return "Enter an amount above zero.";
+        if (input.dueDate < input.date) return "The due date cannot be before the bill date.";
+        const number = nextNumber("BILL", get().bills.length);
+        const bill: Bill = { id: `bill-${Date.now()}`, number, vendor: input.vendor.trim(), vendorBillNo: input.vendorBillNo.trim(), date: input.date, dueDate: input.dueDate, amount: input.amount, payments: [], createdBy: by };
+        set((state) => ({
+          bills: [bill, ...state.bills],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Recorded bill ${number} from ${bill.vendor} · ₹${input.amount.toLocaleString("en-IN")}`)),
+        }));
+        return null;
+      },
+      recordBillPayment: (billId, payment, by) => {
+        const locked = periodLockProblem(payment.date);
+        if (locked) return locked;
+        const bill = get().bills.find((item) => item.id === billId);
+        if (!bill) return "Bill not found.";
+        const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
+        const due = Math.round((bill.amount - paid) * 100) / 100;
+        if (payment.amount <= 0) return "Enter an amount above zero.";
+        if (payment.amount > due + 0.001) return `Payment is more than the ₹${due.toLocaleString("en-IN")} still owed on ${bill.number}.`;
+        set((state) => ({
+          bills: state.bills.map((item) => item.id === billId ? { ...item, payments: [...item.payments, { ...payment, id: `bpay-${Date.now()}` }] } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Paid ₹${payment.amount.toLocaleString("en-IN")} on ${bill.number} to ${bill.vendor} (${payment.method})`)),
+        }));
         return null;
       },
       addFundRequest: (input, by) => {
         const number = nextNumber("FR", get().fundRequests.length);
-        set((state) => ({ fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests] }));
+        set((state) => ({
+          fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested funds ${number} of ₹${input.amount.toLocaleString("en-IN")}: ${input.purpose}`)),
+        }));
       },
       approveFundRequest: (id, step, by) => {
         const request = get().fundRequests.find((item) => item.id === id);
@@ -133,23 +208,39 @@ export const useFinanceStore = create<FinanceState>()(
         if (step === "owner") {
           if (request.status !== "pending") return "This request is not waiting for the owner.";
           const needsFinance = request.amount > FUND_OWNER_LIMIT;
-          set((state) => ({ fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, ownerApprovedBy: by, status: needsFinance ? "awaiting_finance" : "approved" } : item) }));
+          const text = needsFinance ? `Owner approved ${request.number}; waiting for finance` : `Owner approved ${request.number}; budget allocated`;
+          set((state) => ({
+            fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, ownerApprovedBy: by, status: needsFinance ? "awaiting_finance" : "approved" } : item),
+            trail: withTrail(state.trail, trailEntry("finance", today, by, text)),
+          }));
           if (!needsFinance) allocate(request.lineId, request.amount);
           return null;
         }
         if (request.status !== "awaiting_finance") return "This request is not waiting for finance.";
         if (request.ownerApprovedBy === by) return "The approver must be a different person from the owner's approval.";
-        set((state) => ({ fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, financeApprovedBy: by, status: "approved" } : item) }));
+        set((state) => ({
+          fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, financeApprovedBy: by, status: "approved" } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Finance approved ${request.number}; budget allocated`)),
+        }));
         allocate(request.lineId, request.amount);
         return null;
       },
       rejectFundRequest: (id, reason, by) => {
-        set((state) => ({ fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item) }));
+        const request = get().fundRequests.find((item) => item.id === id);
+        set((state) => ({
+          fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Rejected ${request?.number ?? "a fund request"}: ${reason}`)),
+        }));
       },
       addBudgetLine: (input) => {
-        set((state) => ({ budgetLines: [...state.budgetLines, { id: `line-${Date.now()}`, drawn: 0, ...input }] }));
+        set((state) => ({
+          budgetLines: [...state.budgetLines, { id: `line-${Date.now()}`, drawn: 0, ...input }],
+          trail: withTrail(state.trail, trailEntry("finance", today, "Finance", `Added budget line ${input.name} · ₹${input.allocated.toLocaleString("en-IN")}`)),
+        }));
       },
       drawBudget: (lineId, amount, note, by, date) => {
+        const locked = periodLockProblem(date);
+        if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);
         if (!line) return "Budget line not found.";
         if (amount <= 0) return "Enter an amount above zero.";
@@ -157,11 +248,12 @@ export const useFinanceStore = create<FinanceState>()(
         set((state) => ({
           budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, drawn: item.drawn + amount } : item),
           draws: [{ id: `draw-${Date.now()}`, lineId, amount, note, by, date }, ...state.draws],
+          trail: withTrail(state.trail, trailEntry("finance", date, by, `Drew ₹${amount.toLocaleString("en-IN")} from ${line.name} for ${note}`)),
         }));
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, trail: state.trail }) },
   ),
 );
 
@@ -171,7 +263,7 @@ function allocate(lineId: string, amount: number) {
 
 /** Credit notes reduce what the customer owes. Pending notes are counted only when `ignorePending` is false. */
 export function creditedAmount(invoiceId: string, notes: CreditNote[], includePending: boolean) {
-  return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || includePending)).reduce((sum, note) => sum + note.amount, 0);
+  return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || (includePending && note.status === "pending"))).reduce((sum, note) => sum + note.amount, 0);
 }
 
 export function dueAmount(invoice: Invoice, notes: CreditNote[], options: { ignorePending?: boolean } = {}) {

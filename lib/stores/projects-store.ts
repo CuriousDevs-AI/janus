@@ -5,6 +5,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { useFinanceStore } from "@/lib/stores/finance-store";
+import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
 /**
  * Projects & Delivery (phase 1): projects with a budget drawn from a fund allocation, milestones
@@ -15,7 +17,7 @@ import { useFinanceStore } from "@/lib/stores/finance-store";
 export const TODAY = "2026-10-23";
 export const PROJECT_TYPES = ["Fixed price", "Time and material", "Internal"] as const;
 
-export interface Project { id: string; name: string; client: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
+export interface Project { id: string; name: string; client: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
 export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string }
 export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; due: string; status: "todo" | "doing" | "done" }
 export interface ChangeRequest { id: string; projectId: string; description: string; budgetChange: number; dayChange: number; status: "pending" | "approved" | "rejected"; requestedBy: string; decidedBy?: string }
@@ -25,6 +27,7 @@ interface ProjectsState {
   milestones: Milestone[];
   tasks: Task[];
   changes: ChangeRequest[];
+  trail: TrailEntry[];
   addProject: (input: Omit<Project, "id" | "status" | "createdBy">, by: string) => string | null;
   addMilestone: (input: Omit<Milestone, "id" | "status">) => string | null;
   completeMilestone: (id: string, by: string) => string | null;
@@ -75,6 +78,7 @@ export const useProjectsStore = create<ProjectsState>()(
   persist(
     (set, get) => ({
       ...seed(),
+      trail: [],
       addProject: (input, by) => {
         if (input.name.trim().length < 3) return "Enter the project name.";
         if (input.end < input.start) return "The end date cannot be before the start date.";
@@ -83,7 +87,10 @@ export const useProjectsStore = create<ProjectsState>()(
         if (!line) return "Choose the budget line the project draws from.";
         const problem = useFinanceStore.getState().drawBudget(input.budgetLineId, input.budget, `Project: ${input.name.trim()}`, by, TODAY);
         if (problem) return `Budget: ${problem}`;
-        set((state) => ({ projects: [...state.projects, { ...input, id: `prj-${Date.now()}`, name: input.name.trim(), status: "planned", createdBy: by }] }));
+        set((state) => ({
+          projects: [...state.projects, { ...input, id: `prj-${Date.now()}`, name: input.name.trim(), status: "planned", createdBy: by }],
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Created project ${input.name.trim()} · budget ₹${input.budget.toLocaleString("en-IN")} from ${line.name}`)),
+        }));
         return null;
       },
       addMilestone: (input) => {
@@ -104,13 +111,21 @@ export const useProjectsStore = create<ProjectsState>()(
         if (!milestone) return "Milestone not found.";
         if (milestone.status !== "done") return "Mark the milestone complete before it can be accepted.";
         if (milestone.completedBy === by) return "The person who completed the milestone cannot accept it.";
+        if (milestone.amount > 0) {
+          const locked = periodLockProblem(TODAY);
+          if (locked) return locked;
+        }
         let invoiceNumber: string | undefined;
         if (milestone.amount > 0) {
           const project = get().projects.find((p) => p.id === milestone.projectId);
           const taxable = milestone.amount;
           invoiceNumber = useFinanceStore.getState().addInvoice({ customer: project?.client ?? "Client", customerCompany: project?.client ?? "", date: TODAY, dueDate: addDays(TODAY, 30), sameState: true, lines: [{ item: `Milestone: ${milestone.name}`, hsn: "9983", qty: 1, rate: taxable, gstRate: 18 }] }, by);
         }
-        set((state) => ({ milestones: state.milestones.map((m) => m.id === id ? { ...m, status: "accepted", acceptedBy: by, invoiceNumber } : m) }));
+        const billed = invoiceNumber ? `, billed on ${invoiceNumber}` : "";
+        set((state) => ({
+          milestones: state.milestones.map((m) => m.id === id ? { ...m, status: "accepted", acceptedBy: by, invoiceNumber } : m),
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Accepted milestone ${milestone.name}${billed}`)),
+        }));
         return null;
       },
       addTask: (input) => {
@@ -129,6 +144,7 @@ export const useProjectsStore = create<ProjectsState>()(
         if (!change) return "Change request not found.";
         if (change.requestedBy === by) return "The person who asked for the change cannot approve it.";
         set((state) => ({
+          trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `${approve ? "Approved" : "Rejected"} change for ${state.projects.find((p) => p.id === change.projectId)?.name ?? "a project"}: ${change.description}`)),
           changes: state.changes.map((c) => c.id === id ? { ...c, status: approve ? "approved" : "rejected", decidedBy: by } : c),
           projects: approve ? state.projects.map((p) => p.id === change.projectId ? { ...p, budget: Math.max(0, p.budget + change.budgetChange), end: addDays(p.end, change.dayChange) } : p) : state.projects,
         }));

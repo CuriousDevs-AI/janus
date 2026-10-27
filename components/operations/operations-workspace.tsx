@@ -15,6 +15,9 @@ import { GST_RATES } from "@/lib/stores/finance-store";
 import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useSession } from "@/components/auth/session-provider";
+import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
+import { RecordDocuments } from "@/components/shared/record-documents";
+import { TrailPanel } from "@/components/shared/audit-trail-panel";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -53,9 +56,15 @@ export function OperationsWorkspace() {
         {view === "orders" && <OrdersView me={me} />}
         {view === "warehouses" && <WarehousesView />}
         {!["products", "inventory", "orders", "warehouses"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses"].includes(view) && <OperationsTrail />}
       </div>
     </div>
   );
+}
+
+function OperationsTrail() {
+  const trail = useOperationsStore((state) => state.trail);
+  return <TrailPanel entries={trail} />;
 }
 
 function OverviewView() {
@@ -251,6 +260,8 @@ function OrdersView({ me }: { me: string }) {
   const locations = useLocationsStore((state) => state.locations);
   const [customer, setCustomer] = React.useState("");
   const [company, setCompany] = React.useState("");
+  const [dealId, setDealId] = React.useState("");
+  const links = useCrmLinkOptions();
   const [locationId, setLocationId] = React.useState<number | "">("");
   const [lines, setLines] = React.useState<{ itemId: string; batchNo: string; qty: string }[]>([{ itemId: "", batchNo: "", qty: "" }]);
   const [proofFor, setProofFor] = React.useState<Dispatch | null>(null);
@@ -260,13 +271,14 @@ function OrdersView({ me }: { me: string }) {
   const [returnQty, setReturnQty] = React.useState("");
   const [returnCondition, setReturnCondition] = React.useState<"good" | "damaged">("good");
   const [returnReason, setReturnReason] = React.useState("");
+  const [docsFor, setDocsFor] = React.useState<Dispatch | null>(null);
 
   function create() {
     if (locationId === "") return toast.error("Choose the location to dispatch from.");
-    const problem = createDispatch({ customer, customerCompany: company, locationId: Number(locationId), lines: lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, batchNo: l.batchNo || null, qty: Number(l.qty), rate: items.find((i) => i.id === l.itemId)?.rate ?? 0 })) }, me);
+    const problem = createDispatch({ customer, customerCompany: company, dealId: dealId || undefined, locationId: Number(locationId), lines: lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, batchNo: l.batchNo || null, qty: Number(l.qty), rate: items.find((i) => i.id === l.itemId)?.rate ?? 0 })) }, me);
     if (problem) return toast.error(problem);
     toast.success("Dispatch created with delivery challan");
-    setCustomer(""); setCompany(""); setLines([{ itemId: "", batchNo: "", qty: "" }]);
+    setCustomer(""); setCompany(""); setDealId(""); setLines([{ itemId: "", batchNo: "", qty: "" }]);
   }
 
   return (
@@ -278,6 +290,7 @@ function OrdersView({ me }: { me: string }) {
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="flex flex-col gap-1.5"><Label htmlFor="ds-cust">Customer</Label><Input id="ds-cust" value={customer} onChange={(e) => setCustomer(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="ds-comp">Company</Label><Input id="ds-comp" value={company} onChange={(e) => setCompany(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="ds-deal">CRM deal (optional)</Label><select id="ds-deal" className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={dealId} onChange={(e) => setDealId(e.target.value)}><option value="">None</option>{links.deals.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="ds-loc">Dispatch from</Label><select id="ds-loc" className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value === "" ? "" : Number(e.target.value))}><option value="">Choose…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
           </div>
           {lines.map((line, index) => {
@@ -306,16 +319,23 @@ function OrdersView({ me }: { me: string }) {
               {dispatches.map((d) => (
                 <tr key={d.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 font-medium">{d.number}<span className="block text-xs text-muted-foreground">Challan {d.challanNo} · {d.date}</span></td>
-                  <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span></td>
+                  <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span>{linkedLabel(links.deals, d.dealId) ? <span className="block text-xs text-muted-foreground">Deal: {linkedLabel(links.deals, d.dealId)}</span> : null}</td>
                   <td className="px-4 py-3 text-xs">{d.lines.map((l) => `${items.find((i) => i.id === l.itemId)?.name} × ${l.qty}${l.batchNo ? ` (${l.batchNo})` : ""}`).join(", ")}</td>
                   <td className="px-4 py-3"><Badge variant={d.status === "delivered" ? "success" : "warning"}>{d.status}</Badge>{d.proof ? <span className="block text-xs text-muted-foreground">{d.proof}</span> : null}</td>
-                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
+                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </CardContent>
       </Card>
+
+      <Dialog open={docsFor !== null} onOpenChange={(open) => !open && setDocsFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Documents for {docsFor?.number}</DialogTitle><DialogDescription>Challans, receipts and contracts for this dispatch.</DialogDescription></DialogHeader>
+          {docsFor ? <RecordDocuments recordKind="dispatch" recordId={docsFor.id} addedBy={me} today="2026-10-23" /> : null}
+        </DialogContent>
+      </Dialog>
 
       {proofFor ? (
         <Dialog open onOpenChange={(open) => !open && setProofFor(null)}>

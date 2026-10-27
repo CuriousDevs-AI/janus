@@ -27,7 +27,7 @@ const ACTIVE_KEY = "janus.company-active";
 const EVENT = "janus:company";
 
 export const seedCompanies: CompanyRecord[] = [
-  { id: "acme", name: "Acme Traders Pvt Ltd", industry: "FMCG & household goods distribution", city: "Gurugram", template: "acme", workspaces: ["crm-sales", "hr-people"], setupDone: true, createdAt: "2025-04-01" },
+  { id: "acme", name: "Acme Traders Pvt Ltd", industry: "FMCG & household goods distribution", city: "Gurugram", template: "acme", workspaces: ["crm-sales", "hr-people", "finance-accounting", "operations-inventory", "projects-delivery", "customer-support", "it-infrastructure"], setupDone: true, createdAt: "2025-04-01" },
   { id: "nimbus", name: "Nimbus Digital Studio", industry: "Digital marketing and web agency", city: "Bengaluru", template: "nimbus", workspaces: ["crm-sales", "hr-people"], setupDone: true, createdAt: "2026-02-10" },
   { id: "greenleaf", name: "GreenLeaf Organics", industry: "Organic grocery retail", city: "Pune", template: "greenleaf", workspaces: ["hr-people"], setupDone: true, createdAt: "2026-10-12" },
 ];
@@ -35,12 +35,26 @@ export const seedCompanies: CompanyRecord[] = [
 function read(key: string) {
   try { return window.localStorage.getItem(key); } catch { return null; }
 }
+const WORKSPACE_MIGRATION_KEY = "janus.companies.workspaces-v2";
+const FIRST_COMPANY_WORKSPACES = ["finance-accounting", "operations-inventory", "projects-delivery", "customer-support", "it-infrastructure"];
+
+/** Companies saved before the operational workspaces existed get them once, so the sample company keeps its data visible. */
+function migrateWorkspaces(list: CompanyRecord[]): CompanyRecord[] {
+  if (read(WORKSPACE_MIGRATION_KEY)) return list;
+  const migrated = list.map((c) => c.id === "acme" ? { ...c, workspaces: [...new Set([...c.workspaces, ...FIRST_COMPANY_WORKSPACES])] } : c);
+  try {
+    window.localStorage.setItem(REGISTRY_KEY, JSON.stringify(migrated));
+    window.localStorage.setItem(WORKSPACE_MIGRATION_KEY, "1");
+  } catch { /* private mode */ }
+  return migrated;
+}
+
 export function readCompanies(): CompanyRecord[] {
   if (typeof window === "undefined") return seedCompanies;
   try {
     // An empty list is a real state (every company removed). Only a missing key means "first visit".
     const stored = JSON.parse(read(REGISTRY_KEY) ?? "null") as CompanyRecord[] | null;
-    return stored ?? seedCompanies;
+    return stored ? migrateWorkspaces(stored) : seedCompanies;
   } catch { return seedCompanies; }
 }
 export function saveCompanies(list: CompanyRecord[]) {

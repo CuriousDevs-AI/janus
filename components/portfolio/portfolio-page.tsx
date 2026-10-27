@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { SWITCHABLE_WORKSPACES, getWorkspaceDefinition, type WorkspaceId } from "@/lib/workspace-config";
 import { ArrowRight, Building2, Check, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +34,7 @@ const titles: Record<string, [string, string]> = {
 };
 const palette = ["#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626"];
 const tone = { high: "danger", medium: "warning", low: "neutral" } as const;
-const workspaceName = (id: string) => id === "crm-sales" ? "CRM & Sales" : id === "hr-people" ? "HR & People" : id;
+const workspaceName = (id: string) => getWorkspaceDefinition(id as WorkspaceId).name;
 const stageLabel: Record<string, string> = { new: "New", qualified: "Qualified", proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost" };
 
 function usePortfolio() {
@@ -179,7 +180,7 @@ function Companies({ list }: { list: CompanySummary[] }) {
       {list.map((item) => { const company = item.company; return <section key={company.id} aria-label={company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
         <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{company.industry} · {company.city} · since {company.createdAt}</p></div></div><Badge variant={company.setupDone ? "success" : "warning"}>{company.setupDone ? "Set up" : "Setup unfinished"}</Badge></div>
         <fieldset className="grid gap-2"><legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</legend>
-          {["crm-sales", "hr-people"].map((id) => { const on = company.workspaces.includes(id); return <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} disabled={on && company.workspaces.length === 1} onChange={() => updateCompany(company.id, { workspaces: on ? company.workspaces.filter((entry) => entry !== id) : [...company.workspaces, id] })} />{workspaceName(id)}</label>; })}
+          {SWITCHABLE_WORKSPACES.map((id) => { const on = company.workspaces.includes(id); return <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} disabled={on && company.workspaces.length === 1} onChange={() => updateCompany(company.id, { workspaces: on ? company.workspaces.filter((entry) => entry !== id) : [...company.workspaces, id] })} />{workspaceName(id)}</label>; })}
         </fieldset>
         <p className="text-xs text-muted-foreground">{item.hr.people} people{item.crm ? ` · ${item.crm.leads} leads · ${item.crm.openDeals} open deals` : ""}</p>
         <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => open(company.id)}>Open<ArrowRight className="ml-1 size-4" /></Button>{!company.setupDone && <Button size="sm" variant="secondary" asChild><Link href={`/setup?finish=${company.id}`}>Finish setup</Link></Button>}<Button size="sm" variant="outline" onClick={() => setEditing(company)}>Edit details</Button><Button size="sm" variant="ghost" aria-label={`Remove ${company.name}`} onClick={() => setRemoving(company)}><Trash2 className="size-4" /></Button></div>

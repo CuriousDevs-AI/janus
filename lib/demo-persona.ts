@@ -64,7 +64,8 @@ export function personaPermissions(account: DemoAccount | undefined): string[] {
   if (!account || account.hrRole === "owner") return ["*"];
   const out = ["hr:self"];
   if (account.hrRole === "hr_manager") out.push("hr:read", "hr:manage", "hr:approve", "hr:team", "hr:payroll:read");
-  if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read");
+  // A finance executive runs payroll and the books, so the Finance workspace and its approvals are theirs too.
+  if (account.hrRole === "payroll_admin") out.push("hr:payroll:read", "hr:read", "billing:manage");
   // A manager works with their own team, so the menu offers leave, attendance, reviews and expenses too.
   if (account.hrRole === "reporting_manager") out.push("hr:team", "hr:approve", "hr:read", "projects:manage");
   // These are the backend's own permission names, so the preview behaves like a real role.
@@ -87,6 +88,10 @@ export function personaMayOpen(account: DemoAccount | undefined, pathname: strin
   if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return account.hrRole === "owner";
   if (account.hrRole === "owner" && readCompanies().length === 0) return pathname === "/setup" || pathname.startsWith("/setup/");
   if (pathname.startsWith("/workspace/hr-people")) return true;
+  if (pathname.startsWith("/workspace/finance-accounting")) {
+    const granted = personaPermissions(account);
+    return granted.includes("*") || granted.includes("billing:manage");
+  }
   if (pathname.startsWith("/workspace/projects-delivery")) {
     const granted = personaPermissions(account);
     return granted.includes("*") || granted.includes("projects:manage");

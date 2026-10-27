@@ -10,8 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/components/auth/session-provider";
+import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { PROJECT_TYPES, TODAY, addDays, projectHealth, useProjectsStore, type Project } from "@/lib/stores/projects-store";
+import { useCrmLinkOptions } from "@/lib/record-links";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -49,6 +51,7 @@ export function ProjectsWorkspace() {
         {view === "changes" && <ChangesView me={me} />}
         {view === "client-delivery" && <ClientView />}
         {!["projects", "milestones", "tasks", "changes", "client-delivery"].includes(view) && <OverviewView />}
+        {!["projects", "milestones", "tasks", "changes", "client-delivery"].includes(view) && <ProjectsTrail />}
       </div>
     </div>
   );
@@ -56,6 +59,11 @@ export function ProjectsWorkspace() {
 
 function healthTone(health: string) {
   return health === "late" ? "danger" : health === "at risk" ? "warning" : health === "done" ? "success" : "neutral";
+}
+
+function ProjectsTrail() {
+  const trail = useProjectsStore((state) => state.trail);
+  return <TrailPanel entries={trail} />;
 }
 
 function OverviewView() {
@@ -97,14 +105,15 @@ function ProjectsView({ me }: { me: string }) {
   const tasks = useProjectsStore((state) => state.tasks);
   const addProject = useProjectsStore((state) => state.addProject);
   const lines = useFinanceStore((state) => state.budgetLines);
-  const [form, setForm] = React.useState({ name: "", client: "", type: PROJECT_TYPES[0] as string, owner: me, start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  const links = useCrmLinkOptions();
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
 
   function save() {
-    const problem = addProject({ name: form.name, client: form.client.trim() || "Internal", type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
+    const problem = addProject({ name: form.name, client: form.client.trim() || "Internal", customerId: form.customerId || undefined, type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
     if (problem) return toast.error(problem);
     toast.success("Project created; its budget is drawn from the fund line");
-    setForm({ ...form, name: "", client: "", budget: "" });
+    setForm({ ...form, name: "", client: "", customerId: "", budget: "" });
   }
 
   return (
@@ -115,7 +124,8 @@ function ProjectsView({ me }: { me: string }) {
           <p className="text-xs text-muted-foreground">The budget is drawn from the chosen budget line in Finance, so the line&apos;s remaining balance stays correct. A project cannot spend more than its line has left.</p>
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="pj-name">Name</Label><Input id="pj-name" value={form.name} onChange={(e) => set({ name: e.target.value })} /></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-client">Client (blank for internal)</Label><Input id="pj-client" value={form.client} onChange={(e) => set({ client: e.target.value })} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-client">Client (blank for internal)</Label><Input id="pj-client" value={form.client} onChange={(e) => set({ client: e.target.value, customerId: "" })} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-customer">CRM customer (optional)</Label><select id="pj-customer" className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={form.customerId} onChange={(e) => { const picked = links.customers.find((c) => c.id === e.target.value); set({ customerId: e.target.value, client: picked?.label ?? form.client }); }}><option value="">None</option>{links.customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-type">Type</Label><select id="pj-type" className={selectClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>{PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-owner">Owner</Label><Input id="pj-owner" value={form.owner} onChange={(e) => set({ owner: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-start">Start</Label><Input id="pj-start" type="date" value={form.start} onChange={(e) => set({ start: e.target.value })} /></div>

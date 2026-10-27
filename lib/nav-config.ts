@@ -204,6 +204,8 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Invoices", href: "/workspace/finance-accounting?view=invoices", icon: Receipt },
       { label: "Credit Notes", href: "/workspace/finance-accounting?view=credit-notes", icon: Receipt },
       { label: "Fund Requests & Budgets", href: "/workspace/finance-accounting?view=funds", icon: Gauge },
+      { label: "Approvals Queue", href: "/workspace/finance-accounting?view=approvals", icon: ShieldCheck },
+      { label: "Period Locks", href: "/workspace/finance-accounting?view=periods", icon: ShieldCheck },
       { label: "Payments & Receivables", href: "/workspace/finance-accounting?view=receivables", icon: Handshake },
       { label: "Bills & Payables", href: "/workspace/finance-accounting?view=payables", icon: FileText },
       { label: "Budgets", href: "/workspace/finance-accounting?view=budgets", icon: Gauge },

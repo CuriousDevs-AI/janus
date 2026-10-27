@@ -22,7 +22,7 @@ import { useWorkspace } from "@/components/layout/workspace-context";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
 import { useDemoAccount } from "@/lib/demo-persona";
-import { workspaceDefinitions } from "@/lib/workspace-config";
+import { OPERATIONAL_WORKSPACES, workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import type { HrDemoRole } from "@/lib/types";
@@ -81,7 +81,9 @@ export function SidebarNav({
   // CRM & Sales is provisioned with every business, so a stale setup value
   // must not hide an already-active CRM workspace.
   const hasActiveWorkspace = catalogHasActiveWorkspace || activationOverride === true || (activationOverride === null && setupWorkspaceChosen && apiHasActiveWorkspace);
-  const effectiveWorkspaceId = hasActiveWorkspace ? workspaceId : "business";
+  // A workspace that is switched off for this company shows the business menu instead; its records are kept.
+  const switchedOff = OPERATIONAL_WORKSPACES.includes(workspaceId) && !activeCompany().workspaces.includes(workspaceId);
+  const effectiveWorkspaceId = hasActiveWorkspace && !switchedOff ? workspaceId : "business";
   const navSections = getNavSectionsForWorkspace(effectiveWorkspaceId);
   const visibleSections = navSections
     .map((section) => ({

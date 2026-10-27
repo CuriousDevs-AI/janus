@@ -9,7 +9,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getNavSectionsForWorkspace } from "@/lib/nav-config";
-import { getWorkspaceDefinition, isWorkspaceId } from "@/lib/workspace-config";
+import { activeCompany } from "@/lib/company";
+import { OPERATIONAL_WORKSPACES, getWorkspaceDefinition, isWorkspaceId } from "@/lib/workspace-config";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { useSession } from "@/components/auth/session-provider";
 import { HrPeopleWorkspace } from "@/components/hr-people/workspace";
@@ -57,6 +58,16 @@ function WorkspacePageInner({
   const requiredPermission = workspacePermissions[routeWorkspaceId];
   if (requiredPermission && !session.permissions.includes("*") && !session.permissions.includes(requiredPermission) && !(routeWorkspaceId === "hr-people" && session.permissions.includes("members:manage"))) {
     return <p className="p-6 text-sm text-muted-foreground">You do not have permission to open this workspace.</p>;
+  }
+
+  // A switched-off workspace is hidden, not deleted: its records stay and come back when it is switched on.
+  if (OPERATIONAL_WORKSPACES.includes(routeWorkspaceId) && !activeCompany().workspaces.includes(routeWorkspaceId)) {
+    return (
+      <div className="mx-auto flex max-w-[1200px] flex-col">
+        <PageHeader title="Not switched on" description="This workspace is off for the current company." />
+        <div className="px-6 pb-10"><Card><CardContent className="p-6 text-sm text-muted-foreground">Switch it on in Portfolio to use it again. Its records are kept.</CardContent></Card></div>
+      </div>
+    );
   }
 
   if (routeWorkspaceId === "hr-people") {
