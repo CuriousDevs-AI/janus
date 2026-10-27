@@ -16,7 +16,8 @@ import { useSession } from "@/components/auth/session-provider";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
 import { PeriodLockView } from "@/components/finance/period-lock-view";
-import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-store";
+import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { useOperationsStore } from "@/lib/stores/operations-store";
@@ -40,7 +41,7 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close" };
 
   if (view in comingSoon) {
     return (
@@ -65,8 +66,9 @@ export function FinanceWorkspace() {
         {view === "budgets" && <BudgetsView me={me} />}
         {view === "cash-flow" && <CashFlowView me={me} />}
         {view === "reconciliation" && <ReconciliationView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation"].includes(view) && <FinanceTrail />}
+        {view === "month-end" && <MonthEndView me={me} />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -215,6 +217,71 @@ function BudgetsView({ me }: { me: string }) {
               })}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Month-end close: the checks for one month, the sign-offs still needed, and the period lock that closes the books. */
+function MonthEndView({ me }: { me: string }) {
+  const session = useSession();
+  const isOwner = session.permissions.includes("*");
+  const invoices = useFinanceStore((state) => state.invoices);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankLines = useFinanceStore((state) => state.bankLines);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const closeReviews = useFinanceStore((state) => state.closeReviews);
+  const markCloseReviewed = useFinanceStore((state) => state.markCloseReviewed);
+  const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
+  const setLockedThrough = usePeriodLockStore((state) => state.setLockedThrough);
+  const months = ["2026-08", "2026-09", "2026-10"];
+  const [month, setMonth] = React.useState("2026-10");
+  const payments = bookPayments(invoices, bills);
+  const matchedKeys = new Set<string | null>(bankLines.map((l) => l.matchedKey));
+  const checks = monthEndChecks({ month, invoices, bills, bankLines, bookPayments: payments, matchedKeys, lockedThrough, reviews: closeReviews.filter((r) => r.startsWith(`${month}:`)).map((r) => r.slice(month.length + 1)), dueAmount, creditNotes });
+  const ready = checks.every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
+  const end = monthEnd(month);
+
+  function signOff(item: string) {
+    const problem = markCloseReviewed(month, item, me);
+    if (problem) return toast.error(problem);
+    toast.success("Signed off");
+  }
+
+  function lockMonth() {
+    const problem = setLockedThrough(end, isOwner);
+    if (problem) return toast.error(problem);
+    toast.success(`Books locked through ${end}`);
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Month-end close · {month}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="close-month">Month</Label>
+            <select id="close-month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((m) => <option key={m} value={m}>{m}</option>)}</select>
+            <Badge variant={ready ? "success" : "warning"}>{ready ? "ready to close" : "not ready"}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">Checks read the records. Two need a person to sign them off. The owner then locks the books through the month end, so nothing dated in it can change.</p>
+          {checks.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+              <span>
+                <span className="font-medium">{c.label}</span>
+                <span className="block text-xs text-muted-foreground">{c.detail}</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <Badge variant={c.passed ? "success" : "warning"}>{c.passed ? "passed" : c.manual ? "to sign off" : "open"}</Badge>
+                {c.manual && !c.passed ? <Button size="sm" variant="secondary" onClick={() => signOff(c.id)}>Sign off</Button> : null}
+              </span>
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <Button disabled={!ready || !isOwner || (lockedThrough !== null && lockedThrough >= end)} onClick={lockMonth}>Lock books through {end}</Button>
+            {!isOwner ? <span className="text-xs text-muted-foreground">Only the owner can lock the books.</span> : null}
+          </div>
         </CardContent>
       </Card>
     </>
