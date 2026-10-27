@@ -6,9 +6,13 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/stores/app-store";
+import { useRenewalsStore } from "@/lib/stores/renewals-store";
+import { useCrmLinkOptions } from "@/lib/record-links";
 import { users } from "@/lib/mock-data";
 import type { Ticket } from "@/lib/types";
 
@@ -27,14 +31,13 @@ const slaTone = (state: ReturnType<typeof slaState>) => state === "breached" ? "
 
 const comingSoon: Record<string, string> = {
   feedback: "Customer feedback after resolution comes in phase 2.",
-  renewals: "Renewals and customer success reminders come in phase 2, once contracts have dates.",
   reports: "Support reports come once queues and SLA history have data.",
 };
 
 export function SupportWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
-  const titles: Record<string, string> = { overview: "Support overview", queues: "Queues & assignments", sla: "SLA management" };
+  const titles: Record<string, string> = { overview: "Support overview", queues: "Queues & assignments", sla: "SLA management", renewals: "Renewals & contracts" };
 
   if (view in comingSoon) {
     return (
@@ -49,7 +52,7 @@ export function SupportWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "Support overview"} description="Tickets are worked in CRM & Sales. This workspace shows who holds them, and whether they are within their service time." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "queues" ? <QueuesView /> : view === "sla" ? <SlaView /> : <OverviewView />}
+        {view === "queues" ? <QueuesView /> : view === "sla" ? <SlaView /> : view === "renewals" ? <RenewalsView /> : <OverviewView />}
       </div>
     </div>
   );
@@ -110,6 +113,85 @@ function AssignmentsTrail() {
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+const TODAY = "2026-10-23";
+const RENEWAL_WINDOW_DAYS = 60;
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+
+/** Renewals by contract end date: which are due within 60 days, which have lapsed, and the customer's open ticket health. */
+function RenewalsView() {
+  const renewals = useRenewalsStore((state) => state.renewals);
+  const addRenewal = useRenewalsStore((state) => state.addRenewal);
+  const setContractEnd = useRenewalsStore((state) => state.setContractEnd);
+  const tickets = useAppStore((state) => state.tickets);
+  const links = useCrmLinkOptions();
+  const [customerId, setCustomerId] = React.useState("");
+  const [contractEnd, setContractEndDraft] = React.useState("2027-03-31");
+  const [value, setValue] = React.useState("");
+  const [owner, setOwner] = React.useState("");
+  const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+
+  function save() {
+    const customer = links.customers.find((c) => c.id === customerId);
+    const problem = addRenewal({ customerId, customerName: customer?.label ?? "Customer", contractEnd, value: Number(value), owner });
+    if (problem) return toast.error(problem);
+    toast.success("Renewal added");
+    setCustomerId(""); setValue(""); setOwner("");
+  }
+
+  function update(id: string) {
+    const problem = setContractEnd(id, drafts[id] ?? "");
+    if (problem) return toast.error(problem);
+    toast.success("Contract end date updated");
+    setDrafts((current) => ({ ...current, [id]: "" }));
+  }
+
+  const rows = [...renewals].sort((a, b) => a.contractEnd.localeCompare(b.contractEnd));
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Add a renewal</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">One contract per customer. A renewal is due for reminder within 60 days of its end date. Health comes from the customer&apos;s open tickets and their service times.</p>
+          <div className="grid gap-3 sm:grid-cols-5">
+            <select aria-label="Customer" className={selectClass} value={customerId} onChange={(e) => setCustomerId(e.target.value)}><option value="">Customer…</option>{links.customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
+            <Input aria-label="Contract end" type="date" value={contractEnd} onChange={(e) => setContractEndDraft(e.target.value)} />
+            <Input aria-label="Contract value" type="number" min={0} placeholder="Value ₹" value={value} onChange={(e) => setValue(e.target.value)} />
+            <select aria-label="Renewal owner" className={selectClass} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Owner…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <Button disabled={!customerId || !owner || value === ""} onClick={save}>Add renewal</Button>
+          </div>
+        </CardContent>
+      </Card>
+      {rows.length === 0 ? <Card><CardContent className="p-6 text-sm text-muted-foreground">No renewals yet.</CardContent></Card> : null}
+      {rows.map((r) => {
+        const days = daysBetween(TODAY, r.contractEnd);
+        const status = days < 0 ? "lapsed" : days <= RENEWAL_WINDOW_DAYS ? "renewal due" : "on track";
+        const open = tickets.filter((t) => t.customerId === r.customerId && !closed(t));
+        const atRisk = open.some((t) => slaState(t) === "breached" || t.status === "escalated");
+        const health = atRisk ? "at risk" : open.length > 0 ? "watch" : "healthy";
+        return (
+          <Card key={r.id}>
+            <CardContent className="grid gap-2 p-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">{r.customerName} <span className="font-normal text-muted-foreground">· {r.owner} · ₹{r.value.toLocaleString("en-IN")}</span></span>
+                <span className="flex gap-2">
+                  <Badge variant={status === "lapsed" ? "danger" : status === "renewal due" ? "warning" : "neutral"}>{status}</Badge>
+                  <Badge variant={health === "at risk" ? "danger" : health === "watch" ? "warning" : "success"}>{health}</Badge>
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">Contract ends {r.contractEnd} ({days < 0 ? `${Math.abs(days)} days ago` : `in ${days} days`}) · {open.length} open ticket{open.length === 1 ? "" : "s"}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input aria-label={`New end date for ${r.customerName}`} type="date" className="h-8 w-40" value={drafts[r.id] ?? ""} onChange={(e) => setDrafts((current) => ({ ...current, [r.id]: e.target.value }))} />
+                <Button size="sm" variant="secondary" disabled={!drafts[r.id]} onClick={() => update(r.id)}>Set new end date</Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </>
   );
 }
 
