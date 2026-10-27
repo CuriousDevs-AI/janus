@@ -744,7 +744,9 @@ function OrdersView({ me }: { me: string }) {
   const createDispatch = useOperationsStore((state) => state.createDispatch);
   const markDelivered = useOperationsStore((state) => state.markDelivered);
   const checkpointDispatch = useOperationsStore((state) => state.checkpointDispatch);
-  const recordReturn = useOperationsStore((state) => state.recordReturn);
+  const authoriseReturn = useOperationsStore((state) => state.authoriseReturn);
+  const inspectReturn = useOperationsStore((state) => state.inspectReturn);
+  const returns = useOperationsStore((state) => state.returns);
   const locations = useLocationsStore((state) => state.locations);
   const [customer, setCustomer] = React.useState("");
   const [company, setCompany] = React.useState("");
@@ -759,7 +761,6 @@ function OrdersView({ me }: { me: string }) {
   const [returnFor, setReturnFor] = React.useState<Dispatch | null>(null);
   const [returnItem, setReturnItem] = React.useState("");
   const [returnQty, setReturnQty] = React.useState("");
-  const [returnCondition, setReturnCondition] = React.useState<"good" | "damaged">("good");
   const [returnReason, setReturnReason] = React.useState("");
   const [docsFor, setDocsFor] = React.useState<Dispatch | null>(null);
 
@@ -822,6 +823,27 @@ function OrdersView({ me }: { me: string }) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle className="text-base">Return authorisations (RMA)</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 p-4 text-sm">
+          <p className="text-xs text-muted-foreground">A return is authorised first. Inspect it when the goods arrive: good goods go back to stock; damaged goods do not.</p>
+          {returns.length === 0 ? <p className="text-muted-foreground">No returns authorised.</p> : null}
+          {returns.map((r) => (
+            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+              <span><span className="font-medium">{r.number}</span> · {r.qty} × {items.find((i) => i.id === r.itemId)?.name ?? "item"} · {r.reason}<span className="block text-xs text-muted-foreground">from dispatch {dispatches.find((d) => d.id === r.dispatchId)?.number ?? "—"} · authorised by {r.raisedBy}</span></span>
+              <span className="flex items-center gap-2">
+                <Badge variant={r.status === "inspected" ? (r.condition === "good" ? "success" : "danger") : "warning"}>{r.status === "inspected" ? `inspected · ${r.condition}` : "authorised"}</Badge>
+                {r.status === "authorised" ? (
+                  <>
+                    <Button size="sm" variant="secondary" onClick={() => { const p = inspectReturn(r.id, "good", me); if (p) toast.error(p); else toast.success("Restocked"); }}>Good: restock</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { const p = inspectReturn(r.id, "damaged", me); if (p) toast.error(p); else toast.success("Recorded as damaged; not restocked"); }}>Damaged</Button>
+                  </>
+                ) : null}
+              </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
       <Dialog open={docsFor !== null} onOpenChange={(open) => !open && setDocsFor(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Documents for {docsFor?.number}</DialogTitle><DialogDescription>Challans, receipts and contracts for this dispatch.</DialogDescription></DialogHeader>
@@ -846,10 +868,9 @@ function OrdersView({ me }: { me: string }) {
             <div className="grid gap-3">
               <select aria-label="Item" className={selectClass} value={returnItem} onChange={(e) => setReturnItem(e.target.value)}><option value="">Item…</option>{returnFor.lines.map((l) => <option key={l.itemId} value={l.itemId}>{items.find((i) => i.id === l.itemId)?.name} (sent {l.qty})</option>)}</select>
               <Input aria-label="Quantity returned" type="number" min={1} value={returnQty} onChange={(e) => setReturnQty(e.target.value)} placeholder="Quantity returned" />
-              <select aria-label="Condition" className={selectClass} value={returnCondition} onChange={(e) => setReturnCondition(e.target.value as "good" | "damaged")}><option value="good">Good</option><option value="damaged">Damaged</option></select>
               <Input aria-label="Reason" value={returnReason} onChange={(e) => setReturnReason(e.target.value)} placeholder="Reason" />
             </div>
-            <DialogFooter><Button variant="secondary" onClick={() => setReturnFor(null)}>Cancel</Button><Button disabled={!returnItem || !returnQty || returnReason.trim().length < 3} onClick={() => { const p = recordReturn({ dispatchId: returnFor.id, itemId: returnItem, qty: Number(returnQty), condition: returnCondition, reason: returnReason }, me); if (p) return toast.error(p); toast.success("Return recorded"); setReturnFor(null); setReturnQty(""); setReturnReason(""); }}>Record return</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setReturnFor(null)}>Cancel</Button><Button disabled={!returnItem || !returnQty || returnReason.trim().length < 3} onClick={() => { const p = authoriseReturn({ dispatchId: returnFor.id, itemId: returnItem, qty: Number(returnQty), reason: returnReason }, me); if (p) return toast.error(p); toast.success("Return authorised; it goes back to stock after inspection"); setReturnFor(null); setReturnQty(""); setReturnReason(""); }}>Record return</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}
