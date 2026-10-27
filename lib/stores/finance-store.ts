@@ -30,6 +30,17 @@ export interface FundRequest {
   status: "pending" | "awaiting_finance" | "approved" | "rejected"; ownerApprovedBy?: string; financeApprovedBy?: string; rejectedBy?: string; rejectedReason?: string;
 }
 export interface Draw { id: string; lineId: string; amount: number; note: string; by: string; date: string }
+/** The planned spend for one budget line in one quarter of an Indian financial year (April to March). */
+export interface BudgetPlan { id: string; lineId: string; fiscalYear: string; quarter: 1 | 2 | 3 | 4; planned: number }
+
+/** The financial year and quarter a date falls in. 2026-10-23 is Q3 of FY 2026-27. */
+export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2 | 3 | 4 } {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const startYear = month >= 4 ? year : year - 1;
+  const quarter = month >= 4 && month <= 6 ? 1 : month >= 7 && month <= 9 ? 2 : month >= 10 && month <= 12 ? 3 : 4;
+  return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
+}
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
 export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string }
 
@@ -58,9 +69,11 @@ interface FinanceState {
   fundRequests: FundRequest[];
   draws: Draw[];
   bills: Bill[];
+  plans: BudgetPlan[];
   trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
+  setBudgetPlan: (lineId: string, fiscalYear: string, quarter: BudgetPlan["quarter"], planned: number, by: string) => string | null;
   addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number }, by: string) => string | null;
   recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
   addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
@@ -105,6 +118,7 @@ export const useFinanceStore = create<FinanceState>()(
       ...seedFinance(),
       trail: [],
       bills: seedFinance().bills,
+      plans: [],
       addInvoice: (input, by) => {
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
@@ -161,6 +175,18 @@ export const useFinanceStore = create<FinanceState>()(
         set((state) => ({
           creditNotes: state.creditNotes.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason.trim() } : item),
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Rejected credit note ${note.number}: ${reason.trim()}`)),
+        }));
+        return null;
+      },
+      setBudgetPlan: (lineId, fiscalYear, quarter, planned, by) => {
+        const line = get().budgetLines.find((item) => item.id === lineId);
+        if (!line) return "Budget line not found.";
+        if (!(planned >= 0)) return "The plan cannot be negative.";
+        const existing = get().plans.find((item) => item.lineId === lineId && item.fiscalYear === fiscalYear && item.quarter === quarter);
+        const plan: BudgetPlan = existing ? { ...existing, planned } : { id: `plan-${Date.now()}`, lineId, fiscalYear, quarter, planned };
+        set((state) => ({
+          plans: existing ? state.plans.map((item) => item.id === existing.id ? plan : item) : [...state.plans, plan],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Planned ₹${planned.toLocaleString("en-IN")} for ${line.name}, Q${quarter} ${fiscalYear}`)),
         }));
         return null;
       },
@@ -253,7 +279,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, trail: state.trail }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, trail: state.trail }) },
   ),
 );
 
