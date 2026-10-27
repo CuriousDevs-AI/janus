@@ -562,6 +562,26 @@ function OverviewView() {
   const dispatches = useOperationsStore((state) => state.dispatches);
   const adjustments = useOperationsStore((state) => state.adjustments);
   const low = items.filter((item) => stockOn(movements, item.id) <= item.reorderLevel);
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const addRequisition = useOperationsStore((state) => state.addRequisition);
+  const requisitions = useOperationsStore((state) => state.requisitions);
+  const locations = useLocationsStore((state) => state.locations);
+  const budgetLines = useFinanceStore((state) => state.budgetLines);
+  // Reorders are paid from the warehouse budget line. The person who raised one cannot approve it, so approval stays with someone else.
+  const warehouseLine = budgetLines.find((line) => line.name === "Warehouse operations");
+  function reorder(item: (typeof items)[number], onHand: number) {
+    const problem = addRequisition({
+      itemId: item.id,
+      qty: Math.max(item.reorderLevel * 2 - onHand, 1),
+      estimatedRate: item.rate,
+      locationId: locations[0]?.id ?? 0,
+      budgetLineId: warehouseLine?.id ?? "",
+      reason: `Reorder: ${item.name} is at ${onHand} ${item.unit}, reorder level ${item.reorderLevel}`,
+    }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Reorder requisition raised");
+  }
   const expiring = batches.filter((batch) => !isExpired(batch) && days(TODAY, batch.expiry) <= 60 && stockOn(movements, batch.itemId, undefined, batch.batchNo) > 0);
   const open = dispatches.filter((d) => d.status === "dispatched").length;
   const pendingAdj = adjustments.filter((a) => a.status === "pending").length;
@@ -579,7 +599,16 @@ function OverviewView() {
         <CardHeader><CardTitle className="text-base">Low stock</CardTitle></CardHeader>
         <CardContent className="grid gap-2 text-sm">
           {low.length === 0 ? <p className="text-muted-foreground">Every item is above its reorder level.</p> : null}
-          {low.map((item) => <p key={item.id}>{item.name} · {stockOn(movements, item.id)} {item.unit} (reorder at {item.reorderLevel})</p>)}
+          {low.map((item) => {
+            const onHand = stockOn(movements, item.id);
+            const raised = requisitions.some((r) => r.status === "pending" && r.itemId === item.id && r.reason.startsWith("Reorder:"));
+            return (
+              <p key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+                <span>{item.name} · {onHand} {item.unit} (reorder at {item.reorderLevel})</span>
+                {raised ? <span className="text-xs text-muted-foreground">Requisition waiting approval</span> : <Button size="sm" variant="secondary" disabled={!warehouseLine} onClick={() => reorder(item, onHand)}>{warehouseLine ? "Raise reorder requisition" : "Needs a Warehouse operations budget line"}</Button>}
+              </p>
+            );
+          })}
         </CardContent>
       </Card>
       <Card>
