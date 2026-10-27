@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { getNavSectionsForWorkspace } from "@/lib/nav-config";
 import { activeCompany } from "@/lib/company";
-import { getWorkspaceDefinition, isWorkspaceId } from "@/lib/workspace-config";
+import { OPERATIONAL_WORKSPACES, getWorkspaceDefinition, isWorkspaceId } from "@/lib/workspace-config";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { useSession } from "@/components/auth/session-provider";
 import { HrPeopleWorkspace } from "@/components/hr-people/workspace";
@@ -19,8 +19,6 @@ import { OperationsWorkspace } from "@/components/operations/operations-workspac
 import { ProjectsWorkspace } from "@/components/projects/projects-workspace";
 import { SupportWorkspace } from "@/components/support/support-workspace";
 import { ITWorkspace } from "@/components/it/it-workspace";
-
-const SWITCHABLE = ["finance-accounting", "operations-inventory", "projects-delivery", "customer-support", "it-infrastructure"];
 
 const workspacePermissions: Record<string, string> = {
   "hr-people": "hr:self",
@@ -63,7 +61,7 @@ function WorkspacePageInner({
   }
 
   // A switched-off workspace is hidden, not deleted: its records stay and come back when it is switched on.
-  if (SWITCHABLE.includes(routeWorkspaceId) && !activeCompany().workspaces.includes(routeWorkspaceId)) {
+  if (OPERATIONAL_WORKSPACES.includes(routeWorkspaceId) && !activeCompany().workspaces.includes(routeWorkspaceId)) {
     return (
       <div className="mx-auto flex max-w-[1200px] flex-col">
         <PageHeader title="Not switched on" description="This workspace is off for the current company." />
