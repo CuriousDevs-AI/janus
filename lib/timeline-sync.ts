@@ -2,7 +2,7 @@
 
 import { api, APIError } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
-import { type DirectoryPerson, matchPeople, type TeamMatch } from "@/lib/timeline-team";
+import { type DirectoryPerson, matchPeople, type PersonRef, type TeamMatch } from "@/lib/timeline-team";
 
 /**
  * Creates a project's timeline if it is missing, then adds the matched team members to it. Only additions
@@ -11,27 +11,31 @@ import { type DirectoryPerson, matchPeople, type TeamMatch } from "@/lib/timelin
  */
 export async function syncProjectTimeline(
   project: { id: string; name: string },
-  names: string[],
-): Promise<{ added: number; unmatched: TeamMatch["unmatched"] } | null> {
+  people: PersonRef[],
+): Promise<{ added: number; unmatched: TeamMatch["unmatched"]; links: Record<string, string> } | null> {
   if (demoMode) return null;
   const key = encodeURIComponent(project.id);
   await api("/project-timelines", {
     method: "POST",
     body: JSON.stringify({ project_key: project.id, name: project.name }),
   });
-  const [directory, members] = await Promise.all([
-    api<DirectoryPerson[]>("/project-timelines/directory"),
-    api<{ user_id: string }[]>(`/project-timelines/${key}/members`),
-  ]);
+  // People with a recorded account need no matching. Only the rest are matched by name.
+  const recorded = people.filter((p) => p.userId);
+  const byName = people.filter((p) => !p.userId).map((p) => p.name);
+  const directory = byName.length > 0 ? await api<DirectoryPerson[]>("/project-timelines/directory") : [];
+  const matchedByName = matchPeople(byName, directory);
+  const members = await api<{ user_id: string }[]>(`/project-timelines/${key}/members`);
   const onTimeline = new Set(members.map((m) => m.user_id));
-  const { matched, unmatched } = matchPeople(names, directory);
+  const links: Record<string, string> = {};
+  for (const m of matchedByName.matched) links[m.name] = m.user_id;
+  for (const p of recorded) links[p.name] = p.userId as string;
   let added = 0;
-  for (const person of matched) {
-    if (onTimeline.has(person.user_id)) continue;
+  for (const userId of new Set(Object.values(links))) {
+    if (onTimeline.has(userId)) continue;
     try {
       await api(`/project-timelines/${key}/members`, {
         method: "POST",
-        body: JSON.stringify({ user_id: person.user_id }),
+        body: JSON.stringify({ user_id: userId }),
       });
       added += 1;
     } catch (error) {
@@ -39,7 +43,7 @@ export async function syncProjectTimeline(
       if (!(error instanceof APIError && error.code === "already_member")) throw error;
     }
   }
-  return { added, unmatched };
+  return { added, unmatched: matchedByName.unmatched, links };
 }
 
 export function describeUnmatched(unmatched: TeamMatch["unmatched"]): string {

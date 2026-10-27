@@ -11,7 +11,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { hasPermission } from "@/lib/demo-persona";
 import { useProjectsStore } from "@/lib/stores/projects-store";
 import { syncProjectTimeline, describeUnmatched } from "@/lib/timeline-sync";
-import { type DirectoryPerson, projectPeople } from "@/lib/timeline-team";
+import { type DirectoryPerson, projectPersonRefs } from "@/lib/timeline-team";
 
 /**
  * A project's timeline: the shared conversation and the record of what happened, on the server.
@@ -31,6 +31,7 @@ export function TimelineView() {
   const canManage = hasPermission(session.permissions, "projects:manage");
   const projects = useProjectsStore((state) => state.projects);
   const tasks = useProjectsStore((state) => state.tasks);
+  const linkPeople = useProjectsStore((state) => state.linkPeople);
   const closures = useProjectsStore((state) => state.closures);
   const allocations = useProjectsStore((state) => state.allocations);
   const [members, setMembers] = React.useState<{ user_id: string; name: string }[]>([]);
@@ -137,8 +138,9 @@ export function TimelineView() {
   async function syncTeam() {
     if (!selected) return;
     try {
-      const result = await syncProjectTimeline(selected, projectPeople(selected, tasks, allocations, selected.id));
+      const result = await syncProjectTimeline(selected, projectPersonRefs(selected, tasks, allocations, selected.id));
       if (result) {
+        linkPeople(selected.id, result.links);
         toast.success(result.added > 0 ? `Added ${result.added} from the project team` : "The team is already up to date");
         if (result.unmatched.length > 0) toast.warning(`Could not match: ${describeUnmatched(result.unmatched)}`);
       }

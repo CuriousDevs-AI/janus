@@ -17,7 +17,7 @@ import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
-import { projectPeople } from "@/lib/timeline-team";
+import { projectPersonRefs } from "@/lib/timeline-team";
 import { message } from "@/lib/api/client";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -332,8 +332,9 @@ function ProjectsView({ me }: { me: string }) {
     // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
     const created = useProjectsStore.getState().projects.at(-1);
     if (created) {
-      syncProjectTimeline(created, projectPeople(created, [], [], created.id))
+      syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
         .then((result) => {
+          if (result) useProjectsStore.getState().linkPeople(created.id, result.links);
           if (result && result.unmatched.length > 0) toast.warning(`Timeline created. Could not match: ${describeUnmatched(result.unmatched)}. Fix the names, then sync the team.`);
         })
         .catch((error: unknown) => toast.error(`Timeline not created: ${message(error)}`));

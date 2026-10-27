@@ -18,7 +18,7 @@ import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail
 export const TODAY = "2026-10-23";
 export const PROJECT_TYPES = ["Fixed price", "Time and material", "Internal"] as const;
 
-export interface Project { id: string; name: string; client: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
+export interface Project { id: string; name: string; client: string; ownerUserId?: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }
 /** A dispute stops acceptance, and so billing, until someone resolves it (plan §8.3Z step 4). */
 export interface MilestoneDispute { reason: string; raisedBy: string; date: string }
 export interface Milestone { id: string; projectId: string; name: string; due: string; amount: number; status: "planned" | "done" | "accepted"; completedBy?: string; acceptedBy?: string; invoiceNumber?: string; dispute?: MilestoneDispute }
@@ -33,11 +33,11 @@ export interface ProjectClosure {
 
 /** One version of a project's plan. Version 1 is the plan as first set; each approved change adds the next one (plan §8.3Y step 4). */
 export interface PlanVersion { id: string; projectId: string; number: number; budget: number; end: string; note: string; by: string; date: string }
-export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; due: string; status: "todo" | "doing" | "done" }
+export interface Task { id: string; projectId: string; milestoneId: string | null; title: string; assignee: string; assigneeUserId?: string; due: string; status: "todo" | "doing" | "done" }
 /** Hours a person worked on a project on a day. Hours are entered; nothing is estimated from them. */
 export interface Timesheet { id: string; projectId: string; person: string; date: string; hours: number; note: string }
 /** The share of a person's week a project is planned to take (0 to 100). */
-export interface Allocation { id: string; projectId: string; person: string; percent: number }
+export interface Allocation { id: string; projectId: string; person: string; percent: number; userId?: string }
 /** What one hour of a person costs the company. Used for project cost; a person without a rate uses the default. */
 export interface CostRate { person: string; hourlyCost: number }
 export const DEFAULT_HOURLY_COST = 500;
@@ -56,6 +56,8 @@ interface ProjectsState {
   trail: TrailEntry[];
   addProject: (input: Omit<Project, "id" | "status" | "createdBy">, by: string) => string | null;
   setAllocation: (projectId: string, person: string, percent: number, by: string) => string | null;
+  /** Records which company account each project person is, by name, so later checks use the account rather than the name. */
+  linkPeople: (projectId: string, links: Record<string, string>) => void;
   setCostRate: (person: string, hourlyCost: number, by: string) => string | null;
   logHours: (input: Omit<Timesheet, "id">, by: string) => string | null;
   addMilestone: (input: Omit<Milestone, "id" | "status">) => string | null;
@@ -139,6 +141,14 @@ export const useProjectsStore = create<ProjectsState>()(
           trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Set ${person}'s cost at ₹${hourlyCost.toLocaleString("en-IN")} an hour`)),
         }));
         return null;
+      },
+      linkPeople: (projectId, links) => {
+        const idFor = (name: string) => links[name.trim()];
+        set((state) => ({
+          projects: state.projects.map((p) => (p.id === projectId && idFor(p.owner) ? { ...p, ownerUserId: idFor(p.owner) } : p)),
+          tasks: state.tasks.map((t) => (t.projectId === projectId && idFor(t.assignee) ? { ...t, assigneeUserId: idFor(t.assignee) } : t)),
+          allocations: state.allocations.map((a) => (a.projectId === projectId && idFor(a.person) ? { ...a, userId: idFor(a.person) } : a)),
+        }));
       },
       setAllocation: (projectId, person, percent, by) => {
         const project = get().projects.find((p) => p.id === projectId);

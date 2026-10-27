@@ -132,3 +132,9 @@ Not built yet, in plan order:
 - Closing also **archives the project's timeline** on the server. Nobody can post on it afterwards. The closing is written as a system entry (kind `closed`) with the member and entry counts, and it is audited.
 - Verified: backend tests cover archive, the closing entry, refused posts after archive, and the audit entry (113 backend tests pass). In the browser, closing a project showed "closed, read only" on its timeline, the closing entry, and the summary.
 - Limitation: the summary lives in the browser store, not on the server, until projects move to the server (P2). Only the timeline archive is server-side.
+
+**Fourth pass: identity (P1, partial):**
+- Project owners, task assignees and allocated people now record the company account ID when it is known (`ownerUserId`, `assigneeUserId`, `userId`).
+- Sync uses a recorded account first, and matches by name only for people without one. Matched names are written back to the records.
+- Verified in the browser: an invited company member (Neha Verma) was matched, linked on the owner and task records, and added to the timeline. An unmatched name (Arjun Mehta, no account) was flagged.
+- Still open: names remain the display value. New people chosen from the directory should store the ID from the start.
