@@ -111,8 +111,15 @@ Built in this pass, with tests and a browser check in real mode:
 - **Screen:** Projects > Project Timeline. Start a timeline, post updates, mark decisions. It refreshes every 8 seconds.
 - **Tests:** five timeline tests (membership, permissions, company isolation, audit and system entries, blank messages). The full backend suite passes.
 
+Added in the second pass:
+- **Directory for managers:** `GET /v1/project-timelines/directory` lists active company people (names and IDs only) for users with `projects:manage`.
+- **Team matching (P1, partial):** project people (owner, task assignees, allocations) are matched to company accounts by name, ignoring case and extra spaces. A name with no account, or more than one, is flagged, never guessed.
+- **Auto-create (M2, partial):** creating a project creates its timeline and adds the matched owner. Unmatched names are reported.
+- **Sync and manual team control:** "Sync team from project" adds matched people. Add and remove are manual. Sync never removes anyone, so a renamed person cannot be taken off a project silently.
+- **Verified:** a browser run on a company with no matching accounts flagged both names and kept the owner. Six timeline tests pass.
+
 Not built yet, in plan order:
-- **P1 identity:** project people are still names. The timeline uses user IDs, but the Projects screens do not.
+- **P1 identity:** project people are still names in the Projects screens. Matching by name is a stopgap; the stable fix is storing the user ID on each project person.
 - **P2 full persistence:** projects, milestones, tasks and change requests are still browser-only.
 - **M2 membership sync:** nothing adds the owner or assignees automatically, and the screen has no add-member control yet.
 - **M3 approvals in the thread** and **M4 budget and milestone events:** `record_event` exists, but no module calls it yet.

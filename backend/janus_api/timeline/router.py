@@ -128,6 +128,23 @@ async def create_timeline(
     )
 
 
+class DirectoryOut(BaseModel):
+    user_id: str
+    name: str
+
+
+@router.get("/directory", response_model=list[DirectoryOut])
+async def directory(actor: Manage, db: Db) -> list[DirectoryOut]:
+    """Active people in this company, for choosing who joins a project. Names and IDs only."""
+    rows = await db.execute(
+        select(User.id, User.name)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.tenant_id == actor.session.tenant_id, Membership.status == "active")
+        .order_by(User.name)
+    )
+    return [DirectoryOut(user_id=str(user_id), name=name) for user_id, name in rows.all()]
+
+
 @router.get("/{project_key}", response_model=TimelineOut)
 async def read_timeline(project_key: str, actor: CurrentActor, db: Db) -> TimelineOut:
     timeline = await service.timeline_for(db, actor.session.tenant_id, project_key)

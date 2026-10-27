@@ -187,3 +187,15 @@ async def test_blank_message_is_refused(client: httpx.AsyncClient, mailbox: Mail
         f"/v1/project-timelines/{KEY}/entries", headers=owner.headers, json={"body": "   "}
     )
     assert blank.status_code == 422
+
+
+async def test_project_managers_see_the_company_directory_only(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    listed = await client.get("/v1/project-timelines/directory", headers=owner.headers)
+    assert listed.status_code == 200
+    names = {row["name"] for row in listed.json()}
+    assert "Owner" in names and "Member" in names
+    assert (await client.get("/v1/project-timelines/directory", headers=agent)).status_code == 403
