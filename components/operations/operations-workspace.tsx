@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
-import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch } from "@/lib/stores/operations-store";
+import { ADJUSTMENT_APPROVAL_VALUE, TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PoLine } from "@/lib/stores/operations-store";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useSession } from "@/components/auth/session-provider";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
@@ -25,7 +25,6 @@ const days = (from: string, to: string) => Math.floor((Date.parse(to) - Date.par
 
 const comingSoon: Record<string, string> = {
   procurement: "Requisitions, purchase approval and budget check come in phase 2, with purchase orders.",
-  "purchase-orders": "Purchase orders and goods receipt against them come in phase 2.",
   vendors: "The vendor list, with GSTIN and payment terms, comes in phase 2.",
   workflows: "Operational workflows come after the core stock and dispatch screens are in use.",
   reports: "Operations reports come once stock and dispatch have history.",
@@ -36,7 +35,7 @@ export function OperationsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations" };
+  const titles: Record<string, string> = { overview: "Operations overview", products: "Products & stock", inventory: "Inventory by location", orders: "Dispatch & returns", warehouses: "Warehouses & locations", "purchase-orders": "Purchase orders" };
 
   if (view in comingSoon) {
     return (
@@ -55,10 +54,88 @@ export function OperationsWorkspace() {
         {view === "inventory" && <InventoryView me={me} />}
         {view === "orders" && <OrdersView me={me} />}
         {view === "warehouses" && <WarehousesView />}
-        {!["products", "inventory", "orders", "warehouses"].includes(view) && <OverviewView />}
-        {!["products", "inventory", "orders", "warehouses"].includes(view) && <OperationsTrail />}
+        {view === "purchase-orders" && <PurchaseOrdersView me={me} />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders"].includes(view) && <OverviewView />}
+        {!["products", "inventory", "orders", "warehouses", "purchase-orders"].includes(view) && <OperationsTrail />}
       </div>
     </div>
+  );
+}
+
+/** Purchase orders to vendors, and goods receipt against them. Each receipt adds stock and moves the order along. */
+function PurchaseOrdersView({ me }: { me: string }) {
+  const items = useOperationsStore((state) => state.items);
+  const orders = useOperationsStore((state) => state.purchaseOrders);
+  const addPurchaseOrder = useOperationsStore((state) => state.addPurchaseOrder);
+  const receiveAgainstPO = useOperationsStore((state) => state.receiveAgainstPO);
+  const locations = useLocationsStore((state) => state.locations);
+  const [vendor, setVendor] = React.useState("");
+  const [locationId, setLocationId] = React.useState("");
+  const [itemId, setItemId] = React.useState("");
+  const [qty, setQty] = React.useState("");
+  const [rate, setRate] = React.useState("");
+  const [receiveQty, setReceiveQty] = React.useState<Record<string, string>>({});
+
+  function create() {
+    if (locationId === "") return toast.error("Choose the location the goods come to.");
+    const problem = addPurchaseOrder({ vendor, locationId: Number(locationId), lines: [{ itemId, qty: Number(qty), rate: Number(rate) }] }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Purchase order raised");
+    setVendor(""); setItemId(""); setQty(""); setRate("");
+  }
+
+  function receive(orderId: string, line: PoLine) {
+    const problem = receiveAgainstPO(orderId, [{ itemId: line.itemId, qty: Number(receiveQty[orderId]) }], me);
+    if (problem) return toast.error(problem);
+    toast.success("Goods received");
+    setReceiveQty((current) => ({ ...current, [orderId]: "" }));
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Raise a purchase order</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-xs text-muted-foreground">One item per order for now. Goods received against it add stock at the location the order names.</p>
+          <div className="grid gap-3 sm:grid-cols-6">
+            <Input aria-label="Vendor" placeholder="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} />
+            <select aria-label="Deliver to" className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value)}><option value="">Deliver to…</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+            <select aria-label="Item" className={selectClass} value={itemId} onChange={(e) => setItemId(e.target.value)}><option value="">Item…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+            <Input aria-label="Quantity ordered" type="number" min={0} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
+            <Input aria-label="Rate" type="number" min={0} placeholder="Rate ₹" value={rate} onChange={(e) => setRate(e.target.value)} />
+            <Button disabled={!vendor || !itemId || !(Number(qty) > 0)} onClick={create}>Raise order</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="grid gap-3 p-4 text-sm">
+          {orders.length === 0 ? <p className="text-muted-foreground">No purchase orders yet.</p> : null}
+          {orders.map((order) => {
+            const line = order.lines[0];
+            const item = items.find((i) => i.id === line?.itemId);
+            const due = line ? line.qty - line.received : 0;
+            const status = !line ? "" : line.received >= line.qty ? "received" : line.received > 0 ? "part received" : "open";
+            return (
+              <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
+                <span>
+                  <span className="font-medium">{order.number}</span> · {order.vendor} · {locations.find((l) => l.id === order.locationId)?.name ?? "—"}
+                  <span className="block text-xs text-muted-foreground">{item?.name ?? "Item"}: ordered {line?.qty ?? 0}, received {line?.received ?? 0}, at ₹{line?.rate ?? 0} · {order.date}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant={status === "received" ? "success" : status === "part received" ? "warning" : "neutral"}>{status}</Badge>
+                  {due > 0 && line ? (
+                    <>
+                      <Input aria-label={`Receive on ${order.number}`} type="number" min={0} className="h-8 w-24" placeholder={`Max ${due}`} value={receiveQty[order.id] ?? ""} onChange={(e) => setReceiveQty((current) => ({ ...current, [order.id]: e.target.value }))} />
+                      <Button size="sm" variant="secondary" disabled={!(Number(receiveQty[order.id]) > 0)} onClick={() => receive(order.id, line)}>Receive goods</Button>
+                    </>
+                  ) : null}
+                </span>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
