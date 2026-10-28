@@ -3,6 +3,13 @@
 import { api, APIError } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 
+/** The project has no record on the server yet (it was created before the server mirror), so the change stays on this screen. */
+export class ProjectNotOnServer extends Error {
+  constructor() {
+    super("This project is not on the server yet, so this change is saved on this screen only.");
+  }
+}
+
 /**
  * Keeps the server's typed project record in step with the project the screens show. The screens still save
  * locally (the budget draw happens in the finance store), so this is a mirror: create it when the project is
@@ -41,7 +48,7 @@ export async function setProjectRecordStatus(projectId: string, status: "planned
     });
   } catch (error) {
     // A project created before this mirror existed has no record yet; that is not an error to report.
-    if (error instanceof APIError && error.status === 404) return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
 }
@@ -121,7 +128,8 @@ export async function mirrorMilestone(
       body: JSON.stringify({ external_key: milestone.id, name: milestone.name, due_on: milestone.due, amount: milestone.amount.toFixed(2) }),
     });
   } catch (error) {
-    if (error instanceof APIError && (error.status === 404 || error.code === "already_exists")) return;
+    if (error instanceof APIError && error.code === "already_exists") return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
 }
@@ -135,7 +143,7 @@ export async function mirrorMilestoneStatus(projectId: string, milestoneId: stri
       body: JSON.stringify({ status }),
     });
   } catch (error) {
-    if (error instanceof APIError && error.status === 404) return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
 }
@@ -147,7 +155,7 @@ export async function refreshMilestones(projectId: string): Promise<void> {
   try {
     rows = await api(`/project-records/${encodeURIComponent(projectId)}/milestones`);
   } catch (error) {
-    if (error instanceof APIError && error.status === 404) return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
   const { useProjectsStore } = await import("@/lib/stores/projects-store");
@@ -186,7 +194,8 @@ export async function mirrorTask(
       }),
     });
   } catch (error) {
-    if (error instanceof APIError && (error.status === 404 || error.code === "already_exists")) return;
+    if (error instanceof APIError && error.code === "already_exists") return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
 }
@@ -199,7 +208,7 @@ export async function mirrorTaskStatus(projectId: string, taskId: string, status
       body: JSON.stringify({ status }),
     });
   } catch (error) {
-    if (error instanceof APIError && error.status === 404) return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
 }
@@ -211,7 +220,7 @@ export async function refreshTasks(projectId: string): Promise<void> {
   try {
     rows = await api(`/project-records/${encodeURIComponent(projectId)}/tasks`);
   } catch (error) {
-    if (error instanceof APIError && error.status === 404) return;
+    if (error instanceof APIError && error.status === 404) throw new ProjectNotOnServer();
     throw error;
   }
   const { useProjectsStore } = await import("@/lib/stores/projects-store");

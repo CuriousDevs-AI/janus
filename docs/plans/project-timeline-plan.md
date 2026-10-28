@@ -196,3 +196,8 @@ Not built yet, in plan order:
 - Verified in the browser: a task assigned to "Task Person" was stored on the server with that account as assignee.
 - Not verified in the browser: changing a task's status. The status dropdown did not respond to automated input for this task, so the status mirror is unconfirmed. The backend endpoint is covered by tests.
 - Known limitation: a project that exists only on the screens (not on the server) silently skips its mirrored changes. This should become a visible notice; it is recorded here, not yet fixed.
+
+**Fifteenth pass: visible notice for projects not on the server:**
+- A milestone, task or status change on a project that has no server record now shows a warning ("saved on this screen only") instead of being skipped silently. Opening a screen does not show it; only the change does.
+- Typecheck and lint pass. Not re-run in the browser this pass.
+- Still open: finance on the server, operations/IT/HR/support timeline events, live updates, and browser confirmation of task status changes.
