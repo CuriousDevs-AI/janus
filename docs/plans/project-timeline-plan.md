@@ -190,3 +190,9 @@ Not built yet, in plan order:
 - Verified in the browser: a milestone added on the screen was stored on the server as planned; marking it complete changed the server status to done.
 - Found and fixed: the bridge did not allow the milestone paths, so the mirror was silently skipped on 404. The bridge now allows them. The milestone list also now returns who completed and accepted each milestone.
 - Not verified in the browser: acceptance by a second person (covered by the backend tests) and the refresh-on-open merge.
+
+**Fourteenth pass: tasks mirrored to the server (point 1, tasks, partial):**
+- Adding a task is mirrored to the server, and its assignee is matched to one company account by name. Refresh of task status on open is added.
+- Verified in the browser: a task assigned to "Task Person" was stored on the server with that account as assignee.
+- Not verified in the browser: changing a task's status. The status dropdown did not respond to automated input for this task, so the status mirror is unconfirmed. The backend endpoint is covered by tests.
+- Known limitation: a project that exists only on the screens (not on the server) silently skips its mirrored changes. This should become a visible notice; it is recorded here, not yet fixed.

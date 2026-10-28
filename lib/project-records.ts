@@ -160,3 +160,63 @@ export async function refreshMilestones(projectId: string): Promise<void> {
     }),
   }));
 }
+
+async function accountFor(name: string): Promise<string | undefined> {
+  const directory = await api<{ user_id: string; name: string }[]>("/project-timelines/directory");
+  const key = name.trim().replace(/\s+/g, " ").toLowerCase();
+  const matches = directory.filter((p) => p.name.trim().replace(/\s+/g, " ").toLowerCase() === key);
+  return matches.length === 1 ? matches[0].user_id : undefined;
+}
+
+/** Mirrors a new task. The assignee is matched to one company account by name; an unmatched name is left unlinked. */
+export async function mirrorTask(
+  projectId: string,
+  task: { id: string; title: string; milestoneId: string | null; assignee: string; due: string },
+): Promise<void> {
+  if (demoMode) return;
+  try {
+    await api(`/project-records/${encodeURIComponent(projectId)}/tasks`, {
+      method: "POST",
+      body: JSON.stringify({
+        external_key: task.id,
+        title: task.title,
+        milestone_key: task.milestoneId,
+        assignee_user_id: (await accountFor(task.assignee)) ?? null,
+        due_on: task.due,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof APIError && (error.status === 404 || error.code === "already_exists")) return;
+    throw error;
+  }
+}
+
+export async function mirrorTaskStatus(projectId: string, taskId: string, status: "todo" | "doing" | "done"): Promise<void> {
+  if (demoMode) return;
+  try {
+    await api(`/project-records/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+  } catch (error) {
+    if (error instanceof APIError && error.status === 404) return;
+    throw error;
+  }
+}
+
+/** Brings the status of mirrored tasks of one project into the screen data. */
+export async function refreshTasks(projectId: string): Promise<void> {
+  if (demoMode) return;
+  let rows: { external_key: string; status: string }[];
+  try {
+    rows = await api(`/project-records/${encodeURIComponent(projectId)}/tasks`);
+  } catch (error) {
+    if (error instanceof APIError && error.status === 404) return;
+    throw error;
+  }
+  const { useProjectsStore } = await import("@/lib/stores/projects-store");
+  const byKey = new Map(rows.map((r) => [r.external_key, r.status]));
+  useProjectsStore.setState((state) => ({
+    tasks: state.tasks.map((t) => (byKey.has(t.id) ? { ...t, status: byKey.get(t.id) as typeof t.status } : t)),
+  }));
+}

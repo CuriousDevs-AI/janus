@@ -20,7 +20,7 @@ import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
 import { projectPersonRefs } from "@/lib/timeline-team";
-import { mirrorMilestone, mirrorMilestoneStatus, mirrorNewProject, refreshMilestones, refreshProjectRecords, setProjectRecordStatus } from "@/lib/project-records";
+import { mirrorMilestone, mirrorMilestoneStatus, mirrorNewProject, mirrorTask, mirrorTaskStatus, refreshMilestones, refreshProjectRecords, refreshTasks, setProjectRecordStatus } from "@/lib/project-records";
 import { message } from "@/lib/api/client";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -508,6 +508,11 @@ function MilestonesView({ me }: { me: string }) {
 }
 
 function TasksView() {
+  React.useEffect(() => {
+    if (demoMode) return;
+    const ids = [...new Set(useProjectsStore.getState().tasks.map((t) => t.projectId))];
+    for (const id of ids) refreshTasks(id).catch(() => { /* keep the screen's copy */ });
+  }, []);
   const projects = useProjectsStore((state) => state.projects);
   const tasks = useProjectsStore((state) => state.tasks);
   const addTask = useProjectsStore((state) => state.addTask);
@@ -528,7 +533,7 @@ function TasksView() {
             <Input aria-label="Assignee" placeholder="Assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} />
             <Input aria-label="Due date" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
           </div>
-          <Button className="w-fit" disabled={!projectId || title.trim().length < 3 || assignee.trim().length < 2} onClick={() => { const p = addTask({ projectId, milestoneId: null, title, assignee: assignee.trim(), due }); if (p) return toast.error(p); toast.success("Task added"); setTitle(""); }}>Add task</Button>
+          <Button className="w-fit" disabled={!projectId || title.trim().length < 3 || assignee.trim().length < 2} onClick={() => { const p = addTask({ projectId, milestoneId: null, title, assignee: assignee.trim(), due }); if (p) return toast.error(p); const added = useProjectsStore.getState().tasks.at(-1); if (added) mirrorTask(projectId, added).catch((error: unknown) => toast.warning(`Task saved here, not on the server: ${message(error)}`)); toast.success("Task added"); setTitle(""); }}>Add task</Button>
         </CardContent>
       </Card>
       <Card>
@@ -540,7 +545,7 @@ function TasksView() {
             return (
               <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
                 <span><span className="font-medium">{t.title}</span> · {project?.name} · {t.assignee} · due {t.due}{overdue ? <Badge variant="warning" className="ml-2">overdue</Badge> : null}</span>
-                <select aria-label={`Status of ${t.title}`} className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={t.status} onChange={(e) => setStatus(t.id, e.target.value as typeof t.status)}><option value="todo">To do</option><option value="doing">Doing</option><option value="done">Done</option></select>
+                <select aria-label={`Status of ${t.title}`} className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={t.status} onChange={(e) => { setStatus(t.id, e.target.value as typeof t.status); mirrorTaskStatus(t.projectId, t.id, e.target.value as "todo" | "doing" | "done").catch((error: unknown) => toast.warning(`Not updated on the server: ${message(error)}`)); }}><option value="todo">To do</option><option value="doing">Doing</option><option value="done">Done</option></select>
               </div>
             );
           })}
