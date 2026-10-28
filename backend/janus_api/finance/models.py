@@ -42,8 +42,15 @@ class FinanceBudgetMovement(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "idempotency_key"),
         CheckConstraint("amount_paise <> 0", name="ck_movements_amount"),
+        CheckConstraint("kind IN ('draw', 'release', 'allocation')", name="ck_movements_kind"),
+        CheckConstraint(
+            "(kind = 'release' AND amount_paise < 0)"
+            " OR (kind IN ('draw', 'allocation') AND amount_paise > 0)",
+            name="ck_movements_sign",
+        ),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    kind: Mapped[str] = mapped_column(String(12), server_default="draw")
     line_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("finance_budget_lines.id"))
     amount_paise: Mapped[int] = mapped_column(BigInteger)
     note: Mapped[str] = mapped_column(String(300), default="")

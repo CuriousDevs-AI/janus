@@ -25,7 +25,7 @@ interface QueueItem {
   reason: string;
   date: string;
   waitingFor: string;
-  approve: (by: string) => string | null;
+  approve: (by: string) => string | null | Promise<string | null>;
   reject?: (by: string) => string | null;
 }
 
@@ -138,7 +138,7 @@ export function MoneyApprovalsQueue() {
               <p className="text-xs text-muted-foreground">Waiting for: {item.waitingFor}</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => decide(item.approve(me), `${item.title} approved`)}>Approve</Button>
+              <Button size="sm" onClick={async () => decide(await item.approve(me), `${item.title} approved`)}>Approve</Button>
               {item.reject ? <Button size="sm" variant="outline" onClick={() => decide(item.reject?.(me) ?? null, `${item.title} rejected`)}>Reject</Button> : null}
             </div>
           </div>

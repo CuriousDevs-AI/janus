@@ -11,6 +11,7 @@ import { useOperationsStore } from "@/lib/stores/operations-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { demoMode } from "@/lib/demo-mode";
+import { api } from "@/lib/api/client";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -115,7 +116,7 @@ interface FinanceState {
   decideCreditNote: (id: string, by: string) => string | null;
   rejectCreditNote: (id: string, reason: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
-  approveFundRequest: (id: string, step: "owner" | "finance", by: string) => string | null;
+  approveFundRequest: (id: string, step: "owner" | "finance", by: string) => Promise<string | null>;
   rejectFundRequest: (id: string, reason: string, by: string) => void;
   addBudgetLine: (input: { name: string; owner: string; allocated: number }) => void;
   drawBudget: (lineId: string, amount: number, note: string, by: string, date: string) => string | null;
@@ -398,28 +399,33 @@ export const useFinanceStore = create<FinanceState>()(
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested funds ${number} of ₹${input.amount.toLocaleString("en-IN")}: ${input.purpose}`)),
         }));
       },
-      approveFundRequest: (id, step, by) => {
+      approveFundRequest: async (id, step, by) => {
         const request = get().fundRequests.find((item) => item.id === id);
         if (!request) return "Request not found.";
         if (request.requestedBy === by) return "You cannot approve your own request.";
         if (step === "owner") {
           if (request.status !== "pending") return "This request is not waiting for the owner.";
           const needsFinance = request.amount > FUND_OWNER_LIMIT;
+          // Money is allocated before the approval is recorded, so a failed allocation leaves the request as it was.
+          if (!needsFinance) {
+            const problem = await allocateFunds(request);
+            if (problem) return problem;
+          }
           const text = needsFinance ? `Owner approved ${request.number}; waiting for finance` : `Owner approved ${request.number}; budget allocated`;
           set((state) => ({
             fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, ownerApprovedBy: by, status: needsFinance ? "awaiting_finance" : "approved" } : item),
             trail: withTrail(state.trail, trailEntry("finance", today, by, text)),
           }));
-          if (!needsFinance) allocate(request.lineId, request.amount);
           return null;
         }
         if (request.status !== "awaiting_finance") return "This request is not waiting for finance.";
         if (request.ownerApprovedBy === by) return "The approver must be a different person from the owner's approval.";
+        const problem = await allocateFunds(request);
+        if (problem) return problem;
         set((state) => ({
           fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, financeApprovedBy: by, status: "approved" } : item),
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Finance approved ${request.number}; budget allocated`)),
         }));
-        allocate(request.lineId, request.amount);
         return null;
       },
       rejectFundRequest: (id, reason, by) => {
@@ -470,6 +476,30 @@ export const useFinanceStore = create<FinanceState>()(
     { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, shareCapital: state.shareCapital, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
   ),
 );
+
+/** Adds an approved request's amount to its budget line. Real mode asks the server; the request id is the idempotency key, so a retry allocates once. */
+async function allocateFunds(request: FundRequest): Promise<string | null> {
+  if (demoMode) {
+    allocate(request.lineId, request.amount);
+    return null;
+  }
+  try {
+    const result = await api<{ budget: { allocated_paise: number; drawn_paise: number } }>(
+      `/finance/budget-lines/${encodeURIComponent(request.lineId)}/allocations`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": `fund-${request.id}` },
+        body: JSON.stringify({ amount_paise: Math.round(request.amount * 100), note: `${request.number}: ${request.purpose}`, booked_on: today }),
+      },
+    );
+    useFinanceStore.setState((state) => ({
+      budgetLines: state.budgetLines.map((item) => item.id === request.lineId ? { ...item, allocated: result.budget.allocated_paise / 100, drawn: result.budget.drawn_paise / 100 } : item),
+    }));
+    return null;
+  } catch (error: unknown) {
+    return error instanceof Error ? error.message : "The budget could not be allocated. Try again.";
+  }
+}
 
 function allocate(lineId: string, amount: number) {
   useFinanceStore.setState((state) => ({ budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, allocated: item.allocated + amount } : item) }));

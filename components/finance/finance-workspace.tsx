@@ -1100,7 +1100,7 @@ function FundsView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right">
                       {open ? (
                         <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="secondary" onClick={() => { const p = approve(request.id, request.status === "pending" ? "owner" : "finance", me); if (p) toast.error(p); else toast.success("Approved"); }}>{request.status === "pending" ? "Owner approve" : "Finance approve"}</Button>
+                          <Button size="sm" variant="secondary" onClick={async () => { const p = await approve(request.id, request.status === "pending" ? "owner" : "finance", me); if (p) toast.error(p); else toast.success("Approved"); }}>{request.status === "pending" ? "Owner approve" : "Finance approve"}</Button>
                           <Button size="sm" variant="ghost" onClick={() => setRejecting(request)}>Reject</Button>
                         </div>
                       ) : null}

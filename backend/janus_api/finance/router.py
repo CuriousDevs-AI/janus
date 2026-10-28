@@ -134,6 +134,7 @@ async def _move(
     request: Request,
     response: Response,
 ) -> MovementOut:
+    """A draw or release moves drawn; an allocation moves allocated."""
     tenant_id = actor.session.tenant_id
     line = await _line(db, tenant_id, key, lock=True)
     amount = sign * data.amount_paise
@@ -145,23 +146,30 @@ async def _move(
         )
     )
     if existing is not None:
-        if existing.line_id != line.id or existing.amount_paise != amount:
+        if existing.line_id != line.id or existing.amount_paise != amount or existing.kind != kind:
             raise ApiError(
                 "idempotency_conflict", "This key was already used for a different request.", 409
             )
         response.status_code = 200
         return _movement_out(existing, line)
 
-    remaining = line.allocated_paise - line.drawn_paise
-    if sign > 0 and data.amount_paise > remaining:
-        raise ApiError("insufficient_budget", "There is not enough left on this budget line.", 422)
-    if sign < 0 and data.amount_paise > line.drawn_paise:
-        raise ApiError("insufficient_drawn", "More is being released than has been drawn.", 422)
+    if kind == "draw":
+        if data.amount_paise > line.allocated_paise - line.drawn_paise:
+            raise ApiError(
+                "insufficient_budget", "There is not enough left on this budget line.", 422
+            )
+        line.drawn_paise += amount
+    elif kind == "release":
+        if data.amount_paise > line.drawn_paise:
+            raise ApiError("insufficient_drawn", "More is being released than has been drawn.", 422)
+        line.drawn_paise += amount
+    else:
+        line.allocated_paise += amount
 
-    line.drawn_paise += amount
     movement = FinanceBudgetMovement(
         tenant_id=tenant_id,
         line_id=line.id,
+        kind=kind,
         amount_paise=amount,
         note=data.note.strip(),
         booked_on=data.booked_on,
@@ -207,7 +215,7 @@ async def draw_budget(
     idempotency_key: IdempotencyKey,
 ) -> MovementOut:
     return await _move(
-        kind="drawn",
+        kind="draw",
         sign=1,
         key=key,
         data=data,
@@ -230,8 +238,32 @@ async def release_budget(
     idempotency_key: IdempotencyKey,
 ) -> MovementOut:
     return await _move(
-        kind="released",
+        kind="release",
         sign=-1,
+        key=key,
+        data=data,
+        idempotency_key=idempotency_key,
+        actor=actor,
+        db=db,
+        request=request,
+        response=response,
+    )
+
+
+@router.post("/budget-lines/{key}/allocations", response_model=MovementOut, status_code=201)
+async def allocate_budget(
+    key: str,
+    data: MovementRequest,
+    actor: Billing,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: IdempotencyKey,
+) -> MovementOut:
+    """Adds money to a line's allocation, for example when a fund request is approved."""
+    return await _move(
+        kind="allocation",
+        sign=1,
         key=key,
         data=data,
         idempotency_key=idempotency_key,

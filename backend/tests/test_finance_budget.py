@@ -67,8 +67,8 @@ async def test_draw_and_release_move_the_server_balance(
         )
     assert actions == [
         "finance.budget_line_created",
-        "finance.budget_drawn",
-        "finance.budget_released",
+        "finance.budget_draw",
+        "finance.budget_release",
     ]
 
 
@@ -164,3 +164,38 @@ async def test_duplicate_line_key_is_refused(client: httpx.AsyncClient, mailbox:
     owner = await _setup(client, mailbox)
     again = await client.post("/v1/finance/budget-lines", headers=owner.headers, json=LINE)
     assert again.status_code == 409
+
+
+async def test_an_approved_request_allocates_money_once(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await _setup(client, mailbox)
+    url = "/v1/finance/budget-lines/line-sales/allocations"
+    body = {"amount_paise": 2500000, "note": "Fund request FR-2026-0007", "booked_on": "2026-10-23"}
+    first = await client.post(url, headers={**owner.headers, **_key("fund:FR-7")}, json=body)
+    again = await client.post(url, headers={**owner.headers, **_key("fund:FR-7")}, json=body)
+    assert first.status_code == 201, first.text
+    assert again.status_code == 200 and again.json()["id"] == first.json()["id"]
+    budget = first.json()["budget"]
+    assert budget["allocated_paise"] == 30000000 + 2500000
+    assert budget["drawn_paise"] == 0
+
+    mismatched = await client.post(
+        url,
+        headers={**owner.headers, **_key("fund:FR-7")},
+        json={**body, "amount_paise": 100},
+    )
+    assert mismatched.status_code == 409
+
+
+async def test_only_billing_managers_can_allocate(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await _setup(client, mailbox)
+    agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    denied = await client.post(
+        "/v1/finance/budget-lines/line-sales/allocations",
+        headers={**agent, **_key("fund:agent")},
+        json={"amount_paise": 100, "note": "Not allowed", "booked_on": "2026-10-23"},
+    )
+    assert denied.status_code == 403
