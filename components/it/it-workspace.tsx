@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { message } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/components/auth/session-provider";
 import { users } from "@/lib/mock-data";
+import { completeITChange, decideITChange, requestITChange, syncITChanges } from "@/lib/it-records";
 import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore, type ITChange, type Incident } from "@/lib/stores/it-store";
 
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
@@ -243,14 +245,14 @@ function ChangesView() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const changes = useITStore((state) => state.changes);
-  const requestChange = useITStore((state) => state.requestChange);
-  const decideChange = useITStore((state) => state.decideChange);
-  const completeChange = useITStore((state) => state.completeChange);
+  React.useEffect(() => {
+    syncITChanges().catch((error: unknown) => toast.warning(`Changes not loaded from the server: ${message(error)}`));
+  }, []);
   const [title, setTitle] = React.useState("");
   const [risk, setRisk] = React.useState<ITChange["risk"]>("low");
 
-  function request() {
-    const problem = requestChange({ title, risk }, me);
+  async function request() {
+    const problem = await requestITChange({ title, risk }, me);
     if (problem) return toast.error(problem);
     toast.success("Change requested");
     setTitle("");
@@ -279,11 +281,11 @@ function ChangesView() {
                 <Badge variant={c.status === "done" || c.status === "approved" ? "success" : c.status === "rejected" ? "danger" : "warning"}>{c.status}</Badge>
                 {c.status === "pending" ? (
                   <>
-                    <Button size="sm" variant="secondary" onClick={() => { const p = decideChange(c.id, true, me); if (p) toast.error(p); }}>Approve</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { const p = decideChange(c.id, false, me); if (p) toast.error(p); }}>Reject</Button>
+                    <Button size="sm" variant="secondary" onClick={async () => { const p = await decideITChange(c.id, true, me); if (p) toast.error(p); }}>Approve</Button>
+                    <Button size="sm" variant="ghost" onClick={async () => { const p = await decideITChange(c.id, false, me); if (p) toast.error(p); }}>Reject</Button>
                   </>
                 ) : null}
-                {c.status === "approved" ? <Button size="sm" onClick={() => { const p = completeChange(c.id, me); if (p) toast.error(p); }}>Mark carried out</Button> : null}
+                {c.status === "approved" ? <Button size="sm" onClick={async () => { const p = await completeITChange(c.id, me); if (p) toast.error(p); }}>Mark carried out</Button> : null}
               </span>
             </div>
           ))}

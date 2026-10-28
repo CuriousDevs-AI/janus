@@ -6,6 +6,7 @@ import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { addDays } from "@/lib/stores/projects-store";
+import { demoMode } from "@/lib/demo-mode";
 
 /**
  * IT & Infrastructure (phase 1): asset register with assignment and return, access grants per person
@@ -184,6 +185,7 @@ export const useITStore = create<ITState>()(
           return null;
         },
         requestChange: (input, by) => {
+        if (!demoMode) return "IT changes are recorded on the server.";
           if (input.title.trim().length < 5) return "Describe the change.";
           const number = `CHG-${1002 + get().changes.length}`;
           const change: ITChange = { id: `chg-${Date.now()}`, number, title: input.title.trim(), risk: input.risk, requestedBy: by, status: "pending", decidedBy: null, raisedOn: TODAY };
@@ -191,6 +193,7 @@ export const useITStore = create<ITState>()(
           return null;
         },
         decideChange: (id, approve, by) => {
+        if (!demoMode) return "IT changes are recorded on the server.";
           const change = get().changes.find((c) => c.id === id);
           if (!change) return "Change not found.";
           if (change.status !== "pending") return "Only a pending change can be decided.";
@@ -202,6 +205,7 @@ export const useITStore = create<ITState>()(
           return null;
         },
         completeChange: (id, by) => {
+        if (!demoMode) return "IT changes are recorded on the server.";
           const change = get().changes.find((c) => c.id === id);
           if (!change) return "Change not found.";
           if (change.status !== "approved") return "Only an approved change can be carried out.";
