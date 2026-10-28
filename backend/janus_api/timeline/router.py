@@ -5,18 +5,24 @@ Decisions are audited. System entries come from the modules through record_event
 never from people.
 """
 
+import asyncio
+import time
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from janus_api.audit import service as audit
 from janus_api.auth.models import User
 from janus_api.auth.service import Actor
+from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db, request_ip, require
 from janus_api.core.errors import ApiError
+from janus_api.core.tenancy import set_context
 from janus_api.org.models import Membership
 from janus_api.projects.summary import closure_summary
 from janus_api.timeline import service
@@ -159,6 +165,91 @@ async def read_timeline(project_key: str, actor: CurrentActor, db: Db) -> Timeli
     )
 
 
+def _entry_out(entry: ProjectTimelineEntry, author: str | None) -> EntryOut:
+    return EntryOut(
+        id=str(entry.id),
+        kind=entry.kind,
+        author=author,
+        body=entry.body,
+        payload=entry.payload or {},
+        created_at=entry.created_at,
+    )
+
+
+STREAM_SECONDS = 300
+POLL_SECONDS = 1.0
+HEARTBEAT_SECONDS = 15.0
+
+
+async def _entry_events(
+    request: Request, tenant_id: int, user_id: int, project_key: str, after: int
+) -> AsyncIterator[str]:
+    """Pushes entries written after `after` as they arrive.
+
+    The stream ends after STREAM_SECONDS; the browser reconnects with Last-Event-ID, so nothing is
+    missed or repeated. Each read runs in its own transaction under this member's tenant context,
+    and a removed member's stream ends.
+    """
+    last = after
+    started = time.monotonic()
+    quiet = 0.0
+    yield "retry: 3000\n\n"
+    while time.monotonic() - started < STREAM_SECONDS:
+        if await request.is_disconnected():
+            return
+        try:
+            async with session_factory()() as db:
+                await set_context(db, tenant_id=tenant_id, user_id=user_id)
+                timeline = await service.timeline_for(db, tenant_id, project_key)
+                await service.require_member(db, timeline, user_id)
+                rows = (
+                    await db.execute(
+                        select(ProjectTimelineEntry, User.name)
+                        .outerjoin(User, User.id == ProjectTimelineEntry.author_id)
+                        .where(
+                            ProjectTimelineEntry.timeline_id == timeline.id,
+                            ProjectTimelineEntry.id > last,
+                        )
+                        .order_by(ProjectTimelineEntry.id)
+                        .limit(100)
+                    )
+                ).all()
+                fresh = [_entry_out(entry, author) for entry, author in rows]
+                await db.commit()
+        except ApiError:
+            yield "event: closed\ndata: {}\n\n"
+            return
+        for item in fresh:
+            last = int(item.id)
+            yield f"id: {item.id}\nevent: entry\ndata: {item.model_dump_json()}\n\n"
+        quiet = 0.0 if fresh else quiet + POLL_SECONDS
+        if quiet >= HEARTBEAT_SECONDS:
+            yield ": keep-alive\n\n"
+            quiet = 0.0
+        await asyncio.sleep(POLL_SECONDS)
+
+
+@router.get("/{project_key}/stream")
+async def stream_entries(
+    project_key: str,
+    request: Request,
+    actor: CurrentActor,
+    db: Db,
+    after: int = Query(default=0, ge=0),
+) -> StreamingResponse:
+    """Server-sent events for a timeline's new entries. Same access rules as the entries list."""
+    tenant_id = actor.session.tenant_id
+    timeline = await service.timeline_for(db, tenant_id, project_key)
+    await service.require_member(db, timeline, actor.user.id)
+    resume = request.headers.get("last-event-id", "")
+    start = int(resume) if resume.isdigit() else after
+    return StreamingResponse(
+        _entry_events(request, tenant_id, actor.user.id, project_key, start),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/{project_key}/entries", response_model=list[EntryOut])
 async def list_entries(
     project_key: str,
@@ -179,17 +270,7 @@ async def list_entries(
         .order_by(ProjectTimelineEntry.id)
         .limit(limit)
     )
-    return [
-        EntryOut(
-            id=str(entry.id),
-            kind=entry.kind,
-            author=author,
-            body=entry.body,
-            payload=entry.payload or {},
-            created_at=entry.created_at,
-        )
-        for entry, author in rows.all()
-    ]
+    return [_entry_out(entry, author) for entry, author in rows.all()]
 
 
 @router.post("/{project_key}/archive", response_model=TimelineOut)

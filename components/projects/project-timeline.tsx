@@ -15,14 +15,15 @@ import { type DirectoryPerson, projectPersonRefs } from "@/lib/timeline-team";
 
 /**
  * A project's timeline: the shared conversation and the record of what happened, on the server.
- * Events come from the modules; messages and decisions come from people. It refreshes every few
- * seconds, which is simple and good enough until live updates are added.
+ * Events come from the modules; messages and decisions come from people. New entries arrive over a
+ * server-sent event stream; polling is only the fallback while that stream is down.
  */
 
 type Timeline = { project_key: string; name: string; archived: boolean; members: number; you_are_member: boolean };
 type Entry = { id: string; kind: "event" | "message" | "decision"; author: string | null; body: string; payload: Record<string, unknown>; created_at: string };
 
 const POLL_MS = 8000;
+const RECONNECT_MS = 1000;
 const kindLabel: Record<Entry["kind"], string> = { event: "Event", message: "Message", decision: "Decision" };
 
 export function TimelineView() {
@@ -71,25 +72,61 @@ export function TimelineView() {
     };
   }, [key, reload]);
 
-  // Load entries, then keep polling for new ones after the last one seen.
+  // Load entries, then receive new ones as the server writes them (server-sent events). Each entry is
+  // added once, by id, so the stream and a catch-up read can overlap safely. Polling runs only while
+  // the stream is down, and the stream is reopened after a short wait; a closed stream means no access.
   React.useEffect(() => {
     if (demoMode || !key || !timeline) return;
-    let cancelled = false;
+    let stopped = false;
+    let source: EventSource | undefined;
+    let poll: number | undefined;
+    let reopen: number | undefined;
+    const accept = (fresh: Entry[]) => {
+      const news = fresh.filter((entry) => Number(entry.id) > lastId.current);
+      if (news.length === 0) return;
+      lastId.current = Number(news[news.length - 1].id);
+      setEntries((current) => [...current, ...news]);
+    };
     const fetchNew = async () => {
       try {
-        const fresh = await api<Entry[]>(`/project-timelines/${encodeURIComponent(key)}/entries?after=${lastId.current}&limit=200`);
-        if (cancelled || fresh.length === 0) return;
-        lastId.current = Number(fresh[fresh.length - 1].id);
-        setEntries((current) => [...current, ...fresh]);
+        accept(await api<Entry[]>(`/project-timelines/${encodeURIComponent(key)}/entries?after=${lastId.current}&limit=200`));
       } catch {
-        /* a failed refresh keeps what is on screen; the next poll tries again */
+        /* a failed read keeps what is on screen; the next attempt tries again */
       }
     };
+    const stopPolling = () => {
+      if (poll !== undefined) window.clearInterval(poll);
+      poll = undefined;
+    };
+    const open = () => {
+      if (stopped) return;
+      source = new EventSource(`/api/backend/project-timelines/${encodeURIComponent(key)}/stream?after=${lastId.current}`);
+      source.addEventListener("open", () => {
+        stopPolling();
+        void fetchNew();
+      });
+      source.addEventListener("entry", (event) => {
+        accept([JSON.parse((event as MessageEvent<string>).data) as Entry]);
+      });
+      source.addEventListener("closed", () => {
+        stopped = true;
+        source?.close();
+        stopPolling();
+      });
+      source.onerror = () => {
+        source?.close();
+        if (stopped) return;
+        if (poll === undefined) poll = window.setInterval(fetchNew, POLL_MS);
+        reopen = window.setTimeout(open, RECONNECT_MS);
+      };
+    };
     void fetchNew();
-    const timer = window.setInterval(fetchNew, POLL_MS);
+    open();
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      stopped = true;
+      source?.close();
+      stopPolling();
+      window.clearTimeout(reopen);
     };
   }, [key, timeline]);
 
