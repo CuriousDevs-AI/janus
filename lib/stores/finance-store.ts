@@ -10,6 +10,7 @@ import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
+import { demoMode } from "@/lib/demo-mode";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -435,6 +436,8 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
       drawBudget: (lineId, amount, note, by, date) => {
+        // Real mode moves budget money on the server only (see lib/finance-records.ts).
+        if (!demoMode) return "Budget money moves on the server.";
         const locked = periodLockProblem(date);
         if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);
@@ -449,6 +452,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       releaseBudget: (lineId, amount, note, by, date) => {
+        if (!demoMode) return "Budget money moves on the server.";
         const locked = periodLockProblem(date);
         if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);

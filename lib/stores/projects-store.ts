@@ -6,6 +6,7 @@ import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { useFinanceStore } from "@/lib/stores/finance-store";
+import { moveBudget } from "@/lib/finance-records";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
@@ -54,7 +55,7 @@ interface ProjectsState {
   allocations: Allocation[];
   rates: CostRate[];
   trail: TrailEntry[];
-  addProject: (input: Omit<Project, "id" | "status" | "createdBy">, by: string) => string | null;
+  addProject: (input: Omit<Project, "id" | "status" | "createdBy">, by: string) => Promise<string | null>;
   setAllocation: (projectId: string, person: string, percent: number, by: string) => string | null;
   /** Records which company account each project person is, by name, so later checks use the account rather than the name. */
   linkPeople: (projectId: string, links: Record<string, string>) => void;
@@ -70,7 +71,7 @@ interface ProjectsState {
   requestChange: (input: { projectId: string; description: string; budgetChange: number; dayChange: number }, by: string) => string | null;
   decideChange: (id: string, approve: boolean, by: string) => string | null;
   /** Closes a project and hands back the part of its budget the logged hours did not use (plan §8.3AE). */
-  closeProject: (id: string, by: string) => string | null;
+  closeProject: (id: string, by: string) => Promise<string | null>;
 }
 
 const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => {
@@ -178,13 +179,13 @@ export const useProjectsStore = create<ProjectsState>()(
         }));
         return null;
       },
-      addProject: (input, by) => {
+      addProject: async (input, by) => {
         if (input.name.trim().length < 3) return "Enter the project name.";
         if (input.end < input.start) return "The end date cannot be before the start date.";
         if (!(input.budget > 0)) return "Enter a budget above zero.";
         const line = useFinanceStore.getState().budgetLines.find((l) => l.id === input.budgetLineId);
         if (!line) return "Choose the budget line the project draws from.";
-        const problem = useFinanceStore.getState().drawBudget(input.budgetLineId, input.budget, `Project: ${input.name.trim()}`, by, TODAY);
+        const problem = await moveBudget("draw", input.budgetLineId, input.budget, `Project: ${input.name.trim()}`, by, TODAY);
         if (problem) return `Budget: ${problem}`;
         const id = `prj-${Date.now()}`;
         set((state) => ({
@@ -264,14 +265,14 @@ export const useProjectsStore = create<ProjectsState>()(
         set((state) => ({ changes: [{ id: `chg-${Date.now()}`, status: "pending", requestedBy: by, ...input, description: input.description.trim() }, ...state.changes] }));
         return null;
       },
-      closeProject: (id, by) => {
+      closeProject: async (id, by) => {
         const project = get().projects.find((p) => p.id === id);
         if (!project) return "Project not found.";
         if (project.status === "done") return "This project is already closed.";
         const { timesheets, rates } = get();
         const { cost } = projectProfitability(project, get().milestones, timesheets, rates);
         const unused = Math.max(0, Math.round((project.budget - cost) * 100) / 100);
-        const released = unused > 0 ? useFinanceStore.getState().releaseBudget(project.budgetLineId, unused, `Project: ${project.name}`, by, TODAY) : null;
+        const released = unused > 0 ? await moveBudget("release", project.budgetLineId, unused, `Project: ${project.name}`, by, TODAY) : null;
         if (released) return `Budget: ${released}`;
         const money = (value: number) => `₹${value.toLocaleString("en-IN")}`;
         const milestones = get().milestones.filter((m) => m.projectId === id);

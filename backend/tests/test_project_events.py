@@ -70,7 +70,10 @@ async def test_module_actions_write_events_and_closing_carries_the_summary(
     events = [e for e in entries if e["kind"] == "event"]
     kinds = [e["payload"]["event"] for e in events]
     assert kinds == ["milestone", "milestone", "change", "system"]
-    assert [e["body"] for e in events[:2]] == ["milestone: Agreement is done", "milestone: Agreement is accepted"]
+    assert [e["body"] for e in events[:2]] == [
+        "milestone: Agreement is done",
+        "milestone: Agreement is accepted",
+    ]
     assert events[2]["body"] == "change: Add a loading bay was approved"
     assert events[3]["body"] == "system: Status changed from active to on hold"
 

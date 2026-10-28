@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { message } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { PeriodLockView } from "@/components/finance/period-lock-view";
 import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-store";
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
+import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { stockOn, useOperationsStore } from "@/lib/stores/operations-store";
@@ -1036,7 +1038,10 @@ function FundsView({ me }: { me: string }) {
   const add = useFinanceStore((state) => state.addFundRequest);
   const approve = useFinanceStore((state) => state.approveFundRequest);
   const reject = useFinanceStore((state) => state.rejectFundRequest);
-  const drawBudget = useFinanceStore((state) => state.drawBudget);
+  React.useEffect(() => {
+    // The balances shown are the server's. Lines that only exist on this screen are created on the server.
+    syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+  }, []);
   const [purpose, setPurpose] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [lineId, setLineId] = React.useState("");
@@ -1116,7 +1121,7 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="dr-amount">Amount (₹)</Label><Input id="dr-amount" type="number" min={0} value={drawAmount} onChange={(e) => setDrawAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="dr-note">Note</Label><Input id="dr-note" value={drawNote} onChange={(e) => setDrawNote(e.target.value)} /></div>
           </div>
-          <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={() => { const p = drawBudget(drawLine, Number(drawAmount), drawNote.trim(), me, "2026-10-23"); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
+          <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={async () => { const p = await moveBudget("draw", drawLine, Number(drawAmount), drawNote.trim(), me, "2026-10-23"); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
           {draws.length > 0 ? <ul className="text-xs text-muted-foreground">{draws.slice(0, 5).map((draw) => <li key={draw.id}>{draw.date} · {lines.find((l) => l.id === draw.lineId)?.name} · {draw.amount < 0 ? `Released ${money(-draw.amount)}` : money(draw.amount)} · {draw.note} · by {draw.by}</li>)}</ul> : null}
         </CardContent>
       </Card>
