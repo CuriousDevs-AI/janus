@@ -57,6 +57,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const ticketsStore = useAppStore((s) => s.tickets);
   const otherTickets = ticketsStore.filter((t) => t.customerId === ticket?.customerId && t.id !== ticket?.id);
   const company = useCompany(customer?.companyId);
+  const membersApi = useApi<{ user_id: string; name: string }[]>(demoMode ? null : "/members");
 
   React.useEffect(() => {
     syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
@@ -73,7 +74,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const assignee = users.find((u) => u.id === ticket.assigneeId);
+  // A real account's people are its members on the server; the demo team is the demo's own.
+  const people = demoMode
+    ? users.filter((u) => u.role.includes("support") || u.role === "owner").map((u) => ({ id: u.id, name: u.name }))
+    : (membersApi.data ?? []).map((m) => ({ id: m.user_id, name: m.name }));
+  const assignee = people.find((p) => p.id === ticket.assigneeId);
   const showHandoff = !!ticket.handoff && !["resolved", "closed"].includes(ticket.status);
   const showAiSupport = !showHandoff && ["open", "ai_handling", "waiting_customer"].includes(ticket.status) && ticket.aiConfidence !== undefined;
 
@@ -134,7 +139,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {users.filter((u) => u.role.includes("support") || u.role === "owner").map((u) => (
+            {people.length === 0 ? <DropdownMenuItem disabled>No teammates to assign</DropdownMenuItem> : null}
+            {people.map((u) => (
               <DropdownMenuItem key={u.id} onSelect={() => { void assignSupportTicket(ticket.id, u.id).then((error) => (error ? toast.error(error) : toast.success(`Assigned to ${u.name}`))); }}>
                 {u.name}
               </DropdownMenuItem>
