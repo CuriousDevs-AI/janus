@@ -54,3 +54,13 @@ One line per decision. Newest items go at the bottom.
 - Operations (screen): after each change the screen reloads the whole ledger from the server, so the balances shown are the server's, not the screen's own arithmetic.
 - Operations (period locks): as for invoices, the screen checks the period lock before sending; the server does not know the locks yet.
 - Operations (trail): approval and rejection lines are written to the server audit log; the on-screen trail does not add them in real mode.
+- Dispatches (scope): dispatches with their challan lines, the pick, pack and ship checkpoints, proof of delivery, return authorisations and their inspection are on the server. Purchase orders, requisitions, transfers and physical counts are not yet, and their stock steps stay refused in real mode.
+- Dispatches (stock): a dispatch takes its lines out of stock in the same transaction that books it. Lines for the same item and batch are added up before the check, so a dispatch cannot take more than is there. Items are locked in key order, so two dispatches cannot wait on each other.
+- Dispatches (batches): a batch-tracked line needs a known batch, and an expired batch is refused. The expiry is checked against the server's date.
+- Dispatches (checkpoints): picked, packed and shipped come in that order, each once, and each records the person who did it. Delivery needs the goods shipped first and a proof of at least three characters.
+- Returns: a return can be authorised only for an item on the dispatch, and no more than the dispatched quantity. Good goods go back into stock only when inspected good; a damaged return is recorded and not restocked. A return is inspected once.
+- Numbers: the server numbers dispatches `DN-<year>-<n>`, challans `DC-<year>-<n>` and returns `RMA-<year>-<n>`, unique per company.
+- Retries: creating a dispatch or authorising a return sends an Idempotency-Key, so a retry books it once. Checkpoints and delivery are already single-step on the server, so a repeat is refused rather than repeated.
+- Permission: dispatch and return steps need `stock:adjust`, the same permission as the stock ledger. The screen does not yet split pick and ship from receipts.
+- Screen: after each dispatch or return change the screen reloads the ledger from the server.
+- Pre-existing, not changed here: the Workflows view shows duplicate-key warnings in the browser console.

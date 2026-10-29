@@ -9,7 +9,7 @@ Idempotency-Key.
 
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
@@ -19,7 +19,15 @@ from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
-from janus_api.operations.models import OpsAdjustment, OpsBatch, OpsItem, OpsMovement
+from janus_api.operations.models import (
+    OpsAdjustment,
+    OpsBatch,
+    OpsDispatch,
+    OpsDispatchLine,
+    OpsItem,
+    OpsMovement,
+    OpsReturn,
+)
 
 router = APIRouter(prefix="/v1/operations", tags=["Operations"])
 Stock = Annotated[Actor, Depends(require("stock:adjust"))]
@@ -130,11 +138,56 @@ class AdjustmentOut(BaseModel):
     rejected_reason: str | None
 
 
+class DispatchLineOut(BaseModel):
+    item_key: str
+    batch_no: str | None
+    qty: float
+    rate_paise: int
+
+
+class DispatchOut(BaseModel):
+    id: str
+    number: str
+    challan_no: str
+    booked_on: date
+    customer: str
+    customer_company: str
+    location_id: int
+    deal_ref: str | None
+    transporter: str | None
+    lr_number: str | None
+    status: str
+    picked: str | None
+    packed: str | None
+    shipped: str | None
+    proof: str | None
+    delivered_by: str | None
+    created_by: str
+    lines: list[DispatchLineOut]
+
+
+class ReturnOut(BaseModel):
+    id: str
+    number: str
+    dispatch_id: str
+    item_key: str
+    batch_no: str | None
+    qty: float
+    reason: str
+    status: str
+    condition: str | None
+    location_id: int
+    raised_by: str
+    inspected_by: str | None
+
+
 class LedgerOut(BaseModel):
     items: list[ItemOut]
     batches: list[BatchOut]
     movements: list[MovementOut]
     adjustments: list[AdjustmentOut]
+    dispatches: list[DispatchOut]
+    returns: list[ReturnOut]
 
 
 def _item_out(row: OpsItem) -> ItemOut:
@@ -257,6 +310,18 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
             .order_by(OpsAdjustment.id.desc())
         )
     ).all()
+    dispatches = (
+        await db.scalars(
+            select(OpsDispatch)
+            .where(OpsDispatch.tenant_id == tenant_id)
+            .order_by(OpsDispatch.id.desc())
+        )
+    ).all()
+    returns = (
+        await db.scalars(
+            select(OpsReturn).where(OpsReturn.tenant_id == tenant_id).order_by(OpsReturn.id.desc())
+        )
+    ).all()
     item_keys = {item.id: item.item_key for item in items}
     return LedgerOut(
         items=[_item_out(item) for item in items],
@@ -301,6 +366,8 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
             )
             for row in adjustments
         ],
+        dispatches=[await _dispatch_out(db, row) for row in dispatches],
+        returns=[await _return_out(db, row) for row in returns],
     )
 
 
@@ -658,3 +725,390 @@ async def reject_adjustment(
 
 def _today() -> date:
     return date.today()
+
+
+# ---- Dispatches and returns --------------------------------------------------------------------
+
+STAGES = ("picked", "packed", "shipped")
+
+
+class DispatchLineIn(BaseModel):
+    item_key: str = Field(min_length=1, max_length=64)
+    batch_no: str | None = Field(default=None, max_length=64)
+    qty: Decimal = Field(gt=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+    rate_paise: int = Field(ge=0, le=10**12)
+
+
+class DispatchIn(BaseModel):
+    location_id: int = Field(ge=0, le=999)
+    customer: str = Field(min_length=2, max_length=160)
+    customer_company: str = Field(default="", max_length=160)
+    deal_ref: str | None = Field(default=None, max_length=80)
+    transporter: str | None = Field(default=None, max_length=160)
+    lr_number: str | None = Field(default=None, max_length=60)
+    lines: list[DispatchLineIn] = Field(min_length=1, max_length=200)
+
+
+class ProofIn(BaseModel):
+    proof: str = Field(min_length=3, max_length=300)
+
+
+class ReturnIn(BaseModel):
+    dispatch_id: int = Field(ge=1)
+    item_key: str = Field(min_length=1, max_length=64)
+    qty: Decimal = Field(gt=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+    reason: str = Field(min_length=3, max_length=300)
+
+
+class InspectIn(BaseModel):
+    condition: Literal["good", "damaged"]
+
+
+async def _dispatch_out(db: Db, row: OpsDispatch) -> DispatchOut:
+    lines = (
+        await db.scalars(
+            select(OpsDispatchLine)
+            .where(OpsDispatchLine.dispatch_id == row.id)
+            .order_by(OpsDispatchLine.position)
+        )
+    ).all()
+    return DispatchOut(
+        id=str(row.id),
+        number=row.number,
+        challan_no=row.challan_no,
+        booked_on=row.booked_on,
+        customer=row.customer,
+        customer_company=row.customer_company,
+        location_id=row.location_id,
+        deal_ref=row.deal_ref,
+        transporter=row.transporter,
+        lr_number=row.lr_number,
+        status=row.status,
+        picked=row.picked_by,
+        packed=row.packed_by,
+        shipped=row.shipped_by,
+        proof=row.proof,
+        delivered_by=row.delivered_by,
+        created_by=row.created_by_name,
+        lines=[
+            DispatchLineOut(
+                item_key=(await _item_by_id(db, line.item_id)).item_key,
+                batch_no=line.batch_no,
+                qty=float(line.qty),
+                rate_paise=line.rate_paise,
+            )
+            for line in lines
+        ],
+    )
+
+
+async def _return_out(db: Db, row: OpsReturn) -> ReturnOut:
+    item = await _item_by_id(db, row.item_id)
+    return ReturnOut(
+        id=str(row.id),
+        number=row.number,
+        dispatch_id=str(row.dispatch_id),
+        item_key=item.item_key,
+        batch_no=row.batch_no,
+        qty=float(row.qty),
+        reason=row.reason,
+        status=row.status,
+        condition=row.condition,
+        location_id=row.location_id,
+        raised_by=row.raised_by_name,
+        inspected_by=row.inspected_by_name,
+    )
+
+
+async def _dispatch(db: Db, tenant_id: int, dispatch_id: int, *, lock: bool = False) -> OpsDispatch:
+    query = select(OpsDispatch).where(
+        OpsDispatch.tenant_id == tenant_id, OpsDispatch.id == dispatch_id
+    )
+    if lock:
+        query = query.with_for_update()
+    row = await db.scalar(query)
+    if row is None:
+        raise ApiError("not_found", "Dispatch not found.", 404)
+    return row
+
+
+@router.get("/dispatches/{dispatch_id}", response_model=DispatchOut)
+async def get_dispatch(dispatch_id: int, actor: Stock, db: Db) -> DispatchOut:
+    return await _dispatch_out(db, await _dispatch(db, actor.session.tenant_id, dispatch_id))
+
+
+@router.post("/dispatches", response_model=DispatchOut, status_code=201)
+async def create_dispatch(
+    data: DispatchIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> DispatchOut:
+    """Books a dispatch and takes its lines out of stock in one transaction.
+
+    Lines for the same item and batch are added up before stock is checked, so a dispatch
+    cannot take more than is there. Expired batches are refused.
+    """
+    tenant_id = actor.session.tenant_id
+    existing = await db.scalar(
+        select(OpsDispatch).where(
+            OpsDispatch.tenant_id == tenant_id, OpsDispatch.idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        response.status_code = 200
+        return await _dispatch_out(db, existing)
+    # Items are locked in key order, so two dispatches cannot wait on each other.
+    items: dict[str, OpsItem] = {}
+    for key in sorted({line.item_key for line in data.lines}):
+        items[key] = await _item(db, tenant_id, key, lock=True)
+    needed: dict[tuple[int, str | None], Decimal] = {}
+    for line in data.lines:
+        item = items[line.item_key]
+        batch_no = _batch_for_item(item, line.batch_no)
+        if batch_no is not None:
+            batch = await db.scalar(
+                select(OpsBatch).where(OpsBatch.item_id == item.id, OpsBatch.batch_no == batch_no)
+            )
+            if batch is None:
+                raise ApiError(
+                    "unknown_batch", f"Batch {batch_no} is not known for {item.name}.", 422
+                )
+            if batch.expiry < _today():
+                raise ApiError(
+                    "batch_expired", f"Batch {batch_no} has expired and cannot be dispatched.", 422
+                )
+        needed_key = (item.id, batch_no)
+        needed[needed_key] = needed.get(needed_key, Decimal(0)) + line.qty
+    by_id = {item.id: item for item in items.values()}
+    for (item_id, batch_no), total in needed.items():
+        item = by_id[item_id]
+        available = await _on_hand(db, tenant_id, item, data.location_id, batch_no)
+        if total > available:
+            raise ApiError(
+                "insufficient_stock",
+                f"Only {available} {item.unit} of {item.name} is in stock here.",
+                422,
+            )
+    count = await db.scalar(
+        select(func.count()).select_from(OpsDispatch).where(OpsDispatch.tenant_id == tenant_id)
+    )
+    today = _today()
+    number = f"DN-{today.year}-{101 + (count or 0):04d}"
+    row = OpsDispatch(
+        tenant_id=tenant_id,
+        number=number,
+        challan_no=f"DC-{today.year}-{101 + (count or 0):04d}",
+        location_id=data.location_id,
+        customer=data.customer.strip(),
+        customer_company=data.customer_company.strip(),
+        deal_ref=data.deal_ref,
+        transporter=(data.transporter or "").strip() or None,
+        lr_number=(data.lr_number or "").strip() or None,
+        status="dispatched",
+        booked_on=today,
+        created_by=actor.user.id,
+        created_by_name=actor.user.name,
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    for position, line in enumerate(data.lines):
+        item = items[line.item_key]
+        batch_no = _batch_for_item(item, line.batch_no)
+        db.add(
+            OpsDispatchLine(
+                tenant_id=tenant_id,
+                dispatch_id=row.id,
+                position=position,
+                item_id=item.id,
+                batch_no=batch_no,
+                qty=line.qty,
+                rate_paise=line.rate_paise,
+            )
+        )
+        db.add(
+            OpsMovement(
+                tenant_id=tenant_id,
+                move_key=f"dsp-{row.id}-{position}",
+                item_id=item.id,
+                location_id=data.location_id,
+                batch_no=batch_no,
+                kind="dispatch",
+                qty=-line.qty,
+                reason=f"Dispatch {number}",
+                booked_on=today,
+                recorded_by_name=actor.user.name,
+            )
+        )
+    await db.flush()
+    audit.record(
+        db,
+        "operations.dispatch_booked",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"dispatch": number, "lines": len(data.lines)},
+    )
+    return await _dispatch_out(db, row)
+
+
+@router.post("/dispatches/{dispatch_id}/checkpoints/{stage}", response_model=DispatchOut)
+async def checkpoint_dispatch(
+    dispatch_id: int, stage: str, actor: Stock, db: Db, request: Request
+) -> DispatchOut:
+    """Marks the goods picked, packed or shipped, in that order, each by the person who did it."""
+    tenant_id = actor.session.tenant_id
+    if stage not in STAGES:
+        raise ApiError("invalid", "The stage must be picked, packed or shipped.", 422)
+    row = await _dispatch(db, tenant_id, dispatch_id, lock=True)
+    if row.status == "delivered":
+        raise ApiError("delivered", "This dispatch is already delivered.", 409)
+    if getattr(row, f"{stage}_by") is not None:
+        raise ApiError("already_done", f"The goods are {stage} already.", 409)
+    index = STAGES.index(stage)
+    if index > 0 and getattr(row, f"{STAGES[index - 1]}_by") is None:
+        raise ApiError("out_of_order", f"Mark the goods {STAGES[index - 1]} before {stage}.", 409)
+    setattr(row, f"{stage}_by", actor.user.name)
+    await db.flush()
+    audit.record(
+        db,
+        "operations.dispatch_checkpoint",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"dispatch": row.number, "stage": stage},
+    )
+    return await _dispatch_out(db, row)
+
+
+@router.post("/dispatches/{dispatch_id}/deliver", response_model=DispatchOut)
+async def deliver_dispatch(
+    dispatch_id: int, data: ProofIn, actor: Stock, db: Db, request: Request
+) -> DispatchOut:
+    tenant_id = actor.session.tenant_id
+    row = await _dispatch(db, tenant_id, dispatch_id, lock=True)
+    if row.status == "delivered":
+        raise ApiError("delivered", "This dispatch is already delivered.", 409)
+    if row.shipped_by is None:
+        raise ApiError("not_shipped", "Ship the goods before recording delivery.", 409)
+    row.status = "delivered"
+    row.proof = data.proof.strip()
+    row.delivered_by = actor.user.name
+    await db.flush()
+    audit.record(
+        db,
+        "operations.dispatch_delivered",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"dispatch": row.number},
+    )
+    return await _dispatch_out(db, row)
+
+
+@router.post("/returns", response_model=ReturnOut, status_code=201)
+async def authorise_return(
+    data: ReturnIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> ReturnOut:
+    """Authorises a return against a dispatch. Stock changes only after the goods are inspected."""
+    tenant_id = actor.session.tenant_id
+    existing = await db.scalar(
+        select(OpsReturn).where(
+            OpsReturn.tenant_id == tenant_id, OpsReturn.idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        response.status_code = 200
+        return await _return_out(db, existing)
+    dispatch = await _dispatch(db, tenant_id, data.dispatch_id)
+    item = await _item(db, tenant_id, data.item_key)
+    line = await db.scalar(
+        select(OpsDispatchLine).where(
+            OpsDispatchLine.dispatch_id == dispatch.id, OpsDispatchLine.item_id == item.id
+        )
+    )
+    if line is None:
+        raise ApiError("not_on_dispatch", "That item was not on this dispatch.", 422)
+    if data.qty > line.qty:
+        raise ApiError("over_return", f"Return between 1 and {line.qty}.", 422)
+    count = await db.scalar(
+        select(func.count()).select_from(OpsReturn).where(OpsReturn.tenant_id == tenant_id)
+    )
+    row = OpsReturn(
+        tenant_id=tenant_id,
+        number=f"RMA-{_today().year}-{101 + (count or 0):04d}",
+        dispatch_id=dispatch.id,
+        item_id=item.id,
+        batch_no=line.batch_no,
+        qty=data.qty,
+        reason=data.reason.strip(),
+        status="authorised",
+        location_id=dispatch.location_id,
+        raised_by=actor.user.id,
+        raised_by_name=actor.user.name,
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    audit.record(
+        db,
+        "operations.return_authorised",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"return": row.number, "dispatch": dispatch.number},
+    )
+    return await _return_out(db, row)
+
+
+@router.post("/returns/{return_id}/inspect", response_model=ReturnOut)
+async def inspect_return(
+    return_id: int, data: InspectIn, actor: Stock, db: Db, request: Request
+) -> ReturnOut:
+    """Records the condition of returned goods. Good goods go back to stock; damaged do not."""
+    tenant_id = actor.session.tenant_id
+    row = await db.scalar(
+        select(OpsReturn)
+        .where(OpsReturn.tenant_id == tenant_id, OpsReturn.id == return_id)
+        .with_for_update()
+    )
+    if row is None:
+        raise ApiError("not_found", "Return not found.", 404)
+    if row.status != "authorised":
+        raise ApiError("already_inspected", "This return has already been inspected.", 409)
+    row.status = "inspected"
+    row.condition = data.condition
+    row.inspected_by_name = actor.user.name
+    if data.condition == "good":
+        db.add(
+            OpsMovement(
+                tenant_id=tenant_id,
+                move_key=f"rma-{row.id}",
+                item_id=row.item_id,
+                location_id=row.location_id,
+                batch_no=row.batch_no,
+                kind="return",
+                qty=row.qty,
+                reason=f"Return {row.number} inspected good",
+                booked_on=_today(),
+                recorded_by_name=actor.user.name,
+            )
+        )
+    await db.flush()
+    audit.record(
+        db,
+        "operations.return_inspected",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"return": row.number, "condition": data.condition},
+    )
+    return await _return_out(db, row)

@@ -5,7 +5,16 @@ import { demoMode } from "@/lib/demo-mode";
 import { toPaise } from "@/lib/finance-records";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
-import { type Adjustment, type Batch, type Item, type Movement, TODAY, useOperationsStore } from "@/lib/stores/operations-store";
+import {
+  type Adjustment,
+  type Batch,
+  type Dispatch,
+  type Item,
+  type Movement,
+  type Return,
+  TODAY,
+  useOperationsStore,
+} from "@/lib/stores/operations-store";
 
 /**
  * The stock ledger is kept on the server: the item master, batches, goods received and adjustments.
@@ -51,12 +60,51 @@ interface ServerAdjustment {
   rejected_by: string | null;
   rejected_reason: string | null;
 }
+interface ServerDispatchLine { item_key: string; batch_no: string | null; qty: number; rate_paise: number }
+interface ServerDispatch {
+  id: string;
+  number: string;
+  challan_no: string;
+  booked_on: string;
+  customer: string;
+  customer_company: string;
+  location_id: number;
+  deal_ref: string | null;
+  transporter: string | null;
+  lr_number: string | null;
+  status: Dispatch["status"];
+  picked: string | null;
+  packed: string | null;
+  shipped: string | null;
+  proof: string | null;
+  delivered_by: string | null;
+  created_by: string;
+  lines: ServerDispatchLine[];
+}
+interface ServerReturn {
+  id: string;
+  number: string;
+  dispatch_id: string;
+  item_key: string;
+  batch_no: string | null;
+  qty: number;
+  reason: string;
+  status: Return["status"];
+  condition: Return["condition"] | null;
+  location_id: number;
+  raised_by: string;
+  inspected_by: string | null;
+}
 interface ServerLedger {
   items: ServerItem[];
   batches: ServerBatch[];
   movements: ServerMovement[];
   adjustments: ServerAdjustment[];
+  dispatches: ServerDispatch[];
+  returns: ServerReturn[];
 }
+
+type DispatchInput = Parameters<ReturnType<typeof useOperationsStore.getState>["createDispatch"]>[0];
 
 const toItem = (row: ServerItem): Item => ({
   id: row.key,
@@ -99,12 +147,50 @@ const toAdjustment = (row: ServerAdjustment): Adjustment => ({
   value: row.value_paise / 100,
 });
 
+const toDispatch = (row: ServerDispatch): Dispatch => ({
+  id: row.id,
+  number: row.number,
+  challanNo: row.challan_no,
+  date: row.booked_on,
+  customer: row.customer,
+  customerCompany: row.customer_company,
+  locationId: row.location_id,
+  lines: row.lines.map((line) => ({ itemId: line.item_key, batchNo: line.batch_no, qty: line.qty, rate: line.rate_paise / 100 })),
+  status: row.status,
+  proof: row.proof ?? undefined,
+  createdBy: row.created_by,
+  deliveredBy: row.delivered_by ?? undefined,
+  dealId: row.deal_ref ?? undefined,
+  transporter: row.transporter ?? undefined,
+  lrNumber: row.lr_number ?? undefined,
+  picked: row.picked ?? undefined,
+  packed: row.packed ?? undefined,
+  shipped: row.shipped ?? undefined,
+});
+
+const toReturn = (row: ServerReturn): Return => ({
+  id: row.id,
+  number: row.number,
+  dispatchId: row.dispatch_id,
+  itemId: row.item_key,
+  batchNo: row.batch_no,
+  qty: row.qty,
+  reason: row.reason,
+  status: row.status,
+  condition: row.condition ?? undefined,
+  raisedBy: row.raised_by,
+  inspectedBy: row.inspected_by ?? undefined,
+  locationId: row.location_id,
+});
+
 function apply(ledger: ServerLedger) {
   useOperationsStore.setState({
     items: ledger.items.map(toItem),
     batches: ledger.batches.map(toBatch),
     movements: ledger.movements.map(toMovement),
     adjustments: ledger.adjustments.map(toAdjustment),
+    dispatches: ledger.dispatches.map(toDispatch),
+    returns: ledger.returns.map(toReturn),
   });
 }
 
@@ -273,4 +359,103 @@ export async function rejectAdjustment(id: string, reason: string, by: string): 
 
 function addTrail(entry: TrailEntry) {
   useOperationsStore.setState((state) => ({ trail: withTrail(state.trail, entry) }));
+}
+
+/** Books a dispatch on the server. Its lines leave stock in the same step; the screen then reloads the ledger. */
+export async function createDispatch(input: DispatchInput, by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().createDispatch(input, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  try {
+    const row = await api<ServerDispatch>("/operations/dispatches", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        location_id: input.locationId,
+        customer: input.customer,
+        customer_company: input.customerCompany,
+        deal_ref: input.dealId ?? null,
+        transporter: input.transporter ?? null,
+        lr_number: input.lrNumber ?? null,
+        lines: input.lines.map((line) => ({ item_key: line.itemId, batch_no: line.batchNo, qty: line.qty, rate_paise: toPaise(line.rate) })),
+      }),
+    });
+    await syncOperations();
+    const units = row.lines.reduce((sum, line) => sum + line.qty, 0);
+    addTrail(trailEntry("operations", TODAY, by, `Dispatched ${row.number} to ${row.customer} · ${units} units`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Marks the goods picked, packed or shipped, in that order. */
+export async function checkpointDispatch(id: string, stage: "picked" | "packed" | "shipped", by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().checkpointDispatch(id, stage, by);
+  const number = useOperationsStore.getState().dispatches.find((item) => item.id === id)?.number ?? id;
+  try {
+    await api(`/operations/dispatches/${encodeURIComponent(id)}/checkpoints/${stage}`, { method: "POST" });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `${number} ${stage}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Records proof of delivery. The goods must be shipped first. */
+export async function markDelivered(id: string, proof: string, by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().markDelivered(id, proof, by);
+  const number = useOperationsStore.getState().dispatches.find((item) => item.id === id)?.number ?? id;
+  try {
+    await api(`/operations/dispatches/${encodeURIComponent(id)}/deliver`, {
+      method: "POST",
+      body: JSON.stringify({ proof: proof.trim() }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Delivered ${number} · proof: ${proof.trim()}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Authorises a return against a dispatch. Its stock comes back only after inspection. */
+export async function authoriseReturn(
+  input: { dispatchId: string; itemId: string; qty: number; reason: string },
+  by: string,
+): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().authoriseReturn(input, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  try {
+    const row = await api<ServerReturn>("/operations/returns", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ dispatch_id: Number(input.dispatchId), item_key: input.itemId, qty: input.qty, reason: input.reason.trim() }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Authorised ${row.number} for ${input.qty} from ${input.dispatchId}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Records the condition of returned goods. Good goods go back into stock. */
+export async function inspectReturn(id: string, condition: "good" | "damaged", by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().inspectReturn(id, condition, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  try {
+    const row = await api<ServerReturn>(`/operations/returns/${encodeURIComponent(id)}/inspect`, {
+      method: "POST",
+      body: JSON.stringify({ condition }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Inspected ${row.number}: ${row.qty} ${condition === "good" ? "back to stock" : "not restocked (damaged)"}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
 }

@@ -254,7 +254,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       createDispatch: (input, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         if (input.customer.trim().length < 2) return "Enter the customer name.";
@@ -285,6 +284,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       checkpointDispatch: (id, stage, by) => {
+        if (!demoMode) return "Dispatch steps are recorded on the server.";
         const dispatch = get().dispatches.find((d) => d.id === id);
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
@@ -300,6 +300,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       markDelivered: (id, proof, by) => {
+        if (!demoMode) return "Dispatch steps are recorded on the server.";
         const dispatch = get().dispatches.find((d) => d.id === id);
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
@@ -312,7 +313,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       authoriseReturn: (input, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const dispatch = get().dispatches.find((d) => d.id === input.dispatchId);
@@ -331,7 +331,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       inspectReturn: (id, condition, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const rma = get().returns.find((r) => r.id === id);

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
-import { addItemRecord, approveAdjustment, receiveStock, requestAdjustment, syncOperations } from "@/lib/operations-records";
+import { addItemRecord, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveStock, requestAdjustment, syncOperations } from "@/lib/operations-records";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
@@ -893,11 +893,6 @@ function OrdersView({ me }: { me: string }) {
   const batches = useOperationsStore((state) => state.batches);
   const movements = useOperationsStore((state) => state.movements);
   const dispatches = useOperationsStore((state) => state.dispatches);
-  const createDispatch = useOperationsStore((state) => state.createDispatch);
-  const markDelivered = useOperationsStore((state) => state.markDelivered);
-  const checkpointDispatch = useOperationsStore((state) => state.checkpointDispatch);
-  const authoriseReturn = useOperationsStore((state) => state.authoriseReturn);
-  const inspectReturn = useOperationsStore((state) => state.inspectReturn);
   const returns = useOperationsStore((state) => state.returns);
   const locations = useLocationsStore((state) => state.locations);
   const [customer, setCustomer] = React.useState("");
@@ -916,9 +911,9 @@ function OrdersView({ me }: { me: string }) {
   const [returnReason, setReturnReason] = React.useState("");
   const [docsFor, setDocsFor] = React.useState<Dispatch | null>(null);
 
-  function create() {
+  async function create() {
     if (locationId === "") return toast.error("Choose the location to dispatch from.");
-    const problem = createDispatch({ customer, customerCompany: company, dealId: dealId || undefined, transporter, lrNumber, locationId: Number(locationId), lines: lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, batchNo: l.batchNo || null, qty: Number(l.qty), rate: items.find((i) => i.id === l.itemId)?.rate ?? 0 })) }, me);
+    const problem = await createDispatch({ customer, customerCompany: company, dealId: dealId || undefined, transporter, lrNumber, locationId: Number(locationId), lines: lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, batchNo: l.batchNo || null, qty: Number(l.qty), rate: items.find((i) => i.id === l.itemId)?.rate ?? 0 })) }, me);
     if (problem) return toast.error(problem);
     toast.success("Dispatch created with delivery challan");
     setCustomer(""); setCompany(""); setDealId(""); setTransporter(""); setLrNumber(""); setLines([{ itemId: "", batchNo: "", qty: "" }]);
@@ -967,7 +962,7 @@ function OrdersView({ me }: { me: string }) {
                   <td className="px-4 py-3">{d.customer}<span className="block text-xs text-muted-foreground">{d.customerCompany}</span>{linkedLabel(links.deals, d.dealId) ? <span className="block text-xs text-muted-foreground">Deal: {linkedLabel(links.deals, d.dealId)}</span> : null}{d.transporter || d.lrNumber ? <span className="block text-xs text-muted-foreground">{d.transporter ?? "Transporter not given"}{d.lrNumber ? ` · LR ${d.lrNumber}` : ""}</span> : null}</td>
                   <td className="px-4 py-3 text-xs">{d.lines.map((l) => `${items.find((i) => i.id === l.itemId)?.name} × ${l.qty}${l.batchNo ? ` (${l.batchNo})` : ""}`).join(", ")}</td>
                   <td className="px-4 py-3"><Badge variant={d.status === "delivered" ? "success" : "warning"}>{d.status}</Badge>{d.proof ? <span className="block text-xs text-muted-foreground">{d.proof}</span> : null}</td>
-                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" && !d.picked ? <Button size="sm" variant="ghost" onClick={() => { const p = checkpointDispatch(d.id, "picked", me); if (p) toast.error(p); }}>Picked</Button> : null}{d.status === "dispatched" && d.picked && !d.packed ? <Button size="sm" variant="ghost" onClick={() => { const p = checkpointDispatch(d.id, "packed", me); if (p) toast.error(p); }}>Packed</Button> : null}{d.status === "dispatched" && d.packed && !d.shipped ? <Button size="sm" variant="ghost" onClick={() => { const p = checkpointDispatch(d.id, "shipped", me); if (p) toast.error(p); }}>Shipped</Button> : null}{d.status === "dispatched" && d.shipped ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
+                  <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{d.status === "dispatched" && !d.picked ? <Button size="sm" variant="ghost" onClick={() => { void checkpointDispatch(d.id, "picked", me).then((p) => { if (p) toast.error(p); }); }}>Picked</Button> : null}{d.status === "dispatched" && d.picked && !d.packed ? <Button size="sm" variant="ghost" onClick={() => { void checkpointDispatch(d.id, "packed", me).then((p) => { if (p) toast.error(p); }); }}>Packed</Button> : null}{d.status === "dispatched" && d.packed && !d.shipped ? <Button size="sm" variant="ghost" onClick={() => { void checkpointDispatch(d.id, "shipped", me).then((p) => { if (p) toast.error(p); }); }}>Shipped</Button> : null}{d.status === "dispatched" && d.shipped ? <Button size="sm" variant="secondary" onClick={() => setProofFor(d)}>Mark delivered</Button> : null}<Button size="sm" variant="ghost" onClick={() => setDocsFor(d)}>Documents</Button><Button size="sm" variant="ghost" onClick={() => setReturnFor(d)}>Return</Button></div></td>
                 </tr>
               ))}
             </tbody>
@@ -987,8 +982,8 @@ function OrdersView({ me }: { me: string }) {
                 <Badge variant={r.status === "inspected" ? (r.condition === "good" ? "success" : "danger") : "warning"}>{r.status === "inspected" ? `inspected · ${r.condition}` : "authorised"}</Badge>
                 {r.status === "authorised" ? (
                   <>
-                    <Button size="sm" variant="secondary" onClick={() => { const p = inspectReturn(r.id, "good", me); if (p) toast.error(p); else toast.success("Restocked"); }}>Good: restock</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { const p = inspectReturn(r.id, "damaged", me); if (p) toast.error(p); else toast.success("Recorded as damaged; not restocked"); }}>Damaged</Button>
+                    <Button size="sm" variant="secondary" onClick={() => { void inspectReturn(r.id, "good", me).then((p) => (p ? toast.error(p) : toast.success("Restocked"))); }}>Good: restock</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { void inspectReturn(r.id, "damaged", me).then((p) => (p ? toast.error(p) : toast.success("Recorded as damaged; not restocked"))); }}>Damaged</Button>
                   </>
                 ) : null}
               </span>
@@ -1008,7 +1003,7 @@ function OrdersView({ me }: { me: string }) {
           <DialogContent>
             <DialogHeader><DialogTitle>Mark {proofFor.number} delivered</DialogTitle><DialogDescription>Add proof: the receiver&apos;s name, the signed challan number or a photo reference.</DialogDescription></DialogHeader>
             <Input value={proof} onChange={(e) => setProof(e.target.value)} placeholder="e.g. Received by R. Kumar, signed challan DC-0101" />
-            <DialogFooter><Button variant="secondary" onClick={() => setProofFor(null)}>Cancel</Button><Button disabled={proof.trim().length < 3} onClick={() => { const p = markDelivered(proofFor.id, proof, me); if (p) return toast.error(p); toast.success("Marked delivered"); setProofFor(null); setProof(""); }}>Save</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setProofFor(null)}>Cancel</Button><Button disabled={proof.trim().length < 3} onClick={() => { void markDelivered(proofFor.id, proof, me).then((p) => { if (p) return toast.error(p); toast.success("Marked delivered"); setProofFor(null); setProof(""); }); }}>Save</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}
@@ -1022,7 +1017,7 @@ function OrdersView({ me }: { me: string }) {
               <Input aria-label="Quantity returned" type="number" min={1} value={returnQty} onChange={(e) => setReturnQty(e.target.value)} placeholder="Quantity returned" />
               <Input aria-label="Reason" value={returnReason} onChange={(e) => setReturnReason(e.target.value)} placeholder="Reason" />
             </div>
-            <DialogFooter><Button variant="secondary" onClick={() => setReturnFor(null)}>Cancel</Button><Button disabled={!returnItem || !returnQty || returnReason.trim().length < 3} onClick={() => { const p = authoriseReturn({ dispatchId: returnFor.id, itemId: returnItem, qty: Number(returnQty), reason: returnReason }, me); if (p) return toast.error(p); toast.success("Return authorised; it goes back to stock after inspection"); setReturnFor(null); setReturnQty(""); setReturnReason(""); }}>Record return</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setReturnFor(null)}>Cancel</Button><Button disabled={!returnItem || !returnQty || returnReason.trim().length < 3} onClick={() => { void authoriseReturn({ dispatchId: returnFor.id, itemId: returnItem, qty: Number(returnQty), reason: returnReason }, me).then((p) => { if (p) return toast.error(p); toast.success("Return authorised; it goes back to stock after inspection"); setReturnFor(null); setReturnQty(""); setReturnReason(""); }); }}>Record return</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}
