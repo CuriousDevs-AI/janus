@@ -29,6 +29,7 @@ import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { stockOn, useOperationsStore } from "@/lib/stores/operations-store";
+import { syncOperations } from "@/lib/operations-records";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
@@ -54,6 +55,8 @@ export function FinanceWorkspace() {
     syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
     syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
     syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+    // The bill form matches a bill to a purchase order, so the orders load here too.
+    syncOperations().catch((error: unknown) => toast.warning(`Purchase orders not loaded from the server: ${message(error)}`));
   }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
