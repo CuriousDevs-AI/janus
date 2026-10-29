@@ -67,7 +67,7 @@ export function CommandPalette() {
               <CommandGroup key={section.title} heading={section.title}>
                 {section.items.map((item) => (
                   <CommandItem
-                    key={item.href}
+                    key={`${item.href}:${item.label}`}
                     onSelect={() => {
                       setOpen(false);
                       router.push(appendWorkspace(item.href, workspaceId));

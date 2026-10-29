@@ -27,13 +27,21 @@ export default function ActivityPage() {
   const [source, setSource] = React.useState<"all" | Source>("all");
   const [person, setPerson] = React.useState("all");
 
-  const rows: Row[] = [
+  const merged: Row[] = [
     ...financeTrail.map((e) => ({ id: e.id, source: "Finance" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
     ...operationsTrail.map((e) => ({ id: e.id, source: "Operations" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
     ...projectsTrail.map((e) => ({ id: e.id, source: "Projects" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
     ...itLog.map((e) => ({ id: e.id, source: "IT" as const, at: e.at, ts: e.ts ?? `${e.at}T00:00:00.000Z`, by: e.by, text: e.text })),
     ...crmActivities.map((a) => ({ id: a.id, source: "CRM & Support" as const, at: a.createdAt.slice(0, 10), ts: a.createdAt, by: a.actor.type === "human" ? a.actor.userName : a.actor.type === "ai" ? a.actor.agentName : "System", text: a.title })),
   ].sort((a, b) => b.ts.localeCompare(a.ts));
+  // The same saved entry can arrive from two stores; show it once.
+  const seen = new Set<string>();
+  const rows = merged.filter((r) => {
+    const key = `${r.source}:${r.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const people = [...new Set(rows.map((r) => r.by))].sort();
   const visible = rows.filter((r) => (source === "all" || r.source === source) && (person === "all" || r.by === person));
@@ -64,7 +72,7 @@ export default function ActivityPage() {
           <CardContent className="grid gap-2 p-4 text-sm">
             {visible.length === 0 ? <p className="text-muted-foreground">Nothing matches these filters.</p> : null}
             {visible.map((r) => (
-              <p key={r.id} className="flex flex-wrap items-center gap-2">
+              <p key={`${r.source}:${r.id}`} className="flex flex-wrap items-center gap-2">
                 <Badge variant="neutral">{r.source}</Badge>
                 <span className="text-muted-foreground">{r.ts.slice(0, 16).replace("T", " ")} · {r.by} ·</span>
                 <span>{r.text}</span>

@@ -88,3 +88,17 @@ async def test_the_sources_list_leaves_out_the_manual_entry_connection(
     listed = await client.get("/v1/sources", headers=owner.headers)
     assert listed.status_code == 200, listed.text
     assert listed.json() == []
+
+
+async def test_a_lead_with_a_bad_mobile_number_says_what_to_enter(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    response = await client.post(
+        "/v1/leads",
+        headers={**owner.headers, **_key("bad-phone")},
+        json={"name": "Bad phone", "phone": "abc-not-a-phone"},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_lead"
+    assert "country code" in response.json()["error"]["message"]

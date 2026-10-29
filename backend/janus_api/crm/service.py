@@ -586,4 +586,5 @@ _LEAD_PROBLEMS = {
     "missing_contact_identity": "Enter a mobile number or an email, so the lead can be reached.",
     "contact_identity_conflict": "Another contact already uses this mobile or email.",
     "invalid_contact_fields": "Check the lead's details.",
+    "invalid_phone": "Enter a mobile number with its country code, such as +91 98111 22334.",
 }

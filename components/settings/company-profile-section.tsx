@@ -100,7 +100,7 @@ export function CompanyProfileSection() {
   function saveLocation(value: Location) {
     saveLocationToStore(value);
     setLocationOpen(false);
-    toast.success(value.id ? "Location updated" : "Location added");
+    toast.success(editingLocation ? "Location updated" : "Location added");
   }
 
   const taxRecords = demoMode

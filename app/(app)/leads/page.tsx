@@ -482,7 +482,9 @@ export default function LeadsPage() {
           <p className="text-sm text-muted-foreground">{filtersActive ? "Try another search, stage or source." : "Connect a website form, call provider or API, or upload a CSV."}</p>
         </div>
       ) : (
-        <div className="isolate mx-4 mt-4 mb-2 overflow-x-auto rounded-xl border border-border bg-surface shadow-sm md:mx-6">
+        <>
+        <p className="mx-4 mt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
+        <div className="isolate mx-4 mt-2 mb-2 overflow-x-auto rounded-xl border border-border bg-surface shadow-sm md:mx-6 md:mt-4">
           <table className="table-fixed min-w-full w-max text-left text-[13px]">
             <thead className="bg-surface-2 text-muted-foreground">
               <tr>
@@ -540,6 +542,7 @@ export default function LeadsPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <div className="flex gap-2 p-6"><Button size="sm" variant="ghost" onClick={() => { setAfter("0"); setVersion((value) => value + 1); }}>First page</Button><Button size="sm" variant="secondary" disabled={!loaded || loaded.rows.length !== 50} onClick={() => setAfter(loaded!.rows.at(-1)!.lead.id)}>Next 50</Button></div>
