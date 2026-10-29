@@ -7,6 +7,7 @@ import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { moveBudget } from "@/lib/finance-records";
+import { createInvoice } from "@/lib/invoice-records";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 
@@ -63,7 +64,7 @@ interface ProjectsState {
   logHours: (input: Omit<Timesheet, "id">, by: string) => string | null;
   addMilestone: (input: Omit<Milestone, "id" | "status">) => string | null;
   completeMilestone: (id: string, by: string) => string | null;
-  acceptMilestone: (id: string, by: string) => string | null;
+  acceptMilestone: (id: string, by: string) => Promise<string | null>;
   raiseDispute: (id: string, reason: string, by: string) => string | null;
   resolveDispute: (id: string, by: string) => string | null;
   addTask: (input: Omit<Task, "id" | "status">) => string | null;
@@ -209,7 +210,7 @@ export const useProjectsStore = create<ProjectsState>()(
         set((state) => ({ milestones: state.milestones.map((m) => m.id === id ? { ...m, status: "done", completedBy: by } : m) }));
         return null;
       },
-      acceptMilestone: (id, by) => {
+      acceptMilestone: async (id, by) => {
         const milestone = get().milestones.find((m) => m.id === id);
         if (!milestone) return "Milestone not found.";
         if (milestone.status !== "done") return "Mark the milestone complete before it can be accepted.";
@@ -223,7 +224,9 @@ export const useProjectsStore = create<ProjectsState>()(
         if (milestone.amount > 0) {
           const project = get().projects.find((p) => p.id === milestone.projectId);
           const taxable = milestone.amount;
-          invoiceNumber = useFinanceStore.getState().addInvoice({ customer: project?.client ?? "Client", customerCompany: project?.client ?? "", date: TODAY, dueDate: addDays(TODAY, 30), sameState: true, lines: [{ item: `Milestone: ${milestone.name}`, hsn: "9983", qty: 1, rate: taxable, gstRate: 18 }] }, by);
+          const created = await createInvoice({ customer: project?.client ?? "Client", customerCompany: project?.client ?? "", date: TODAY, dueDate: addDays(TODAY, 30), sameState: true, lines: [{ item: `Milestone: ${milestone.name}`, hsn: "9983", qty: 1, rate: taxable, gstRate: 18 }] }, by);
+          if (created.error) return created.error;
+          invoiceNumber = created.number ?? undefined;
         }
         const billed = invoiceNumber ? `, billed on ${invoiceNumber}` : "";
         set((state) => ({

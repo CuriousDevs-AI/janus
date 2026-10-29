@@ -239,6 +239,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addInvoice: (input, by) => {
+        if (!demoMode) return "";
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
         const invoice: Invoice = { ...input, id, number, payments: [], createdBy: by };
@@ -247,6 +248,7 @@ export const useFinanceStore = create<FinanceState>()(
         return number;
       },
       recordPayment: (invoiceId, payment, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const locked = periodLockProblem(payment.date);
         if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === invoiceId);
@@ -261,6 +263,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addCreditNote: (input, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const locked = periodLockProblem(input.date);
         if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === input.invoiceId);
@@ -281,6 +284,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       decideCreditNote: (id, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.createdBy === by) return "The person who created a credit note cannot approve it.";
@@ -291,6 +295,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       rejectCreditNote: (id, reason, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.status !== "pending") return "Only a pending credit note can be rejected.";

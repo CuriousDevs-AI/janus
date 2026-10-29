@@ -34,3 +34,14 @@ One line per decision. Newest items go at the bottom.
 - Item 4 (audit): each step writes one audit row (`support.ticket_created`, `support.ticket_status_changed`, `support.ticket_assigned`, `support.ticket_resolved`) in the same transaction.
 - Item 4 (cross-browser): a ticket opened in another browser appears here only after it exists on this screen.
 - Item 4 (pre-existing gap, not changed): CRM records, including tickets, are shown only for a demo persona in the browser (`janus.demo-login`), so a real account sees no tickets on the Tickets screens. Browser checks used the bridge for the status steps.
+- Item 1 rest (scope, partial): this change moves invoices with their lines, customer payments, and credit notes and write-offs (raise, approve, reject) to the server. Bills and bill payments stay local because their three-way match reads Operations purchase orders, which are not on the server yet. The fund-request approval chain also stays local; only its money allocation is on the server.
+- Item 1 rest (money): the server works out every invoice total in paise. Each line's tax is rounded half-up; for same-state invoices an odd paisa of CGST goes to SGST, so the two halves always add up to the tax.
+- Item 1 rest (numbers): the server numbers invoices `INV-<year>-<n>` and credit notes `CN-` or `WO-<year>-<n>`, unique per company. The screen shows the server's number.
+- Item 1 rest (due): what is still due counts pending and approved credit notes, as the screen always did. A payment or credit note over that amount is refused on the server.
+- Item 1 rest (approval): the person who raised a credit note cannot approve or reject it; the check uses the user id. Approver and rejecter names are stored for display.
+- Item 1 rest (idempotency): every invoice, payment and credit note request sends an Idempotency-Key; a replay returns the first result with 200, and the same key with a different amount or kind returns 409.
+- Item 1 rest (period locks): the server does not know the period locks yet. The screen checks them before it sends; a server-side lock is a follow-up.
+- Item 1 rest (real mode): the server's invoice list replaces the screen's copy in real mode, so the demo invoices are no longer shown there, and bank lines matched to those demo payments no longer resolve.
+- Item 1 rest (milestones): accepting a milestone bills it through the same invoice call, so the acceptance waits for the server and reports a refusal instead of changing the milestone.
+- Item 1 rest (permission gate): the invoice form was gated on `invoice:create`, a demo-only name the server never issues, so no real account could create an invoice. It is now gated on `billing:manage`, the permission the server checks.
+- Item 1 rest (ticket link): a credit note keeps the screen's support ticket id as text and does not check it against the server's tickets.

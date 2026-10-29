@@ -22,6 +22,7 @@ import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
+import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { stockOn, useOperationsStore } from "@/lib/stores/operations-store";
@@ -785,6 +786,9 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "war
 }
 
 function InvoicesView({ me }: { me: string }) {
+  React.useEffect(() => {
+    syncInvoices().catch((error: unknown) => toast.warning(`Invoices not loaded from the server: ${message(error)}`));
+  }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const [creating, setCreating] = React.useState(false);
@@ -831,8 +835,7 @@ function InvoicesView({ me }: { me: string }) {
 
 function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) {
   const session = useSession();
-  const canCreate = hasPermission(session.permissions, "invoice:create");
-  const addInvoice = useFinanceStore((state) => state.addInvoice);
+  const canCreate = hasPermission(session.permissions, "billing:manage");
   const [customer, setCustomer] = React.useState("");
   const [customerCompany, setCustomerCompany] = React.useState("");
   const [dealId, setDealId] = React.useState("");
@@ -848,13 +851,14 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   function update(index: number, patch: Partial<InvoiceLine>) {
     setLines((current) => current.map((line, i) => i === index ? { ...line, ...patch } : line));
   }
-  function save() {
+  async function save() {
     if (customer.trim().length < 2) return setError("Enter the customer name.");
     if (lines.some((line) => line.item.trim().length < 2 || !/^\d{4,8}$/.test(line.hsn.trim()) || line.qty <= 0 || line.rate <= 0)) return setError("Each line needs an item, an HSN code (4 to 8 digits), a quantity and a rate above zero.");
     const locked = periodLockProblem(today);
     if (locked) return setError(locked);
-    const number = addInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), dealId: dealId || undefined, date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
-    toast.success(`Invoice ${number} created`);
+    const created = await createInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), dealId: dealId || undefined, date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
+    if (created.error) return setError(created.error);
+    toast.success(`Invoice ${created.number} created`);
     onClose();
   }
 
@@ -888,7 +892,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
           <div className="flex justify-between font-semibold"><span>Total</span><span>{money(preview.total)}</span></div>
         </div>
         {error ? <p role="alert" className="text-xs text-danger">{error}</p> : null}
-        <DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!canCreate} title={canCreate ? undefined : "Needs the invoice:create permission"} onClick={save}>Create invoice</Button></DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!canCreate} title={canCreate ? undefined : "Needs the billing:manage permission"} onClick={save}>Create invoice</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -897,16 +901,15 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
 function PaymentDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const recordPayment = useFinanceStore((state) => state.recordPayment);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const due = dueAmount(invoice, creditNotes);
   const [amount, setAmount] = React.useState(String(due));
   const [method, setMethod] = React.useState<"UPI" | "Bank transfer" | "Cash" | "Cheque">("UPI");
   const [reference, setReference] = React.useState("");
   const [error, setError] = React.useState("");
-  function save() {
+  async function save() {
     if (reference.trim().length < 3) return setError("Enter the payment reference (UTR, cheque number or receipt).");
-    const problem = recordPayment(invoice.id, { amount: Number(amount), method, reference: reference.trim(), date: "2026-10-23" }, me);
+    const problem = await recordInvoicePayment(invoice.id, { amount: Number(amount), method, reference: reference.trim(), date: "2026-10-23" }, me);
     if (problem) return setError(problem);
     toast.success("Payment recorded");
     onClose();
@@ -959,10 +962,11 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => 
 }
 
 function CreditNotesView({ me }: { me: string }) {
+  React.useEffect(() => {
+    syncInvoices().catch((error: unknown) => toast.warning(`Credit notes not loaded from the server: ${message(error)}`));
+  }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const addCreditNote = useFinanceStore((state) => state.addCreditNote);
-  const decide = useFinanceStore((state) => state.decideCreditNote);
   // The invoices view links an overdue invoice here with the invoice and type already chosen.
   const params = useSearchParams();
   const [invoiceId, setInvoiceId] = React.useState(() => params.get("invoice") ?? "");
@@ -975,8 +979,8 @@ function CreditNotesView({ me }: { me: string }) {
   const links = useCrmLinkOptions();
   const invoice = invoices.find((item) => item.id === invoiceId);
 
-  function create() {
-    const problem = addCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined, kind }, me);
+  async function create() {
+    const problem = await raiseCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined, kind }, me);
     if (problem) return toast.error(problem);
     toast.success(kind === "write-off" ? "Write-off raised. It takes effect once approved by someone else." : "Credit note raised. It takes effect once approved by someone else.");
     setAmount(""); setReason(""); setTicketId("");
@@ -1019,7 +1023,7 @@ function CreditNotesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>
                     <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : note.status === "rejected" ? "danger" : "warning"}>{note.status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { const problem = decide(note.id, me); if (problem) toast.error(problem); else toast.success("Credit note approved"); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
+                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { void approveCreditNote(note.id, me).then((problem) => (problem ? toast.error(problem) : toast.success("Credit note approved"))); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
                   </tr>
                 );
               })}

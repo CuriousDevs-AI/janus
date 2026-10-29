@@ -6,6 +6,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { approveCreditNote, rejectCreditNote } from "@/lib/invoice-records";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useProjectsStore } from "@/lib/stores/projects-store";
@@ -26,8 +27,9 @@ interface QueueItem {
   date: string;
   waitingFor: string;
   approve: (by: string) => string | null | Promise<string | null>;
-  reject?: (by: string) => string | null;
+  reject?: (by: string) => string | null | Promise<string | null>;
 }
+
 
 const inr = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 
@@ -36,8 +38,6 @@ export function MoneyApprovalsQueue() {
   const me = session.user.name ?? session.user.email ?? "You";
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const fundRequests = useFinanceStore((state) => state.fundRequests);
-  const approveCreditNote = useFinanceStore((state) => state.decideCreditNote);
-  const rejectCreditNote = useFinanceStore((state) => state.rejectCreditNote);
   const approveFund = useFinanceStore((state) => state.approveFundRequest);
   const rejectFund = useFinanceStore((state) => state.rejectFundRequest);
   const adjustments = useOperationsStore((state) => state.adjustments);
@@ -139,7 +139,7 @@ export function MoneyApprovalsQueue() {
             </div>
             <div className="flex gap-2">
               <Button size="sm" onClick={async () => decide(await item.approve(me), `${item.title} approved`)}>Approve</Button>
-              {item.reject ? <Button size="sm" variant="outline" onClick={() => decide(item.reject?.(me) ?? null, `${item.title} rejected`)}>Reject</Button> : null}
+              {item.reject ? <Button size="sm" variant="outline" onClick={async () => decide((await item.reject?.(me)) ?? null, `${item.title} rejected`)}>Reject</Button> : null}
             </div>
           </div>
         ))}

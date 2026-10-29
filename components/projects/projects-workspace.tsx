@@ -494,7 +494,7 @@ function MilestonesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">
                       {m.status === "planned" ? <Button size="sm" variant="secondary" onClick={() => { const p = complete(m.id, me); if (p) toast.error(p); else { mirrorMilestoneStatus(m.projectId, m.id, "done").catch((error: unknown) => toast.warning(`Not updated on the server: ${message(error)}`)); toast.success("Marked complete"); } }}>Mark complete</Button> : null}
                       {m.status === "done" && m.dispute ? <span className="self-center text-xs text-muted-foreground">Resolve the dispute to accept</span> : null}
-                      {m.status === "done" && !m.dispute ? <Button size="sm" variant="secondary" onClick={() => { const p = accept(m.id, me); if (p) toast.error(p); else { mirrorMilestoneStatus(m.projectId, m.id, "accepted").catch((error: unknown) => toast.warning(`Not accepted on the server: ${message(error)}`)); toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); } }}>Accept</Button> : null}
+                      {m.status === "done" && !m.dispute ? <Button size="sm" variant="secondary" onClick={() => { void accept(m.id, me).then((p) => { if (p) toast.error(p); else { mirrorMilestoneStatus(m.projectId, m.id, "accepted").catch((error: unknown) => toast.warning(`Not accepted on the server: ${message(error)}`)); toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); } }); }}>Accept</Button> : null}
                     </div></td>
                   </tr>
                 );
