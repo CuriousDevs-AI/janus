@@ -46,6 +46,7 @@ import {
   demoWhatsAppTemplates,
 } from "@/lib/api/demo-data";
 import type { DemoTimelineItem } from "@/lib/api/demo-data";
+import { CustomerCallButton, callSummary, type CustomerCall } from "@/components/calls/customer-call";
 
 export default function InboxPage() {
   return (
@@ -268,9 +269,21 @@ function Conversation({
   const thread = liveThread.data ?? (previewChat ? demoThread : undefined);
   const messageRows =
     liveMessages.data ?? (previewChat ? demoMessagesByConversation[id] ?? [] : undefined);
+  const calls = useApi<CustomerCall[]>(
+    previewChat || !thread?.contactId ? null : `/contacts/${encodeURIComponent(thread.contactId)}/calls`,
+  );
+  // Calls with the customer sit in the same timeline as their messages, by time.
+  const callRows: DemoTimelineItem[] = (calls.data ?? []).map((call) => ({
+    id: `call-${call.id}`,
+    channel: "call" as const,
+    direction: call.direction === "inbound" ? "inbound" as const : "outbound" as const,
+    title: `${callSummary(call)} · ${call.agentName}`,
+    body: call.notes || "No notes.",
+    createdAt: call.createdAt,
+  }));
   const timeline = previewChat
     ? timelineOverride ?? demoConversationTimeline[id] ?? []
-    : messageRows?.map((message) => ({
+    : [...(messageRows?.map((message) => ({
         id: message.id,
         channel: "whatsapp" as const,
         direction: message.direction === "inbound" ? "inbound" as const : "outbound" as const,
@@ -278,7 +291,7 @@ function Conversation({
         body: message.body,
         status: message.status === "accepted" ? "Accepted by Meta · Template" : sentenceCase(message.status),
         createdAt: message.createdAt,
-      })) ?? [];
+      })) ?? []), ...callRows].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   const reloadThread = liveThread.reload;
   const reloadMessages = liveMessages.reload;
   useEffect(() => {
@@ -329,6 +342,16 @@ function Conversation({
             </p>
           )}
         </div>
+        {thread && !previewChat && liveThread.data ? (
+          <CustomerCallButton
+            contactId={liveThread.data.contactId}
+            name={liveThread.data.name || liveThread.data.phone || "this customer"}
+            phone={liveThread.data.phone}
+            doNotContact={liveThread.data.doNotContact}
+            conversation={liveThread.data}
+            onChanged={calls.reload}
+          />
+        ) : null}
         <Button
           size="sm"
           variant="ghost"
@@ -443,6 +466,9 @@ function Conversation({
           <div ref={bottom} />
           </div>
         </div>
+      ) : channel === "call" && !previewChat ? (
+        // On a real account the Calls tab is the call log; the Call button above makes and logs calls.
+        <UnifiedTimeline timeline={callRows} loading={calls.loading && !calls.data} />
       ) : thread ? (
         <ChannelPanel channel={channel} thread={thread} previewChat={previewChat} />
       ) : null}

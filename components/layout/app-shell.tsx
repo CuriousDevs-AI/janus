@@ -13,7 +13,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { demoMode } from "@/lib/demo-mode";
 import { homeFor, personaMayOpen, useDemoAccount } from "@/lib/demo-persona";
 import { businessHome, readCompanies } from "@/lib/company";
-import { WorkspaceProvider } from "@/components/layout/workspace-context";
+import { WorkspaceProvider, useWorkspace } from "@/components/layout/workspace-context";
+import { homeForPermissions, mayOpenWorkspace } from "@/lib/access";
 import { VoiceCallProvider } from "@/components/team/voice-call";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -35,6 +36,13 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const allowed = !demoMode || !account || personaMayOpen(account, pathname);
+  const { workspaceId } = useWorkspace();
+  // A workspace the role cannot open (Business Management is for owners and admins) sends the
+  // person to the workspace they work in, rather than showing its menu with nothing behind it.
+  const blocked = !demoMode && workspaceId !== "portfolio" && !mayOpenWorkspace(workspaceId, session.permissions);
+  React.useEffect(() => {
+    if (blocked) router.replace(homeForPermissions(session.permissions));
+  }, [blocked, router, session.permissions]);
   // HR, Finance and Employee previews have no business in CRM or Business Management. Send them home.
   React.useEffect(() => {
     if (allowed || !account) return;
@@ -86,7 +94,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           )}
-          {allowed ? children : <div className="p-8 text-sm text-muted-foreground" role="status">You do not have access to this page. Taking you to your home…</div>}
+          {allowed && !blocked ? children : <div className="p-8 text-sm text-muted-foreground" role="status">You do not have access to this page. Taking you to your home…</div>}
         </main>
       </div>
       <CommandPalette />

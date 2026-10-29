@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Hash, LogIn, LogOut, Menu, Plus, Search, Users, Volume2, X } from "lucide-react";
+import { ArrowLeft, Check, Hash, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -20,13 +20,20 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer, MessageList } from "@/components/team/team-messages";
 import type { TeamMessage, TeamPerson, TeamSearchHit, TeamSpace } from "@/components/team/types";
 import { useSession } from "@/components/auth/session-provider";
 import { useVoiceCall } from "@/components/team/voice-call";
-import { CallBar, VoiceStage } from "@/components/team/voice-stage";
+import { CallBanner, CallPanel } from "@/components/team/voice-stage";
+import { ChatAvatar, ChatList, isChannel } from "@/components/team/chat-list";
+import { useTeamChatStore } from "@/lib/stores/team-chat-store";
 
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const REFRESH_MS = 4000;
@@ -37,12 +44,11 @@ function newKey() {
 
 export function TeamChat() {
   const session = useSession();
+  const call = useVoiceCall();
   const requested = useSearchParams().get("space");
-  const view = useSearchParams().get("view");
   const [selected, setSelected] = React.useState<string | null>(requested);
   const [threadId, setThreadId] = React.useState<string | null>(null);
-  const [mobileNav, setMobileNav] = React.useState(false);
-  const [creating, setCreating] = React.useState<false | "text" | "voice">(false);
+  const [creating, setCreating] = React.useState(false);
   const [picking, setPicking] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -92,7 +98,7 @@ export function TeamChat() {
   // Opening a space, or getting a new message in it, marks it read.
   React.useEffect(() => {
     if (demoMode || !space || !newestId) return;
-    if (space.kind === "channel" && !space.joined) return;
+    if (isChannel(space.kind) && !space.joined) return;
     void api(`/team/spaces/${space.id}/read`, {
       method: "POST",
       body: JSON.stringify({ last_message_id: Number(newestId) }),
@@ -177,42 +183,60 @@ export function TeamChat() {
       reloadDirect();
       choose(opened.id);
       setPicking(false);
-      setMobileNav(false);
     } catch (error) {
       toast.error(errorText(error));
     }
   }
 
-  async function createChannel(name: string, topic: string, voice: boolean) {
+  async function createChannel(name: string, topic: string) {
     const created = await api<TeamSpace>("/team/channels", {
       method: "POST",
-      body: JSON.stringify({ name, topic, voice }),
+      body: JSON.stringify({ name, topic }),
     });
     reloadChannels();
     choose(created.id);
     setCreating(false);
-    setMobileNav(false);
-    toast.success(voice ? `Created voice channel ${created.name}` : `Created #${created.name}`);
+    toast.success(`Created #${created.name}`);
   }
 
   function pick(item: TeamSpace) {
     choose(item.id);
-    setMobileNav(false);
   }
 
-  const sidebar = (
-    <Sidebar
+  // The app sidebar shows the chat list on wider screens; give it what it needs.
+  const publish = useTeamChatStore((state) => state.publish);
+  const clear = useTeamChatStore((state) => state.clear);
+  React.useEffect(() => {
+    publish({
+      channels: channels.data ?? [],
+      direct: direct.data ?? [],
+      selected,
+      loading: channels.loading && !channels.data,
+      // Only state setters here, so these never go stale.
+      actions: {
+        pick: (item) => { setSelected(item.id); setThreadId(null); },
+        create: () => setCreating(true),
+        newMessage: () => setPicking(true),
+        searchMessages: () => setSearchOpen(true),
+      },
+    });
+  }, [publish, channels.data, direct.data, selected, channels.loading]);
+  React.useEffect(() => clear, [clear]);
+
+  const chatList = (
+    <ChatList
       channels={channels.data ?? []}
       direct={direct.data ?? []}
       selected={selected}
       onPick={pick}
-      onCreate={() => setCreating("text")}
-      onCreateVoice={() => setCreating("voice")}
+      onCreate={() => setCreating(true)}
       onNewMessage={() => setPicking(true)}
+      onSearchMessages={() => setSearchOpen(true)}
       loading={channels.loading && !channels.data}
-      meName={session.user.name}
     />
   );
+  // On a phone, as in WhatsApp, the list and the open chat take turns filling the screen.
+  const showConversation = Boolean(selected) || searchOpen;
 
   if (demoMode) {
     return (
@@ -223,47 +247,82 @@ export function TeamChat() {
   }
 
   const threadRoot = threadId ? messages.data?.find((item) => item.id === threadId) ?? null : null;
-  const title = space ? (space.kind === "channel" ? `#${space.name}` : space.title) : "Team chat";
+  const title = space ? (isChannel(space.kind) ? `#${space.name}` : space.title) : "Team chat";
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 bg-background">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface md:flex">{sidebar}</aside>
-      <Sheet open={mobileNav} onOpenChange={setMobileNav}>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetTitle className="sr-only">Team chat navigation</SheetTitle>
-          <div className="flex h-full flex-col">{sidebar}</div>
-        </SheetContent>
-      </Sheet>
+      <aside
+        aria-label="Chat list"
+        className={cn(
+          "w-full shrink-0 flex-col bg-surface md:hidden",
+          showConversation ? "hidden" : "flex",
+        )}
+      >
+        {chatList}
+      </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-14 flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open team chat menu" onClick={() => setMobileNav(true)}>
-            <Menu className="size-4" />
+      <section className={cn("min-w-0 flex-1 flex-col", showConversation ? "flex" : "hidden md:flex")}>
+        <header className="flex min-h-14 items-center gap-3 border-b border-border bg-surface px-3 py-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            aria-label="Back to chats"
+            onClick={() => {
+              setSelected(null);
+              setThreadId(null);
+              setSearchOpen(false);
+            }}
+          >
+            <ArrowLeft className="size-4" />
           </Button>
+          {space ? <ConversationAvatar space={space} /> : null}
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[15px] font-semibold text-foreground">{title}</h2>
-            {space?.kind === "voice" ? (
-              <p className="truncate text-xs text-muted-foreground">Voice channel · {space.inCall.length} in the call</p>
+            {space?.kind === "dm" ? <p className="truncate text-xs text-muted-foreground">Direct message</p> : null}
+            {space?.kind === "group" ? (
+              <p className="truncate text-xs text-muted-foreground">Group · {space.memberCount} people</p>
             ) : null}
-            {space?.kind === "channel" ? (
+            {isChannel(space?.kind) ? (
               <p className="truncate text-xs text-muted-foreground">
                 {space.topic || "No topic yet"} · <span className="inline-flex items-center gap-1"><Users className="size-3" />{space.memberCount}</span>
               </p>
             ) : null}
           </div>
+          {space ? (
+            call.spaceId === space.id ? (
+              <Button size="sm" variant="destructive" aria-label="Leave call" onClick={() => void call.leave()}>
+                <PhoneOff className="size-3.5" /> <span className="hidden sm:inline">Leave call</span>
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant={space.inCall.length > 0 ? "default" : "secondary"}
+                onClick={() => void call.join(space.id, space.title)}
+                disabled={call.joining}
+                aria-label={space.inCall.length > 0 ? `Join call, ${space.inCall.length} in it` : "Start a call"}
+              >
+                {space.inCall.length > 0 ? <Headphones className="size-3.5" /> : <Phone className="size-3.5" />}
+                <span className="hidden sm:inline">{space.inCall.length > 0 ? `Join call · ${space.inCall.length}` : "Call"}</span>
+              </Button>
+            )
+          ) : null}
           <Button variant="ghost" size="icon" aria-label="Search team messages" aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>
             <Search className="size-4" />
           </Button>
-          {space?.kind === "channel" ? (
-            space.joined ? (
-              <Button size="sm" variant="secondary" onClick={() => void changeMembership("leave")}>
-                <LogOut className="size-3.5" /> Leave
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => void changeMembership("join")}>
-                <LogIn className="size-3.5" /> Join channel
-              </Button>
-            )
+          {isChannel(space?.kind) && space.joined ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Conversation menu">
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void changeMembership("leave")}>
+                  <LogOut className="size-3.5" /> Leave channel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </header>
 
@@ -278,25 +337,21 @@ export function TeamChat() {
           />
         ) : !selected ? (
           <EmptyPanel
-            title={view === "voice" ? "Pick a voice channel" : "Pick a channel or start a message"}
-            text={view === "voice" ? "Join a voice channel to talk with your team and share your screen. Anyone in the company can join." : "Channels are open to everyone in the company. Direct messages are only seen by the two people in them."}
+            title="Pick a channel or start a message"
+            text="Channels are open to everyone in the company. Direct messages are only seen by the two people in them."
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button size="sm" variant="secondary" className="md:hidden" onClick={() => setMobileNav(true)}>
-                  <Hash className="size-3.5" /> Browse channels
-                </Button>
                 <Button size="sm" onClick={() => setPicking(true)}>
                   <Plus className="size-3.5" /> New message
                 </Button>
               </div>
             }
           />
-        ) : space?.kind === "voice" ? (
-          <VoiceStage space={space} />
         ) : (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col">
-              <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+              {space ? (call.spaceId === space.id ? <CallPanel /> : <CallBanner space={space} />) : null}
+              <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-surface-2/60">
                 {messages.loading && !messages.data ? (
                   <p className="px-6 py-10 text-center text-sm text-muted-foreground">Loading messages…</p>
                 ) : messages.error ? (
@@ -304,20 +359,29 @@ export function TeamChat() {
                 ) : (
                   <MessageList
                     messages={messages.data ?? []}
-                    emptyText={space?.kind === "channel" ? `No messages in #${space.name} yet. Say hello.` : "No messages yet. Say hello."}
+                    emptyText={isChannel(space?.kind) ? `No messages in #${space.name} yet. Say hello.` : "No messages yet. Say hello."}
                     onOpenThread={setThreadId}
                     onChanged={() => { reloadMessages(); reloadReplies(); }}
                     activeThreadId={threadId}
+                    showAuthors={space?.kind !== "dm"}
                   />
                 )}
               </div>
-              <Composer
-                placeholder={space ? `Message ${space.kind === "channel" ? `#${space.name}` : space.title}` : "Message"}
-                autoFocusKey={selected}
-                disabled={!space || (space.kind === "channel" && !space.joined)}
-                disabledReason={space?.kind === "channel" && !space.joined ? `You are viewing #${space.name}. Join the channel to post.` : undefined}
-                onSend={(body, file) => send(body, undefined, file)}
-              />
+              {space && isChannel(space.kind) && !space.joined ? (
+                <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border bg-surface px-4 py-3 text-sm">
+                  <span className="text-muted-foreground">You are viewing #{space.name}. Join to chat here.</span>
+                  <Button size="sm" onClick={() => void changeMembership("join")}>
+                    <LogIn className="size-3.5" /> Join channel
+                  </Button>
+                </div>
+              ) : (
+                <Composer
+                  placeholder={space ? `Message ${isChannel(space.kind) ? `#${space.name}` : space.title}` : "Message"}
+                  autoFocusKey={selected}
+                  disabled={!space}
+                  onSend={(body, file) => send(body, undefined, file)}
+                />
+              )}
             </div>
 
             {threadId ? (
@@ -342,7 +406,7 @@ export function TeamChat() {
                 <Composer
                   placeholder="Reply to the thread"
                   autoFocusKey={threadId}
-                  disabled={!space || (space.kind === "channel" && !space.joined)}
+                  disabled={!space || (isChannel(space.kind) && !space.joined)}
                   allowFiles={false}
                   onSend={(body) => send(body, threadId)}
                 />
@@ -352,12 +416,7 @@ export function TeamChat() {
         )}
       </section>
 
-      <CreateChannelDialog
-        open={creating !== false}
-        voice={creating === "voice"}
-        onOpenChange={(open) => setCreating(open ? creating : false)}
-        onCreate={createChannel}
-      />
+      <CreateChannelDialog open={creating} onOpenChange={setCreating} onCreate={createChannel} />
       <PeopleDialog
         open={picking}
         onOpenChange={setPicking}
@@ -368,164 +427,12 @@ export function TeamChat() {
   );
 }
 
-function Sidebar({
-  channels,
-  direct,
-  selected,
-  onPick,
-  onCreate,
-  onCreateVoice,
-  onNewMessage,
-  loading,
-  meName,
-}: {
-  channels: TeamSpace[];
-  direct: TeamSpace[];
-  selected: string | null;
-  onPick: (item: TeamSpace) => void;
-  onCreate: () => void;
-  onCreateVoice: () => void;
-  onNewMessage: () => void;
-  loading: boolean;
-  meName: string;
-}) {
-  const textChannels = channels.filter((item) => item.kind === "channel");
-  const voiceChannels = channels.filter((item) => item.kind === "voice");
+function ConversationAvatar({ space }: { space: TeamSpace }) {
+  const label = isChannel(space.kind) ? space.name ?? "" : space.title;
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">Team chat</p>
-        <p className="truncate text-xs text-muted-foreground">{meName}</p>
-      </div>
-      <div className="flex-1 space-y-5 overflow-y-auto px-2 py-3">
-        <section aria-label="Channels">
-          <div className="flex items-center justify-between px-2 pb-1">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Channels</h3>
-            <Button variant="ghost" size="icon" className="size-6" aria-label="Create channel" onClick={onCreate}>
-              <Plus className="size-3.5" />
-            </Button>
-          </div>
-          {loading ? <p className="px-2 text-xs text-muted-foreground">Loading…</p> : null}
-          {!loading && textChannels.length === 0 ? (
-            <p className="px-2 text-xs text-muted-foreground">No channels yet. Create one for your team.</p>
-          ) : null}
-          <ul className="space-y-0.5">
-            {textChannels.map((item) => (
-              <SpaceRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
-            ))}
-          </ul>
-        </section>
-
-        <section aria-label="Voice channels">
-          <div className="flex items-center justify-between px-2 pb-1">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Voice channels</h3>
-            <Button variant="ghost" size="icon" className="size-6" aria-label="Create voice channel" onClick={onCreateVoice}>
-              <Plus className="size-3.5" />
-            </Button>
-          </div>
-          {!loading && voiceChannels.length === 0 ? (
-            <p className="px-2 text-xs text-muted-foreground">No voice channels yet. Create one to talk and share screens.</p>
-          ) : null}
-          <ul className="space-y-0.5">
-            {voiceChannels.map((item) => (
-              <VoiceRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
-            ))}
-          </ul>
-        </section>
-
-        <section aria-label="Direct messages">
-          <div className="flex items-center justify-between px-2 pb-1">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Direct messages</h3>
-            <Button variant="ghost" size="icon" className="size-6" aria-label="New direct message" onClick={onNewMessage}>
-              <Plus className="size-3.5" />
-            </Button>
-          </div>
-          {direct.length === 0 ? <p className="px-2 text-xs text-muted-foreground">Message a teammate to start.</p> : null}
-          <ul className="space-y-0.5">
-            {direct.map((item) => (
-              <SpaceRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
-            ))}
-          </ul>
-        </section>
-      </div>
-      <CallBar />
-    </div>
-  );
-}
-
-/** A voice channel, with the people in its call listed under it, as in Discord. */
-function VoiceRow({ item, active, onPick }: { item: TeamSpace; active: boolean; onPick: (item: TeamSpace) => void }) {
-  const call = useVoiceCall();
-  const live = call.spaceId === item.id;
-  const people = live ? call.participants : item.inCall;
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onPick(item)}
-        aria-current={active ? "true" : undefined}
-        className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-          active ? "bg-accent-muted text-accent" : "text-foreground hover:bg-surface-2",
-          live && !active && "text-success",
-        )}
-      >
-        <Volume2 className={cn("size-3.5 shrink-0", live ? "text-success" : "text-muted-foreground")} />
-        <span className="min-w-0 flex-1 truncate">{item.name}</span>
-        {people.length > 0 ? <span className="text-[10px] tabular-nums text-muted-foreground">{people.length}</span> : null}
-      </button>
-      {people.length > 0 ? (
-        <ul className="mb-1 ml-6 space-y-0.5" aria-label={`In ${item.name}`}>
-          {people.map((person) => (
-            <li key={person.id} className="flex items-center gap-2 px-2 py-0.5 text-xs text-muted-foreground">
-              <span
-                className={cn(
-                  "flex size-5 items-center justify-center rounded-full bg-surface-3 text-[9px] font-semibold text-foreground ring-2 ring-transparent",
-                  live && call.speaking.has(person.id) && "ring-success",
-                )}
-              >
-                {initials(person.name)}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{person.name}</span>
-              {person.muted ? <span className="sr-only">muted</span> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
-function SpaceRow({ item, active, onPick }: { item: TeamSpace; active: boolean; onPick: (item: TeamSpace) => void }) {
-  const label = item.kind === "channel" ? item.name ?? "" : item.title;
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onPick(item)}
-        aria-current={active ? "true" : undefined}
-        className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-          active ? "bg-accent-muted text-accent" : "text-foreground hover:bg-surface-2",
-          item.unread > 0 && !active && "font-semibold",
-          item.kind === "channel" && !item.joined && !active && "text-muted-foreground",
-        )}
-      >
-        {item.kind === "channel" ? (
-          <Hash className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <Avatar className="size-5">
-            <AvatarFallback className="text-[9px]">{initials(label)}</AvatarFallback>
-          </Avatar>
-        )}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {item.unread > 0 ? (
-          <span className="rounded-full bg-accent px-1.5 text-[10px] font-semibold tabular-nums text-accent-foreground">
-            {item.unread > 99 ? "99+" : item.unread}
-          </span>
-        ) : null}
-      </button>
-    </li>
+    <span className="hidden sm:inline-flex">
+      <ChatAvatar item={space} label={label} />
+    </span>
   );
 }
 
@@ -541,14 +448,12 @@ function EmptyPanel({ title, text, action }: { title: string; text: string; acti
 
 function CreateChannelDialog({
   open,
-  voice,
   onOpenChange,
   onCreate,
 }: {
   open: boolean;
-  voice: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (name: string, topic: string, voice: boolean) => Promise<void>;
+  onCreate: (name: string, topic: string) => Promise<void>;
 }) {
   const [name, setName] = React.useState("");
   const [topic, setTopic] = React.useState("");
@@ -563,7 +468,7 @@ function CreateChannelDialog({
     setBusy(true);
     setError("");
     try {
-      await onCreate(normalized, topic.trim(), voice);
+      await onCreate(normalized, topic.trim());
       setName("");
       setTopic("");
     } catch (err) {
@@ -578,18 +483,16 @@ function CreateChannelDialog({
       <DialogContent>
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>{voice ? "Create a voice channel" : "Create a channel"}</DialogTitle>
+            <DialogTitle>Create a channel</DialogTitle>
             <DialogDescription>
-              {voice
-                ? "Anyone in the company can join a voice channel to talk and share their screen. Lowercase letters, numbers and dashes."
-                : "Everyone in the company can find and read a channel. Lowercase letters, numbers and dashes."}
+              Everyone in the company can read a channel, chat in it after joining, and start a call with screen sharing. Lowercase letters, numbers and dashes.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="channel-name">Name</Label>
             <div className="flex items-center gap-1.5">
-              {voice ? <Volume2 className="size-4 text-muted-foreground" /> : <Hash className="size-4 text-muted-foreground" />}
-              <Input id="channel-name" autoFocus placeholder={voice ? "e.g. standup" : "e.g. sales-floor"} value={name} onChange={(event) => setName(event.target.value)} aria-invalid={name.length > 0 && !valid} />
+              <Hash className="size-4 text-muted-foreground" />
+              <Input id="channel-name" autoFocus placeholder="e.g. sales-floor" value={name} onChange={(event) => setName(event.target.value)} aria-invalid={name.length > 0 && !valid} />
             </div>
             {name.length > 0 && !valid ? <p className="text-xs text-destructive">Use 2 to 40 letters, numbers or dashes, starting with a letter or number.</p> : null}
           </div>
@@ -600,7 +503,7 @@ function CreateChannelDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={!valid || busy}>{voice ? "Create voice channel" : "Create channel"}</Button>
+            <Button type="submit" disabled={!valid || busy}>Create channel</Button>
           </DialogFooter>
         </form>
       </DialogContent>

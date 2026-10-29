@@ -64,13 +64,32 @@ export function useVoiceCall(): VoiceCall {
   return value;
 }
 
-/** STUN and TURN servers come from configuration; without them, calls connect on the same network. */
-function iceServers(): RTCIceServer[] {
+interface IceConfig {
+  iceServers: Array<{ urls: string[]; username: string | null; credential: string | null }>;
+  iceTransportPolicy: RTCIceTransportPolicy;
+  ttlSeconds: number;
+}
+
+/**
+ * STUN and TURN servers from the server, with TURN credentials that expire. Without a TURN server
+ * a call still connects on the same network.
+ */
+export async function fetchIceConfig(): Promise<{ config: RTCConfiguration; ttl: number }> {
   try {
-    const raw = process.env.NEXT_PUBLIC_JANUS_ICE_SERVERS;
-    return raw ? (JSON.parse(raw) as RTCIceServer[]) : [];
+    const ice = await api<IceConfig>("/team/ice-servers");
+    return {
+      config: {
+        iceServers: ice.iceServers.map((server) => ({
+          urls: server.urls,
+          username: server.username ?? undefined,
+          credential: server.credential ?? undefined,
+        })),
+        iceTransportPolicy: ice.iceTransportPolicy,
+      },
+      ttl: ice.ttlSeconds,
+    };
   } catch {
-    return [];
+    return { config: { iceServers: [] }, ttl: 3600 };
   }
 }
 
@@ -101,6 +120,8 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
   const stream = React.useRef<EventSource | null>(null);
   const current = React.useRef<string | null>(null);
   const state = React.useRef({ muted: false, deafened: false, sharing: false });
+  const rtcConfig = React.useRef<RTCConfiguration>({ iceServers: [] });
+  const iceTtl = React.useRef(3600);
 
   const send = React.useCallback(async (to: number, kind: SignalOut["kind"], payload: Record<string, unknown>) => {
     const id = current.current;
@@ -171,7 +192,7 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
     (peerId: number) => {
       const existing = peers.current.get(peerId);
       if (existing) return existing;
-      const pc = new RTCPeerConnection({ iceServers: iceServers() });
+      const pc = new RTCPeerConnection(rtcConfig.current);
       peers.current.set(peerId, pc);
       for (const track of mic.current?.getTracks() ?? []) pc.addTrack(track, mic.current!);
       if (screen.current) {
@@ -339,6 +360,9 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
           state.current = { ...state.current, muted: true };
           setMuted(true);
         }
+        const ice = await fetchIceConfig();
+        rtcConfig.current = ice.config;
+        iceTtl.current = ice.ttl;
         const out = await api<CallOut>(`/team/voice/${id}/join`, { method: "POST" });
         current.current = id;
         setSpaceId(id);
@@ -456,6 +480,25 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
       void context.close();
     };
   }, [audio, me, spaceId]);
+
+  // TURN credentials expire, so a long call refreshes them halfway through and hands them to every
+  // connection; without this, a relayed call would drop when the first credential ran out.
+  React.useEffect(() => {
+    if (!spaceId) return;
+    const timer = setInterval(async () => {
+      const ice = await fetchIceConfig();
+      rtcConfig.current = ice.config;
+      iceTtl.current = ice.ttl;
+      for (const pc of peers.current.values()) {
+        try {
+          pc.setConfiguration(ice.config);
+        } catch {
+          // A closed connection takes no new configuration.
+        }
+      }
+    }, Math.max(60, iceTtl.current / 2) * 1000);
+    return () => clearInterval(timer);
+  }, [spaceId]);
 
   // Leaving the page leaves the call.
   React.useEffect(() => {

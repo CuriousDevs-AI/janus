@@ -173,6 +173,11 @@ async def find_messages(
 # ---- Voice calls -------------------------------------------------------------------------------
 
 
+@router.get("/ice-servers", response_model=schemas.IceConfigOut)
+async def ice_servers(actor: CurrentActor) -> schemas.IceConfigOut:
+    return service.ice_config(actor)
+
+
 @router.get("/voice/{space_id}", response_model=schemas.CallOut)
 async def call(space_id: int, actor: CurrentActor, db: Db) -> schemas.CallOut:
     return await service.call(db, actor, space_id)

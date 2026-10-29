@@ -1,5 +1,6 @@
 "use client";
 import { ContactConversation } from "@/components/chat/contact-conversation";
+import { CustomerCalls } from "@/components/calls/customer-call";
 import { use, useState } from "react";
 import { can } from "@/lib/permissions";
 import Link from "next/link";
@@ -78,6 +79,7 @@ export default function DealPage({
             </div>
           </div>
           <ContactConversation contactId={deal.customerId} />
+          <CustomerCalls contactId={deal.customerId} />
           <div className="grid gap-5 md:grid-cols-2">
             <section className="rounded-lg border border-border bg-surface p-4">
               <h2 className="mb-4 text-sm font-semibold">Deal details</h2>

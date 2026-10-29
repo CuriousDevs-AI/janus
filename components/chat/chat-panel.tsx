@@ -12,6 +12,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { hasPermission } from "@/lib/demo-persona";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { Button } from "@/components/ui/button";
+import { CustomerCallButton } from "@/components/calls/customer-call";
 import {
   Sheet,
   SheetContent,
@@ -99,7 +100,18 @@ export function ChatPanel() {
                   <ArrowLeft className="size-4" />
                 </Button>
               ) : null}
-              <SheetTitle>{conversation?.name ?? "Chat"}</SheetTitle>
+              <SheetTitle className="min-w-0 flex-1 truncate">{conversation?.name ?? "Chat"}</SheetTitle>
+              {conversation && !demoMode ? (
+                <CustomerCallButton
+                  contactId={conversation.contactId}
+                  name={conversation.name || conversation.phone || "this customer"}
+                  phone={conversation.phone}
+                  doNotContact={conversation.doNotContact}
+                  conversation={conversation}
+                  onChanged={list.reload}
+                  size="icon"
+                />
+              ) : null}
             </div>
             <SheetDescription>
               {conversation

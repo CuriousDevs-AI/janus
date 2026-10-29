@@ -145,3 +145,15 @@ class MessageOut(BaseModel):
 
 
 SearchHit.model_rebuild()
+
+
+class IceServerOut(BaseModel):
+    urls: list[str]
+    username: str | None = None
+    credential: str | None = None
+
+
+class IceConfigOut(BaseModel):
+    iceServers: list[IceServerOut]
+    iceTransportPolicy: Literal["all", "relay"]
+    ttlSeconds: int

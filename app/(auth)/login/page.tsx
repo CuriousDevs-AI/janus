@@ -15,6 +15,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { demoAccounts, checkLogin } from "@/lib/demo-accounts";
 import { homeFor, signIn } from "@/lib/demo-persona";
 import type { Me } from "@/lib/api/types";
+import { homeForPermissions, managesBusiness } from "@/lib/access";
 
 const schema = z.object({
   email: z.string().email("Enter a valid work email"),
@@ -50,6 +51,10 @@ export default function LoginPage() {
       const me = await api<Me>("/me");
       if (!me.user.email_verified_at) {
         router.replace(`/verify-email?email=${encodeURIComponent(me.user.email)}`);
+        return;
+      }
+      if (!managesBusiness(me.permissions)) {
+        router.replace(homeForPermissions(me.permissions));
         return;
       }
       try {

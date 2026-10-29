@@ -30,6 +30,31 @@ class Settings(BaseSettings):
     meta_graph_version: str = Field(default="", pattern=r"^(?:v[0-9]{1,3}\.0)?$")
     form_limit_per_minute: int = Field(default=10, ge=1, le=120)
     frontend_url: str = "http://localhost:3000"
+    # Voice calls: STUN and TURN servers, comma-separated. TURN credentials are minted per person
+    # from the shared secret (coturn's use-auth-secret), so no TURN password reaches the browser.
+    stun_urls: str = ""
+    turn_urls: str = ""
+    turn_secret: SecretStr = SecretStr("")
+    turn_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
+    ice_transport_policy: Literal["all", "relay"] = "all"
+
+    @property
+    def stun_list(self) -> list[str]:
+        return [url.strip() for url in self.stun_urls.split(",") if url.strip()]
+
+    @property
+    def turn_list(self) -> list[str]:
+        return [url.strip() for url in self.turn_urls.split(",") if url.strip()]
+
+    @model_validator(mode="after")
+    def ice_settings(self) -> Self:
+        if any(not url.startswith(("stun:", "stuns:")) for url in self.stun_list):
+            raise ValueError("Each JANUS_STUN_URLS entry must start with stun: or stuns:")
+        if any(not url.startswith(("turn:", "turns:")) for url in self.turn_list):
+            raise ValueError("Each JANUS_TURN_URLS entry must start with turn: or turns:")
+        if self.turn_list and len(self.turn_secret.get_secret_value()) < 32:
+            raise ValueError("TURN servers need a JANUS_TURN_SECRET of at least 32 characters")
+        return self
 
     @model_validator(mode="after")
     def production_settings(self) -> Self:
