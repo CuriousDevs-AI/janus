@@ -36,12 +36,11 @@ from janus_api.operations.models import (
     OpsReturn,
     OpsTransfer,
 )
+from janus_api.rules.service import ensure_open, rules_for
 
 router = APIRouter(prefix="/v1/operations", tags=["Operations"])
 Stock = Annotated[Actor, Depends(require("stock:adjust"))]
 
-# Adjustments worth more than this (in paise) need approval. Matches the screen's default rule.
-APPROVAL_VALUE_PAISE = 10000 * 100
 MAX_QTY = Decimal("1000000")
 
 
@@ -661,6 +660,7 @@ async def receive_stock(
     idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
 ) -> MovementOut:
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     item = await _item(db, tenant_id, key, lock=True)
     existing = await db.scalar(
         select(OpsMovement).where(
@@ -735,8 +735,10 @@ async def _book_adjustment(
     idempotency_key: str,
 ) -> OpsAdjustment:
     """Books an adjustment. Under the approval value it is applied at once; above it, it waits."""
+    await ensure_open(db, tenant_id, _today())
+    rules = await rules_for(db, tenant_id)
     value = int((abs(qty) * item.rate_paise).to_integral_value(rounding=ROUND_HALF_UP))
-    needs_approval = value > APPROVAL_VALUE_PAISE
+    needs_approval = value > rules.adjustment_approval_paise
     row = OpsAdjustment(
         tenant_id=tenant_id,
         item_id=item.id,
@@ -833,6 +835,7 @@ async def approve_adjustment(
     adjustment_id: int, actor: Stock, db: Db, request: Request
 ) -> AdjustmentOut:
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     row = await _adjustment(db, tenant_id, adjustment_id)
     if row.status != "pending":
         raise ApiError("not_pending", "This adjustment is already applied or rejected.", 409)
@@ -1032,6 +1035,7 @@ async def create_dispatch(
     cannot take more than is there. Expired batches are refused.
     """
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     existing = await db.scalar(
         select(OpsDispatch).where(
             OpsDispatch.tenant_id == tenant_id, OpsDispatch.idempotency_key == idempotency_key
@@ -1255,6 +1259,7 @@ async def inspect_return(
 ) -> ReturnOut:
     """Records the condition of returned goods. Good goods go back to stock; damaged do not."""
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     row = await db.scalar(
         select(OpsReturn)
         .where(OpsReturn.tenant_id == tenant_id, OpsReturn.id == return_id)
@@ -1378,6 +1383,7 @@ async def send_transfer(
 ) -> TransferOut:
     """Sends stock to another location. It leaves the sender now and arrives when received."""
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     existing = await db.scalar(
         select(OpsTransfer).where(
             OpsTransfer.tenant_id == tenant_id, OpsTransfer.idempotency_key == idempotency_key
@@ -1447,6 +1453,7 @@ async def send_transfer(
 @router.post("/transfers/{transfer_id}/receive", response_model=TransferOut)
 async def receive_transfer(transfer_id: int, actor: Stock, db: Db, request: Request) -> TransferOut:
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     row = await db.scalar(
         select(OpsTransfer)
         .where(OpsTransfer.tenant_id == tenant_id, OpsTransfer.id == transfer_id)
@@ -1496,6 +1503,7 @@ async def record_count(
 ) -> CountOut:
     """Records a physical count. Each difference from the system is booked as an adjustment."""
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     existing = await db.scalar(
         select(OpsCount).where(
             OpsCount.tenant_id == tenant_id, OpsCount.idempotency_key == idempotency_key
@@ -1737,6 +1745,7 @@ async def receive_against_order(
     received with their batch from the stock ledger, not against the order.
     """
     tenant_id = actor.session.tenant_id
+    await ensure_open(db, tenant_id, _today())
     row = await _po(db, tenant_id, key, lock=True)
     replay = await db.scalar(
         select(OpsMovement.id).where(

@@ -20,13 +20,12 @@ from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.finance.models import FinanceBill, FinanceBillPayment
 from janus_api.operations.models import OpsPoLine, OpsPurchaseOrder
+from janus_api.rules.service import ensure_open, rules_for
 
 router = APIRouter(prefix="/v1/finance", tags=["Finance"])
 Billing = Annotated[Actor, Depends(require("billing:manage"))]
 
 MAX_PAISE = 10**15
-# Matches the screen's default three-way match tolerance (2%, at least 50 paise).
-MATCH_TOLERANCE_PERCENT = 2
 MIN_TOLERANCE_PAISE = 50
 PaymentMethod = Literal["UPI", "Bank transfer", "Cash", "Cheque"]
 
@@ -81,13 +80,11 @@ async def _received_paise(db: Db, order: OpsPurchaseOrder) -> int:
     return sum(_round(line.received_qty * line.rate_paise) for line in lines)
 
 
-def _match(bill_paise: int, received_paise: int) -> str:
+def _match(bill_paise: int, received_paise: int, tolerance_percent: Decimal) -> str:
     """The three-way match: the bill against the goods received on its order."""
     if received_paise <= 0:
         return "goods not received"
-    tolerance = max(
-        MIN_TOLERANCE_PAISE, _round(Decimal(received_paise) * MATCH_TOLERANCE_PERCENT / 100)
-    )
+    tolerance = max(MIN_TOLERANCE_PAISE, _round(Decimal(received_paise) * tolerance_percent / 100))
     if abs(bill_paise - received_paise) <= tolerance:
         return "matched"
     if bill_paise > received_paise:
@@ -116,7 +113,14 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
     match = "no order"
     if row.po_key is not None:
         order = await _order(db, row.tenant_id, row.po_key)
-        match = _match(row.amount_paise, await _received_paise(db, order)) if order else "no order"
+        rules = await rules_for(db, row.tenant_id)
+        match = (
+            _match(
+                row.amount_paise, await _received_paise(db, order), rules.match_tolerance_percent
+            )
+            if order
+            else "no order"
+        )
     return BillOut(
         id=str(row.id),
         number=row.number,
@@ -191,12 +195,16 @@ async def record_bill(
         order = await _order(db, tenant_id, data.po_key)
         if order is None:
             raise ApiError("po_not_found", "The purchase order was not found.", 422)
-        if _match(data.amount_paise, await _received_paise(db, order)) == "goods not received":
+        if (
+            _match(data.amount_paise, await _received_paise(db, order), Decimal(0))
+            == "goods not received"
+        ):
             raise ApiError(
                 "goods_not_received",
                 f"No goods have been received against {order.number} yet.",
                 422,
             )
+    await ensure_open(db, tenant_id, data.bill_date)
     count = await db.scalar(
         select(func.count()).select_from(FinanceBill).where(FinanceBill.tenant_id == tenant_id)
     )
@@ -255,13 +263,21 @@ async def pay_bill(
         return await _bill_out(db, row)
     if row.po_key is not None:
         order = await _order(db, tenant_id, row.po_key)
-        match = _match(row.amount_paise, await _received_paise(db, order)) if order else "no order"
+        rules = await rules_for(db, tenant_id)
+        match = (
+            _match(
+                row.amount_paise, await _received_paise(db, order), rules.match_tolerance_percent
+            )
+            if order
+            else "no order"
+        )
         if match != "matched":
             raise ApiError(
                 "payment_held",
                 f"Payment is held: {row.number} does not match its order yet ({match}).",
                 422,
             )
+    await ensure_open(db, tenant_id, data.paid_on)
     paid = await db.scalar(
         select(func.coalesce(func.sum(FinanceBillPayment.amount_paise), 0)).where(
             FinanceBillPayment.bill_id == row.id

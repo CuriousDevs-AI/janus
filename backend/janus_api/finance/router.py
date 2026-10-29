@@ -18,6 +18,7 @@ from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.finance.models import FinanceBudgetLine, FinanceBudgetMovement
+from janus_api.rules.service import ensure_open
 
 router = APIRouter(prefix="/v1/finance", tags=["Finance"])
 Billing = Annotated[Actor, Depends(require("billing:manage"))]
@@ -153,6 +154,7 @@ async def _move(
         response.status_code = 200
         return _movement_out(existing, line)
 
+    await ensure_open(db, tenant_id, data.booked_on)
     if kind == "draw":
         if data.amount_paise > line.allocated_paise - line.drawn_paise:
             raise ApiError(

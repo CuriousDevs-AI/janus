@@ -25,6 +25,7 @@ from janus_api.org.router import router as org_router
 from janus_api.projects.effort import router as effort_router
 from janus_api.projects.planning import router as planning_router
 from janus_api.projects.router import router as project_records_router
+from janus_api.rules.router import router as rules_router
 from janus_api.sources.router import router as sources_router
 from janus_api.state.router import router as state_router
 from janus_api.support.router import router as support_router
@@ -65,6 +66,7 @@ app.include_router(finance_router)
 app.include_router(finance_records_router)
 app.include_router(finance_bills_router)
 app.include_router(finance_funds_router)
+app.include_router(rules_router)
 app.include_router(it_router)
 app.include_router(support_router)
 app.include_router(operations_router)

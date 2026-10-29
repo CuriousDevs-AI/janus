@@ -55,8 +55,8 @@ async def clean_database(admin_engine: AsyncEngine) -> AsyncIterator[None]:
                 " finance_payments, finance_credit_notes, ops_items, ops_batches, ops_movements,"
                 " ops_adjustments, ops_dispatches, ops_dispatch_lines, ops_returns, ops_transfers,"
                 " ops_counts, ops_count_lines, ops_purchase_orders, ops_po_lines,"
-                " ops_requisitions, finance_bills, finance_bill_payments, finance_fund_requests"
-                " RESTART IDENTITY CASCADE"
+                " ops_requisitions, finance_bills, finance_bill_payments, finance_fund_requests,"
+                " jobs, raw_events, company_rules RESTART IDENTITY CASCADE"
             )
         )
         await connection.execute(text("DELETE FROM roles WHERE tenant_id IS NOT NULL"))

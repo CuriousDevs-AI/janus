@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
 import { syncBudgetLines } from "@/lib/finance-records";
+import { setWorkflowRule, syncCompanyRules } from "@/lib/company-rules-records";
 import { addRequisition, approveRequisition, orderRequisition, rejectRequisition, addItemRecord, addPurchaseOrder, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveAgainstPO, receiveStock, recordCount, requestAdjustment, receiveTransfer, sendTransfer, syncOperations } from "@/lib/operations-records";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
@@ -39,6 +40,7 @@ export function OperationsWorkspace() {
     syncOperations().catch((error: unknown) => toast.warning(`Stock not loaded from the server: ${message(error)}`));
     // Requisitions are paid from budget lines, which the server must have before they can be approved.
     syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+    syncCompanyRules().catch((error: unknown) => toast.warning(`Rules not loaded from the server: ${message(error)}`));
   }, []);
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
@@ -193,13 +195,13 @@ function OperationsReportsView() {
 /** Operations workflows: the standard steps, and the rules the owner sets. Each rule is enforced where it applies. */
 function WorkflowsView() {
   const session = useSession();
-  const isOwner = session.permissions.includes("*");
+  const isOwner = hasPermission(session.permissions, "billing:manage");
   const rules = useWorkflowRulesStore();
   const [threshold, setThreshold] = React.useState(String(rules.adjustmentApprovalValue));
   const [tolerance, setTolerance] = React.useState(String(rules.matchTolerancePercent));
 
-  function save(key: keyof WorkflowRules, value: string) {
-    const problem = rules.setRule(key, Number(value), isOwner);
+  async function save(key: keyof WorkflowRules, value: string) {
+    const problem = await setWorkflowRule(key, Number(value), isOwner);
     if (problem) return toast.error(problem);
     toast.success("Rule saved");
   }

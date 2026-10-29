@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
+import { mergeServerOwned } from "@/lib/stores/server-owned";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
@@ -458,6 +459,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => workspaceStorage), partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, transfers: state.transfers, returns: state.returns, trail: state.trail }) },
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<OperationsState>(["items", "batches", "movements", "adjustments", "dispatches", "returns", "transfers", "counts", "purchaseOrders", "requisitions"]),
+    partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, transfers: state.transfers, returns: state.returns, trail: state.trail }) },
   ),
 );

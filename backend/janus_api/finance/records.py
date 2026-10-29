@@ -25,6 +25,7 @@ from janus_api.finance.models import (
     FinanceInvoiceLine,
     FinancePayment,
 )
+from janus_api.rules.service import ensure_open
 
 router = APIRouter(prefix="/v1/finance", tags=["Finance"])
 Billing = Annotated[Actor, Depends(require("billing:manage"))]
@@ -325,6 +326,7 @@ async def create_invoice(
         )
         response.status_code = 200
         return await _invoice_out(db, existing)
+    await ensure_open(db, tenant_id, data.invoice_date)
     count = await db.scalar(
         select(func.count())
         .select_from(FinanceInvoice)
@@ -397,6 +399,7 @@ async def record_payment(
         _replayed(existing.invoice_id == row.id and existing.amount_paise == data.amount_paise)
         response.status_code = 200
         return await _invoice_out(db, row)
+    await ensure_open(db, tenant_id, data.paid_on)
     due = await _due(db, row)
     if data.amount_paise > due:
         raise ApiError("over_payment", "This payment is more than the amount still due.", 422)
@@ -452,6 +455,7 @@ async def raise_credit_note(
         )
         response.status_code = 200
         return await _invoice_out(db, row)
+    await ensure_open(db, tenant_id, data.noted_on)
     notes = await _notes_of(db, row.id)
     if data.kind == "write-off":
         left = await _due(db, row)

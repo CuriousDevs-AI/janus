@@ -24,6 +24,7 @@ import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/f
 import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
 import { addBill, recordBillPayment, syncBills } from "@/lib/bill-records";
 import { addFundRequest, approveFundRequest, rejectFundRequest, syncFundRequests } from "@/lib/fund-records";
+import { setPeriodLock, syncCompanyRules } from "@/lib/company-rules-records";
 import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
@@ -45,6 +46,9 @@ export function FinanceWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
   const me = session.user.name ?? session.user.email ?? "You";
+  React.useEffect(() => {
+    syncCompanyRules().catch((error: unknown) => toast.warning(`Period lock not loaded from the server: ${message(error)}`));
+  }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
@@ -237,7 +241,7 @@ function BudgetsView({ me }: { me: string }) {
 /** Month-end close: the checks for one month, the sign-offs still needed, and the period lock that closes the books. */
 function MonthEndView({ me }: { me: string }) {
   const session = useSession();
-  const isOwner = session.permissions.includes("*");
+  const isOwner = hasPermission(session.permissions, "billing:manage");
   const invoices = useFinanceStore((state) => state.invoices);
   const bills = useFinanceStore((state) => state.bills);
   const bankLines = useFinanceStore((state) => state.bankLines);
@@ -245,7 +249,6 @@ function MonthEndView({ me }: { me: string }) {
   const closeReviews = useFinanceStore((state) => state.closeReviews);
   const markCloseReviewed = useFinanceStore((state) => state.markCloseReviewed);
   const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
-  const setLockedThrough = usePeriodLockStore((state) => state.setLockedThrough);
   const months = ["2026-08", "2026-09", "2026-10"];
   const [month, setMonth] = React.useState("2026-10");
   const payments = bookPayments(invoices, bills);
@@ -260,8 +263,8 @@ function MonthEndView({ me }: { me: string }) {
     toast.success("Signed off");
   }
 
-  function lockMonth() {
-    const problem = setLockedThrough(end, isOwner);
+  async function lockMonth() {
+    const problem = await setPeriodLock(end, isOwner);
     if (problem) return toast.error(problem);
     toast.success(`Books locked through ${end}`);
   }
