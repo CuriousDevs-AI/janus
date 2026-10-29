@@ -4,6 +4,7 @@ import * as React from "react";
 import { activeCompany } from "@/lib/company";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bell, CreditCard, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
@@ -109,7 +110,7 @@ export function WorkspaceSection() {
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
-          {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership.">{demoMode ? <StructurePanel />  : <UnavailableMessage text="Organization records are not connected yet. Add members and departments from People & Access to populate this view." />}</SectionCard>}
+          {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership.">{demoMode ? <StructurePanel /> : <RealStructure />}</SectionCard>}
           {settingsSection === "locale" && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
           {settingsSection === "security" && <SectionCard title="Security & privacy" description="Control account protection and business data safeguards.">{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <UnavailableMessage text="Security policy status is not connected yet. Configure sessions and two-step verification from the account security area." />}</SectionCard>}
           {settingsSection === "data" && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
@@ -414,6 +415,27 @@ function WorkspaceRow({ name, type, metric }: { name: string; type: string; metr
 function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-border bg-surface p-4"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><p className="mt-2 text-xl font-semibold">{value}</p></div>; }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function UnavailableSection({ title, description }: { title: string; description: string }) { return <SectionCard title={title} description={description}><UnavailableMessage text="No verified records are available for this section yet." /></SectionCard>; }
+/** The company's departments as HR keeps them, with how many people each has. */
+function RealStructure() {
+  const departments = useHrOrgStore((state) => state.departments).filter((item) => item.active);
+  const employees = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
+  if (departments.length === 0) return <UnavailableMessage text="No departments yet. Add them under HR, in Departments & roles." />;
+  return (
+    <ul className="divide-y divide-border">
+      {departments.map((department) => {
+        const people = employees.filter((item) => item.department === department.name).length;
+        const head = employees.find((item) => item.id === department.headId)?.name;
+        return (
+          <li key={department.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : null}</span>
+            <span className="text-muted-foreground">{people} {people === 1 ? "person" : "people"}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function UnavailableMessage({ text }: { text: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">{text}</div>; }
 
 function WorkspacesPanel() {
