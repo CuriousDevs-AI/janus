@@ -114,3 +114,4 @@ One line per decision. Newest items go at the bottom.
 - HR (greeting and notes): the home greeting uses the signed-in name. "Illustrative figures" and "Demo punches" copy shows only in demo mode; on a real account attendance says punches are saved in this browser only.
 - HR (local only): HR records, attendance and payroll are still kept in the browser, not on the server.
 - Finance (local seeds): opening cash, bank lines and entries, draws, close reviews, expenses and petty cash top-ups are demo-only. Saved copies reset them on a real account; the finance store syncs to the server, so the next save writes the reset copy.
+- AI usage and evaluations: the usage figures, the cost summary, the evaluation runs and the workflow costs are demo-only. A real account shows zeros and no runs, and the usage header says no AI usage is recorded yet. Agent and automation lists come from the app store, which is empty for a real account.
