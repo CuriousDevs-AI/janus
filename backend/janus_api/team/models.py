@@ -26,9 +26,9 @@ class TeamSpace(Base):
     __tablename__ = "team_spaces"
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_team_spaces_name"),
-        CheckConstraint("kind IN ('channel', 'dm')", name="ck_team_spaces_kind"),
+        CheckConstraint("kind IN ('channel', 'dm', 'group')", name="ck_team_spaces_kind"),
         CheckConstraint(
-            "(kind = 'channel' AND name IS NOT NULL) OR (kind = 'dm' AND name IS NULL)",
+            "(kind = 'channel' AND name IS NOT NULL) OR (kind IN ('dm', 'group') AND name IS NULL)",
             name="ck_team_spaces_name_by_kind",
         ),
     )

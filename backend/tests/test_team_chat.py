@@ -468,3 +468,57 @@ async def test_search_treats_percent_and_underscore_as_plain_text(
         await client.get("/v1/team/search", headers=owner.headers, params={"q": "snake_case"})
     ).json()
     assert [hit["message"]["body"] for hit in underscore] == ["snake_case_name"]
+
+
+async def test_a_group_conversation_is_private_and_found_again_for_the_same_people(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, ravi, ids = await _two_members(client, mailbox)
+    opened = await client.post(
+        "/v1/team/conversations",
+        headers=asha,
+        json={"user_ids": [ids["owner@example.com"], ids["ravi@example.com"]]},
+    )
+    assert opened.status_code == 201, opened.text
+    group = opened.json()
+    assert group["kind"] == "group" and group["peer"] is None
+    assert group["memberCount"] == 3 and "Owner" in group["title"]
+
+    again = await client.post(
+        "/v1/team/conversations",
+        headers=asha,
+        json={"user_ids": [ids["ravi@example.com"], ids["owner@example.com"]]},
+    )
+    assert again.status_code == 200 and again.json()["id"] == group["id"]
+
+    sent = await client.post(
+        f"/v1/team/spaces/{group['id']}/messages",
+        headers={**asha, **_key("g-1")},
+        json={"body": "Group plan for Friday"},
+    )
+    assert sent.status_code == 201
+    seen = await client.get(f"/v1/team/spaces/{group['id']}/messages", headers=ravi)
+    assert seen.status_code == 200 and seen.json()[0]["body"] == "Group plan for Friday"
+
+    listed = (await client.get("/v1/team/conversations", headers=ravi)).json()
+    assert [item["kind"] for item in listed] == ["group"]
+
+
+async def test_a_group_needs_people_and_refuses_yourself(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, _, ids = await _two_members(client, mailbox)
+    empty = await client.post("/v1/team/conversations", headers=asha, json={"user_ids": []})
+    assert empty.status_code == 422
+    with_self = await client.post(
+        "/v1/team/conversations",
+        headers=asha,
+        json={"user_ids": [ids["owner@example.com"], ids["asha@example.com"]]},
+    )
+    assert with_self.status_code == 422
+    stranger = await client.post(
+        "/v1/team/conversations",
+        headers=asha,
+        json={"user_ids": [ids["owner@example.com"], 999999]},
+    )
+    assert stranger.status_code == 404

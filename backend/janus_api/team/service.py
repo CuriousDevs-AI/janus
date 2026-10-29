@@ -67,14 +67,14 @@ async def _member(db: Db, space_id: int, user_id: int) -> TeamSpaceMember | None
 async def _readable(db: Db, actor: Actor, space: TeamSpace) -> TeamSpaceMember | None:
     """A channel is readable by every member of the company. A direct conversation is not."""
     member = await _member(db, space.id, actor.user.id)
-    if space.kind == "dm" and member is None:
+    if space.kind != "channel" and member is None:
         raise ApiError("not_found", "Conversation not found.", 404)
     return member
 
 
 async def _postable(db: Db, actor: Actor, space: TeamSpace) -> TeamSpaceMember:
     member = await _member(db, space.id, actor.user.id)
-    if space.kind == "dm" and member is None:
+    if space.kind != "channel" and member is None:
         raise ApiError("not_found", "Conversation not found.", 404)
     if member is None:
         raise ApiError("not_joined", "Join this channel to post in it.", 403)
@@ -86,6 +86,31 @@ async def _people(db: Db, user_ids: set[int]) -> dict[int, User]:
         return {}
     rows = (await db.scalars(select(User).where(User.id.in_(user_ids)))).all()
     return {row.id: row for row in rows}
+
+
+async def _others(db: Db, actor: Actor, space: TeamSpace) -> list[schemas.PersonOut]:
+    """The other members of a conversation, by name."""
+    rows = (
+        await db.execute(
+            select(User.id, User.name)
+            .join(TeamSpaceMember, TeamSpaceMember.user_id == User.id)
+            .where(TeamSpaceMember.space_id == space.id, TeamSpaceMember.user_id != actor.user.id)
+            .order_by(User.name)
+        )
+    ).all()
+    return [schemas.PersonOut(id=user_id, name=name) for user_id, name in rows]
+
+
+def _title(space: TeamSpace, others: list[schemas.PersonOut]) -> str:
+    if space.kind == "channel":
+        return f"#{space.name}"
+    if space.kind == "dm":
+        return others[0].name if others else "Direct message"
+    if not others:
+        return "Group"
+    names = [person.name for person in others]
+    extra = len(names) - 3
+    return ", ".join(names[:3]) + (f" +{extra}" if extra > 0 else "")
 
 
 async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut:
@@ -110,16 +135,8 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
             )
             or 0
         )
-    peer = None
-    if space.kind == "dm":
-        other = await db.scalar(
-            select(TeamSpaceMember.user_id).where(
-                TeamSpaceMember.space_id == space.id, TeamSpaceMember.user_id != actor.user.id
-            )
-        )
-        if other is not None:
-            person = (await _people(db, {other}))[other]
-            peer = schemas.PersonOut(id=person.id, name=person.name)
+    others = [] if space.kind == "channel" else await _others(db, actor, space)
+    peer = others[0] if space.kind == "dm" and others else None
     last = await db.scalar(
         select(TeamMessage)
         .where(TeamMessage.space_id == space.id, TeamMessage.parent_id.is_(None))
@@ -133,6 +150,7 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
         id=str(space.id),
         kind=space.kind,
         name=space.name,
+        title=_title(space, others),
         topic=space.topic,
         memberCount=member_count or 0,
         joined=member is not None,
@@ -277,7 +295,7 @@ async def list_conversations(db: Db, actor: Actor) -> list[schemas.SpaceOut]:
         await db.scalars(
             select(TeamSpace).where(
                 TeamSpace.tenant_id == actor.session.tenant_id,
-                TeamSpace.kind == "dm",
+                TeamSpace.kind.in_(["dm", "group"]),
                 TeamSpace.id.in_(mine),
             )
         )
@@ -290,38 +308,53 @@ async def list_conversations(db: Db, actor: Actor) -> list[schemas.SpaceOut]:
 async def open_conversation(
     db: Db, actor: Actor, data: schemas.DirectIn
 ) -> tuple[schemas.SpaceOut, bool]:
+    """One person makes a direct conversation; two or more make a group."""
     tenant_id = actor.session.tenant_id
-    if data.user_id == actor.user.id:
+    people = set(data.user_ids) | ({data.user_id} if data.user_id else set())
+    if not people:
+        raise ApiError("no_people", "Choose at least one person.", 422)
+    if actor.user.id in people:
         raise ApiError("self_conversation", "You cannot start a conversation with yourself.", 422)
-    person = await db.scalar(
-        select(Membership.id).where(
-            Membership.tenant_id == tenant_id,
-            Membership.user_id == data.user_id,
-            Membership.status == "active",
-        )
+    active = set(
+        (
+            await db.scalars(
+                select(Membership.user_id).where(
+                    Membership.tenant_id == tenant_id,
+                    Membership.user_id.in_(people),
+                    Membership.status == "active",
+                )
+            )
+        ).all()
     )
-    if person is None:
+    if active != people:
         raise ApiError("person_not_found", "That person is not a member of this company.", 404)
+    everyone = people | {actor.user.id}
+    kind = "dm" if len(people) == 1 else "group"
     mine = select(TeamSpaceMember.space_id).where(TeamSpaceMember.user_id == actor.user.id)
-    theirs = select(TeamSpaceMember.space_id).where(TeamSpaceMember.user_id == data.user_id)
-    existing = await db.scalar(
-        select(TeamSpace).where(
-            TeamSpace.tenant_id == tenant_id,
-            TeamSpace.kind == "dm",
-            TeamSpace.id.in_(mine),
-            TeamSpace.id.in_(theirs),
+    candidates = (
+        await db.scalars(
+            select(TeamSpace).where(
+                TeamSpace.tenant_id == tenant_id,
+                TeamSpace.kind == kind,
+                TeamSpace.id.in_(mine),
+            )
         )
-    )
-    if existing is not None:
-        return await _space_out(db, actor, existing), False
-    space = TeamSpace(tenant_id=tenant_id, kind="dm", name=None, created_by=actor.user.id)
+    ).all()
+    for candidate in candidates:
+        members = set(
+            (
+                await db.scalars(
+                    select(TeamSpaceMember.user_id).where(TeamSpaceMember.space_id == candidate.id)
+                )
+            ).all()
+        )
+        if members == everyone:
+            return await _space_out(db, actor, candidate), False
+    space = TeamSpace(tenant_id=tenant_id, kind=kind, name=None, created_by=actor.user.id)
     db.add(space)
     await db.flush()
     db.add_all(
-        [
-            TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=actor.user.id),
-            TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=data.user_id),
-        ]
+        [TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=user) for user in everyone]
     )
     await db.flush()
     return await _space_out(db, actor, space), True
@@ -635,16 +668,8 @@ async def search(db: Db, actor: Actor, term: str, limit: int) -> list[schemas.Se
     }
     labels: dict[int, str] = {}
     for space in spaces.values():
-        if space.kind == "channel":
-            labels[space.id] = f"#{space.name}"
-            continue
-        other = await db.scalar(
-            select(TeamSpaceMember.user_id).where(
-                TeamSpaceMember.space_id == space.id, TeamSpaceMember.user_id != actor.user.id
-            )
-        )
-        person = (await _people(db, {other}))[other] if other is not None else None
-        labels[space.id] = person.name if person else "Direct message"
+        others = [] if space.kind == "channel" else await _others(db, actor, space)
+        labels[space.id] = _title(space, others)
     messages = await _messages_out(db, actor, list(rows))
     return [
         schemas.SearchHit(

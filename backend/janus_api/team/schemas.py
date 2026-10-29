@@ -15,8 +15,11 @@ class ChannelIn(BaseModel):
 
 
 class DirectIn(BaseModel):
+    """One person makes a direct conversation; two or more make a group."""
+
     model_config = ConfigDict(extra="forbid")
-    user_id: int = Field(gt=0)
+    user_id: int | None = Field(default=None, gt=0)
+    user_ids: list[int] = Field(default_factory=list, max_length=15)
 
 
 class MessageIn(BaseModel):
@@ -47,8 +50,9 @@ class PersonOut(BaseModel):
 
 class SpaceOut(BaseModel):
     id: str
-    kind: Literal["channel", "dm"]
+    kind: Literal["channel", "dm", "group"]
     name: str | None
+    title: str
     topic: str
     memberCount: int
     joined: bool
@@ -76,7 +80,7 @@ class SearchHit(BaseModel):
     message: "MessageOut"
     spaceId: str
     spaceLabel: str
-    spaceKind: Literal["channel", "dm"]
+    spaceKind: Literal["channel", "dm", "group"]
 
 
 class MessageOut(BaseModel):
