@@ -73,3 +73,18 @@ async def test_an_agent_can_add_a_lead_and_the_same_phone_is_not_taken_twice(
     # The same phone joins the existing contact as a new lead, as webhook captures do.
     assert second.status_code == 201, second.text
     assert second.json()["customerId"] == first.json()["customerId"]
+
+
+async def test_the_sources_list_leaves_out_the_manual_entry_connection(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    body = {"name": "Asha Traders", "phone": "9876543210", "source": "manual"}
+    created = await client.post(
+        "/v1/leads", headers={**owner.headers, **_key("lead-src")}, json=body
+    )
+    assert created.status_code == 201, created.text
+
+    listed = await client.get("/v1/sources", headers=owner.headers)
+    assert listed.status_code == 200, listed.text
+    assert listed.json() == []
