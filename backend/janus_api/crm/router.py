@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query, Response
 
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
@@ -21,6 +21,27 @@ async def leads(
     return await service.list_leads(
         db, actor.session.tenant_id, actor.user.id, actor.permissions, after_id, limit
     )
+
+
+@router.post("/leads", response_model=schemas.LeadOut, status_code=201)
+async def create_lead(
+    data: schemas.ManualLeadIn,
+    actor: Writer,
+    db: Db,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> schemas.LeadOut:
+    lead, created = await service.create_manual_lead(
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        data,
+        idempotency_key,
+    )
+    if not created:
+        response.status_code = 200
+    return lead
 
 
 @router.get("/leads/{lead_id}", response_model=schemas.LeadOut)
