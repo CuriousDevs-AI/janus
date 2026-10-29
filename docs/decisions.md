@@ -113,3 +113,4 @@ One line per decision. Newest items go at the bottom.
 - HR (demo data): on a real account the HR store starts empty and drops its saved demo people, payroll runs, policies, announcements, exit cases and candidate notes. The payroll fallback for other companies (which showed a locked September and an October review run) is demo-only.
 - HR (greeting and notes): the home greeting uses the signed-in name. "Illustrative figures" and "Demo punches" copy shows only in demo mode; on a real account attendance says punches are saved in this browser only.
 - HR (local only): HR records, attendance and payroll are still kept in the browser, not on the server.
+- Finance (local seeds): opening cash, bank lines and entries, draws, close reviews, expenses and petty cash top-ups are demo-only. Saved copies reset them on a real account; they are still kept in the browser, not on the server.

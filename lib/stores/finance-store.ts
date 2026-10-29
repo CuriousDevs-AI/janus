@@ -485,7 +485,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills"]),
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills", "draws", "bankEntries", "openingCash", "bankLines", "closeReviews", "expenses", "pettyCashTopUps"]),
     partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, shareCapital: state.shareCapital, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
   ),
 );
