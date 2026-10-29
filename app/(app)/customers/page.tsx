@@ -145,6 +145,8 @@ export default function CustomersPage() {
           <EmptyState icon={Building2} title="No live customer records match" description="Connect a lead source or try a different filter or search term." />
         </div>
       ) : !loading && (
+        <>
+        <p className="px-6 pt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
         <Table>
           <TableHeader>
             <TableRow>
@@ -183,6 +185,7 @@ export default function CustomersPage() {
             })}
           </TableBody>
         </Table>
+        </>
       )}
     </div>
   );
