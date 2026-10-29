@@ -170,7 +170,7 @@ function ConversationList({
           >
             <span className="text-sm font-medium">{row.name}</span>
             <span className="text-xs text-muted-foreground">
-              {row.company} · {formatDateTime(row.lastMessageAt)}
+              {[row.company, formatDateTime(row.lastMessageAt)].filter(Boolean).join(" · ")}
             </span>
           </button>
         </li>
@@ -239,7 +239,7 @@ function ThreadView({
           >
             <p className="whitespace-pre-wrap break-words">{item.body}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              {formatDateTime(item.createdAt)} · {item.status}
+              {formatDateTime(item.createdAt)} · {deliveryLabel(item.status)}
             </p>
           </div>
         ))}
@@ -278,4 +278,17 @@ function ThreadView({
       </form>
     </>
   );
+}
+
+/** Plain words for a message's delivery status. */
+function deliveryLabel(status: string) {
+  const labels: Record<string, string> = {
+    queued: "Sending",
+    sent: "Sent",
+    delivered: "Delivered",
+    read: "Read",
+    received: "Received",
+    failed: "Not delivered",
+  };
+  return labels[status] ?? status;
 }
