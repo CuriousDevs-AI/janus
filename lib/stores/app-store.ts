@@ -581,7 +581,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
 
   createTicket: ({ customerId, subject, description, priority }) => {
-    const ticketId = nextId("tck");
+    // The id is the server's key for the ticket, so it must be unique per company, not just on this screen.
+    const ticketId = demoMode ? nextId("tck") : `tck-${crypto.randomUUID()}`;
     const conversationId = nextId("conv");
     const now = new Date().toISOString();
     const conversation: Conversation = {

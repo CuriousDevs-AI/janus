@@ -18,6 +18,10 @@ import {
   Clock,
 } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
+import { useApi } from "@/lib/api/use-api";
+import type { Lead } from "@/lib/api/types";
+import { demoMode } from "@/lib/demo-mode";
+import { customersFromLeads } from "@/lib/customers-from-leads";
 import { message } from "@/lib/api/client";
 import {
   assignSupportTicket,
@@ -46,7 +50,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const access = useCrmAccess();
   const found = useAppStore((s) => s.tickets.find((t) => t.id === id));
   const ticket = found && access.ticketVisible(found) ? found : undefined;
-  const customer = useAppStore((s) => s.customers.find((c) => c.id === ticket?.customerId));
+  // A real account's customers come from its leads; the demo list is the demo's own.
+  const storeCustomer = useAppStore((s) => s.customers.find((c) => c.id === ticket?.customerId));
+  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
+  const customer = demoMode ? storeCustomer : customersFromLeads(leadsApi.data ?? []).find((c) => c.id === ticket?.customerId);
   const ticketsStore = useAppStore((s) => s.tickets);
   const otherTickets = ticketsStore.filter((t) => t.customerId === ticket?.customerId && t.id !== ticket?.id);
   const company = useCompany(customer?.companyId);
