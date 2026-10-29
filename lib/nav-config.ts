@@ -29,6 +29,7 @@ import {
   MessageSquare,
   UserRoundPlus,
   Users,
+  Volume2,
   WalletCards,
   Workflow,
 } from "lucide-react";
@@ -149,6 +150,12 @@ export const portfolioNavSections: NavSection[] = [
 ];
 
 const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | "crm-sales">, NavSection[]> = {
+  "team-chat": [
+    { title: "Team Chat", items: [
+      { label: "Chat", href: "/team?workspace=team-chat", icon: Hash },
+      { label: "Voice channels", href: "/team?view=voice&workspace=team-chat", icon: Volume2 },
+    ] },
+  ],
   "hr-people": [
     { title: "My HR", items: [
       { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard },
@@ -293,19 +300,11 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   ],
 };
 
-/** Company-wide places that belong to no one workspace, so they sit above every workspace's menu. */
-export const companyNavSection: NavSection = {
-  title: "Company",
-  items: [{ label: "Team Chat", href: "/team", icon: Hash }],
-};
-
 export function getNavSectionsForWorkspace(workspaceId: WorkspaceId): NavSection[] {
+  if (workspaceId === "crm-sales") return crmNavSections;
+  if (workspaceId === "business") return businessNavSections;
   if (workspaceId === "portfolio") return portfolioNavSections;
-  const sections =
-    workspaceId === "crm-sales" ? crmNavSections
-    : workspaceId === "business" ? businessNavSections
-    : moduleNavSections[workspaceId];
-  return [companyNavSection, ...sections];
+  return moduleNavSections[workspaceId];
 }
 
 export function appendWorkspace(href: string, workspaceId: WorkspaceId) {

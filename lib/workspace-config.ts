@@ -7,7 +7,8 @@ export type WorkspaceId =
   | "projects-delivery"
   | "customer-support"
   | "operations-inventory"
-  | "it-infrastructure";
+  | "it-infrastructure"
+  | "team-chat";
 
 export type WorkspaceStatus = "active" | "planned";
 
@@ -77,6 +78,12 @@ export const workspaceDefinitions: WorkspaceDefinition[] = [
     name: "IT & Infrastructure",
     description: "Assets, incidents and infrastructure work.",
     status: "planned",
+  },
+  {
+    id: "team-chat",
+    name: "Team Chat",
+    description: "Channels, direct messages, voice and screen sharing for the whole company.",
+    status: "active",
   },
 ];
 
