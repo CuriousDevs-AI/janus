@@ -12,6 +12,8 @@ import {
   type Item,
   type Movement,
   type Return,
+  type StockCount,
+  type Transfer,
   TODAY,
   useOperationsStore,
 } from "@/lib/stores/operations-store";
@@ -39,7 +41,7 @@ interface ServerMovement {
   item_key: string;
   location_id: number;
   batch_no: string | null;
-  kind: "receipt" | "adjustment";
+  kind: "receipt" | "adjustment" | "dispatch" | "return" | "transfer_out" | "transfer_in";
   qty: number;
   reason: string;
   booked_on: string;
@@ -95,6 +97,29 @@ interface ServerReturn {
   raised_by: string;
   inspected_by: string | null;
 }
+interface ServerTransfer {
+  id: string;
+  number: string;
+  item_key: string;
+  batch_no: string | null;
+  qty: number;
+  from_location_id: number;
+  to_location_id: number;
+  transporter: string;
+  lr_number: string | null;
+  status: Transfer["status"];
+  booked_on: string;
+  sent_by: string;
+  received_by: string | null;
+}
+interface ServerCount {
+  id: string;
+  number: string;
+  location_id: number;
+  booked_on: string;
+  counted_by: string;
+  lines: { item_key: string; batch_no: string | null; system: number; counted: number; variance: number }[];
+}
 interface ServerLedger {
   items: ServerItem[];
   batches: ServerBatch[];
@@ -102,6 +127,8 @@ interface ServerLedger {
   adjustments: ServerAdjustment[];
   dispatches: ServerDispatch[];
   returns: ServerReturn[];
+  transfers: ServerTransfer[];
+  counts: ServerCount[];
 }
 
 type DispatchInput = Parameters<ReturnType<typeof useOperationsStore.getState>["createDispatch"]>[0];
@@ -123,7 +150,7 @@ const toBatch = (row: ServerBatch): Batch => ({ id: row.key, itemId: row.item_ke
 const toMovement = (row: ServerMovement): Movement => ({
   id: row.key,
   date: row.booked_on,
-  type: row.kind,
+  type: row.kind.startsWith("transfer") ? "transfer" : (row.kind as Movement["type"]),
   itemId: row.item_key,
   locationId: row.location_id,
   batchNo: row.batch_no,
@@ -168,6 +195,30 @@ const toDispatch = (row: ServerDispatch): Dispatch => ({
   shipped: row.shipped ?? undefined,
 });
 
+const toTransfer = (row: ServerTransfer): Transfer => ({
+  id: row.id,
+  number: row.number,
+  date: row.booked_on,
+  itemId: row.item_key,
+  qty: row.qty,
+  batchNo: row.batch_no,
+  fromLocationId: row.from_location_id,
+  toLocationId: row.to_location_id,
+  transporter: row.transporter,
+  lrNumber: row.lr_number ?? "",
+  status: row.status,
+  by: row.sent_by,
+});
+
+const toCount = (row: ServerCount): StockCount => ({
+  id: row.id,
+  number: row.number,
+  date: row.booked_on,
+  locationId: row.location_id,
+  lines: row.lines.map((line) => ({ itemId: line.item_key, batchNo: line.batch_no, system: line.system, counted: line.counted, variance: line.variance })),
+  by: row.counted_by,
+});
+
 const toReturn = (row: ServerReturn): Return => ({
   id: row.id,
   number: row.number,
@@ -191,6 +242,8 @@ function apply(ledger: ServerLedger) {
     adjustments: ledger.adjustments.map(toAdjustment),
     dispatches: ledger.dispatches.map(toDispatch),
     returns: ledger.returns.map(toReturn),
+    transfers: ledger.transfers.map(toTransfer),
+    counts: ledger.counts.map(toCount),
   });
 }
 
@@ -454,6 +507,82 @@ export async function inspectReturn(id: string, condition: "good" | "damaged", b
     });
     await syncOperations();
     addTrail(trailEntry("operations", TODAY, by, `Inspected ${row.number}: ${row.qty} ${condition === "good" ? "back to stock" : "not restocked (damaged)"}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Sends stock to another location. It leaves the sender now and arrives when received. */
+export async function sendTransfer(
+  input: Omit<Transfer, "id" | "number" | "date" | "status" | "by" | "batchNo"> & { batchNo?: string | null },
+  by: string,
+): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().sendTransfer(input, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  try {
+    const row = await api<ServerTransfer>("/operations/transfers", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        item_key: input.itemId,
+        batch_no: input.batchNo ?? null,
+        qty: input.qty,
+        from_location_id: input.fromLocationId,
+        to_location_id: input.toLocationId,
+        transporter: input.transporter,
+        lr_number: input.lrNumber || null,
+      }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Sent ${input.qty} of ${row.item_key} under ${row.number}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Marks a transfer received. The stock arrives at the receiving location. */
+export async function receiveTransfer(id: string, by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().receiveTransfer(id, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  const number = useOperationsStore.getState().transfers.find((item) => item.id === id)?.number ?? id;
+  try {
+    await api(`/operations/transfers/${encodeURIComponent(id)}/receive`, { method: "POST" });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Received ${number}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/**
+ * Records a physical count at a location. Each difference becomes an adjustment, which waits for approval
+ * when it is above the approval value.
+ */
+export async function recordCount(
+  locationId: number,
+  counts: { itemId: string; batchNo?: string | null; counted: number }[],
+  by: string,
+): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().recordCount(locationId, counts, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  try {
+    const row = await api<ServerCount>("/operations/counts", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        location_id: locationId,
+        lines: counts.map((line) => ({ item_key: line.itemId, batch_no: line.batchNo ?? null, counted: line.counted })),
+      }),
+    });
+    await syncOperations();
+    const differences = row.lines.filter((line) => line.variance !== 0).length;
+    addTrail(trailEntry("operations", TODAY, by, `Counted ${row.number}: ${differences} difference${differences === 1 ? "" : "s"}`));
     return null;
   } catch (error: unknown) {
     return message(error);

@@ -347,7 +347,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       sendTransfer: (input, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
@@ -369,7 +368,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receiveTransfer: (id, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const transfer = get().transfers.find((t) => t.id === id);
@@ -384,7 +382,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       recordCount: (locationId, counts, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         if (counts.length === 0) return "Count at least one item.";

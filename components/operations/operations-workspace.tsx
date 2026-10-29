@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
-import { addItemRecord, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveStock, requestAdjustment, syncOperations } from "@/lib/operations-records";
+import { addItemRecord, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveStock, recordCount, requestAdjustment, receiveTransfer, sendTransfer, syncOperations } from "@/lib/operations-records";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
@@ -78,8 +78,6 @@ export function OperationsWorkspace() {
 function TransfersView({ me }: { me: string }) {
   const items = useOperationsStore((state) => state.items);
   const transfers = useOperationsStore((state) => state.transfers);
-  const sendTransfer = useOperationsStore((state) => state.sendTransfer);
-  const receiveTransfer = useOperationsStore((state) => state.receiveTransfer);
   const locations = useLocationsStore((state) => state.locations);
   const batches = useOperationsStore((state) => state.batches);
   const [itemId, setItemId] = React.useState("");
@@ -93,8 +91,8 @@ function TransfersView({ me }: { me: string }) {
   const itemBatches = batches.filter((b) => b.itemId === itemId);
   const locationName = (id: number) => locations.find((l) => l.id === id)?.name ?? "location";
 
-  function send() {
-    const problem = sendTransfer({ itemId, batchNo: batchNo || null, qty: Number(qty), fromLocationId: Number(fromId), toLocationId: Number(toId), transporter, lrNumber }, me);
+  async function send() {
+    const problem = await sendTransfer({ itemId, batchNo: batchNo || null, qty: Number(qty), fromLocationId: Number(fromId), toLocationId: Number(toId), transporter, lrNumber }, me);
     if (problem) return toast.error(problem);
     toast.success("Transfer sent; the stock is in transit");
     setQty(""); setTransporter(""); setLrNumber(""); setBatchNo("");
@@ -131,7 +129,7 @@ function TransfersView({ me }: { me: string }) {
                 </span>
                 <span className="flex items-center gap-2">
                   <Badge variant={t.status === "received" ? "success" : "warning"}>{t.status}</Badge>
-                  {t.status === "in transit" ? <Button size="sm" variant="secondary" onClick={() => { const p = receiveTransfer(t.id, me); if (p) toast.error(p); else toast.success(`${t.number} received`); }}>Mark received</Button> : null}
+                  {t.status === "in transit" ? <Button size="sm" variant="secondary" onClick={() => { void receiveTransfer(t.id, me).then((p) => (p ? toast.error(p) : toast.success(`${t.number} received`))); }}>Mark received</Button> : null}
                 </span>
               </div>
             );
@@ -247,7 +245,6 @@ function PhysicalCountView({ me }: { me: string }) {
   const items = useOperationsStore((state) => state.items);
   const movements = useOperationsStore((state) => state.movements);
   const counts = useOperationsStore((state) => state.counts);
-  const recordCount = useOperationsStore((state) => state.recordCount);
   const locations = useLocationsStore((state) => state.locations);
   const [locationId, setLocationId] = React.useState("");
   const [entries, setEntries] = React.useState<Record<string, string>>({});
@@ -257,9 +254,9 @@ function PhysicalCountView({ me }: { me: string }) {
     ? batches.filter((b) => b.itemId === item.id).map((b) => ({ key: `${item.id}|${b.batchNo}`, item, batchNo: b.batchNo as string | null }))
     : [{ key: `${item.id}|`, item, batchNo: null as string | null }]);
 
-  function submit() {
+  async function submit() {
     const counted = rows.filter((r) => entries[r.key] !== undefined && entries[r.key] !== "").map((r) => ({ itemId: r.item.id, batchNo: r.batchNo, counted: Number(entries[r.key]) }));
-    const problem = recordCount(Number(locationId), counted, me);
+    const problem = await recordCount(Number(locationId), counted, me);
     if (problem) return toast.error(problem);
     toast.success("Count recorded; any differences went to adjustment approval");
     setEntries({});

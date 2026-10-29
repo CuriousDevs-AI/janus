@@ -64,3 +64,10 @@ One line per decision. Newest items go at the bottom.
 - Permission: dispatch and return steps need `stock:adjust`, the same permission as the stock ledger. The screen does not yet split pick and ship from receipts.
 - Screen: after each dispatch or return change the screen reloads the ledger from the server.
 - Pre-existing, not changed here: the Workflows view shows duplicate-key warnings in the browser console.
+- Transfers and counts (scope): stock transfers between locations and physical counts are on the server. With them, the stock ledger covers every stock movement except purchase order receipts, which are the last piece of Operations; requisitions remain local.
+- Transfers (stock): sending takes the stock out of the sending location in the same step, and receiving puts it in at the receiving location. The send checks stock at the sender and refuses a transfer to the same location. A transfer can be received once. A batch-tracked item needs its batch.
+- Counts (adjustments): a count stores each line's system figure and counted figure, then books each difference as an adjustment in the same transaction. Under the approval value it is applied at once; above it, it waits for another person, exactly as a manual adjustment does. A difference can never take stock below zero, because the count holds the item lock and a counted figure cannot be negative.
+- Counts (checks): a line counted twice, a batch that is not known, and a negative counted figure are each refused before anything is written. A retry with the same Idempotency-Key returns the first count and books no second set of adjustments.
+- Numbers: transfers `TRF-<year>-<n>`, counts `CNT-<year>-<n>`, unique per company.
+- Permission: transfers and counts need `stock:adjust`, as the rest of the ledger does.
+- Screen: each change reloads the ledger from the server, so the system figures a count shows are the server's.

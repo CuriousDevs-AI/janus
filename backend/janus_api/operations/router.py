@@ -22,11 +22,14 @@ from janus_api.core.errors import ApiError
 from janus_api.operations.models import (
     OpsAdjustment,
     OpsBatch,
+    OpsCount,
+    OpsCountLine,
     OpsDispatch,
     OpsDispatchLine,
     OpsItem,
     OpsMovement,
     OpsReturn,
+    OpsTransfer,
 )
 
 router = APIRouter(prefix="/v1/operations", tags=["Operations"])
@@ -181,6 +184,39 @@ class ReturnOut(BaseModel):
     inspected_by: str | None
 
 
+class TransferOut(BaseModel):
+    id: str
+    number: str
+    item_key: str
+    batch_no: str | None
+    qty: float
+    from_location_id: int
+    to_location_id: int
+    transporter: str
+    lr_number: str | None
+    status: str
+    booked_on: date
+    sent_by: str
+    received_by: str | None
+
+
+class CountLineOut(BaseModel):
+    item_key: str
+    batch_no: str | None
+    system: float
+    counted: float
+    variance: float
+
+
+class CountOut(BaseModel):
+    id: str
+    number: str
+    location_id: int
+    booked_on: date
+    counted_by: str
+    lines: list[CountLineOut]
+
+
 class LedgerOut(BaseModel):
     items: list[ItemOut]
     batches: list[BatchOut]
@@ -188,6 +224,8 @@ class LedgerOut(BaseModel):
     adjustments: list[AdjustmentOut]
     dispatches: list[DispatchOut]
     returns: list[ReturnOut]
+    transfers: list[TransferOut]
+    counts: list[CountOut]
 
 
 def _item_out(row: OpsItem) -> ItemOut:
@@ -322,6 +360,18 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
             select(OpsReturn).where(OpsReturn.tenant_id == tenant_id).order_by(OpsReturn.id.desc())
         )
     ).all()
+    transfers = (
+        await db.scalars(
+            select(OpsTransfer)
+            .where(OpsTransfer.tenant_id == tenant_id)
+            .order_by(OpsTransfer.id.desc())
+        )
+    ).all()
+    counts = (
+        await db.scalars(
+            select(OpsCount).where(OpsCount.tenant_id == tenant_id).order_by(OpsCount.id.desc())
+        )
+    ).all()
     item_keys = {item.id: item.item_key for item in items}
     return LedgerOut(
         items=[_item_out(item) for item in items],
@@ -368,6 +418,8 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
         ],
         dispatches=[await _dispatch_out(db, row) for row in dispatches],
         returns=[await _return_out(db, row) for row in returns],
+        transfers=[await _transfer_out(db, row) for row in transfers],
+        counts=[await _count_out(db, row) for row in counts],
     )
 
 
@@ -569,6 +621,54 @@ async def receive_stock(
     return await _movement_out(db, row)
 
 
+async def _book_adjustment(
+    db: Db,
+    tenant_id: int,
+    actor: Actor,
+    item: OpsItem,
+    location_id: int,
+    batch_no: str | None,
+    qty: Decimal,
+    reason: str,
+    idempotency_key: str,
+) -> OpsAdjustment:
+    """Books an adjustment. Under the approval value it is applied at once; above it, it waits."""
+    value = int((abs(qty) * item.rate_paise).to_integral_value(rounding=ROUND_HALF_UP))
+    needs_approval = value > APPROVAL_VALUE_PAISE
+    row = OpsAdjustment(
+        tenant_id=tenant_id,
+        item_id=item.id,
+        location_id=location_id,
+        batch_no=batch_no,
+        qty=qty,
+        reason=reason,
+        value_paise=value,
+        status="pending" if needs_approval else "applied",
+        booked_on=_today(),
+        requested_by=actor.user.id,
+        requested_by_name=actor.user.name,
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    if not needs_approval:
+        db.add(
+            OpsMovement(
+                tenant_id=tenant_id,
+                move_key=f"adj-{row.id}",
+                item_id=item.id,
+                location_id=location_id,
+                batch_no=batch_no,
+                kind="adjustment",
+                qty=qty,
+                reason=reason,
+                booked_on=row.booked_on,
+                recorded_by_name=actor.user.name,
+            )
+        )
+    return row
+
+
 @router.post("/items/{key}/adjustments", response_model=AdjustmentOut, status_code=201)
 async def request_adjustment(
     key: str,
@@ -604,39 +704,17 @@ async def request_adjustment(
             raise ApiError(
                 "insufficient_stock", f"Only {available} {item.unit} is in stock here.", 422
             )
-    value = int((abs(data.qty) * item.rate_paise).to_integral_value(rounding=ROUND_HALF_UP))
-    needs_approval = value > APPROVAL_VALUE_PAISE
-    row = OpsAdjustment(
-        tenant_id=tenant_id,
-        item_id=item.id,
-        location_id=data.location_id,
-        batch_no=batch_no,
-        qty=data.qty,
-        reason=data.reason.strip(),
-        value_paise=value,
-        status="pending" if needs_approval else "applied",
-        booked_on=_today(),
-        requested_by=actor.user.id,
-        requested_by_name=actor.user.name,
-        idempotency_key=idempotency_key,
+    row = await _book_adjustment(
+        db,
+        tenant_id,
+        actor,
+        item,
+        data.location_id,
+        batch_no,
+        data.qty,
+        data.reason.strip(),
+        idempotency_key,
     )
-    db.add(row)
-    await db.flush()
-    if not needs_approval:
-        db.add(
-            OpsMovement(
-                tenant_id=tenant_id,
-                move_key=f"adj-{row.id}",
-                item_id=item.id,
-                location_id=data.location_id,
-                batch_no=batch_no,
-                kind="adjustment",
-                qty=data.qty,
-                reason=row.reason,
-                booked_on=row.booked_on,
-                recorded_by_name=actor.user.name,
-            )
-        )
     audit.record(
         db,
         "operations.adjustment_requested",
@@ -1112,3 +1190,288 @@ async def inspect_return(
         details={"return": row.number, "condition": data.condition},
     )
     return await _return_out(db, row)
+
+
+# ---- Transfers and physical counts -------------------------------------------------------------
+
+
+class TransferIn(BaseModel):
+    item_key: str = Field(min_length=1, max_length=64)
+    batch_no: str | None = Field(default=None, max_length=64)
+    qty: Decimal = Field(gt=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+    from_location_id: int = Field(ge=0, le=999)
+    to_location_id: int = Field(ge=0, le=999)
+    transporter: str = Field(min_length=2, max_length=160)
+    lr_number: str | None = Field(default=None, max_length=60)
+
+
+class CountLineIn(BaseModel):
+    item_key: str = Field(min_length=1, max_length=64)
+    batch_no: str | None = Field(default=None, max_length=64)
+    counted: Decimal = Field(ge=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+
+
+class CountIn(BaseModel):
+    location_id: int = Field(ge=0, le=999)
+    lines: list[CountLineIn] = Field(min_length=1, max_length=500)
+
+
+async def _transfer_out(db: Db, row: OpsTransfer) -> TransferOut:
+    item = await _item_by_id(db, row.item_id)
+    return TransferOut(
+        id=str(row.id),
+        number=row.number,
+        item_key=item.item_key,
+        batch_no=row.batch_no,
+        qty=float(row.qty),
+        from_location_id=row.from_location_id,
+        to_location_id=row.to_location_id,
+        transporter=row.transporter,
+        lr_number=row.lr_number,
+        status=row.status,
+        booked_on=row.booked_on,
+        sent_by=row.sent_by_name,
+        received_by=row.received_by_name,
+    )
+
+
+async def _count_out(db: Db, row: OpsCount) -> CountOut:
+    lines = (
+        await db.scalars(
+            select(OpsCountLine)
+            .where(OpsCountLine.count_id == row.id)
+            .order_by(OpsCountLine.position)
+        )
+    ).all()
+    out: list[CountLineOut] = []
+    for line in lines:
+        item = await _item_by_id(db, line.item_id)
+        out.append(
+            CountLineOut(
+                item_key=item.item_key,
+                batch_no=line.batch_no,
+                system=float(line.system_qty),
+                counted=float(line.counted_qty),
+                variance=float(line.variance),
+            )
+        )
+    return CountOut(
+        id=str(row.id),
+        number=row.number,
+        location_id=row.location_id,
+        booked_on=row.booked_on,
+        counted_by=row.counted_by_name,
+        lines=out,
+    )
+
+
+@router.post("/transfers", response_model=TransferOut, status_code=201)
+async def send_transfer(
+    data: TransferIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> TransferOut:
+    """Sends stock to another location. It leaves the sender now and arrives when received."""
+    tenant_id = actor.session.tenant_id
+    existing = await db.scalar(
+        select(OpsTransfer).where(
+            OpsTransfer.tenant_id == tenant_id, OpsTransfer.idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        response.status_code = 200
+        return await _transfer_out(db, existing)
+    if data.from_location_id == data.to_location_id:
+        raise ApiError("same_location", "The item is already at that location.", 422)
+    item = await _item(db, tenant_id, data.item_key, lock=True)
+    batch_no = _batch_for_item(item, data.batch_no)
+    available = await _on_hand(db, tenant_id, item, data.from_location_id, batch_no)
+    if data.qty > available:
+        raise ApiError(
+            "insufficient_stock",
+            f"Only {available} {item.unit} of {item.name} is at the sending location.",
+            422,
+        )
+    count = await db.scalar(
+        select(func.count()).select_from(OpsTransfer).where(OpsTransfer.tenant_id == tenant_id)
+    )
+    row = OpsTransfer(
+        tenant_id=tenant_id,
+        number=f"TRF-{_today().year}-{101 + (count or 0):04d}",
+        item_id=item.id,
+        batch_no=batch_no,
+        qty=data.qty,
+        from_location_id=data.from_location_id,
+        to_location_id=data.to_location_id,
+        transporter=data.transporter.strip(),
+        lr_number=(data.lr_number or "").strip() or None,
+        status="in transit",
+        booked_on=_today(),
+        sent_by=actor.user.id,
+        sent_by_name=actor.user.name,
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    db.add(
+        OpsMovement(
+            tenant_id=tenant_id,
+            move_key=f"trf-out-{row.id}",
+            item_id=item.id,
+            location_id=data.from_location_id,
+            batch_no=batch_no,
+            kind="transfer_out",
+            qty=-data.qty,
+            reason=f"Sent {row.number}",
+            booked_on=row.booked_on,
+            recorded_by_name=actor.user.name,
+        )
+    )
+    await db.flush()
+    audit.record(
+        db,
+        "operations.transfer_sent",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"transfer": row.number, "item": item.sku, "qty": str(data.qty)},
+    )
+    return await _transfer_out(db, row)
+
+
+@router.post("/transfers/{transfer_id}/receive", response_model=TransferOut)
+async def receive_transfer(transfer_id: int, actor: Stock, db: Db, request: Request) -> TransferOut:
+    tenant_id = actor.session.tenant_id
+    row = await db.scalar(
+        select(OpsTransfer)
+        .where(OpsTransfer.tenant_id == tenant_id, OpsTransfer.id == transfer_id)
+        .with_for_update()
+    )
+    if row is None:
+        raise ApiError("not_found", "Transfer not found.", 404)
+    if row.status != "in transit":
+        raise ApiError("already_received", "This transfer has already been received.", 409)
+    item = await _item_by_id(db, row.item_id)
+    row.status = "received"
+    row.received_by_name = actor.user.name
+    db.add(
+        OpsMovement(
+            tenant_id=tenant_id,
+            move_key=f"trf-in-{row.id}",
+            item_id=item.id,
+            location_id=row.to_location_id,
+            batch_no=row.batch_no,
+            kind="transfer_in",
+            qty=row.qty,
+            reason=f"Received {row.number}",
+            booked_on=_today(),
+            recorded_by_name=actor.user.name,
+        )
+    )
+    await db.flush()
+    audit.record(
+        db,
+        "operations.transfer_received",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"transfer": row.number},
+    )
+    return await _transfer_out(db, row)
+
+
+@router.post("/counts", response_model=CountOut, status_code=201)
+async def record_count(
+    data: CountIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> CountOut:
+    """Records a physical count. Each difference from the system is booked as an adjustment."""
+    tenant_id = actor.session.tenant_id
+    existing = await db.scalar(
+        select(OpsCount).where(
+            OpsCount.tenant_id == tenant_id, OpsCount.idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        response.status_code = 200
+        return await _count_out(db, existing)
+    keys = sorted({line.item_key for line in data.lines})
+    items = {key: await _item(db, tenant_id, key, lock=True) for key in keys}
+    seen: set[tuple[int, str | None]] = set()
+    priced: list[tuple[OpsItem, str | None, Decimal, Decimal]] = []
+    for line in data.lines:
+        item = items[line.item_key]
+        batch_no = _batch_for_item(item, line.batch_no)
+        if batch_no is not None:
+            known = await db.scalar(
+                select(OpsBatch.id).where(
+                    OpsBatch.item_id == item.id, OpsBatch.batch_no == batch_no
+                )
+            )
+            if known is None:
+                raise ApiError(
+                    "unknown_batch", f"Batch {batch_no} is not known for {item.name}.", 422
+                )
+        if (item.id, batch_no) in seen:
+            raise ApiError("duplicate_line", f"{item.name} is counted twice.", 422)
+        seen.add((item.id, batch_no))
+        system = await _on_hand(db, tenant_id, item, data.location_id, batch_no)
+        priced.append((item, batch_no, system, line.counted))
+    count = await db.scalar(
+        select(func.count()).select_from(OpsCount).where(OpsCount.tenant_id == tenant_id)
+    )
+    row = OpsCount(
+        tenant_id=tenant_id,
+        number=f"CNT-{_today().year}-{101 + (count or 0):04d}",
+        location_id=data.location_id,
+        booked_on=_today(),
+        counted_by=actor.user.id,
+        counted_by_name=actor.user.name,
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    for position, (item, batch_no, system, counted) in enumerate(priced):
+        variance = counted - system
+        db.add(
+            OpsCountLine(
+                tenant_id=tenant_id,
+                count_id=row.id,
+                position=position,
+                item_id=item.id,
+                batch_no=batch_no,
+                system_qty=system,
+                counted_qty=counted,
+                variance=variance,
+            )
+        )
+        if variance != 0:
+            # The item is locked, so a difference can never take stock below zero.
+            await _book_adjustment(
+                db,
+                tenant_id,
+                actor,
+                item,
+                data.location_id,
+                batch_no,
+                variance,
+                f"Physical count {row.number}",
+                f"{idempotency_key}-{position}",
+            )
+    await db.flush()
+    audit.record(
+        db,
+        "operations.count_recorded",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"count": row.number, "lines": len(priced)},
+    )
+    return await _count_out(db, row)

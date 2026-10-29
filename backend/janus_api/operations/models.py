@@ -63,11 +63,13 @@ class OpsMovement(Base):
         UniqueConstraint("tenant_id", "idempotency_key"),
         CheckConstraint("qty <> 0", name="ck_ops_movements_qty"),
         CheckConstraint(
-            "kind IN ('receipt', 'adjustment', 'dispatch', 'return')", name="ck_ops_movements_kind"
+            "kind IN ('receipt', 'adjustment', 'dispatch', 'return', 'transfer_out', "
+            "'transfer_in')",
+            name="ck_ops_movements_kind",
         ),
         CheckConstraint(
-            "(kind IN ('receipt', 'return') AND qty > 0)"
-            " OR (kind = 'dispatch' AND qty < 0) OR kind = 'adjustment'",
+            "(kind IN ('receipt', 'return', 'transfer_in') AND qty > 0)"
+            " OR (kind IN ('dispatch', 'transfer_out') AND qty < 0) OR kind = 'adjustment'",
             name="ck_ops_movements_sign",
         ),
     )
@@ -186,3 +188,64 @@ class OpsReturn(Base):
     raised_by_name: Mapped[str] = mapped_column(String(160))
     inspected_by_name: Mapped[str | None] = mapped_column(String(160))
     idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class OpsTransfer(Base):
+    """Stock moved between two locations: it leaves the sender when sent, arrives when received."""
+
+    __tablename__ = "ops_transfers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "idempotency_key"),
+        CheckConstraint("qty > 0", name="ck_ops_transfers_qty"),
+        CheckConstraint("from_location_id <> to_location_id", name="ck_ops_transfers_locations"),
+        CheckConstraint("status IN ('in transit', 'received')", name="ck_ops_transfers_status"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    number: Mapped[str] = mapped_column(String(20))
+    item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ops_items.id"))
+    batch_no: Mapped[str | None] = mapped_column(String(64))
+    qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    from_location_id: Mapped[int] = mapped_column(Integer)
+    to_location_id: Mapped[int] = mapped_column(Integer)
+    transporter: Mapped[str] = mapped_column(String(160))
+    lr_number: Mapped[str | None] = mapped_column(String(60))
+    status: Mapped[str] = mapped_column(String(12))
+    booked_on: Mapped[date] = mapped_column(Date)
+    sent_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    sent_by_name: Mapped[str] = mapped_column(String(160))
+    received_by_name: Mapped[str | None] = mapped_column(String(160))
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class OpsCount(Base):
+    """A physical count of one location. Each difference is booked as an adjustment."""
+
+    __tablename__ = "ops_counts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "idempotency_key"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    number: Mapped[str] = mapped_column(String(20))
+    location_id: Mapped[int] = mapped_column(Integer)
+    booked_on: Mapped[date] = mapped_column(Date)
+    counted_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    counted_by_name: Mapped[str] = mapped_column(String(160))
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class OpsCountLine(Base):
+    __tablename__ = "ops_count_lines"
+    __table_args__ = (
+        UniqueConstraint("count_id", "position"),
+        CheckConstraint("counted_qty >= 0", name="ck_ops_count_lines_counted"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    count_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ops_counts.id"))
+    position: Mapped[int] = mapped_column(Integer)
+    item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ops_items.id"))
+    batch_no: Mapped[str | None] = mapped_column(String(64))
+    system_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    counted_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    variance: Mapped[Decimal] = mapped_column(Numeric(12, 3))
