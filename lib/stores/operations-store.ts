@@ -8,6 +8,7 @@ import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
+import { demoMode } from "@/lib/demo-mode";
 
 /**
  * Operations & Inventory (phase 1): item master, stock by location and batch, stock movements,
@@ -122,6 +123,7 @@ export const useOperationsStore = create<OperationsState>()(
       trail: [],
       purchaseOrders: seed().purchaseOrders,
       addItem: (input) => {
+        if (!demoMode) return "Stock changes are recorded on the server.";
         if (input.name.trim().length < 2) return "Enter the item name.";
         if (!/^\d{4,8}$/.test(input.hsn.trim())) return "HSN code must be 4 to 8 digits.";
         if (get().items.some((item) => item.sku.toLowerCase() === input.sku.trim().toLowerCase())) return "This SKU already exists.";
@@ -200,6 +202,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receiveAgainstPO: (poId, receipts, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const order = get().purchaseOrders.find((o) => o.id === poId);
@@ -228,6 +231,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receive: (input, by) => {
+        if (!demoMode) return "Stock changes are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
@@ -250,6 +254,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       createDispatch: (input, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         if (input.customer.trim().length < 2) return "Enter the customer name.";
@@ -307,6 +312,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       authoriseReturn: (input, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const dispatch = get().dispatches.find((d) => d.id === input.dispatchId);
@@ -325,6 +331,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       inspectReturn: (id, condition, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const rma = get().returns.find((r) => r.id === id);
@@ -341,6 +348,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       sendTransfer: (input, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
@@ -362,6 +370,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receiveTransfer: (id, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const transfer = get().transfers.find((t) => t.id === id);
@@ -376,6 +385,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       recordCount: (locationId, counts, by) => {
+        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         if (counts.length === 0) return "Count at least one item.";
@@ -399,6 +409,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       requestAdjustment: (input, by) => {
+        if (!demoMode) return "Stock changes are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
@@ -419,6 +430,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       rejectAdjustment: (id, reason, by) => {
+        if (!demoMode) return "Stock changes are recorded on the server.";
         const adjustment = get().adjustments.find((a) => a.id === id);
         if (!adjustment) return "Adjustment not found.";
         if (adjustment.status !== "pending") return "Only a pending adjustment can be rejected.";
@@ -431,6 +443,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       approveAdjustment: (id, by) => {
+        if (!demoMode) return "Stock changes are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const adjustment = get().adjustments.find((a) => a.id === id);

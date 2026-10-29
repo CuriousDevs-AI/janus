@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { approveCreditNote, rejectCreditNote } from "@/lib/invoice-records";
+import { approveAdjustment, rejectAdjustment } from "@/lib/operations-records";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useProjectsStore } from "@/lib/stores/projects-store";
@@ -42,8 +43,6 @@ export function MoneyApprovalsQueue() {
   const rejectFund = useFinanceStore((state) => state.rejectFundRequest);
   const adjustments = useOperationsStore((state) => state.adjustments);
   const items = useOperationsStore((state) => state.items);
-  const approveAdjustment = useOperationsStore((state) => state.approveAdjustment);
-  const rejectAdjustment = useOperationsStore((state) => state.rejectAdjustment);
   const changes = useProjectsStore((state) => state.changes);
   const projects = useProjectsStore((state) => state.projects);
   const decideChange = useProjectsStore((state) => state.decideChange);

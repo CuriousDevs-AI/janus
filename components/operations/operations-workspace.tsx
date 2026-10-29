@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
+import { addItemRecord, approveAdjustment, receiveStock, requestAdjustment, syncOperations } from "@/lib/operations-records";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
@@ -33,6 +34,9 @@ const comingSoon: Record<string, string> = {
 };
 
 export function OperationsWorkspace() {
+  React.useEffect(() => {
+    syncOperations().catch((error: unknown) => toast.warning(`Stock not loaded from the server: ${message(error)}`));
+  }, []);
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
@@ -754,12 +758,11 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "war
 function ProductsView() {
   const items = useOperationsStore((state) => state.items);
   const movements = useOperationsStore((state) => state.movements);
-  const addItem = useOperationsStore((state) => state.addItem);
   const [form, setForm] = React.useState({ name: "", sku: "", unit: "piece", hsn: "", rate: "", gstRate: 18, reorderLevel: "0", trackBatch: false });
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
 
-  function save() {
-    const problem = addItem({ name: form.name.trim(), sku: form.sku.trim(), unit: form.unit.trim() || "piece", hsn: form.hsn.trim(), rate: Number(form.rate), gstRate: form.gstRate, reorderLevel: Number(form.reorderLevel), trackBatch: form.trackBatch });
+  async function save() {
+    const problem = await addItemRecord({ name: form.name.trim(), sku: form.sku.trim(), unit: form.unit.trim() || "piece", hsn: form.hsn.trim(), rate: Number(form.rate), gstRate: form.gstRate, reorderLevel: Number(form.reorderLevel), trackBatch: form.trackBatch });
     if (problem) return toast.error(problem);
     toast.success("Item added");
     setForm({ name: "", sku: "", unit: "piece", hsn: "", rate: "", gstRate: 18, reorderLevel: "0", trackBatch: false });
@@ -814,10 +817,7 @@ function InventoryView({ me }: { me: string }) {
   const items = useOperationsStore((state) => state.items);
   const batches = useOperationsStore((state) => state.batches);
   const movements = useOperationsStore((state) => state.movements);
-  const receive = useOperationsStore((state) => state.receive);
-  const requestAdjustment = useOperationsStore((state) => state.requestAdjustment);
   const adjustments = useOperationsStore((state) => state.adjustments);
-  const approveAdjustment = useOperationsStore((state) => state.approveAdjustment);
   const locations = useLocationsStore((state) => state.locations);
   const [itemId, setItemId] = React.useState("");
   const [locationId, setLocationId] = React.useState<number | "">("");
@@ -828,15 +828,15 @@ function InventoryView({ me }: { me: string }) {
   const [mode, setMode] = React.useState<"receive" | "adjust">("receive");
   const item = items.find((i) => i.id === itemId);
 
-  function save() {
+  async function save() {
     if (locationId === "") return toast.error("Choose a location.");
     if (mode === "receive") {
-      const problem = receive({ itemId, locationId: Number(locationId), batchNo: batchNo || null, expiry: expiry || null, qty: Number(qty), reason }, me);
+      const problem = await receiveStock({ itemId, locationId: Number(locationId), batchNo: batchNo || null, expiry: expiry || null, qty: Number(qty), reason }, me);
       if (problem) return toast.error(problem);
       toast.success("Stock received");
     } else {
       if (!hasPermission(session.permissions, "stock:adjust")) return toast.error("Needs the stock:adjust permission.");
-      const problem = requestAdjustment({ itemId, locationId: Number(locationId), batchNo: item?.trackBatch ? batchNo || null : null, qty: Number(qty), reason }, me);
+      const problem = await requestAdjustment({ itemId, locationId: Number(locationId), batchNo: item?.trackBatch ? batchNo || null : null, qty: Number(qty), reason }, me);
       if (problem) return toast.error(problem);
       toast.success(Math.abs(Number(qty)) * (item?.rate ?? 0) > useWorkflowRulesStore.getState().adjustmentApprovalValue ? "Adjustment sent for approval" : "Adjustment applied");
     }
@@ -873,7 +873,7 @@ function InventoryView({ me }: { me: string }) {
           <CardHeader><CardTitle className="text-base">Adjustments waiting approval</CardTitle></CardHeader>
           <CardContent className="grid gap-2 text-sm">
             {adjustments.filter((a) => a.status === "pending").map((a) => { const i = items.find((x) => x.id === a.itemId); return (
-              <div key={a.id} className="flex items-center justify-between gap-3"><span>{i?.name} · {a.qty > 0 ? "+" : ""}{a.qty} {i?.unit} · {money(a.value)} · {a.reason} · by {a.by}</span><Button size="sm" variant="secondary" onClick={() => { const p = approveAdjustment(a.id, me); if (p) toast.error(p); else toast.success("Adjustment applied"); }}>Approve</Button></div>
+              <div key={a.id} className="flex items-center justify-between gap-3"><span>{i?.name} · {a.qty > 0 ? "+" : ""}{a.qty} {i?.unit} · {money(a.value)} · {a.reason} · by {a.by}</span><Button size="sm" variant="secondary" onClick={() => { void approveAdjustment(a.id, me).then((p) => (p ? toast.error(p) : toast.success("Adjustment applied"))); }}>Approve</Button></div>
             ); })}
           </CardContent>
         </Card>
