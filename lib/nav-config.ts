@@ -13,6 +13,7 @@ import {
   FileCheck2,
   FlaskConical,
   Gauge,
+  Hash,
   Handshake,
   LayoutDashboard,
   LifeBuoy,
@@ -52,6 +53,7 @@ export const crmNavSections: NavSection[] = [
     items: [
       { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write" },
       { label: "Chats", href: "/inbox", icon: MessageCircle },
+      { label: "Team Chat", href: "/team", icon: Hash },
       { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage" },
       { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write" },
       { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write" },
