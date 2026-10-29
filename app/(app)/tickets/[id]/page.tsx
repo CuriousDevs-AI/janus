@@ -16,6 +16,7 @@ import {
   Edit3,
   ArrowUpRight,
   Clock,
+  MessageSquare,
 } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { useApi } from "@/lib/api/use-api";
@@ -94,7 +95,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           </div>
           <p className="text-[13px] text-muted-foreground">{ticket.subject}</p>
           <Link href={`/customers/${customer.id}`} className="text-[12px] text-muted-foreground hover:text-accent">
-            {customer.name} · {company?.name}
+            {[customer.name, company?.name].filter(Boolean).join(" · ")}
           </Link>
         </div>
         <div className="flex items-center gap-2">
@@ -254,9 +255,17 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             </div>
           )}
 
-          <div className="h-[560px] overflow-hidden rounded-lg border border-border">
-            <ConversationPanel conversationId={ticket.conversationId} />
-          </div>
+          {ticket.conversationId ? (
+            <div className="h-[360px] overflow-hidden rounded-lg border border-border sm:h-[560px]">
+              <ConversationPanel conversationId={ticket.conversationId} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border p-8 text-center">
+              <MessageSquare className="size-5 text-muted-foreground" />
+              <p className="text-sm font-medium">No chat behind this ticket</p>
+              <p className="max-w-sm text-xs text-muted-foreground">It was opened by hand, so there is no conversation to show. Notes and status changes appear in the history.</p>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-4">
