@@ -110,3 +110,6 @@ One line per decision. Newest items go at the bottom.
 - Demo data (vendors, projects, IT): saved copies drop the demo vendors, projects and IT records outside demo mode. The filter reads the demo lists directly (`withoutDemoRecords` in `lib/stores/server-owned.ts`), because those lists are empty for a real account.
 - Local-only records: vendors, projects, IT and the trails are still kept in the browser, not on the server. A company's records there are not shared across devices until they move to the server.
 - API keys: the security screen's key is demo-only. A real account shows "No API key issued yet" and Regenerate is refused, because keys are not issued by the server yet.
+- HR (demo data): on a real account the HR store starts empty and drops its saved demo people, payroll runs, policies, announcements, exit cases and candidate notes. The payroll fallback for other companies (which showed a locked September and an October review run) is demo-only.
+- HR (greeting and notes): the home greeting uses the signed-in name. "Illustrative figures" and "Demo punches" copy shows only in demo mode; on a real account attendance says punches are saved in this browser only.
+- HR (local only): HR records, attendance and payroll are still kept in the browser, not on the server.

@@ -115,7 +115,8 @@ const otherPayrollRuns: HrPayrollRun[] = [
   { id: "pay-2026-10", month: "October 2026", status: "review", employeeCount: hrEmployees.length, gross: grossPay, deductions: Math.round(grossPay * 0.11), net: grossPay - Math.round(grossPay * 0.11), deltaPercent: 0, issueCount: 0, updatedAt: "2026-10-23T10:00:00+05:30" },
   { id: "pay-2026-09", month: "September 2026", status: "locked", employeeCount: hrEmployees.length, gross: grossPay, deductions: Math.round(grossPay * 0.11), net: grossPay - Math.round(grossPay * 0.11), deltaPercent: 0, issueCount: 0, updatedAt: "2026-09-28T10:00:00+05:30" },
 ];
-export const hrPayrollRuns: HrPayrollRun[] = isFirstCompany ? acmePayrollRuns : otherPayrollRuns;
+export const demoPayrollRuns: HrPayrollRun[] = isFirstCompany ? acmePayrollRuns : otherPayrollRuns;
+export const hrPayrollRuns: HrPayrollRun[] = isFirstCompany ? demoPayrollRuns : [];
 
 const acme_hrPayrollIssues: HrPayrollIssue[] = [
   { id: "issue-001", employeeId: "emp-006", employeeName: "Vikas Jain", severity: "high", title: "Bank account proof missing", detail: "Payroll profile cannot be released until the employee uploads a verified account proof.", status: "open", amountDelta: 0 },

@@ -1,8 +1,9 @@
 "use client";
 
 import { create } from "zustand";
-import { activeSpec, isFirstCompany } from "@/lib/companies";
+import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type EngageKind = "post" | "kudos" | "poll" | "event" | "announcement";
@@ -15,8 +16,6 @@ export interface EngageItem {
 }
 export interface EngageMeta { reactions: Record<string, string[]>; comments: EngageComment[] }
 
-/** A company other than the first starts with one welcome note from its owner. */
-const welcome = (): EngageItem[] => [{ id: "eng-1", kind: "announcement", authorId: "emp-001", createdAt: "2026-10-22T10:00:00+05:30", group: "all", pinned: true, title: `Welcome to ${activeSpec.company.short} on Janus`, text: "Leave, attendance, payslips and documents now live in one place. Ask HR if anything looks off." }];
 const acmeSeeds = (): EngageItem[] => [
   { id: "eng-1", kind: "announcement", authorId: "emp-002", createdAt: "2026-10-23T10:00:00+05:30", group: "all", pinned: true, title: "New leave and attendance policy is live", text: "The updated Leave & attendance policy is now in Company policies. Please read it and acknowledge it by 31 October." },
   { id: "eng-2", kind: "kudos", authorId: "emp-003", createdAt: "2026-10-22T16:20:00+05:30", group: "all", text: "Closed the Rajputana Wholesale Co-op supply deal ahead of plan and kept the customer happy through a tough negotiation.", kudos: { toId: "emp-004", value: "Customer first" } },
@@ -25,7 +24,7 @@ const acmeSeeds = (): EngageItem[] => [
   { id: "eng-5", kind: "post", authorId: "emp-005", createdAt: "2026-10-20T14:05:00+05:30", group: "Operations", text: "Reminder for the warehouse team: the new dispatch checklist is pinned in the Jaipur office. Tell me if any step is unclear." },
 ];
 
-const seeds = () => isFirstCompany ? acmeSeeds() : welcome();
+const seeds = () => isFirstCompany ? acmeSeeds() : [];
 
 interface EngageState {
   items: EngageItem[];
@@ -53,4 +52,8 @@ export const useHrEngageStore = create<EngageState>()(persist((set) => ({
     return { meta: { ...state.meta, [key]: { ...current, reactions: { ...current.reactions, [emoji]: next } } } };
   }),
   comment: (key, comment) => set((state) => { const current = state.meta[key] ?? blank(); return { meta: { ...state.meta, [key]: { ...current, comments: [...current.comments, comment] } } }; }),
-}), { name: scoped("janus.hr-engage-demo.v1"), storage: createJSONStorage(() => localStorage) }));
+}), {
+  name: scoped("janus.hr-engage-demo.v1"), storage: createJSONStorage(() => localStorage),
+  // A saved copy drops the demo announcements and posts outside demo mode; anything the company posted stays.
+  merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<EngageState>) } as EngageState, { items: acmeSeeds() }),
+}));

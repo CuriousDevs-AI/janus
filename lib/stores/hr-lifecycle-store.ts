@@ -2,6 +2,9 @@
 
 import { create } from "zustand";
 import { scoped } from "@/lib/company";
+import { isFirstCompany } from "@/lib/companies";
+import { demoMode } from "@/lib/demo-mode";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export interface HrLifecycleEvent {
@@ -93,8 +96,8 @@ interface HrLifecycleState {
 export const blankCandidateDetail = (): HrCandidateDetail => ({ source: "Direct application", interviewAt: "", notes: [], offer: { salaryMonthly: 0, joiningDate: "", location: "Gurugram", status: "draft", version: 1 }, events: [] });
 
 export const useHrLifecycleStore = create<HrLifecycleState>()(persist((set) => ({
-  candidateDetails: candidateDefaults(),
-  exits: seedExits(),
+  candidateDetails: isFirstCompany ? candidateDefaults() : {},
+  exits: isFirstCompany ? seedExits() : [],
   onboardingNotes: {},
   setCandidateDetail: (id, patch) => set((state) => ({ candidateDetails: { ...state.candidateDetails, [id]: { ...(state.candidateDetails[id] ?? blankCandidateDetail()), ...patch } } })),
   addCandidateEvent: (id, event) => set((state) => {
@@ -113,4 +116,14 @@ export const useHrLifecycleStore = create<HrLifecycleState>()(persist((set) => (
     return { ...exit, tasks: exit.tasks.map((item) => item.id === taskId ? { ...item, done, note, completedAt: done ? new Date().toISOString() : undefined } : item), events: [lifecycleEvent(actor, `${done ? "Completed" : "Reopened"}: ${task?.title ?? taskId}. ${note}`), ...exit.events] };
   }) })),
   addOnboardingNote: (id, event) => set((state) => ({ onboardingNotes: { ...state.onboardingNotes, [id]: [event, ...(state.onboardingNotes[id] ?? [])] } })),
-}), { name: scoped("janus.hr-lifecycle-demo.v1"), storage: createJSONStorage(() => localStorage) }));
+}), {
+  name: scoped("janus.hr-lifecycle-demo.v1"), storage: createJSONStorage(() => localStorage),
+  // A saved copy drops the demo exit and candidate notes outside demo mode; records the company made stay.
+  merge: (persisted, current) => {
+    const saved = { ...current, ...(persisted as Partial<HrLifecycleState>) } as HrLifecycleState;
+    if (demoMode) return saved;
+    const demoCandidates = candidateDefaults();
+    const candidateDetails = Object.fromEntries(Object.entries(saved.candidateDetails).filter(([id]) => !(id in demoCandidates)));
+    return withoutDemoRecords({ ...saved, candidateDetails }, { exits: seedExits() });
+  },
+}));

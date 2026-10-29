@@ -1,5 +1,6 @@
 "use client";
 
+import { useSession } from "@/components/auth/session-provider";
 import * as React from "react";
 import Link from "next/link";
 import { Megaphone, Pin } from "lucide-react";
@@ -36,7 +37,8 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
   const today = hrToday();
   const actor = employees.find((item) => item.id === actorId);
   const nameOf = (id: string) => employees.find((item) => item.id === id)?.name ?? "Someone";
-  const first = actor?.name.split(" ")[0] ?? "there";
+  const session = useSession();
+  const first = (actor?.name ?? session.user.name ?? session.user.email ?? "there").split(" ")[0];
   const quote = quotes[Math.floor(new Date(`${today}T12:00:00`).getTime() / 86400000) % quotes.length];
 
   // What needs this person

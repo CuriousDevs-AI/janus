@@ -1,5 +1,6 @@
 "use client";
 
+import { demoMode } from "@/lib/demo-mode";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
@@ -43,7 +44,7 @@ export function HrReportsView({ role }: { role: HrDemoRole }) {
   }
 
   return <div className="space-y-5">
-    <HrStats items={[{ label: "Headcount", value: people.length, hint: `${joined} joined this quarter` }, { label: "Attendance, last 30 days", value: pct(recent.filter((item) => item.status !== "absent").length, recent.length), hint: recent.length ? `${recent.length} records` : "No attendance records yet" }, ...(showPay ? [{ label: `Gross payroll, ${monthLabel}`, value: hrMoney(gross), hint: "Before approval. Illustrative figures" }] : []), { label: "Open candidates", value: candidates.filter((item) => !["accepted", "rejected"].includes(item.stage)).length, hint: "Screening to offer" }, { label: "Onboarding now", value: onboarding.length, hint: onboarding.length ? `${Math.round(onboarding.reduce((sum, item) => sum + item.onboardingPercent, 0) / onboarding.length)}% average progress` : "Nobody onboarding" }, { label: "Exits", value: `${openExits} open`, hint: `${doneExits} completed` }]} />
+    <HrStats items={[{ label: "Headcount", value: people.length, hint: `${joined} joined this quarter` }, { label: "Attendance, last 30 days", value: pct(recent.filter((item) => item.status !== "absent").length, recent.length), hint: recent.length ? `${recent.length} records` : "No attendance records yet" }, ...(showPay ? [{ label: `Gross payroll, ${monthLabel}`, value: hrMoney(gross), hint: demoMode ? "Before approval. Illustrative figures" : "Before approval" }] : []), { label: "Open candidates", value: candidates.filter((item) => !["accepted", "rejected"].includes(item.stage)).length, hint: "Screening to offer" }, { label: "Onboarding now", value: onboarding.length, hint: onboarding.length ? `${Math.round(onboarding.reduce((sum, item) => sum + item.onboardingPercent, 0) / onboarding.length)}% average progress` : "Nobody onboarding" }, { label: "Exits", value: `${openExits} open`, hint: `${doneExits} completed` }]} />
     <HrPanel title="Department comparison" description="Computed from current records. Departments with one person are shown as they are." actions={<Button size="sm" variant="outline" onClick={exportCsv}><Download className="mr-1 size-3.5" />Export CSV</Button>}>
       {rows.length ? <HrTable headings={headings}>{rows.map((row) => <tr key={row.department}><td className={`${hrCell} font-medium`}>{row.department}</td><td className={hrCell}>{row.people}</td><td className={hrCell}>{row.attendance}</td><td className={hrCell}>{row.actions}</td>{showPay && <td className={hrCell}>{row.share}</td>}</tr>)}</HrTable> : <HrEmpty>No employees yet, so there is nothing to compare.</HrEmpty>}
     </HrPanel>

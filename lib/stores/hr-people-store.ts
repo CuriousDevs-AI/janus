@@ -2,8 +2,19 @@
 
 import { create } from "zustand";
 import { scoped } from "@/lib/company";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
+  acmeEmployees,
+  demoHrCandidates,
+  demoHrDocuments,
+  demoHrExpenseClaims,
+  demoHrLeaveRequests,
+  demoHrOnboardingTasks,
+  demoHrPayrollIssues,
+  demoHrSignatureAudits,
+  demoHrWhatsAppActions,
+  demoPayrollRuns,
   hrAttendance,
   hrAttendanceTrend,
   hrCandidates,
@@ -159,6 +170,12 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       name: scoped("janus.hr-people-demo"),
       version: 3,
       storage: createJSONStorage(() => localStorage),
+      // A saved copy drops the demo people and HR records outside demo mode; records the company made stay.
+      merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<HrPeopleState>) } as HrPeopleState, {
+        employees: acmeEmployees, payrollRuns: demoPayrollRuns, candidates: demoHrCandidates, leaveRequests: demoHrLeaveRequests,
+        documents: demoHrDocuments, onboardingTasks: demoHrOnboardingTasks, payrollIssues: demoHrPayrollIssues,
+        whatsAppActions: demoHrWhatsAppActions, expenseClaims: demoHrExpenseClaims, signatureAudits: demoHrSignatureAudits,
+      }),
       // Version 2 added birthdays and October attendance history. Older saved data gets both without losing edits.
       migrate: (persisted, version) => {
         const state = persisted as Partial<HrPeopleState>;
