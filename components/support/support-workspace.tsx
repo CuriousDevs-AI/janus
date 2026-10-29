@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/stores/app-store";
+import { assignSupportTicket, syncSupportTickets } from "@/lib/ticket-records";
+import { message } from "@/lib/api/client";
 import { useRenewalsStore } from "@/lib/stores/renewals-store";
 import { useFeedbackStore } from "@/lib/stores/feedback-store";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
@@ -327,7 +329,9 @@ function QueuesView() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const open = useOpenTickets();
-  const assign = useAppStore((state) => state.assignTicket);
+  React.useEffect(() => {
+    syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
+  }, []);
   const customers = useAppStore((state) => state.customers);
   const groups: { key: string; label: string; tickets: Ticket[] }[] = [
     { key: "", label: "Unassigned", tickets: open.filter((t) => !t.assigneeId) },
@@ -349,7 +353,7 @@ function QueuesView() {
                   <span><span className="font-medium">{t.number}</span> · {t.subject}<span className="block text-xs text-muted-foreground">{customer?.name ?? "Customer"} · {t.priority} · {t.status.replaceAll("_", " ")}</span></span>
                   <span className="flex items-center gap-2">
                     <Badge variant={slaTone(slaState(t)) as "neutral"}>{slaState(t)}</Badge>
-                    <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assigneeId ?? ""} onChange={(e) => { if (!e.target.value) return; assign(t.id, e.target.value, me); toast.success(`${t.number} assigned`); }}>
+                    <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assigneeId ?? ""} onChange={(e) => { if (!e.target.value) return; void assignSupportTicket(t.id, e.target.value, me).then((error) => (error ? toast.error(error) : toast.success(`${t.number} assigned`))); }}>
                       <option value="">Assign to…</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>

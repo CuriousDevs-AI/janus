@@ -25,3 +25,12 @@ One line per decision. Newest items go at the bottom.
 - Item 2 (timeline events): the timeline is for projects, and IT changes belong to no project. Each step therefore writes an audit row in its own transaction, not a timeline event. Modules without a project use the audit log as their history.
 - Item 2 (names): the server returns the requester's and decider's names, because the screens show names and the users are looked up on the server.
 - Item 2 (still local): the IT change log on screen and the other IT records (assets, access, licences, helpdesk, incidents, monitors) are still in the browser store. Operations, HR and Support are not started.
+- Item 4 (scope): tickets only. The server holds each ticket's number, subject, priority, status, assignee and resolution. Conversations, handoffs, SLA timers and the customer link stay on the screen.
+- Item 4 (permission): `agents:manage`, so owners and admins can change tickets and agents are refused. No support permission exists, and adding one needs role changes; switch to `leads:write` if agents should work tickets.
+- Item 4 (order): each change goes to the server first, and the screen changes only after the server accepts it.
+- Item 4 (keys): the screen's ticket id is the server's external key. Creating the same key again returns the existing ticket with 200, so a retry books it once.
+- Item 4 (sync): on load the screen sends any ticket the server does not have yet, and copies the server's status, assignee and resolution onto its tickets. A refused create stays on screen and the next sync sends it.
+- Item 4 (assignee): stored as the screen's user id text, not a foreign key, because the screen's user ids are not server user ids.
+- Item 4 (audit): each step writes one audit row (`support.ticket_created`, `support.ticket_status_changed`, `support.ticket_assigned`, `support.ticket_resolved`) in the same transaction.
+- Item 4 (cross-browser): a ticket opened in another browser appears here only after it exists on this screen.
+- Item 4 (pre-existing gap, not changed): CRM records, including tickets, are shown only for a demo persona in the browser (`janus.demo-login`), so a real account sees no tickets on the Tickets screens. Browser checks used the bridge for the status steps.

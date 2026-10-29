@@ -23,6 +23,7 @@ from janus_api.projects.planning import router as planning_router
 from janus_api.projects.router import router as project_records_router
 from janus_api.sources.router import router as sources_router
 from janus_api.state.router import router as state_router
+from janus_api.support.router import router as support_router
 from janus_api.timeline.router import router as timeline_router
 from janus_api.vault.router import router as vault_router
 from janus_api.whatsapp.router import router as whatsapp_router
@@ -58,6 +59,7 @@ app.include_router(planning_router)
 app.include_router(effort_router)
 app.include_router(finance_router)
 app.include_router(it_router)
+app.include_router(support_router)
 
 
 @app.get("/health")
