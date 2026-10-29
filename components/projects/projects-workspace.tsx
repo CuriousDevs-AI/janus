@@ -1,5 +1,6 @@
 "use client";
 
+import { syncBudgetLines } from "@/lib/finance-records";
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -329,6 +330,10 @@ function ProjectsView({ me }: { me: string }) {
     if (demoMode) return;
     refreshProjectRecords().catch(() => {
       /* the screen keeps its own copy if the server cannot be reached */
+    });
+    // The budget lines a project draws from are the server's too; the Finance screen is not opened first.
+    syncBudgetLines().catch(() => {
+      /* the choice stays empty until the server can be reached */
     });
   }, []);
   // The company directory, for choosing an owner by account (real mode only).

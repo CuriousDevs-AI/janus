@@ -1065,12 +1065,39 @@ function FundsView({ me }: { me: string }) {
   const [drawNote, setDrawNote] = React.useState("");
   const [rejecting, setRejecting] = React.useState<FundRequest | null>(null);
   const [reason, setReason] = React.useState("");
+  const addBudgetLine = useFinanceStore((state) => state.addBudgetLine);
+  const [lineName, setLineName] = React.useState("");
+  const [lineOwner, setLineOwner] = React.useState(me);
+  const [lineAllocated, setLineAllocated] = React.useState("");
 
   const statusTone = (status: FundRequest["status"]) => status === "approved" ? "success" : status === "rejected" ? "danger" : "warning";
   const statusLabel = (status: FundRequest["status"]) => status === "awaiting_finance" ? "awaiting finance" : status;
 
+  function createLine(event: React.FormEvent) {
+    event.preventDefault();
+    const allocated = Number(lineAllocated);
+    if (lineName.trim().length < 2) return toast.error("Name the budget line.");
+    if (!(allocated > 0)) return toast.error("Enter the amount the line may spend.");
+    addBudgetLine({ name: lineName.trim(), owner: lineOwner.trim() || me, allocated });
+    syncBudgetLines()
+      .then(() => { setLineName(""); setLineAllocated(""); toast.success(`${lineName.trim()} is on the budget.`); })
+      .catch((error: unknown) => toast.error(`The budget line was not saved: ${message(error)}`));
+  }
+
   return (
     <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Add a budget line</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={createLine} className="grid gap-3 sm:grid-cols-4">
+            <div className="flex flex-col gap-1.5"><Label htmlFor="line-name">Name</Label><Input id="line-name" value={lineName} onChange={(e) => setLineName(e.target.value)} placeholder="e.g. Sales and marketing" /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="line-owner">Owner</Label><Input id="line-owner" value={lineOwner} onChange={(e) => setLineOwner(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="line-allocated">Amount (₹)</Label><Input id="line-allocated" type="number" min="1" value={lineAllocated} onChange={(e) => setLineAllocated(e.target.value)} /></div>
+            <div className="flex items-end"><Button type="submit" disabled={lineName.trim().length < 2 || !(Number(lineAllocated) > 0)}>Add budget line</Button></div>
+          </form>
+          <p className="mt-2 text-xs text-muted-foreground">Projects, fund requests and requisitions draw from a budget line, so add one before them.</p>
+        </CardContent>
+      </Card>
       <div className="grid gap-3 sm:grid-cols-3">
         {lines.map((line) => (
           <Card key={line.id}><CardContent className="p-4">
