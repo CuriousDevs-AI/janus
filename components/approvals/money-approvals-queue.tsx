@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { approveCreditNote, rejectCreditNote } from "@/lib/invoice-records";
 import { approveAdjustment, rejectAdjustment } from "@/lib/operations-records";
+import { approveFundRequest, rejectFundRequest } from "@/lib/fund-records";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useProjectsStore } from "@/lib/stores/projects-store";
@@ -39,8 +40,6 @@ export function MoneyApprovalsQueue() {
   const me = session.user.name ?? session.user.email ?? "You";
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const fundRequests = useFinanceStore((state) => state.fundRequests);
-  const approveFund = useFinanceStore((state) => state.approveFundRequest);
-  const rejectFund = useFinanceStore((state) => state.rejectFundRequest);
   const adjustments = useOperationsStore((state) => state.adjustments);
   const items = useOperationsStore((state) => state.items);
   const changes = useProjectsStore((state) => state.changes);
@@ -59,8 +58,8 @@ export function MoneyApprovalsQueue() {
         reason: f.purpose,
         date: f.date,
         waitingFor: f.status === "pending" ? "Owner" : "Finance",
-        approve: (by: string) => approveFund(f.id, f.status === "pending" ? "owner" : "finance", by),
-        reject: (by: string) => { rejectFund(f.id, "Rejected from the approvals queue", by); return null; },
+        approve: (by: string) => approveFundRequest(f.id, f.status === "pending" ? "owner" : "finance", by),
+        reject: (by: string) => rejectFundRequest(f.id, "Rejected from the approvals queue", by),
       })),
     ...creditNotes
       .filter((c) => c.status === "pending")

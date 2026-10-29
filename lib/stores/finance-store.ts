@@ -400,6 +400,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addFundRequest: (input, by) => {
+        if (!demoMode) return "Fund requests are recorded on the server.";
         const number = nextNumber("FR", get().fundRequests.length);
         set((state) => ({
           fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests],
@@ -407,6 +408,7 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
       approveFundRequest: async (id, step, by) => {
+        if (!demoMode) return "Fund requests are recorded on the server.";
         const request = get().fundRequests.find((item) => item.id === id);
         if (!request) return "Request not found.";
         if (request.requestedBy === by) return "You cannot approve your own request.";
@@ -436,6 +438,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       rejectFundRequest: (id, reason, by) => {
+        if (!demoMode) return "Fund requests are recorded on the server.";
         const request = get().fundRequests.find((item) => item.id === id);
         set((state) => ({
           fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item),

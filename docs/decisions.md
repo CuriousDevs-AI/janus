@@ -90,3 +90,9 @@ One line per decision. Newest items go at the bottom.
 - Bills (payments): a payment locks its bill, refuses more than is still owed, and writes its audit row in the same step. A retry with the same Idempotency-Key returns the bill with the one payment; the same key with a different amount returns 409.
 - Bills (demo data): in real mode the server's bill list replaces the demo bills, so the two demo bills no longer appear there, and bank lines matched to their demo payments no longer resolve (the same caveat as invoices).
 - Bills (permission and numbers): bills need `billing:manage`, the same as the rest of Finance. Numbers are `BILL-<year>-<n>`, unique per company.
+- Fund requests (scope): fund requests and their approval are on the server. An approval that puts money on a budget line allocates it in the same transaction, through the existing budget allocation, so the balance and the approval cannot disagree. Finance's records are now all on the server.
+- Fund requests (limit): a request up to ₹50,000 is approved by its owner, which allocates at once. A larger one is approved by its owner, then by finance. The limit is the server's constant, matching the screen's; it is not a per-company setting yet.
+- Fund requests (approvers): the person who asked cannot approve or reject their request, and the finance approver must be a different person from the owner's approver. A request that is approved or rejected cannot be decided again. A rejection is allowed only while the request is waiting.
+- Fund requests (retries): raising a request sends an Idempotency-Key, and allocation is keyed on the request, so a retried approval cannot allocate twice.
+- Fund requests (demo data): in real mode the server's list replaces the demo requests, the same caveat as for invoices and bills.
+- Permission: fund requests need `billing:manage`, the same as the rest of Finance.

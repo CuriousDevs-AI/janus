@@ -23,6 +23,7 @@ import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
 import { addBill, recordBillPayment, syncBills } from "@/lib/bill-records";
+import { addFundRequest, approveFundRequest, rejectFundRequest, syncFundRequests } from "@/lib/fund-records";
 import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
@@ -1042,12 +1043,10 @@ function FundsView({ me }: { me: string }) {
   const lines = useFinanceStore((state) => state.budgetLines);
   const requests = useFinanceStore((state) => state.fundRequests);
   const draws = useFinanceStore((state) => state.draws);
-  const add = useFinanceStore((state) => state.addFundRequest);
-  const approve = useFinanceStore((state) => state.approveFundRequest);
-  const reject = useFinanceStore((state) => state.rejectFundRequest);
   React.useEffect(() => {
     // The balances shown are the server's. Lines that only exist on this screen are created on the server.
     syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+    syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
   }, []);
   const [purpose, setPurpose] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -1084,7 +1083,7 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="fr-amount">Amount (₹)</Label><Input id="fr-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="fr-line">Budget line</Label><select id="fr-line" className={selectClass} value={lineId} onChange={(e) => setLineId(e.target.value)}><option value="">Choose…</option>{lines.map((line) => <option key={line.id} value={line.id}>{line.name}</option>)}</select></div>
           </div>
-          <Button className="w-fit" disabled={purpose.trim().length < 3 || !(Number(amount) > 0) || !lineId} onClick={() => { add({ purpose: purpose.trim(), amount: Number(amount), lineId, date: "2026-10-23" }, me); toast.success("Fund request sent for approval"); setPurpose(""); setAmount(""); }}>Send request</Button>
+          <Button className="w-fit" disabled={purpose.trim().length < 3 || !(Number(amount) > 0) || !lineId} onClick={async () => { const p = await addFundRequest({ purpose: purpose.trim(), amount: Number(amount), lineId, date: "2026-10-23" }, me); if (p) { toast.error(p); return; } toast.success("Fund request sent for approval"); setPurpose(""); setAmount(""); }}>Send request</Button>
         </CardContent>
       </Card>
 
@@ -1107,7 +1106,7 @@ function FundsView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right">
                       {open ? (
                         <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="secondary" onClick={async () => { const p = await approve(request.id, request.status === "pending" ? "owner" : "finance", me); if (p) toast.error(p); else toast.success("Approved"); }}>{request.status === "pending" ? "Owner approve" : "Finance approve"}</Button>
+                          <Button size="sm" variant="secondary" onClick={async () => { const p = await approveFundRequest(request.id, request.status === "pending" ? "owner" : "finance", me); if (p) toast.error(p); else toast.success("Approved"); }}>{request.status === "pending" ? "Owner approve" : "Finance approve"}</Button>
                           <Button size="sm" variant="ghost" onClick={() => setRejecting(request)}>Reject</Button>
                         </div>
                       ) : null}
@@ -1138,7 +1137,7 @@ function FundsView({ me }: { me: string }) {
           <DialogContent>
             <DialogHeader><DialogTitle>Reject {rejecting.number}</DialogTitle><DialogDescription>Give a reason, so the requester knows what to change.</DialogDescription></DialogHeader>
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
-            <DialogFooter><Button variant="secondary" onClick={() => setRejecting(null)}>Cancel</Button><Button disabled={reason.trim().length < 3} onClick={() => { reject(rejecting.id, reason.trim(), me); setRejecting(null); setReason(""); toast.success("Request rejected"); }}>Reject request</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setRejecting(null)}>Cancel</Button><Button disabled={reason.trim().length < 3} onClick={async () => { const p = await rejectFundRequest(rejecting.id, reason.trim(), me); setRejecting(null); setReason(""); if (p) toast.error(p); else toast.success("Request rejected"); }}>Reject request</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}

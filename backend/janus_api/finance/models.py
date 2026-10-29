@@ -202,3 +202,35 @@ class FinanceBillPayment(Base):
     paid_on: Mapped[date] = mapped_column(Date)
     recorded_by_name: Mapped[str] = mapped_column(String(160))
     idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class FinanceFundRequest(Base):
+    """A request for money from a budget line. Approval allocates the money to that line."""
+
+    __tablename__ = "finance_fund_requests"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "req_key"),
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "idempotency_key"),
+        CheckConstraint("amount_paise > 0", name="ck_fund_requests_amount"),
+        CheckConstraint(
+            "status IN ('pending', 'awaiting_finance', 'approved', 'rejected')",
+            name="ck_fund_requests_status",
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    req_key: Mapped[str] = mapped_column(String(64))
+    number: Mapped[str] = mapped_column(String(20))
+    purpose: Mapped[str] = mapped_column(String(200))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    budget_line_key: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(20))
+    requested_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    requested_by_name: Mapped[str] = mapped_column(String(160))
+    owner_approved_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    owner_approved_by_name: Mapped[str | None] = mapped_column(String(160))
+    finance_approved_by_name: Mapped[str | None] = mapped_column(String(160))
+    rejected_by_name: Mapped[str | None] = mapped_column(String(160))
+    rejected_reason: Mapped[str | None] = mapped_column(String(300))
+    raised_on: Mapped[date] = mapped_column(Date)
+    idempotency_key: Mapped[str] = mapped_column(String(80))

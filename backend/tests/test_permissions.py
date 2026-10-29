@@ -61,7 +61,7 @@ async def test_rls_denies_cross_tenant_reads_and_writes(
             )
         ).all()
         # One identity id per model table; the project effort tables are the newest.
-        assert len(identities) == 67
+        assert len(identities) == 68
     async with session_factory()() as db:
         await set_context(db, tenant_id=first.tenant_id, user_id=first.user_id)
         for table in ["memberships", "invitations", "audit_log"]:
