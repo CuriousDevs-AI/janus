@@ -349,6 +349,8 @@ export interface HrExpenseClaim {
   id: ID;
   employeeId: ID;
   employeeName: string;
+  /** The person who approved the claim; they cannot also mark it paid. */
+  approvedById?: ID;
   category: "travel" | "meals" | "phone" | "supplies" | "other";
   amount: number;
   submittedAt: string;

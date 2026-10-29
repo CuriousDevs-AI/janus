@@ -78,7 +78,7 @@ interface HrPeopleState {
   updateDocument: (id: string, patch: Partial<HrDocument>) => void;
   addDocument: (document: HrDocument) => void;
   addExpense: (expense: HrExpenseClaim) => void;
-  updateExpense: (id: string, status: HrExpenseStatus) => void;
+  updateExpense: (id: string, status: HrExpenseStatus, approvedById?: string) => void;
   addSignatureAudit: (audit: HrSignatureAudit) => void;
   updateCompliance: (id: string, status: HrComplianceItem["status"]) => void;
   convertCandidate: (id: string) => string | null;
@@ -139,7 +139,7 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       updateDocument: (id, patch) => set((state) => ({ documents: state.documents.map((document) => document.id === id ? { ...document, ...patch } : document) })),
       addDocument: (document) => set((state) => ({ documents: [document, ...state.documents] })),
       addExpense: (expense) => set((state) => ({ expenseClaims: [expense, ...state.expenseClaims] })),
-      updateExpense: (id, status) => set((state) => ({ expenseClaims: state.expenseClaims.map((expense) => expense.id === id ? { ...expense, status } : expense) })),
+      updateExpense: (id, status, approvedById) => set((state) => ({ expenseClaims: state.expenseClaims.map((expense) => expense.id === id ? { ...expense, status, ...(approvedById ? { approvedById } : {}) } : expense) })),
       addSignatureAudit: (audit) => set((state) => ({ signatureAudits: [audit, ...state.signatureAudits] })),
       updateCompliance: (id, status) => set((state) => ({ complianceItems: state.complianceItems.map((item) => item.id === id ? { ...item, status } : item) })),
       convertCandidate: (id) => {

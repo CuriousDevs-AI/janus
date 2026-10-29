@@ -24,7 +24,8 @@ export function canDecideExpense(claim: HrExpenseClaim, claimant: HrEmployee | u
   const hr = canManageHr(role);
   if (claim.status === "manager_review") return actorIsManagerOf && claimant?.managerId === actorId ? { allowed: true, mode: "manager" } : hr ? { allowed: true, mode: "hr" } : { allowed: false };
   if (claim.status === "hr_review") return hr ? { allowed: true, mode: "hr" } : { allowed: false };
-  if (claim.status === "approved") return hr || role === "payroll_admin" ? { allowed: true, mode: "finance" } : { allowed: false };
+  // Whoever approved a claim cannot also mark it paid.
+  if (claim.status === "approved") return (hr || role === "payroll_admin") && claim.approvedById !== actorId ? { allowed: true, mode: "finance" } : { allowed: false };
   return { allowed: false };
 }
 export function nextExpenseStatus(mode: "manager" | "hr" | "finance", settings: HrPolicySettings): HrExpenseClaim["status"] {
@@ -52,7 +53,7 @@ export function HrExpensesView({ role, actorId, personal = false }: { role: HrDe
 
   function decide(claim: HrExpenseClaim, mode: "manager" | "hr" | "finance") {
     const status = nextExpenseStatus(mode, settings);
-    updateExpense(claim.id, status);
+    updateExpense(claim.id, status, mode === "finance" ? undefined : actorId);
     log({ recordId: claim.id, actorId, action: status === "paid" ? "marked_paid" : status === "hr_review" ? "approved_by_manager" : "approved", reason: mode === "hr" && claim.status === "manager_review" ? "Approved by HR on the manager's behalf" : "" });
     toast.success(status === "paid" ? "Marked as paid. Nothing is transferred from here." : status === "hr_review" ? "Approved. Sent to HR." : "Claim approved");
   }
