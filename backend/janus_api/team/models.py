@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from janus_api.core.db import Base
@@ -26,9 +28,10 @@ class TeamSpace(Base):
     __tablename__ = "team_spaces"
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_team_spaces_name"),
-        CheckConstraint("kind IN ('channel', 'dm', 'group')", name="ck_team_spaces_kind"),
+        CheckConstraint("kind IN ('channel', 'dm', 'group', 'voice')", name="ck_team_spaces_kind"),
         CheckConstraint(
-            "(kind = 'channel' AND name IS NOT NULL) OR (kind IN ('dm', 'group') AND name IS NULL)",
+            "(kind IN ('channel', 'voice') AND name IS NOT NULL) "
+            "OR (kind IN ('dm', 'group') AND name IS NULL)",
             name="ck_team_spaces_name_by_kind",
         ),
     )
@@ -101,4 +104,35 @@ class TeamAttachment(Base):
     content_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamVoicePresence(Base):
+    """Who is in a voice channel's call. A row goes stale when its stream stops refreshing it."""
+
+    __tablename__ = "team_voice_presence"
+    __table_args__ = (UniqueConstraint("space_id", "user_id", name="uq_team_voice_presence"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    muted: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    deafened: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    sharing: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamSignal(Base):
+    """A WebRTC message from one person in a call to another: an offer, an answer or a candidate."""
+
+    __tablename__ = "team_signals"
+    __table_args__ = (
+        CheckConstraint("kind IN ('offer', 'answer', 'ice', 'bye')", name="ck_team_signals_kind"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
+    from_user: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    to_user: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -522,3 +522,99 @@ async def test_a_group_needs_people_and_refuses_yourself(
         json={"user_ids": [ids["owner@example.com"], 999999]},
     )
     assert stranger.status_code == 404
+
+
+async def test_a_voice_call_tracks_who_is_in_it_and_relays_messages_between_them(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, ravi, ids = await _two_members(client, mailbox)
+    created = await client.post(
+        "/v1/team/channels", headers=owner.headers, json={"name": "standup", "voice": True}
+    )
+    assert created.status_code == 201, created.text
+    voice = created.json()
+    assert voice["kind"] == "voice" and voice["title"] == "standup" and voice["inCall"] == []
+    space = voice["id"]
+
+    joined = await client.post(f"/v1/team/voice/{space}/join", headers=asha)
+    assert joined.status_code == 200
+    assert [person["id"] for person in joined.json()["participants"]] == [ids["asha@example.com"]]
+    await client.post(f"/v1/team/voice/{space}/join", headers=owner.headers)
+
+    listed = (await client.get("/v1/team/channels", headers=ravi)).json()
+    in_call = next(item for item in listed if item["id"] == space)["inCall"]
+    assert len(in_call) == 2
+
+    muted = await client.post(f"/v1/team/voice/{space}/state", headers=asha, json={"muted": True})
+    mine = next(p for p in muted.json()["participants"] if p["id"] == ids["asha@example.com"])
+    assert mine["muted"] is True and mine["sharing"] is False
+
+    offer = await client.post(
+        f"/v1/team/voice/{space}/signal",
+        headers=asha,
+        json={"to_user_id": ids["owner@example.com"], "kind": "offer", "payload": {"sdp": "v=0"}},
+    )
+    assert offer.status_code == 202, offer.text
+    inbox = (await client.get(f"/v1/team/voice/{space}/signals", headers=owner.headers)).json()
+    assert [(item["kind"], item["fromUserId"]) for item in inbox] == [
+        ("offer", ids["asha@example.com"])
+    ]
+    assert inbox[0]["payload"] == {"sdp": "v=0"}
+
+    to_outsider = await client.post(
+        f"/v1/team/voice/{space}/signal",
+        headers=asha,
+        json={"to_user_id": ids["ravi@example.com"], "kind": "ice", "payload": {}},
+    )
+    assert to_outsider.status_code == 409
+    assert to_outsider.json()["error"]["code"] == "peer_not_in_call"
+    from_outsider = await client.post(
+        f"/v1/team/voice/{space}/signal",
+        headers=ravi,
+        json={"to_user_id": ids["asha@example.com"], "kind": "ice", "payload": {}},
+    )
+    assert from_outsider.status_code == 409
+    assert from_outsider.json()["error"]["code"] == "not_in_call"
+
+    left = await client.post(f"/v1/team/voice/{space}/leave", headers=asha)
+    assert [person["id"] for person in left.json()["participants"]] == [ids["owner@example.com"]]
+
+
+async def test_a_voice_channel_takes_no_text_and_one_call_at_a_time(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, _, _ = await _two_members(client, mailbox)
+    first = (
+        await client.post(
+            "/v1/team/channels", headers=owner.headers, json={"name": "room-a", "voice": True}
+        )
+    ).json()["id"]
+    second = (
+        await client.post(
+            "/v1/team/channels", headers=owner.headers, json={"name": "room-b", "voice": True}
+        )
+    ).json()["id"]
+    text = await client.post(
+        f"/v1/team/spaces/{first}/messages",
+        headers={**owner.headers, **_key("v-1")},
+        json={"body": "Hello"},
+    )
+    assert text.status_code == 422 and text.json()["error"]["code"] == "voice_channel"
+
+    await client.post(f"/v1/team/voice/{first}/join", headers=asha)
+    await client.post(f"/v1/team/voice/{second}/join", headers=asha)
+    in_first = (await client.get(f"/v1/team/voice/{first}", headers=owner.headers)).json()
+    in_second = (await client.get(f"/v1/team/voice/{second}", headers=owner.headers)).json()
+    assert in_first["participants"] == [] and len(in_second["participants"]) == 1
+
+    big = await client.post(
+        f"/v1/team/voice/{second}/signal",
+        headers=asha,
+        json={"to_user_id": 1, "kind": "offer", "payload": {"sdp": "x" * 70000}},
+    )
+    assert big.status_code == 422
+
+    not_voice = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "plain"})
+    ).json()["id"]
+    assert (await client.post(f"/v1/team/voice/{not_voice}/join", headers=asha)).status_code == 422
