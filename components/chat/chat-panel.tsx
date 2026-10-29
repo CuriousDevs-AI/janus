@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, MessageCircle, Send } from "lucide-react";
+import { ArrowLeft, ExternalLink, Hash, MessageCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
@@ -97,6 +97,18 @@ export function ChatPanel() {
                 : "WhatsApp conversations for your company"}
             </SheetDescription>
           </SheetHeader>
+
+          <Link
+            href="/team"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 text-sm hover:bg-surface-2"
+          >
+            <span className="flex items-center gap-2 font-medium text-foreground">
+              <Hash className="size-4 text-muted-foreground" />
+              Team chat
+            </span>
+            <span className="text-xs text-muted-foreground">Search messages and files</span>
+          </Link>
 
           {demoMode ? (
             <p className="p-4 text-sm text-muted-foreground">
