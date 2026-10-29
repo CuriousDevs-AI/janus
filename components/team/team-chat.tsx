@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Hash, LogIn, LogOut, Menu, Plus, Search, Users, X } from "lucide-react";
+import { Check, Hash, LogIn, LogOut, Menu, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -165,11 +165,11 @@ export function TeamChat() {
     }
   }
 
-  async function openDirect(person: TeamPerson) {
+  async function openConversation(ids: number[]) {
     try {
       const opened = await api<TeamSpace>("/team/conversations", {
         method: "POST",
-        body: JSON.stringify({ user_id: person.id }),
+        body: JSON.stringify({ user_ids: ids }),
       });
       reloadDirect();
       choose(opened.id);
@@ -219,7 +219,7 @@ export function TeamChat() {
   }
 
   const threadRoot = threadId ? messages.data?.find((item) => item.id === threadId) ?? null : null;
-  const title = space ? (space.kind === "channel" ? `#${space.name}` : space.peer?.name ?? "Direct message") : "Team chat";
+  const title = space ? (space.kind === "channel" ? `#${space.name}` : space.title) : "Team chat";
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 bg-background">
@@ -294,7 +294,7 @@ export function TeamChat() {
                 )}
               </div>
               <Composer
-                placeholder={space ? `Message ${space.kind === "channel" ? `#${space.name}` : space.peer?.name ?? ""}` : "Message"}
+                placeholder={space ? `Message ${space.kind === "channel" ? `#${space.name}` : space.title}` : "Message"}
                 autoFocusKey={selected}
                 disabled={!space || (space.kind === "channel" && !space.joined)}
                 disabledReason={space?.kind === "channel" && !space.joined ? `You are viewing #${space.name}. Join the channel to post.` : undefined}
@@ -339,7 +339,7 @@ export function TeamChat() {
         open={picking}
         onOpenChange={setPicking}
         people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
-        onPick={openDirect}
+        onStart={openConversation}
       />
     </div>
   );
@@ -409,7 +409,7 @@ function Sidebar({
 }
 
 function SpaceRow({ item, active, onPick }: { item: TeamSpace; active: boolean; onPick: (item: TeamSpace) => void }) {
-  const label = item.kind === "channel" ? item.name ?? "" : item.peer?.name ?? "Direct message";
+  const label = item.kind === "channel" ? item.name ?? "" : item.title;
   return (
     <li>
       <button
@@ -518,36 +518,81 @@ function PeopleDialog({
   open,
   onOpenChange,
   people,
-  onPick,
+  onStart,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   people: TeamPerson[];
-  onPick: (person: TeamPerson) => void;
+  onStart: (ids: number[]) => Promise<void>;
 }) {
   const [query, setQuery] = React.useState("");
+  const [picked, setPicked] = React.useState<number[]>([]);
+  const [busy, setBusy] = React.useState(false);
   const shown = people.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
+  const chosen = people.filter((person) => picked.includes(person.id));
+
+  function toggle(id: number) {
+    setPicked((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  async function start() {
+    if (!picked.length || busy) return;
+    setBusy(true);
+    try {
+      await onStart(picked);
+      setPicked([]);
+      setQuery("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const action =
+    picked.length === 0
+      ? "Choose people"
+      : picked.length === 1
+        ? "Start direct message"
+        : `Start group with ${picked.length} people`;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Send a direct message</DialogTitle>
-          <DialogDescription>Only you and the person you choose can read it.</DialogDescription>
+          <DialogTitle>New message or group</DialogTitle>
+          <DialogDescription>
+            Pick one person for a direct message, or several for a group. Only the people in it can read it.
+          </DialogDescription>
         </DialogHeader>
         <Input autoFocus placeholder="Search people" aria-label="Search people" value={query} onChange={(event) => setQuery(event.target.value)} />
+        {chosen.length > 0 ? (
+          <p className="text-xs text-muted-foreground">With: {chosen.map((person) => person.name).join(", ")}</p>
+        ) : null}
         <ul className="max-h-72 space-y-0.5 overflow-y-auto">
           {shown.length === 0 ? <li className="px-2 py-3 text-sm text-muted-foreground">No one matches. Invite teammates from People &amp; Access.</li> : null}
-          {shown.map((person) => (
-            <li key={person.id}>
-              <button type="button" onClick={() => onPick(person)} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2">
-                <Avatar className="size-7">
-                  <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
-                </Avatar>
-                {person.name}
-              </button>
-            </li>
-          ))}
+          {shown.map((person) => {
+            const on = picked.includes(person.id);
+            return (
+              <li key={person.id}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggle(person.id)}
+                  className={cn("flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2", on && "bg-accent-muted")}
+                >
+                  <Avatar className="size-7">
+                    <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                  {on ? <Check className="size-4 text-accent" /> : null}
+                </button>
+              </li>
+            );
+          })}
         </ul>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => void start()} disabled={!picked.length || busy}>{action}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -616,9 +661,7 @@ function SearchPanel({
                   className="w-full rounded-md px-3 py-2.5 text-left hover:bg-surface-2"
                 >
                   <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-                    <span className="truncate font-medium text-foreground">
-                      {hit.spaceLabel}
-                    </span>
+                    <span className="truncate font-medium text-foreground">{hit.spaceLabel}</span>
                     <time dateTime={hit.message.createdAt} className="shrink-0">
                       {new Date(hit.message.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                     </time>

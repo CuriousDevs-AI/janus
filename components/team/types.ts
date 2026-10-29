@@ -5,8 +5,9 @@ export interface TeamPerson {
 
 export interface TeamSpace {
   id: string;
-  kind: "channel" | "dm";
+  kind: "channel" | "dm" | "group";
   name: string | null;
+  title: string;
   topic: string;
   memberCount: number;
   joined: boolean;
@@ -49,7 +50,7 @@ export interface TeamSearchHit {
   message: TeamMessage;
   spaceId: string;
   spaceLabel: string;
-  spaceKind: "channel" | "dm";
+  spaceKind: "channel" | "dm" | "group";
 }
 
 /** The largest file the team chat accepts, the same as the server. */
