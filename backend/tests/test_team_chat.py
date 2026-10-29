@@ -588,14 +588,12 @@ async def test_a_voice_call_tracks_who_is_in_it_and_relays_messages_between_them
     assert [person["id"] for person in left.json()["participants"]] == [ids["owner@example.com"]]
 
 
-async def test_a_voice_channel_takes_no_text_and_one_call_at_a_time(
+async def test_any_channel_holds_chat_and_a_call_one_call_at_a_time(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:
     owner, asha, _, _ = await _two_members(client, mailbox)
     first = (
-        await client.post(
-            "/v1/team/channels", headers=owner.headers, json={"name": "room-a", "voice": True}
-        )
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "room-a"})
     ).json()["id"]
     second = (
         await client.post(
@@ -603,11 +601,11 @@ async def test_a_voice_channel_takes_no_text_and_one_call_at_a_time(
         )
     ).json()["id"]
     text = await client.post(
-        f"/v1/team/spaces/{first}/messages",
+        f"/v1/team/spaces/{second}/messages",
         headers={**owner.headers, **_key("v-1")},
-        json={"body": "Hello"},
+        json={"body": "Agenda before the call"},
     )
-    assert text.status_code == 422 and text.json()["error"]["code"] == "voice_channel"
+    assert text.status_code == 201, text.text
 
     await client.post(f"/v1/team/voice/{first}/join", headers=asha)
     await client.post(f"/v1/team/voice/{second}/join", headers=asha)
@@ -622,10 +620,22 @@ async def test_a_voice_channel_takes_no_text_and_one_call_at_a_time(
     )
     assert big.status_code == 422
 
-    not_voice = (
-        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "plain"})
+
+async def test_a_direct_call_is_only_for_its_two_members(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, ravi, ids = await _two_members(client, mailbox)
+    dm = (
+        await client.post(
+            "/v1/team/conversations", headers=asha, json={"user_id": ids["owner@example.com"]}
+        )
     ).json()["id"]
-    assert (await client.post(f"/v1/team/voice/{not_voice}/join", headers=asha)).status_code == 422
+    joined = await client.post(f"/v1/team/voice/{dm}/join", headers=asha)
+    assert joined.status_code == 200
+    listed = (await client.get("/v1/team/conversations", headers=owner.headers)).json()
+    assert [p["id"] for p in listed[0]["inCall"]] == [ids["asha@example.com"]]
+    assert (await client.post(f"/v1/team/voice/{dm}/join", headers=ravi)).status_code == 404
+    assert (await client.get(f"/v1/team/voice/{dm}", headers=ravi)).status_code == 404
 
 
 async def test_ice_servers_are_empty_without_a_turn_server(
@@ -683,3 +693,23 @@ def test_settings_refuse_bad_ice_urls_and_a_weak_turn_secret() -> None:
     with pytest.raises(ValueError):
         Settings(**base, stun_urls="http://host")
     assert Settings(**base, turn_urls="turns:host:5349", turn_secret=SecretStr("k" * 32)).turn_list
+
+
+async def test_a_fresh_join_drops_messages_from_an_earlier_call(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, _, ids = await _two_members(client, mailbox)
+    space = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "redial"})
+    ).json()["id"]
+    await client.post(f"/v1/team/voice/{space}/join", headers=asha)
+    await client.post(f"/v1/team/voice/{space}/join", headers=owner.headers)
+    await client.post(
+        f"/v1/team/voice/{space}/signal",
+        headers=owner.headers,
+        json={"to_user_id": ids["asha@example.com"], "kind": "offer", "payload": {"sdp": "old"}},
+    )
+    await client.post(f"/v1/team/voice/{space}/leave", headers=asha)
+    await client.post(f"/v1/team/voice/{space}/join", headers=asha)
+    replay = (await client.get(f"/v1/team/voice/{space}/signals", headers=asha)).json()
+    assert replay == []

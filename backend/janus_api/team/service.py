@@ -80,10 +80,6 @@ async def _readable(db: Db, actor: Actor, space: TeamSpace) -> TeamSpaceMember |
 
 
 async def _postable(db: Db, actor: Actor, space: TeamSpace) -> TeamSpaceMember:
-    if space.kind == "voice":
-        raise ApiError(
-            "voice_channel", "A voice channel is for calls; post in a text channel.", 422
-        )
     member = await _member(db, space.id, actor.user.id)
     if space.kind in ("dm", "group") and member is None:
         raise ApiError("not_found", "Conversation not found.", 404)
@@ -171,7 +167,7 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
         peer=peer,
         lastMessageAt=last.created_at if last else None,
         lastMessagePreview=preview,
-        inCall=await call_people(db, space.id) if space.kind == "voice" else [],
+        inCall=await call_people(db, space.id),
     )
 
 
@@ -280,15 +276,14 @@ async def create_channel(db: Db, actor: Actor, data: schemas.ChannelIn) -> schem
     )
     db.add(space)
     await db.flush()
-    if not data.voice:
-        db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=actor.user.id))
-        await db.flush()
+    db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=actor.user.id))
+    await db.flush()
     return await _space_out(db, actor, space)
 
 
 async def join_channel(db: Db, actor: Actor, space_id: int) -> schemas.SpaceOut:
     space = await _space(db, actor.session.tenant_id, space_id)
-    if space.kind != "channel":
+    if space.kind not in ("channel", "voice"):
         raise ApiError("not_a_channel", "Only a channel can be joined.", 422)
     if await _member(db, space.id, actor.user.id) is None:
         db.add(TeamSpaceMember(tenant_id=space.tenant_id, space_id=space.id, user_id=actor.user.id))
@@ -298,7 +293,7 @@ async def join_channel(db: Db, actor: Actor, space_id: int) -> schemas.SpaceOut:
 
 async def leave_channel(db: Db, actor: Actor, space_id: int) -> schemas.SpaceOut:
     space = await _space(db, actor.session.tenant_id, space_id)
-    if space.kind != "channel":
+    if space.kind not in ("channel", "voice"):
         raise ApiError("not_a_channel", "Only a channel can be left.", 422)
     member = await _member(db, space.id, actor.user.id)
     if member is not None:
@@ -707,10 +702,10 @@ CALL_STALE = timedelta(seconds=20)
 SIGNAL_TTL = timedelta(minutes=2)
 
 
-async def _voice_space(db: Db, tenant_id: int, space_id: int) -> TeamSpace:
-    space = await _space(db, tenant_id, space_id)
-    if space.kind != "voice":
-        raise ApiError("not_voice", "That is not a voice channel.", 422)
+async def _call_space(db: Db, actor: Actor, space_id: int) -> TeamSpace:
+    """Any conversation can hold a call. A group or DM call is for its members only."""
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
     return space
 
 
@@ -752,7 +747,7 @@ async def _presence(db: Db, space_id: int, user_id: int) -> TeamVoicePresence | 
 async def join_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
     """Joins this call, and leaves any other call the person was in."""
     tenant_id = actor.session.tenant_id
-    space = await _voice_space(db, tenant_id, space_id)
+    space = await _call_space(db, actor, space_id)
     others = await db.scalars(
         select(TeamVoicePresence).where(
             TeamVoicePresence.tenant_id == tenant_id,
@@ -765,20 +760,25 @@ async def join_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
             current = row
         else:
             await db.delete(row)
+    fresh = current is None or current.seen_at <= _now() - CALL_STALE
     if current is None:
         db.add(TeamVoicePresence(tenant_id=tenant_id, space_id=space.id, user_id=actor.user.id))
     else:
-        if current.seen_at <= _now() - CALL_STALE:
+        if fresh:
             # Back after dropping out: a fresh join, not a share left running.
             current.joined_at = _now()
             current.muted = current.deafened = current.sharing = False
         current.seen_at = _now()
+    if fresh:
+        # Messages from an earlier call here describe connections that no longer exist; a new
+        # stream would replay them and break the new connection.
+        await _clear_signals(db, space.id, actor.user.id)
     await db.flush()
     return schemas.CallOut(spaceId=str(space.id), participants=await call_people(db, space.id))
 
 
 async def leave_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
-    space = await _voice_space(db, actor.session.tenant_id, space_id)
+    space = await _call_space(db, actor, space_id)
     rows = await db.scalars(
         select(TeamVoicePresence).where(
             TeamVoicePresence.space_id == space.id, TeamVoicePresence.user_id == actor.user.id
@@ -786,14 +786,27 @@ async def leave_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
     )
     for row in rows.all():
         await db.delete(row)
+    await _clear_signals(db, space.id, actor.user.id)
     await db.flush()
     return schemas.CallOut(spaceId=str(space.id), participants=await call_people(db, space.id))
+
+
+async def _clear_signals(db: Db, space_id: int, user_id: int) -> None:
+    """Drops call messages to or from this person in this conversation."""
+    rows = await db.scalars(
+        select(TeamSignal).where(
+            TeamSignal.space_id == space_id,
+            or_(TeamSignal.to_user == user_id, TeamSignal.from_user == user_id),
+        )
+    )
+    for row in rows.all():
+        await db.delete(row)
 
 
 async def set_call_state(
     db: Db, actor: Actor, space_id: int, data: schemas.VoiceStateIn
 ) -> schemas.CallOut:
-    space = await _voice_space(db, actor.session.tenant_id, space_id)
+    space = await _call_space(db, actor, space_id)
     row = await _presence(db, space.id, actor.user.id)
     if row is None:
         raise ApiError("not_in_call", "Join the call first.", 409)
@@ -804,14 +817,14 @@ async def set_call_state(
 
 
 async def call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
-    space = await _voice_space(db, actor.session.tenant_id, space_id)
+    space = await _call_space(db, actor, space_id)
     return schemas.CallOut(spaceId=str(space.id), participants=await call_people(db, space.id))
 
 
 async def send_signal(db: Db, actor: Actor, space_id: int, data: schemas.SignalIn) -> None:
     """Relays a WebRTC message. Both people must be in this call."""
     tenant_id = actor.session.tenant_id
-    space = await _voice_space(db, tenant_id, space_id)
+    space = await _call_space(db, actor, space_id)
     if await _presence(db, space.id, actor.user.id) is None:
         raise ApiError("not_in_call", "Join the call first.", 409)
     if await _presence(db, space.id, data.to_user_id) is None:
@@ -851,7 +864,7 @@ async def signals_for(db: Db, user_id: int, space_id: int, after: int) -> list[s
 
 
 async def signals(db: Db, actor: Actor, space_id: int, after: int) -> list[schemas.SignalOut]:
-    space = await _voice_space(db, actor.session.tenant_id, space_id)
+    space = await _call_space(db, actor, space_id)
     if await _presence(db, space.id, actor.user.id) is None:
         raise ApiError("not_in_call", "Join the call first.", 409)
     return await signals_for(db, actor.user.id, space.id, after)
