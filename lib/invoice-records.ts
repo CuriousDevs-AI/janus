@@ -6,6 +6,7 @@ import { toPaise } from "@/lib/finance-records";
 import { trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { type CreditNote, type Invoice, type Payment, useFinanceStore } from "@/lib/stores/finance-store";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { todayIso } from "@/lib/today";
 
 /**
  * Invoices, payments and credit notes are recorded on the server, in paise. The server works out the
@@ -46,7 +47,7 @@ interface ServerInvoice {
   credit_notes: ServerNote[];
 }
 
-const TODAY = "2026-10-23";
+const TODAY = todayIso();
 const rupees = (paise: number) => paise / 100;
 const shown = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 

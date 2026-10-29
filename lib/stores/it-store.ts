@@ -8,6 +8,7 @@ import { scoped } from "@/lib/company";
 import { addDays } from "@/lib/stores/projects-store";
 import { demoMode } from "@/lib/demo-mode";
 import { withoutDemoRecords } from "@/lib/stores/server-owned";
+import { todayIso } from "@/lib/today";
 
 /**
  * IT & Infrastructure (phase 1): asset register with assignment and return, access grants per person
@@ -15,7 +16,7 @@ import { withoutDemoRecords } from "@/lib/stores/server-owned";
  * incidents come later. Each company keeps its own records.
  */
 
-export const TODAY = "2026-10-23";
+export const TODAY = todayIso();
 export const ASSET_KINDS = ["Laptop", "Desktop", "Phone", "Monitor", "Printer", "Other"] as const;
 export const ACCESS_LEVELS = ["view", "edit", "admin"] as const;
 export const HELPDESK_CATEGORIES = ["Laptop or phone", "Access", "Software", "Network or printer", "Other"] as const;

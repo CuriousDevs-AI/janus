@@ -33,6 +33,7 @@ import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, bookPayments, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { todayIso } from "@/lib/today";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
@@ -109,7 +110,7 @@ function PayablesView({ me }: { me: string }) {
   const purchaseOrders = useOperationsStore((state) => state.purchaseOrders);
   const vendors = useVendorsStore((state) => state.vendors);
   const [payAmounts, setPayAmounts] = React.useState<Record<string, string>>({});
-  const today = "2026-10-23";
+  const today = todayIso();
 
   React.useEffect(() => {
     syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
@@ -192,7 +193,7 @@ function BudgetsView({ me }: { me: string }) {
   const draws = useFinanceStore((state) => state.draws);
   const plans = useFinanceStore((state) => state.plans);
   const setBudgetPlan = useFinanceStore((state) => state.setBudgetPlan);
-  const current = fiscalPeriod("2026-10-23");
+  const current = fiscalPeriod(todayIso());
   const [fiscalYear] = React.useState(current.fiscalYear);
   const [quarter, setQuarter] = React.useState<1 | 2 | 3 | 4>(current.quarter);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
@@ -314,7 +315,7 @@ function ExpensesView({ me }: { me: string }) {
   const addExpense = useFinanceStore((state) => state.addExpense);
   const topUpPettyCash = useFinanceStore((state) => state.topUpPettyCash);
   const balance = pettyCashBalance(topUps, expenses);
-  const [date, setDate] = React.useState("2026-10-23");
+  const [date, setDate] = React.useState(todayIso());
   const [category, setCategory] = React.useState<(typeof EXPENSE_CATEGORIES)[number]>("Travel");
   const [payee, setPayee] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -435,7 +436,7 @@ function ReportsView() {
   const pnl = profitAndLoss(invoices, creditNotes, bills, expenses);
   const live = invoices.filter((i) => !i.cancelled);
   const receivable = live.reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
-  const overdue = live.filter((i) => i.dueDate < "2026-10-23").reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const overdue = live.filter((i) => i.dueDate < todayIso()).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const owedToVendors = bills.reduce((sum, b) => sum + (b.amount - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
   const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
   const closing = months.length > 0 ? months[months.length - 1].closing : openingCash;
@@ -553,7 +554,7 @@ function CashFlowView({ me }: { me: string }) {
   const [description, setDescription] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [direction, setDirection] = React.useState<"in" | "out">("out");
-  const [date, setDate] = React.useState("2026-10-23");
+  const [date, setDate] = React.useState(todayIso());
   const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, pettyCashTopUps);
   const lastClosing = months.length > 0 ? months[months.length - 1].closing : openingCash;
 
@@ -856,7 +857,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   const [dueDays, setDueDays] = React.useState("30");
   const [lines, setLines] = React.useState<InvoiceLine[]>([{ item: "", hsn: "", qty: 1, rate: 0, gstRate: 18 }]);
   const [error, setError] = React.useState("");
-  const today = "2026-10-23";
+  const today = todayIso();
   const due = new Date(Date.parse(today) + Number(dueDays || 0) * 86400000).toISOString().slice(0, 10);
   const preview = invoiceTotals({ sameState, lines, id: "", number: "", customer, customerCompany, date: today, dueDate: due, payments: [], createdBy: me });
 
@@ -921,7 +922,7 @@ function PaymentDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => 
   const [error, setError] = React.useState("");
   async function save() {
     if (reference.trim().length < 3) return setError("Enter the payment reference (UTR, cheque number or receipt).");
-    const problem = await recordInvoicePayment(invoice.id, { amount: Number(amount), method, reference: reference.trim(), date: "2026-10-23" }, me);
+    const problem = await recordInvoicePayment(invoice.id, { amount: Number(amount), method, reference: reference.trim(), date: todayIso() }, me);
     if (problem) return setError(problem);
     toast.success("Payment recorded");
     onClose();
@@ -965,7 +966,7 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => 
           <div className="flex justify-between"><span>Credited (approved)</span><span>{money(creditNotes.filter((n) => n.invoiceId === invoice.id && n.status === "approved").reduce((s, n) => s + n.amount, 0))}</span></div>
           <div className="flex justify-between font-semibold"><span>Due now</span><span>{money(dueAmount(invoice, creditNotes))}</span></div>
         </div>
-        <div className="border-t border-border pt-3"><p className="mb-2 text-sm font-medium">Documents</p><RecordDocuments recordKind="invoice" recordId={invoice.id} addedBy={me} today="2026-10-23" /></div>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-sm font-medium">Documents</p><RecordDocuments recordKind="invoice" recordId={invoice.id} addedBy={me} today={todayIso()} /></div>
         <p className="text-xs text-muted-foreground">Created by {invoice.createdBy}. Tax rules to be confirmed by the company&apos;s accountant before filing.</p>
         <DialogFooter><Button variant="secondary" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
@@ -984,7 +985,7 @@ function CreditNotesView({ me }: { me: string }) {
   const [invoiceId, setInvoiceId] = React.useState(() => params.get("invoice") ?? "");
   const [amount, setAmount] = React.useState("");
   const [reason, setReason] = React.useState("");
-  const [date] = React.useState("2026-10-23");
+  const [date] = React.useState(todayIso());
   const [ticketId, setTicketId] = React.useState("");
   const [kind, setKind] = React.useState<"credit" | "write-off">(() => (params.get("kind") === "write-off" ? "write-off" : "credit"));
   const [docsFor, setDocsFor] = React.useState<CreditNote | null>(null);
@@ -1002,7 +1003,7 @@ function CreditNotesView({ me }: { me: string }) {
       <Dialog open={docsFor !== null} onOpenChange={(open) => !open && setDocsFor(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Documents for {docsFor?.number}</DialogTitle><DialogDescription>Approval notes, the customer&apos;s letter or the stock report behind this credit note.</DialogDescription></DialogHeader>
-          {docsFor ? <RecordDocuments recordKind="credit-note" recordId={docsFor.id} addedBy={me} today="2026-10-23" /> : null}
+          {docsFor ? <RecordDocuments recordKind="credit-note" recordId={docsFor.id} addedBy={me} today={todayIso()} /> : null}
         </DialogContent>
       </Dialog>
       <Card>
@@ -1091,7 +1092,7 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="fr-amount">Amount (₹)</Label><Input id="fr-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="fr-line">Budget line</Label><select id="fr-line" className={selectClass} value={lineId} onChange={(e) => setLineId(e.target.value)}><option value="">Choose…</option>{lines.map((line) => <option key={line.id} value={line.id}>{line.name}</option>)}</select></div>
           </div>
-          <Button className="w-fit" disabled={purpose.trim().length < 3 || !(Number(amount) > 0) || !lineId} onClick={async () => { const p = await addFundRequest({ purpose: purpose.trim(), amount: Number(amount), lineId, date: "2026-10-23" }, me); if (p) { toast.error(p); return; } toast.success("Fund request sent for approval"); setPurpose(""); setAmount(""); }}>Send request</Button>
+          <Button className="w-fit" disabled={purpose.trim().length < 3 || !(Number(amount) > 0) || !lineId} onClick={async () => { const p = await addFundRequest({ purpose: purpose.trim(), amount: Number(amount), lineId, date: todayIso() }, me); if (p) { toast.error(p); return; } toast.success("Fund request sent for approval"); setPurpose(""); setAmount(""); }}>Send request</Button>
         </CardContent>
       </Card>
 
@@ -1135,7 +1136,7 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="dr-amount">Amount (₹)</Label><Input id="dr-amount" type="number" min={0} value={drawAmount} onChange={(e) => setDrawAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="dr-note">Note</Label><Input id="dr-note" value={drawNote} onChange={(e) => setDrawNote(e.target.value)} /></div>
           </div>
-          <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={async () => { const p = await moveBudget("draw", drawLine, Number(drawAmount), drawNote.trim(), me, "2026-10-23"); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
+          <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={async () => { const p = await moveBudget("draw", drawLine, Number(drawAmount), drawNote.trim(), me, todayIso()); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
           {draws.length > 0 ? <ul className="text-xs text-muted-foreground">{draws.slice(0, 5).map((draw) => <li key={draw.id}>{draw.date} · {lines.find((l) => l.id === draw.lineId)?.name} · {draw.amount < 0 ? `Released ${money(-draw.amount)}` : money(draw.amount)} · {draw.note} · by {draw.by}</li>)}</ul> : null}
         </CardContent>
       </Card>

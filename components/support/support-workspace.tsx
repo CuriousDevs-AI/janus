@@ -20,6 +20,7 @@ import { customerHealth } from "@/lib/customer-health";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { users } from "@/lib/mock-data";
 import type { Ticket } from "@/lib/types";
+import { todayIso } from "@/lib/today";
 
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
 const closed = (ticket: Ticket) => ticket.status === "resolved" || ticket.status === "closed";
@@ -163,7 +164,7 @@ function AssignmentsTrail() {
   );
 }
 
-const TODAY = "2026-10-23";
+const TODAY = todayIso();
 
 /** Ratings the customer gave on resolved tickets, recorded by staff with the customer's words. */
 function FeedbackView() {

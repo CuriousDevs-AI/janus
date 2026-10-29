@@ -10,6 +10,7 @@ import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { demoMode } from "@/lib/demo-mode";
+import { todayIso } from "@/lib/today";
 
 /**
  * Operations & Inventory (phase 1): item master, stock by location and batch, stock movements,
@@ -18,7 +19,7 @@ import { demoMode } from "@/lib/demo-mode";
  */
 
 export const ADJUSTMENT_APPROVAL_VALUE = 10000;
-export const TODAY = "2026-10-23";
+export const TODAY = todayIso();
 
 export interface Item { id: string; name: string; sku: string; unit: string; hsn: string; rate: number; gstRate: number; reorderLevel: number; trackBatch: boolean }
 export interface Batch { id: string; itemId: string; batchNo: string; expiry: string }

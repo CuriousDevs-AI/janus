@@ -11,6 +11,7 @@ import { createInvoice } from "@/lib/invoice-records";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { mergeServerOwned, withoutDemoRecords } from "@/lib/stores/server-owned";
+import { todayIso } from "@/lib/today";
 
 /**
  * Projects & Delivery (phase 1): projects with a budget drawn from a fund allocation, milestones
@@ -18,7 +19,7 @@ import { mergeServerOwned, withoutDemoRecords } from "@/lib/stores/server-owned"
  * Each company keeps its own records.
  */
 
-export const TODAY = "2026-10-23";
+export const TODAY = todayIso();
 export const PROJECT_TYPES = ["Fixed price", "Time and material", "Internal"] as const;
 
 export interface Project { id: string; name: string; client: string; ownerUserId?: string; customerId?: string; type: (typeof PROJECT_TYPES)[number]; owner: string; start: string; end: string; budget: number; budgetLineId: string; status: "planned" | "active" | "on hold" | "done"; createdBy: string }

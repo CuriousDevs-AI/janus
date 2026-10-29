@@ -6,6 +6,7 @@ import { toPaise } from "@/lib/finance-records";
 import { trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { type Bill, type Payment, useFinanceStore } from "@/lib/stores/finance-store";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { todayIso } from "@/lib/today";
 
 /**
  * Vendor bills are recorded on the server, in paise. The server checks each bill against the goods
@@ -30,7 +31,7 @@ interface ServerBill {
   payments: ServerPayment[];
 }
 
-const TODAY = "2026-10-23";
+const TODAY = todayIso();
 
 const toBill = (row: ServerBill): Bill => ({
   id: row.id,

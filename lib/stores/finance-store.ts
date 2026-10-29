@@ -13,6 +13,7 @@ import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { demoMode } from "@/lib/demo-mode";
 import { api } from "@/lib/api/client";
+import { todayIso } from "@/lib/today";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -125,7 +126,7 @@ interface FinanceState {
   releaseBudget: (lineId: string, amount: number, note: string, by: string, date: string) => string | null;
 }
 
-const today = "2026-10-23";
+const today = todayIso();
 const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps"> => {
   // Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
   if (!isFirstCompany || !demoMode) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [] };

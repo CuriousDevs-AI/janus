@@ -29,6 +29,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { leadSourceConnections } from "@/lib/mock-data/lead-sources";
 import { reportCatalogue as baseCatalogue, reportDepartments, type ReportDefinition, type ReportDepartment } from "@/lib/report-catalogue";
 import { demoMode } from "@/lib/demo-mode";
+import { todayIso } from "@/lib/today";
 
 type Summary = { leads: number; openDeals: number; wonDeals: number; pipelineValue: string };
 type ReportTab = "library" | "my" | "scheduled";
@@ -119,7 +120,7 @@ const reportCatalogue: ReportDefinition[] = baseCatalogue.map((item) => demoMode
 /** Headcount, leave and payroll figures for the Owner, taken from the HR workspace records. */
 function hrReportMetrics(id: string, people: HrEmployee[], leaves: HrLeaveRequest[]): string[][] | null {
   const active = people.filter((item) => item.status !== "archived");
-  const today = "2026-10-24";
+  const today = todayIso();
   if (id === "headcount") return [["Employees", String(active.length)], ["Departments", String(new Set(active.map((item) => item.department)).size)], ["On notice", String(active.filter((item) => item.status === "notice").length)], ["Joined in the last 90 days", String(active.filter((item) => item.joiningDate >= "2026-07-26").length)]];
   if (id === "attendance-leave") return [["On leave today", String(leaves.filter((item) => item.status === "approved" && item.from <= today && item.to >= today).length)], ["Approved leave days, October", String(leaves.filter((item) => item.status === "approved" && item.from >= "2026-10-01" && item.from <= "2026-10-31").reduce((sum, item) => sum + item.days, 0))], ["Waiting for approval", String(leaves.filter((item) => item.status === "pending").length)], ["Needs clarification", String(leaves.filter((item) => item.status === "needs_clarification").length)]];
   if (id === "payroll-cost") { const total = active.reduce((sum, item) => sum + item.salaryMonthly, 0); return [["Monthly gross pay", lakh(total)], ["People on payroll", String(active.length)], ["Average per person", `₹${Math.round(total / Math.max(1, active.length)).toLocaleString("en-IN")}`], ["Per year", lakh(total * 12)]]; }

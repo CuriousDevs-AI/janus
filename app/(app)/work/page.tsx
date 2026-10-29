@@ -13,13 +13,14 @@ import { useITStore, renewalSoon } from "@/lib/stores/it-store";
 import { useProjectsStore } from "@/lib/stores/projects-store";
 import { useAppStore } from "@/lib/stores/app-store";
 import { useRenewalsStore } from "@/lib/stores/renewals-store";
+import { todayIso } from "@/lib/today";
 
 /**
  * Work inbox (Phase 4): everything across the workspaces that is waiting for someone to act on it. It reads the
  * records and links to the view where the action is taken; it stores nothing of its own.
  */
 
-const TODAY = "2026-10-23";
+const TODAY = todayIso();
 
 /** `by` is who raised the item, when it is known: the person who raised it cannot act on it. */
 interface InboxItem { id: string; module: string; text: string; href: string; urgent: boolean; by?: string }
