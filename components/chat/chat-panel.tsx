@@ -32,6 +32,10 @@ export function ChatPanel() {
   const open = useUIStore((s) => s.chatOpen);
   const setOpen = useUIStore((s) => s.setChatOpen);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const chatTarget = useUIStore((state) => state.chatTarget);
+  const setChatTarget = useUIStore((state) => state.setChatTarget);
+  // A conversation opened from a lead or deal wins over the list choice.
+  const activeId = chatTarget ?? selectedId;
   const canChat = hasPermission(session.permissions, "leads:read_own");
   const live = open && canChat && !demoMode;
 
@@ -39,8 +43,8 @@ export function ChatPanel() {
     live ? "/whatsapp/conversations?limit=50&before_id=0" : null,
   );
   const thread = useApi<WhatsAppMessage[]>(
-    live && selectedId
-      ? `/whatsapp/conversations/${encodeURIComponent(selectedId)}/messages?limit=50&before_id=0`
+    live && activeId
+      ? `/whatsapp/conversations/${encodeURIComponent(activeId)}/messages?limit=50&before_id=0`
       : null,
   );
   const { reload: reloadList } = list;
@@ -56,7 +60,7 @@ export function ChatPanel() {
 
   if (!canChat) return null;
 
-  const conversation = list.data?.find((c) => c.id === selectedId);
+  const conversation = list.data?.find((c) => c.id === activeId);
 
   return (
     <>
@@ -73,18 +77,24 @@ export function ChatPanel() {
         open={open}
         onOpenChange={(value) => {
           setOpen(value);
-          if (!value) setSelectedId(null);
+          if (!value) {
+            setSelectedId(null);
+            setChatTarget(null);
+          }
         }}
       >
         <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b border-border p-4 pr-12">
             <div className="flex items-center gap-2">
-              {selectedId ? (
+              {activeId ? (
                 <Button
                   variant="ghost"
                   size="icon"
                   aria-label="Back to conversations"
-                  onClick={() => setSelectedId(null)}
+                  onClick={() => {
+                    setSelectedId(null);
+                    setChatTarget(null);
+                  }}
                 >
                   <ArrowLeft className="size-4" />
                 </Button>
@@ -102,7 +112,7 @@ export function ChatPanel() {
             <p className="p-4 text-sm text-muted-foreground">
               Chat sends on real accounts. In demo mode, open Chats to see the sample conversations.
             </p>
-          ) : selectedId ? (
+          ) : activeId ? (
             <ThreadView
               conversation={conversation}
               messages={thread.data}
@@ -111,14 +121,17 @@ export function ChatPanel() {
                 thread.reload();
                 list.reload();
               }}
-              id={selectedId}
+              id={activeId}
             />
           ) : (
             <ConversationList
               rows={list.data}
               error={list.error}
               loading={list.loading}
-              onOpen={(id) => setSelectedId(id)}
+              onOpen={(id) => {
+                setSelectedId(id);
+                setChatTarget(null);
+              }}
             />
           )}
         </SheetContent>
@@ -157,7 +170,7 @@ function ConversationList({
           >
             <span className="text-sm font-medium">{row.name}</span>
             <span className="text-xs text-muted-foreground">
-              {row.company} · {formatDateTime(row.lastMessageAt)}
+              {[row.company, formatDateTime(row.lastMessageAt)].filter(Boolean).join(" · ")}
             </span>
           </button>
         </li>
@@ -185,8 +198,8 @@ function ThreadView({
   const windowOpen =
     Boolean(conversation?.replyWindowEndsAt) &&
     new Date(conversation!.replyWindowEndsAt as string) > new Date();
-  // The server returns the newest first; show the conversation oldest first, as a chat reads.
-  const ordered = messages ? [...messages].reverse() : [];
+  // The server returns this thread oldest first, which is how a chat reads.
+  const ordered = messages ?? [];
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -226,7 +239,7 @@ function ThreadView({
           >
             <p className="whitespace-pre-wrap break-words">{item.body}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              {formatDateTime(item.createdAt)} · {item.status}
+              {formatDateTime(item.createdAt)} · {deliveryLabel(item.status)}
             </p>
           </div>
         ))}
@@ -265,4 +278,17 @@ function ThreadView({
       </form>
     </>
   );
+}
+
+/** Plain words for a message's delivery status. */
+function deliveryLabel(status: string) {
+  const labels: Record<string, string> = {
+    queued: "Sending",
+    sent: "Sent",
+    delivered: "Delivered",
+    read: "Read",
+    received: "Received",
+    failed: "Not delivered",
+  };
+  return labels[status] ?? status;
 }

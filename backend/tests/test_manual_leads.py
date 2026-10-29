@@ -102,3 +102,18 @@ async def test_a_lead_with_a_bad_mobile_number_says_what_to_enter(
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_lead"
     assert "country code" in response.json()["error"]["message"]
+
+
+async def test_a_contact_with_no_whatsapp_conversation_returns_null(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    created = await client.post(
+        "/v1/leads",
+        headers={**owner.headers, **_key("no-conv")},
+        json={"name": "No chat yet", "phone": "9876543210"},
+    )
+    assert created.status_code == 201, created.text
+    contact = created.json()["customerId"]
+    found = await client.get(f"/v1/whatsapp/contacts/{contact}/conversation", headers=owner.headers)
+    assert found.status_code == 200 and found.json() is None

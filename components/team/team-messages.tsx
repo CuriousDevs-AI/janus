@@ -163,11 +163,13 @@ function MessageRow({
   return (
     <div
       className={cn(
-        "group relative flex gap-3 px-6 py-1.5 hover:bg-surface-2/60",
+        "group relative flex gap-2 px-6 hover:bg-surface-2/40",
+        item.mine ? "justify-end" : "justify-start",
         active && "bg-accent-muted/40",
         grouped ? "pt-0.5" : "pt-3",
       )}
     >
+      {item.mine ? null : (
       <div className="w-9 shrink-0">
         {grouped ? null : (
           <Avatar className="size-9">
@@ -177,7 +179,8 @@ function MessageRow({
           </Avatar>
         )}
       </div>
-      <div className="min-w-0 flex-1">
+      )}
+      <div className={cn("flex min-w-0 max-w-[80%] flex-col", item.mine ? "items-end" : "items-start")}>
         {grouped ? null : (
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-semibold text-foreground">{item.mine ? "You" : item.author.name}</span>
@@ -214,10 +217,17 @@ function MessageRow({
             </div>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-            {item.body}
-            {item.editedAt ? <span className="ml-1 text-[11px] text-muted-foreground">(edited)</span> : null}
-          </p>
+          <div
+            className={cn(
+              "rounded-2xl px-3 py-2 text-sm shadow-sm",
+              item.mine ? "rounded-br-sm bg-accent text-accent-foreground" : "rounded-bl-sm border border-border bg-surface text-foreground",
+            )}
+          >
+            <p className="whitespace-pre-wrap break-words">
+              {item.body}
+              {item.editedAt ? <span className="ml-1 text-[11px] opacity-70">(edited)</span> : null}
+            </p>
+          </div>
         )}
 
         {!item.deleted && item.attachments.length > 0 ? <AttachmentList items={item.attachments} /> : null}

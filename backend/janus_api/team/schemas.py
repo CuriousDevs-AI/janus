@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 CHANNEL_NAME = r"^[a-z0-9][a-z0-9-]{1,39}$"
 EMOJI = Literal["👍", "❤️", "😂", "🎉", "👀", "🙏"]
@@ -12,11 +13,15 @@ class ChannelIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(pattern=CHANNEL_NAME)
     topic: str = Field(default="", max_length=200)
+    voice: bool = False
 
 
 class DirectIn(BaseModel):
+    """One person makes a direct conversation; two or more make a group."""
+
     model_config = ConfigDict(extra="forbid")
-    user_id: int = Field(gt=0)
+    user_id: int | None = Field(default=None, gt=0)
+    user_ids: list[int] = Field(default_factory=list, max_length=15)
 
 
 class MessageIn(BaseModel):
@@ -45,10 +50,54 @@ class PersonOut(BaseModel):
     name: str
 
 
+class CallPersonOut(BaseModel):
+    id: int
+    name: str
+    muted: bool
+    deafened: bool
+    sharing: bool
+
+
+class CallOut(BaseModel):
+    spaceId: str
+    participants: list[CallPersonOut]
+
+
+class VoiceStateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    muted: bool = False
+    deafened: bool = False
+    sharing: bool = False
+
+
+class SignalIn(BaseModel):
+    """A WebRTC message for one other person in the call. Kept under 64 KB."""
+
+    model_config = ConfigDict(extra="forbid")
+    to_user_id: int = Field(gt=0)
+    kind: Literal["offer", "answer", "ice", "bye"]
+    payload: dict[str, Any]
+
+    @field_validator("payload")
+    @classmethod
+    def small(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value)) > 65536:
+            raise ValueError("A call message can be at most 64 KB.")
+        return value
+
+
+class SignalOut(BaseModel):
+    id: str
+    fromUserId: int
+    kind: str
+    payload: dict[str, Any]
+
+
 class SpaceOut(BaseModel):
     id: str
-    kind: Literal["channel", "dm"]
+    kind: Literal["channel", "dm", "group", "voice"]
     name: str | None
+    title: str
     topic: str
     memberCount: int
     joined: bool
@@ -56,6 +105,7 @@ class SpaceOut(BaseModel):
     peer: PersonOut | None
     lastMessageAt: datetime | None
     lastMessagePreview: str | None
+    inCall: list[CallPersonOut] = []
 
 
 class ReactionOut(BaseModel):
@@ -76,7 +126,7 @@ class SearchHit(BaseModel):
     message: "MessageOut"
     spaceId: str
     spaceLabel: str
-    spaceKind: Literal["channel", "dm"]
+    spaceKind: Literal["channel", "dm", "group", "voice"]
 
 
 class MessageOut(BaseModel):

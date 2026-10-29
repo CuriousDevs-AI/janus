@@ -1,5 +1,6 @@
 "use client";
 
+import { ContactConversation } from "@/components/chat/contact-conversation";
 import { use, type ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -302,9 +303,8 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lead #{leadData.id}</p>
-                <Badge variant={stageVariant(leadData.stage)}>{label(leadData.stage)}</Badge>
               </div>
-              <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-foreground">{displayName}</h1>
+              <h1 className="mt-1 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{displayName}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {contactData.company && <span className="inline-flex items-center gap-1.5"><Building2 className="size-3.5 text-accent" />{contactData.company}</span>}
                 <span className="inline-flex items-center gap-1.5"><FileText className="size-3.5 text-info" />{sourceLabel}</span>
@@ -329,14 +329,14 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               </div>
               <Badge variant={stageVariant(leadData.stage)}>{label(leadData.stage)}</Badge>
             </div>
-            <div className="mt-5 grid grid-cols-5 gap-1 sm:grid-cols-9">
+            <div className="mt-5 flex gap-1">
               {stages.map((stage, index) => {
                 const complete = leadData.stage !== "lost" && currentStage >= index;
                 const active = leadData.stage === stage;
                 return (
-                  <div key={stage} className="min-w-0">
+                  <div key={stage} className="min-w-0 flex-1">
                     <div className={`h-1.5 rounded-full ${complete ? "bg-gradient-to-r from-accent to-info" : "bg-surface-3"}`} />
-                    <p className={`mt-2 truncate text-[10px] ${active ? "font-semibold text-accent" : "text-muted-foreground"}`} title={label(stage)}>
+                    <p className={`mt-2 hidden truncate text-[10px] sm:block ${active ? "font-semibold text-accent" : "text-muted-foreground"}`} title={label(stage)}>
                       {label(stage)}
                     </p>
                   </div>
@@ -361,6 +361,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             </div>
           </section>
 
+          <ContactConversation contactId={leadData.customerId} />
           <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <div className="flex items-center gap-2">
               <FileText className="size-4 text-warning" />

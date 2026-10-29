@@ -51,6 +51,17 @@ async def open_conversation(
     return await service.open_conversation(db, actor, data.contactId)
 
 
+@router.get(
+    "/whatsapp/contacts/{contact_id}/conversation", response_model=schemas.ConversationOut | None
+)
+async def contact_conversation(
+    contact_id: Identifier, actor: Reader, db: Db
+) -> schemas.ConversationOut | None:
+    """The WhatsApp conversation with this contact, or null when the contact has not messaged."""
+    rows = await service.conversations(db, actor, limit=1, contact_id=int(contact_id))
+    return rows[0] if rows else None
+
+
 @router.get("/whatsapp/conversations/{conversation_id}", response_model=schemas.ConversationOut)
 async def conversation(
     conversation_id: Identifier, actor: Reader, db: Db

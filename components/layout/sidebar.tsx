@@ -41,6 +41,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+/** Team Chat serves the whole company, so it sits in every switcher that lists workspaces. */
+const teamChatEntry = { id: "team-chat", name: "Team Chat", description: "Channels, direct messages, voice and screen sharing." };
+function withTeamChat<T extends { id: string; name: string; description: string }>(list: T[]): Array<T | typeof teamChatEntry> {
+  return list.length && !list.some((item) => item.id === "team-chat") ? [...list, teamChatEntry] : list;
+}
+
 export function SidebarNav({
   collapsed = false,
   onNavigate,
@@ -110,7 +116,7 @@ export function SidebarNav({
   }
 
   const ownerView = !demoMode || hrDemoRole === "owner";
-  const accessibleWorkspaces = React.useMemo(() => {
+  const accessibleWorkspaces = React.useMemo(() => withTeamChat((() => {
     const businessEntry = { id: "business", name: "Business Management", description: "Overview, people, workspaces, reports and settings." };
     const catalogue: Record<string, { id: string; name: string; description: string }> = { "crm-sales": { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }, "hr-people": { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." } };
     const switchedOn = demoMode ? activeCompany().workspaces : ["crm-sales", "hr-people"];
@@ -132,11 +138,12 @@ export function SidebarNav({
       ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
     ];
     return [];
-  }, [hasActiveWorkspace, workspacesApi.data, ownerView, account]);
+  })()), [hasActiveWorkspace, workspacesApi.data, ownerView, account]);
 
   function workspaceHref(id: string) {
     if (id === "crm-sales") return "/dashboard?workspace=crm-sales";
     if (id === "business") return "/settings?tab=workspace&view=overview&workspace=business";
+    if (id === "team-chat") return "/team?workspace=team-chat";
     return `/workspace/${id}?workspace=${id}`;
   }
 

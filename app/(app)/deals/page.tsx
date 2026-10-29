@@ -145,6 +145,7 @@ export default function DealsPage() {
               No deals here yet. Open a saved lead and choose Create deal.
             </p>
           )}
+          <p className="px-6 pt-3 text-xs text-muted-foreground">Scroll sideways to see every stage.</p>
           <div className="min-h-80 flex-1 overflow-auto px-6 py-4">
             <div
               className="flex h-full min-h-72 gap-3"

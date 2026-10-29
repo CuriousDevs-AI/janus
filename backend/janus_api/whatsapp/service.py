@@ -191,6 +191,7 @@ async def conversations(
     before_id: int = 0,
     limit: int = 50,
     conversation_id: int | None = None,
+    contact_id: int | None = None,
 ) -> list[schemas.ConversationOut]:
     owners = await visible_owners(db, actor.session.tenant_id, actor.user.id, actor.permissions)
     visible = select(Lead.id).where(
@@ -205,6 +206,8 @@ async def conversations(
     )
     if conversation_id is not None:
         query = query.where(Conversation.id == conversation_id)
+    if contact_id is not None:
+        query = query.where(Conversation.contact_id == contact_id)
     if before_id:
         query = query.where(Conversation.id < before_id)
     rows = (await db.execute(query.order_by(Conversation.id.desc()).limit(limit))).all()

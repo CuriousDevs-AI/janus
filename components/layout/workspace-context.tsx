@@ -20,6 +20,7 @@ function workspaceFromPath(pathname: string): WorkspaceId {
   const moduleMatch = pathname.match(/^\/workspace\/([^/]+)/);
   if (moduleMatch && isWorkspaceId(moduleMatch[1])) return moduleMatch[1];
   if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return "portfolio";
+  if (pathname === "/team" || pathname.startsWith("/team/")) return "team-chat";
   if (pathname === "/setup") return "business";
   if (pathname === "/settings" || pathname.startsWith("/settings/")) return "business";
   if (["/ai", "/agents", "/memory", "/evaluations"].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return "business";
@@ -37,7 +38,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectWorkspace = React.useCallback(
     (nextWorkspaceId: WorkspaceId, href?: string) => {
-      const target = href ?? (nextWorkspaceId === "portfolio" ? "/portfolio" : nextWorkspaceId === "business" ? "/settings" : nextWorkspaceId === "crm-sales" ? "/dashboard" : `/workspace/${nextWorkspaceId}`);
+      const target = href ?? (nextWorkspaceId === "portfolio" ? "/portfolio" : nextWorkspaceId === "business" ? "/settings" : nextWorkspaceId === "crm-sales" ? "/dashboard" : nextWorkspaceId === "team-chat" ? "/team" : `/workspace/${nextWorkspaceId}`);
       const params = new URLSearchParams(target.split("?")[1] ?? "");
       params.set("workspace", nextWorkspaceId);
       const path = target.split("?")[0];

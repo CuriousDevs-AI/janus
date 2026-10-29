@@ -1,10 +1,17 @@
+import asyncio
+import time
+from collections.abc import AsyncIterator
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, Header, Query, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import Field
 
+from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db
+from janus_api.core.errors import ApiError
+from janus_api.core.tenancy import set_context
 from janus_api.team import schemas, service
 
 router = APIRouter(prefix="/v1/team", tags=["Team chat"])
@@ -161,3 +168,121 @@ async def find_messages(
     limit: Limit = 20,
 ) -> list[schemas.SearchHit]:
     return await service.search(db, actor, q.strip(), limit)
+
+
+# ---- Voice calls -------------------------------------------------------------------------------
+
+
+@router.get("/voice/{space_id}", response_model=schemas.CallOut)
+async def call(space_id: int, actor: CurrentActor, db: Db) -> schemas.CallOut:
+    return await service.call(db, actor, space_id)
+
+
+@router.post("/voice/{space_id}/join", response_model=schemas.CallOut)
+async def join_call(space_id: int, actor: CurrentActor, db: Db) -> schemas.CallOut:
+    return await service.join_call(db, actor, space_id)
+
+
+@router.post("/voice/{space_id}/leave", response_model=schemas.CallOut)
+async def leave_call(space_id: int, actor: CurrentActor, db: Db) -> schemas.CallOut:
+    return await service.leave_call(db, actor, space_id)
+
+
+@router.post("/voice/{space_id}/state", response_model=schemas.CallOut)
+async def call_state(
+    space_id: int, data: schemas.VoiceStateIn, actor: CurrentActor, db: Db
+) -> schemas.CallOut:
+    return await service.set_call_state(db, actor, space_id, data)
+
+
+@router.post("/voice/{space_id}/signal", status_code=204)
+async def signal(space_id: int, data: schemas.SignalIn, actor: CurrentActor, db: Db) -> Response:
+    await service.send_signal(db, actor, space_id, data)
+    return Response(status_code=204)
+
+
+@router.get("/voice/{space_id}/signals", response_model=list[schemas.SignalOut])
+async def signals(
+    space_id: int,
+    actor: CurrentActor,
+    db: Db,
+    after: int = Query(default=0, ge=0),
+) -> list[schemas.SignalOut]:
+    return await service.signals(db, actor, space_id, after)
+
+
+CALL_STREAM_SECONDS = 300.0
+CALL_POLL_SECONDS = 0.4
+CALL_TOUCH_SECONDS = 5.0
+CALL_PRUNE_SECONDS = 30.0
+CALL_HEARTBEAT_SECONDS = 15.0
+
+
+async def _call_events(
+    request: Request, tenant_id: int, user_id: int, space_id: int, after: int
+) -> AsyncIterator[str]:
+    """Pushes who is in the call when it changes, and the WebRTC messages for this person.
+
+    The stream keeps the person in the call; when it stops, they drop out after a short while. It
+    ends after CALL_STREAM_SECONDS and the browser reconnects with Last-Event-ID, so no message is
+    missed or repeated.
+    """
+    last = after
+    snapshot = ""
+    started = time.monotonic()
+    touched = pruned = 0.0
+    quiet = 0.0
+    yield "retry: 2000\n\n"
+    while time.monotonic() - started < CALL_STREAM_SECONDS:
+        if await request.is_disconnected():
+            return
+        now = time.monotonic()
+        try:
+            async with session_factory()() as db:
+                await set_context(db, tenant_id=tenant_id, user_id=user_id)
+                if now - touched >= CALL_TOUCH_SECONDS:
+                    if not await service.touch_presence(db, user_id, space_id):
+                        await db.commit()
+                        yield "event: closed\ndata: {}\n\n"
+                        return
+                    touched = now
+                if now - pruned >= CALL_PRUNE_SECONDS:
+                    await service.prune_call(db, space_id)
+                    pruned = now
+                fresh = await service.signals_for(db, user_id, space_id, last)
+                people = await service.call_people(db, space_id)
+                await db.commit()
+        except ApiError:
+            yield "event: closed\ndata: {}\n\n"
+            return
+        for item in fresh:
+            last = int(item.id)
+            yield f"id: {item.id}\nevent: signal\ndata: {item.model_dump_json()}\n\n"
+        current = schemas.CallOut(spaceId=str(space_id), participants=people).model_dump_json()
+        if current != snapshot:
+            snapshot = current
+            yield f"event: presence\ndata: {current}\n\n"
+        quiet = 0.0 if fresh else quiet + CALL_POLL_SECONDS
+        if quiet >= CALL_HEARTBEAT_SECONDS:
+            yield ": keep-alive\n\n"
+            quiet = 0.0
+        await asyncio.sleep(CALL_POLL_SECONDS)
+
+
+@router.get("/voice/{space_id}/stream")
+async def call_stream(
+    space_id: int,
+    request: Request,
+    actor: CurrentActor,
+    db: Db,
+    after: int = Query(default=0, ge=0),
+) -> StreamingResponse:
+    """Server-sent events for a call. Join the call first."""
+    await service.signals(db, actor, space_id, 0)
+    resume = request.headers.get("last-event-id", "")
+    start = int(resume) if resume.isdigit() else after
+    return StreamingResponse(
+        _call_events(request, actor.session.tenant_id, actor.user.id, space_id, start),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

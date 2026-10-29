@@ -1,4 +1,5 @@
 "use client";
+import { ContactConversation } from "@/components/chat/contact-conversation";
 import { use, useState } from "react";
 import { can } from "@/lib/permissions";
 import Link from "next/link";
@@ -76,6 +77,7 @@ export default function DealPage({
               {deal.phone && <WhatsAppButton contactId={deal.customerId} />}
             </div>
           </div>
+          <ContactConversation contactId={deal.customerId} />
           <div className="grid gap-5 md:grid-cols-2">
             <section className="rounded-lg border border-border bg-surface p-4">
               <h2 className="mb-4 text-sm font-semibold">Deal details</h2>

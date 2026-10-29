@@ -276,7 +276,7 @@ function Conversation({
         direction: message.direction === "inbound" ? "inbound" as const : "outbound" as const,
         title: message.kind === "template" ? "WhatsApp template" : "WhatsApp message",
         body: message.body,
-        status: message.status === "accepted" ? "Accepted by Meta · Template" : message.status.replaceAll("_", " "),
+        status: message.status === "accepted" ? "Accepted by Meta · Template" : sentenceCase(message.status),
         createdAt: message.createdAt,
       })) ?? [];
   const reloadThread = liveThread.reload;
@@ -315,7 +315,7 @@ function Conversation({
                 </Link>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span>{thread.phone}</span>
-                  <span aria-hidden="true">·</span>
+                  <span aria-hidden="true" className="hidden sm:inline">·</span>
                   <span>{previewChat ? "Conversation" : "Connected channel"}</span>
                   <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", thread.doNotContact ? "bg-warning-muted text-warning" : thread.whatsappOptIn ? "bg-success-muted text-success" : "bg-surface-2 text-muted-foreground")}>
                     {thread.doNotContact ? "Outbound suppressed" : thread.whatsappOptIn ? "WhatsApp opt-in" : "Opt-in not recorded"}
@@ -877,4 +877,10 @@ function Composer({
       </div>
     </form>
   );
+}
+
+/** "delivered" or "not_sent" as "Delivered" or "Not sent". */
+function sentenceCase(status: string) {
+  const words = status.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }

@@ -85,7 +85,7 @@ export function DealForm({
               max="999999999999.99"
               step="0.01"
               required
-              defaultValue={deal?.amount ?? ""}
+              defaultValue={deal?.amount ? String(Number(deal.amount)) : ""}
               placeholder="0.00"
             />
           </div>

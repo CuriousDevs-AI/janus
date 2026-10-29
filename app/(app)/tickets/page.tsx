@@ -162,6 +162,8 @@ export default function TicketsPage() {
           />
         </div>
       ) : (
+        <>
+        <p className="px-6 pt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
         <Table>
           <TableHeader>
             <TableRow>
@@ -214,6 +216,7 @@ export default function TicketsPage() {
             })}
           </TableBody>
         </Table>
+        </>
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

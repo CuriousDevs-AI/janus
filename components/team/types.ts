@@ -1,3 +1,5 @@
+import type { CallPerson } from "@/components/team/voice-call";
+
 export interface TeamPerson {
   id: number;
   name: string;
@@ -5,8 +7,9 @@ export interface TeamPerson {
 
 export interface TeamSpace {
   id: string;
-  kind: "channel" | "dm";
+  kind: "channel" | "dm" | "group" | "voice";
   name: string | null;
+  title: string;
   topic: string;
   memberCount: number;
   joined: boolean;
@@ -14,6 +17,7 @@ export interface TeamSpace {
   peer: TeamPerson | null;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
+  inCall: CallPerson[];
 }
 
 export interface TeamReaction {
@@ -49,7 +53,7 @@ export interface TeamSearchHit {
   message: TeamMessage;
   spaceId: string;
   spaceLabel: string;
-  spaceKind: "channel" | "dm";
+  spaceKind: "channel" | "dm" | "group" | "voice";
 }
 
 /** The largest file the team chat accepts, the same as the server. */

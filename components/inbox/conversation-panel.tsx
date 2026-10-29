@@ -62,7 +62,11 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
   if (!conversation || !customer) {
     return (
       <div className="flex h-full flex-1 items-center justify-center">
-        <EmptyState icon={MessageSquare} title="Select a conversation" description="Choose a conversation from the list to see the full history." className="border-none" />
+        {conversationId ? (
+          <EmptyState icon={MessageSquare} title="This chat is not on this screen" description="Open Chats to read the full conversation." className="border-none" />
+        ) : (
+          <EmptyState icon={MessageSquare} title="Select a conversation" description="Choose a conversation from the list to see the full history." className="border-none" />
+        )}
       </div>
     );
   }
