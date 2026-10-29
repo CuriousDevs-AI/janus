@@ -1,6 +1,6 @@
 "use client";
 import { Hash, Menu, Search, LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
 import { usePageTitle } from "@/components/layout/use-page-title";
@@ -21,6 +21,8 @@ export function Topbar() {
   const account = useDemoAccount();
   const login = useLoginAccount();
   const router = useRouter();
+  const pathname = usePathname();
+  const onTeam = pathname === "/team";
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -42,7 +44,7 @@ export function Topbar() {
       </div>
       <div className="flex items-center gap-3">
         <ChatPanel />
-        <Button variant="secondary" size="sm" aria-label="Open team chat" onClick={() => router.push("/team")}>
+        <Button variant={onTeam ? "default" : "secondary"} size="sm" aria-label="Open team chat" aria-current={onTeam ? "page" : undefined} onClick={() => router.push("/team")}>
           <Hash className="size-3.5" />
           <span className="hidden sm:inline">Team</span>
         </Button>

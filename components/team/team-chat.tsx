@@ -273,7 +273,16 @@ export function TeamChat() {
           <EmptyPanel
             title="Pick a channel or start a message"
             text="Channels are open to everyone in the company. Direct messages are only seen by the two people in them."
-            action={<Button size="sm" onClick={() => setPicking(true)}><Plus className="size-3.5" /> New message</Button>}
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button size="sm" variant="secondary" className="md:hidden" onClick={() => setMobileNav(true)}>
+                  <Hash className="size-3.5" /> Browse channels
+                </Button>
+                <Button size="sm" onClick={() => setPicking(true)}>
+                  <Plus className="size-3.5" /> New message
+                </Button>
+              </div>
+            }
           />
         ) : (
           <div className="flex min-h-0 flex-1">
