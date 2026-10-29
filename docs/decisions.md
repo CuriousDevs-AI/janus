@@ -109,3 +109,4 @@ One line per decision. Newest items go at the bottom.
 - Billing (not connected): there is no billing provider behind the screen yet, so a real account sees a "Billing is not set up yet" card. The demo plan, seats, usage, invoices and payment details, which showed a subscription and a charge, are demo-only.
 - Demo data (vendors, projects, IT): saved copies drop the demo vendors, projects and IT records outside demo mode. The filter reads the demo lists directly (`withoutDemoRecords` in `lib/stores/server-owned.ts`), because those lists are empty for a real account.
 - Local-only records: vendors, projects, IT and the trails are still kept in the browser, not on the server. A company's records there are not shared across devices until they move to the server.
+- API keys: the security screen's key is demo-only. A real account shows "No API key issued yet" and Regenerate is refused, because keys are not issued by the server yet.
