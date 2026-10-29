@@ -7,7 +7,7 @@ import { demoMode } from "@/lib/demo-mode";
 /** HR and the owner, unless a role change took this permission away from the person they act as. */
 export function useCan(role: HrDemoRole, permission: OrgPermission) {
   const { departments, roles, assignments } = useHrOrgStore();
-  // A real account's owner has no demo actor, so the owner holds every HR permission there.
-  if (!demoMode && role === "owner") return true;
+  // A real account's owner and HR manager have no demo actor, so they hold every HR permission there.
+  if (!demoMode && canManageHr(role)) return true;
   return canManageHr(role) && hasPermission({ departments, roles, assignments }, demoActorId(role), permission);
 }
