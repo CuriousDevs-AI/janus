@@ -5,12 +5,17 @@ conversation is read and written only by its two members. Replies go one level d
 message they answer. Sends are idempotent on the Idempotency-Key, so a retry never posts twice.
 """
 
+import base64
+import hashlib
+import hmac
+import time
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Select, func, or_, select
 
 from janus_api.auth.models import User
 from janus_api.auth.service import Actor
+from janus_api.core.config import get_settings
 from janus_api.core.deps import Db
 from janus_api.core.errors import ApiError
 from janus_api.org.models import Membership
@@ -879,3 +884,33 @@ async def prune_call(db: Db, space_id: int) -> None:
     for row in old.all():
         await db.delete(row)
     await db.flush()
+
+
+def ice_config(actor: Actor) -> schemas.IceConfigOut:
+    """STUN and TURN servers for a call. TURN credentials last turn_ttl_seconds and name the person.
+
+    This is coturn's REST scheme: the username is "<expiry>:<user id>" and the password is an
+    HMAC-SHA1 of it under the shared secret, so the TURN server checks it without a database.
+    """
+    settings = get_settings()
+    servers: list[schemas.IceServerOut] = []
+    if settings.stun_list:
+        servers.append(schemas.IceServerOut(urls=settings.stun_list))
+    secret = settings.turn_secret.get_secret_value()
+    relay = bool(settings.turn_list and secret)
+    if relay:
+        username = f"{int(time.time()) + settings.turn_ttl_seconds}:{actor.user.id}"
+        digest = hmac.new(secret.encode(), username.encode(), hashlib.sha1).digest()
+        servers.append(
+            schemas.IceServerOut(
+                urls=settings.turn_list,
+                username=username,
+                credential=base64.b64encode(digest).decode(),
+            )
+        )
+    return schemas.IceConfigOut(
+        iceServers=servers,
+        # Relay-only needs a TURN server; without one it would stop every call connecting.
+        iceTransportPolicy=settings.ice_transport_policy if relay else "all",
+        ttlSeconds=settings.turn_ttl_seconds,
+    )

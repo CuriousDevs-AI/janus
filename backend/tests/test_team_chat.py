@@ -1,5 +1,13 @@
-import httpx
+import base64
+import hashlib
+import hmac
+import time
 
+import httpx
+import pytest
+from pydantic import SecretStr
+
+from janus_api.core.config import Settings, get_settings
 from tests.conftest import Mailbox
 from tests.helpers import accept_new, invite, signup
 
@@ -618,3 +626,60 @@ async def test_a_voice_channel_takes_no_text_and_one_call_at_a_time(
         await client.post("/v1/team/channels", headers=owner.headers, json={"name": "plain"})
     ).json()["id"]
     assert (await client.post(f"/v1/team/voice/{not_voice}/join", headers=asha)).status_code == 422
+
+
+async def test_ice_servers_are_empty_without_a_turn_server(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    out = (await client.get("/v1/team/ice-servers", headers=owner.headers)).json()
+    assert out["iceServers"] == [] and out["iceTransportPolicy"] == "all"
+    assert (await client.get("/v1/team/ice-servers")).status_code == 401
+
+
+async def test_turn_credentials_are_short_lived_and_signed_for_the_person(
+    client: httpx.AsyncClient, mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = get_settings()
+    secret = "s" * 40
+    monkeypatch.setattr(settings, "stun_urls", "stun:turn.janus.in:3478")
+    monkeypatch.setattr(
+        settings,
+        "turn_urls",
+        "turn:turn.janus.in:3478?transport=udp, turn:turn.janus.in:3478?transport=tcp",
+    )
+    monkeypatch.setattr(settings, "turn_secret", SecretStr(secret))
+    monkeypatch.setattr(settings, "ice_transport_policy", "relay")
+    owner = await signup(client, mailbox)
+
+    out = (await client.get("/v1/team/ice-servers", headers=owner.headers)).json()
+    stun, turn = out["iceServers"]
+    assert stun == {"urls": ["stun:turn.janus.in:3478"], "username": None, "credential": None}
+    assert turn["urls"] == [
+        "turn:turn.janus.in:3478?transport=udp",
+        "turn:turn.janus.in:3478?transport=tcp",
+    ]
+    expiry, user = turn["username"].split(":")
+    assert int(user) == owner.user_id
+    assert time.time() < int(expiry) <= time.time() + settings.turn_ttl_seconds + 5
+    expected = hmac.new(secret.encode(), turn["username"].encode(), hashlib.sha1).digest()
+    assert turn["credential"] == base64.b64encode(expected).decode()
+    assert out["iceTransportPolicy"] == "relay"
+
+
+async def test_relay_only_is_ignored_without_a_turn_server(
+    client: httpx.AsyncClient, mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "ice_transport_policy", "relay")
+    owner = await signup(client, mailbox)
+    out = (await client.get("/v1/team/ice-servers", headers=owner.headers)).json()
+    assert out["iceTransportPolicy"] == "all"
+
+
+def test_settings_refuse_bad_ice_urls_and_a_weak_turn_secret() -> None:
+    base = {"database_url": "postgresql+asyncpg://x@y/z", "jwt_secret": "j" * 40}
+    with pytest.raises(ValueError):
+        Settings(**base, turn_urls="turn:host:3478", turn_secret=SecretStr("short"))
+    with pytest.raises(ValueError):
+        Settings(**base, stun_urls="http://host")
+    assert Settings(**base, turn_urls="turns:host:5349", turn_secret=SecretStr("k" * 32)).turn_list
