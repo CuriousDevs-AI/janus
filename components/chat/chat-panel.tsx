@@ -198,8 +198,8 @@ function ThreadView({
   const windowOpen =
     Boolean(conversation?.replyWindowEndsAt) &&
     new Date(conversation!.replyWindowEndsAt as string) > new Date();
-  // The server returns the newest first; show the conversation oldest first, as a chat reads.
-  const ordered = messages ? [...messages].reverse() : [];
+  // The server returns this thread oldest first, which is how a chat reads.
+  const ordered = messages ?? [];
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
