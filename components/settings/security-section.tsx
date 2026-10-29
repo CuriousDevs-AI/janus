@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
+import { demoMode } from "@/lib/demo-mode";
 import { SectionCard, SettingRow, FieldRow } from "@/components/settings/section-ui";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ export function SecuritySection() {
   const [apiKeySuffix, setApiKeySuffix] = React.useState("4f2a");
 
   function regenerateKey() {
+    // Keys are not issued by the server yet, so a real account has no key to regenerate.
+    if (!demoMode) { toast.error("API keys are not available yet", { description: "Nothing was changed." }); return; }
     setApiKeySuffix(randomKeySuffix());
     toast.success("API key regenerated", { description: "The previous key was revoked immediately." });
   }
@@ -56,7 +59,7 @@ export function SecuritySection() {
         <FieldRow label="API key">
           <div className="flex items-center gap-2">
             <code className="text-mono flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-foreground">
-              sk-janus-••••••••••••{apiKeySuffix}
+              {demoMode ? `sk-janus-••••••••••••${apiKeySuffix}` : "No API key issued yet"}
             </code>
             <Button variant="secondary" size="sm" onClick={regenerateKey}>
               <RefreshCw className="size-3.5" />

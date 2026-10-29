@@ -67,9 +67,13 @@ const acme_conversations: Conversation[] = chats.map((chat) => {
   return { id: chat.id, customerId: `cus-${chat.customer}`, channel: chat.channel, category: chat.category, subject: chat.subject, unreadCount: chat.unread, priority: chat.priority, lastMessageAt: last.createdAt, lastMessagePreview: last.content.length > 80 ? `${last.content.slice(0, 77)}…` : last.content, assignedToId: chat.assignedTo, aiActive: chat.aiActive, status: chat.status, externalThreadId: chat.thread };
 });
 
-export const messages: Message[] = isFirstCompany ? acme_messages : [];
+export const demoMessages: Message[] = acme_messages;
 
-export const conversations: Conversation[] = isFirstCompany ? acme_conversations : [];
+export const messages: Message[] = isFirstCompany ? demoMessages : [];
+
+export const demoConversations: Conversation[] = acme_conversations;
+
+export const conversations: Conversation[] = isFirstCompany ? demoConversations : [];
 
 export function getConversationById(id?: string): Conversation | undefined {
   if (!id) return undefined;

@@ -11,9 +11,10 @@ function error(code: string, message: string, status: number) {
 
 async function bridge(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
-  if (path.some(segment => !/^[A-Za-z0-9_-]+$/.test(segment))) return error("not_found", "Endpoint not found.", 404);
+  // Store keys look like janus.finance.v1, so a segment may also carry dots when it starts with "janus.".
+  if (path.some(segment => !/^[A-Za-z0-9_-]+$/.test(segment) && !/^janus\.[a-z0-9.-]+$/.test(segment))) return error("not_found", "Endpoint not found.", 404);
   const route = path.join("/");
-  const allowed = /^(auth\/(signup|login|refresh|logout|logout-all|forgot-password|reset-password|verify-email|resend-verification)|me|business\/(setup|reports\/summary|intelligence\/ask|agents(\/[A-Za-z0-9_-]+(\/test)?)?|automation-catalog|automation-templates|automation-folders(\/\d+)?|runs\/\d+(\/(retry|cancel))?|automations(\/executions(\/\d+\/approve)?|\/\d+(\/(run|draft|publish|test|on|off|archive|runs|versions|enrollment-preview)(\/\d+)?)?)?)|workspaces(\/\d+(\/members(\/\d+)?)?)?|sources(\/presets|\/\d+(\/(events|embed|rotate-secret|keys(\/\d+)?|imports(\/\d+(\/rows)?)?))?)?|leads(\/\d+(\/deal)?)?|deals(\/\d+(\/events)?)?|contacts\/\d+|whatsapp\/(connection|templates|conversations(\/\d+(\/messages)?)?)|invitations\/[A-Za-z0-9_-]+(\/accept)?)$/;
+  const allowed = /^(auth\/(signup|login|refresh|logout|logout-all|forgot-password|reset-password|verify-email|resend-verification)|me|members(\/\d+)?|business\/(setup|reports\/summary|intelligence\/ask|agents(\/[A-Za-z0-9_-]+(\/test)?)?|automation-catalog|automation-templates|automation-folders(\/\d+)?|runs\/\d+(\/(retry|cancel))?|automations(\/executions(\/\d+\/approve)?|\/\d+(\/(run|draft|publish|test|on|off|archive|runs|versions|enrollment-preview)(\/\d+)?)?)?)|workspaces(\/\d+(\/members(\/\d+)?)?)?|sources(\/presets|\/\d+(\/(events|embed|rotate-secret|keys(\/\d+)?|imports(\/\d+(\/rows)?)?))?)?|leads(\/\d+(\/deal)?)?|deals(\/\d+(\/events)?)?|contacts\/\d+|whatsapp\/(connection|templates|conversations(\/\d+(\/messages)?)?)|invitations(\/[A-Za-z0-9_-]+(\/(accept|resend))?)?|workspace-state\/janus\.[a-z0-9.-]+|vendor-bank-accounts(\/\d+\/(approve|reject))?|project-timelines(\/[A-Za-z0-9_-]+(\/(entries|members(\/\d+)?|archive|stream))?)?|project-records(\/[A-Za-z0-9_-]+(\/(milestones(\/[A-Za-z0-9_-]+\/status)?|tasks(\/[A-Za-z0-9_-]+\/status)?|hours|allocations|changes(\/\d+\/decision)?))?)?|finance\/budget-lines(\/[A-Za-z0-9_-]+\/(draws|releases|allocations))?|finance\/invoices(\/\d+\/(payments|credit-notes))?|finance\/credit-notes\/\d+\/(approve|reject)|operations\/(ledger|import|items(\/[A-Za-z0-9_.-]+\/(receipts|adjustments))?|adjustments\/\d+\/(approve|reject)|dispatches(\/\d+(\/(checkpoints\/(picked|packed|shipped)|deliver))?)?|returns(\/\d+\/inspect)?|transfers(\/\d+\/receive)?|counts|purchase-orders(\/[A-Za-z0-9_.-]+\/receive)?|requisitions(\/[A-Za-z0-9_.-]+\/(approve|reject|order))?)|finance\/bills(\/\d+\/payments)?|finance\/fund-requests(\/[A-Za-z0-9_.-]+\/(owner-approve|finance-approve|reject))?|company-rules|it\/changes(\/\d+\/(decision|complete))?|support\/tickets(\/[A-Za-z0-9_.-]+\/(status|assign|resolve))?|team\/(people|search|attachments\/\d+|channels(\/\d+\/(join|leave))?|conversations|spaces\/\d+\/(messages|read|files)|messages\/\d+(\/(replies|reactions(\/remove)?))?)?)$/;
   if (!allowed.test(route)) return error("not_found", "Endpoint not found.", 404);
   const mutating = !["GET", "HEAD"].includes(request.method);
   if (mutating && request.headers.get("origin") !== (process.env.JANUS_APP_ORIGIN || new URL(request.url).origin)) {
@@ -27,7 +28,7 @@ async function bridge(request: NextRequest, context: { params: Promise<{ path: s
     const target = new URL(`/v1/${route}${new URL(request.url).search}`, origin);
     const headers = new Headers({ "User-Agent": (request.headers.get("user-agent") || "Janus web").slice(0, 512) });
     if (access) headers.set("Authorization", `Bearer ${access}`);
-    for (const name of ["content-type", "idempotency-key"]) {
+    for (const name of ["content-type", "idempotency-key", "last-event-id"]) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
     }
@@ -56,7 +57,16 @@ async function bridge(request: NextRequest, context: { params: Promise<{ path: s
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
       body = bytes.buffer;
     }
-    const upstream = await fetch(target, { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(45000) });
+    // A live stream stays open until the browser leaves; it is not buffered or subject to the request timeout.
+    const streaming = route.endsWith("/stream") && request.method === "GET";
+    const upstream = await fetch(target, { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: streaming ? request.signal : AbortSignal.timeout(45000) });
+    // A team file is passed through as bytes, with the type and disposition the API chose.
+    if (upstream.ok && request.method === "GET" && /^team\/attachments\/\d+$/.test(route)) {
+      return new Response(upstream.body, { headers: { "Content-Type": upstream.headers.get("content-type") || "application/octet-stream", "Content-Disposition": upstream.headers.get("content-disposition") || "attachment", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-cache" } });
+    }
+    if (streaming && upstream.ok) {
+      return new Response(upstream.body, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
+    }
     const data = upstream.status === 204 ? undefined : await upstream.json();
     const issuesTokens = route === "auth/login" || route === "auth/refresh" || route.endsWith("/accept");
     if (upstream.ok && issuesTokens) {

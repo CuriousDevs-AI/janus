@@ -26,7 +26,9 @@ const rows: Row[] = [
 
 const acme_memoryItems: MemoryItem[] = rows.map(([customer, kind, label, value, source, daysAgo, status, confidence], index) => ({ id: `mem-${index + 1}`, customerId: `cus-${customer}`, kind, label, value, confidence, source, createdAt: at(daysAgo, "10:30"), status }));
 
-export const memoryItems: MemoryItem[] = isFirstCompany ? acme_memoryItems : [];
+export const demoMemoryItems: MemoryItem[] = acme_memoryItems;
+
+export const memoryItems: MemoryItem[] = isFirstCompany ? demoMemoryItems : [];
 
 export function getMemoryForCustomer(customerId: string): MemoryItem[] {
   return memoryItems.filter((m) => m.customerId === customerId);

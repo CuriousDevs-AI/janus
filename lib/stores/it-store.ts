@@ -2,9 +2,13 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { addDays } from "@/lib/stores/projects-store";
+import { demoMode } from "@/lib/demo-mode";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
+import { todayIso } from "@/lib/today";
 
 /**
  * IT & Infrastructure (phase 1): asset register with assignment and return, access grants per person
@@ -12,20 +16,54 @@ import { addDays } from "@/lib/stores/projects-store";
  * incidents come later. Each company keeps its own records.
  */
 
-export const TODAY = "2026-10-23";
+export const TODAY = todayIso();
 export const ASSET_KINDS = ["Laptop", "Desktop", "Phone", "Monitor", "Printer", "Other"] as const;
 export const ACCESS_LEVELS = ["view", "edit", "admin"] as const;
+export const HELPDESK_CATEGORIES = ["Laptop or phone", "Access", "Software", "Network or printer", "Other"] as const;
+export const HELPDESK_PRIORITIES = ["low", "medium", "high"] as const;
 
 export interface Asset { id: string; name: string; kind: (typeof ASSET_KINDS)[number]; serial: string; purchaseDate: string; cost: number; status: "in stock" | "assigned" | "retired"; assignedTo: string | null }
 export interface AccessGrant { id: string; system: string; person: string; level: (typeof ACCESS_LEVELS)[number]; status: "active" | "removed"; grantedBy: string; removedBy?: string }
 export interface Licence { id: string; name: string; vendor: string; seats: number; assigned: string[]; annualCost: number; renewal: string }
-export interface AuditEntry { id: string; at: string; by: string; text: string }
+/** An IT request from a person in the company. Raised by the requester, worked by the IT assignee. */
+export interface HelpdeskTicket {
+  id: string; number: string; requester: string; category: (typeof HELPDESK_CATEGORIES)[number]; priority: (typeof HELPDESK_PRIORITIES)[number];
+  subject: string; status: "open" | "in progress" | "resolved"; assignee: string | null; raisedOn: string;
+  /** Service time: the day the request should be resolved by, set from its priority. */
+  dueOn: string;
+  /** For an Access request: the system and the level wanted. Resolving it grants the access. */
+  system?: string; level?: AccessGrant["level"];
+}
+/** Days to resolve a request, by priority. */
+export const HELPDESK_DUE_DAYS: Record<HelpdeskTicket["priority"], number> = { high: 0, medium: 1, low: 3 };
+/** An IT incident: something that is down or wrong, with severity, a timeline of updates, and the asset it touches if any. */
+export interface Incident { id: string; number: string; title: string; severity: "minor" | "major" | "critical"; status: "open" | "investigating" | "resolved"; reportedBy: string; assetId: string | null; raisedOn: string; updates: string[] }
+/** A planned change to IT: approved by someone other than the person who asked for it, then carried out. */
+export interface ITChange { id: string; number: string; title: string; risk: "low" | "medium" | "high"; requestedBy: string; status: "pending" | "approved" | "rejected" | "done"; decidedBy: string | null; raisedOn: string }
+/** A system IT keeps an eye on. Each check records its status; a system marked down opens a critical incident. */
+export interface Monitor { id: string; name: string; kind: "Server" | "Network" | "Application" | "Website" | "Other"; status: "up" | "degraded" | "down"; lastChecked: string; note: string }
+export interface AuditEntry { id: string; at: string; ts?: string; by: string; text: string }
 
 interface ITState {
   assets: Asset[];
   access: AccessGrant[];
   licences: Licence[];
   log: AuditEntry[];
+  helpdesk: HelpdeskTicket[];
+  incidents: Incident[];
+  monitors: Monitor[];
+  changes: ITChange[];
+  addMonitor: (input: { name: string; kind: Monitor["kind"] }, by: string) => string | null;
+  recordCheck: (id: string, status: Monitor["status"], note: string, by: string) => string | null;
+  raiseIncident: (input: { title: string; severity: Incident["severity"]; assetId: string | null }, by: string) => string | null;
+  updateIncident: (id: string, status: Incident["status"], note: string, by: string) => string | null;
+  requestChange: (input: { title: string; risk: ITChange["risk"] }, by: string) => string | null;
+  decideChange: (id: string, approve: boolean, by: string) => string | null;
+  completeChange: (id: string, by: string) => string | null;
+  raiseTicket: (input: { requester: string; category: HelpdeskTicket["category"]; priority: HelpdeskTicket["priority"]; subject: string; system?: string; level?: AccessGrant["level"] }, by: string) => string | null;
+  resolveTicket: (id: string, by: string) => string | null;
+  setTicketStatus: (id: string, status: HelpdeskTicket["status"], by: string) => string | null;
+  assignTicket: (id: string, assignee: string, by: string) => string | null;
   addAsset: (input: Omit<Asset, "id" | "status" | "assignedTo">, by: string) => string | null;
   assignAsset: (id: string, person: string, by: string) => string | null;
   returnAsset: (id: string, by: string) => string | null;
@@ -38,8 +76,7 @@ interface ITState {
   freeSeat: (licenceId: string, person: string, by: string) => string | null;
 }
 
-const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log"> => {
-  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [] };
+const demoSeed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => {
   return {
     assets: [
       { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta" },
@@ -56,8 +93,23 @@ const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log"> => {
       { id: "lic-2", name: "Tally Prime", vendor: "Tally Solutions", seats: 2, assigned: ["Aman Verma"], annualCost: 22500, renewal: "2027-03-31" },
     ],
     log: [],
+    monitors: [
+      { id: "mon-1", name: "Head office network", kind: "Network", status: "up", lastChecked: "2026-10-23", note: "" },
+      { id: "mon-2", name: "Payroll server", kind: "Server", status: "up", lastChecked: "2026-10-23", note: "" },
+    ],
+    incidents: [
+      { id: "inc-1", number: "INC-1001", title: "Warehouse printer offline", severity: "minor", status: "investigating", reportedBy: "Vikas Jain", assetId: "ast-3", raisedOn: "2026-10-22", updates: ["Printer reported offline; checking the network cable."] },
+    ],
+    changes: [
+      { id: "chg-1", number: "CHG-1001", title: "Move the payroll server to the new backup schedule", risk: "medium", requestedBy: "Aman Verma", status: "pending", decidedBy: null, raisedOn: "2026-10-23" },
+    ],
+    helpdesk: [
+      { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22", dueOn: "2026-10-23" },
+    ],
   };
 };
+
+const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => (isFirstCompany ? demoSeed() : { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [] });
 
 /** Renewal due inside the next 30 days. */
 export function renewalSoon(licence: Licence) {
@@ -67,9 +119,140 @@ export function renewalSoon(licence: Licence) {
 export const useITStore = create<ITState>()(
   persist(
     (set, get) => {
-      const record = (by: string, text: string) => ({ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, by, text });
+      const record = (by: string, text: string) => ({ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, ts: new Date().toISOString(), by, text });
       return {
         ...seed(),
+        resolveTicket: (id, by) => {
+          const ticket = get().helpdesk.find((t) => t.id === id);
+          if (!ticket) return "Request not found.";
+          if (ticket.status === "resolved") return "This request is already resolved.";
+          if (!ticket.assignee) return "Assign the request to someone before resolving it.";
+          let note = "";
+          if (ticket.category === "Access" && ticket.system && ticket.level) {
+            const alreadyHas = get().access.some((g) => g.status === "active" && g.person === ticket.requester && g.system === ticket.system);
+            if (alreadyHas) note = " (access was already in place)";
+            else {
+              const grant: AccessGrant = { id: `acc-${Date.now()}`, system: ticket.system, person: ticket.requester, level: ticket.level, status: "active", grantedBy: by };
+              set((state) => ({ access: [...state.access, grant], log: [record(by, `Granted ${ticket.requester} ${ticket.level} access to ${ticket.system} from ${ticket.number}`), ...state.log] }));
+              note = " and access granted";
+            }
+          }
+          set((state) => ({
+            helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status: "resolved" } : t),
+            log: [record(by, `${ticket.number} resolved${note}`), ...state.log],
+          }));
+          return null;
+        },
+        addMonitor: (input, by) => {
+          if (input.name.trim().length < 3) return "Enter the system's name.";
+          if (get().monitors.some((m) => m.name.toLowerCase() === input.name.trim().toLowerCase())) return `${input.name.trim()} is already being monitored.`;
+          set((state) => ({ monitors: [...state.monitors, { id: `mon-${Date.now()}`, name: input.name.trim(), kind: input.kind, status: "up", lastChecked: TODAY, note: "" }], log: [record(by, `Added ${input.name.trim()} to monitoring`), ...state.log] }));
+          return null;
+        },
+        recordCheck: (id, status, note, by) => {
+          const monitor = get().monitors.find((m) => m.id === id);
+          if (!monitor) return "System not found.";
+          const openForIt = get().incidents.some((i) => i.status !== "resolved" && i.title === `${monitor.name} is down`);
+          const opens = status === "down" && !openForIt;
+          // A system back up closes its open "is down" incident, so nobody has to remember to do it.
+          const closes = status === "up" && get().incidents.some((i) => i.status !== "resolved" && i.title === `${monitor.name} is down`);
+          const number = `INC-${1002 + get().incidents.length}`;
+          set((state) => ({
+            monitors: state.monitors.map((m) => m.id === id ? { ...m, status, lastChecked: TODAY, note: note.trim() } : m),
+            incidents: opens
+              ? [{ id: `inc-${Date.now()}`, number, title: `${monitor.name} is down`, severity: "critical", status: "open", reportedBy: by, assetId: null, raisedOn: TODAY, updates: note.trim() ? [note.trim()] : [] }, ...state.incidents]
+              : closes
+                ? state.incidents.map((i) => i.status !== "resolved" && i.title === `${monitor.name} is down` ? { ...i, status: "resolved", updates: [...i.updates, "Back up at check; closed automatically"] } : i)
+                : state.incidents,
+            log: [record(by, `${monitor.name} checked: ${status}${opens ? `; opened ${number}` : ""}${closes ? "; incident closed automatically" : ""}`), ...state.log],
+          }));
+          return null;
+        },
+        raiseIncident: (input, by) => {
+          if (input.title.trim().length < 5) return "Describe the incident in a few words.";
+          const number = `INC-${1002 + get().incidents.length}`;
+          const incident: Incident = { id: `inc-${Date.now()}`, number, title: input.title.trim(), severity: input.severity, status: "open", reportedBy: by, assetId: input.assetId, raisedOn: TODAY, updates: [] };
+          set((state) => ({ incidents: [incident, ...state.incidents], log: [record(by, `Opened ${number} (${input.severity}): ${incident.title}`), ...state.log] }));
+          return null;
+        },
+        updateIncident: (id, status, note, by) => {
+          const incident = get().incidents.find((i) => i.id === id);
+          if (!incident) return "Incident not found.";
+          if (incident.status === "resolved") return "This incident is already resolved.";
+          if (status === "resolved" && note.trim().length < 3) return "Say how it was resolved.";
+          const updates = note.trim() ? [...incident.updates, note.trim()] : incident.updates;
+          set((state) => ({
+            incidents: state.incidents.map((i) => i.id === id ? { ...i, status, updates } : i),
+            log: [record(by, `${incident.number} is ${status}`), ...state.log],
+          }));
+          return null;
+        },
+        requestChange: (input, by) => {
+        if (!demoMode) return "IT changes are recorded on the server.";
+          if (input.title.trim().length < 5) return "Describe the change.";
+          const number = `CHG-${1002 + get().changes.length}`;
+          const change: ITChange = { id: `chg-${Date.now()}`, number, title: input.title.trim(), risk: input.risk, requestedBy: by, status: "pending", decidedBy: null, raisedOn: TODAY };
+          set((state) => ({ changes: [change, ...state.changes], log: [record(by, `Requested ${number}: ${change.title}`), ...state.log] }));
+          return null;
+        },
+        decideChange: (id, approve, by) => {
+        if (!demoMode) return "IT changes are recorded on the server.";
+          const change = get().changes.find((c) => c.id === id);
+          if (!change) return "Change not found.";
+          if (change.status !== "pending") return "Only a pending change can be decided.";
+          if (change.requestedBy === by) return "The person who asked for a change cannot approve it.";
+          set((state) => ({
+            changes: state.changes.map((c) => c.id === id ? { ...c, status: approve ? "approved" : "rejected", decidedBy: by } : c),
+            log: [record(by, `${approve ? "Approved" : "Rejected"} ${change.number}`), ...state.log],
+          }));
+          return null;
+        },
+        completeChange: (id, by) => {
+        if (!demoMode) return "IT changes are recorded on the server.";
+          const change = get().changes.find((c) => c.id === id);
+          if (!change) return "Change not found.";
+          if (change.status !== "approved") return "Only an approved change can be carried out.";
+          set((state) => ({
+            changes: state.changes.map((c) => c.id === id ? { ...c, status: "done" } : c),
+            log: [record(by, `${change.number} carried out`), ...state.log],
+          }));
+          return null;
+        },
+        raiseTicket: (input, by) => {
+          if (!input.requester) return "Choose who the request is for.";
+          if (input.subject.trim().length < 5) return "Describe the problem in a few words.";
+          const number = `IT-${1001 + get().helpdesk.length}`;
+          if (input.category === "Access") {
+            if (!input.system || input.system.trim().length < 2) return "Name the system the access is for.";
+            if (!input.level) return "Choose the access level.";
+          }
+          const dueOn = new Date(Date.parse(TODAY) + HELPDESK_DUE_DAYS[input.priority] * 86400000).toISOString().slice(0, 10);
+          const ticket: HelpdeskTicket = { id: `hd-${Date.now()}`, number, requester: input.requester, category: input.category, priority: input.priority, subject: input.subject.trim(), status: "open", assignee: null, raisedOn: TODAY, dueOn, system: input.category === "Access" ? input.system?.trim() : undefined, level: input.category === "Access" ? input.level : undefined };
+          set((state) => ({ helpdesk: [ticket, ...state.helpdesk], log: [record(by, `Raised ${number} for ${input.requester}: ${ticket.subject}`), ...state.log] }));
+          return null;
+        },
+        setTicketStatus: (id, status, by) => {
+          const ticket = get().helpdesk.find((t) => t.id === id);
+          if (!ticket) return "Request not found.";
+          if (ticket.status === "resolved") return "This request is already resolved.";
+          if (status === "resolved") return "Use Resolve, so an access request is granted as well.";
+          if (status === "in progress" && !ticket.assignee) return "Assign the request to someone before starting or resolving it.";
+          set((state) => ({
+            helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, status } : t),
+            log: [record(by, `${ticket.number} is ${status}`), ...state.log],
+          }));
+          return null;
+        },
+        assignTicket: (id, assignee, by) => {
+          const ticket = get().helpdesk.find((t) => t.id === id);
+          if (!ticket) return "Request not found.";
+          if (ticket.status === "resolved") return "A resolved request cannot be reassigned.";
+          set((state) => ({
+            helpdesk: state.helpdesk.map((t) => t.id === id ? { ...t, assignee } : t),
+            log: [record(by, `${ticket.number} assigned to ${assignee}`), ...state.log],
+          }));
+          return null;
+        },
         addAsset: (input, by) => {
           if (input.name.trim().length < 3) return "Enter the asset name.";
           if (input.serial.trim().length < 3) return "Enter the serial number.";
@@ -178,6 +361,8 @@ export const useITStore = create<ITState>()(
         },
       };
     },
-    { name: scoped("janus.it.v1"), storage: createJSONStorage(() => localStorage) },
+    { name: scoped("janus.it.v1"), storage: createJSONStorage(() => workspaceStorage),
+      // A saved copy drops the demo records outside demo mode; records the company made stay.
+      merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<ITState>) } as ITState, demoSeed()) },
   ),
 );

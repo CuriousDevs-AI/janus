@@ -24,6 +24,16 @@ class CapturedContact(BaseModel):
     recording_url: HttpUrl | None = Field(default=None, max_length=2048)
 
 
+class ManualLeadIn(BaseModel):
+    """An enquiry a person typed in: at least a phone number or an email is needed to reach them."""
+
+    name: str = Field(default="", max_length=160)
+    phone: str | None = Field(default=None, max_length=64)
+    email: EmailStr | None = None
+    company: str = Field(default="", max_length=200)
+    requirement: str = Field(default="", max_length=4000)
+
+
 class ContactOut(BaseModel):
     id: str
     name: str

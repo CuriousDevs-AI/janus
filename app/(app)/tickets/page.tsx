@@ -10,6 +10,12 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { Plus, LifeBuoy, Radio, ArrowRight } from "lucide-react";
 import { useAppStore } from "@/lib/stores/app-store";
+import { createSupportTicket, syncSupportTickets } from "@/lib/ticket-records";
+import { message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
+import type { Lead } from "@/lib/api/types";
+import { demoMode } from "@/lib/demo-mode";
+import { customersFromLeads } from "@/lib/customers-from-leads";
 import { getUserById, getCompanyById } from "@/lib/mock-data";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
@@ -49,9 +55,14 @@ export default function TicketsPage() {
   const allTickets = useAppStore((s) => s.tickets);
   const access = useCrmAccess();
   const tickets = React.useMemo(() => access.tickets(allTickets), [access, allTickets]);
-  const customers = useAppStore((s) => s.customers);
-  const createTicket = useAppStore((s) => s.createTicket);
+  const storeCustomers = useAppStore((s) => s.customers);
+  // A real account's customers are the people its leads came from; the demo list is the demo's own.
+  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
+  const customers = React.useMemo(() => demoMode ? storeCustomers : customersFromLeads(leadsApi.data ?? []), [storeCustomers, leadsApi.data]);
   const router = useRouter();
+  React.useEffect(() => {
+    syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
+  }, []);
 
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"all" | TicketStatus>("all");
@@ -80,14 +91,15 @@ export default function TicketsPage() {
     })
     .sort((a, b) => (a.ticket.updatedAt < b.ticket.updatedAt ? 1 : -1));
 
-  function onCreate(values: TicketFormValues) {
-    const id = createTicket({
+  async function onCreate(values: TicketFormValues) {
+    const { id, error } = await createSupportTicket({
       customerId: values.customerId,
       subject: values.subject,
       description: values.description,
       priority: values.priority as TicketPriority,
     });
-    toast.success("Ticket created", { description: values.subject });
+    if (error) toast.error("Ticket not saved on the server", { description: error });
+    else toast.success("Ticket created", { description: values.subject });
     setCreateOpen(false);
     reset();
     router.push(`/tickets/${id}`);

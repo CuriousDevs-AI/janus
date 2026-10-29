@@ -2,8 +2,19 @@
 
 import { create } from "zustand";
 import { scoped } from "@/lib/company";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
+  acmeEmployees,
+  demoHrCandidates,
+  demoHrDocuments,
+  demoHrExpenseClaims,
+  demoHrLeaveRequests,
+  demoHrOnboardingTasks,
+  demoHrPayrollIssues,
+  demoHrSignatureAudits,
+  demoHrWhatsAppActions,
+  demoPayrollRuns,
   hrAttendance,
   hrAttendanceTrend,
   hrCandidates,
@@ -67,7 +78,7 @@ interface HrPeopleState {
   updateDocument: (id: string, patch: Partial<HrDocument>) => void;
   addDocument: (document: HrDocument) => void;
   addExpense: (expense: HrExpenseClaim) => void;
-  updateExpense: (id: string, status: HrExpenseStatus) => void;
+  updateExpense: (id: string, status: HrExpenseStatus, approvedById?: string) => void;
   addSignatureAudit: (audit: HrSignatureAudit) => void;
   updateCompliance: (id: string, status: HrComplianceItem["status"]) => void;
   convertCandidate: (id: string) => string | null;
@@ -128,7 +139,7 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       updateDocument: (id, patch) => set((state) => ({ documents: state.documents.map((document) => document.id === id ? { ...document, ...patch } : document) })),
       addDocument: (document) => set((state) => ({ documents: [document, ...state.documents] })),
       addExpense: (expense) => set((state) => ({ expenseClaims: [expense, ...state.expenseClaims] })),
-      updateExpense: (id, status) => set((state) => ({ expenseClaims: state.expenseClaims.map((expense) => expense.id === id ? { ...expense, status } : expense) })),
+      updateExpense: (id, status, approvedById) => set((state) => ({ expenseClaims: state.expenseClaims.map((expense) => expense.id === id ? { ...expense, status, ...(approvedById ? { approvedById } : {}) } : expense) })),
       addSignatureAudit: (audit) => set((state) => ({ signatureAudits: [audit, ...state.signatureAudits] })),
       updateCompliance: (id, status) => set((state) => ({ complianceItems: state.complianceItems.map((item) => item.id === id ? { ...item, status } : item) })),
       convertCandidate: (id) => {
@@ -159,6 +170,12 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       name: scoped("janus.hr-people-demo"),
       version: 3,
       storage: createJSONStorage(() => localStorage),
+      // A saved copy drops the demo people and HR records outside demo mode; records the company made stay.
+      merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<HrPeopleState>) } as HrPeopleState, {
+        employees: acmeEmployees, payrollRuns: demoPayrollRuns, candidates: demoHrCandidates, leaveRequests: demoHrLeaveRequests,
+        documents: demoHrDocuments, onboardingTasks: demoHrOnboardingTasks, payrollIssues: demoHrPayrollIssues,
+        whatsAppActions: demoHrWhatsAppActions, expenseClaims: demoHrExpenseClaims, signatureAudits: demoHrSignatureAudits,
+      }),
       // Version 2 added birthdays and October attendance history. Older saved data gets both without losing edits.
       migrate: (persisted, version) => {
         const state = persisted as Partial<HrPeopleState>;

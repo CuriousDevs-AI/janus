@@ -18,7 +18,19 @@ import {
   Clock,
 } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
-import { users } from "@/lib/mock-data";
+import { useApi } from "@/lib/api/use-api";
+import type { Lead } from "@/lib/api/types";
+import { demoMode } from "@/lib/demo-mode";
+import { customersFromLeads } from "@/lib/customers-from-leads";
+import { message } from "@/lib/api/client";
+import {
+  assignSupportTicket,
+  resolveSupportTicket,
+  setSupportTicketStatus,
+  syncSupportTickets,
+  takeOverSupportTicket,
+} from "@/lib/ticket-records";
+import { currentUser, users } from "@/lib/mock-data";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { TicketStatusBadge, TicketPriorityBadge } from "@/components/shared/status-badge";
 import { AIConfidence } from "@/components/shared/ai-indicator";
@@ -38,14 +50,18 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const access = useCrmAccess();
   const found = useAppStore((s) => s.tickets.find((t) => t.id === id));
   const ticket = found && access.ticketVisible(found) ? found : undefined;
-  const customer = useAppStore((s) => s.customers.find((c) => c.id === ticket?.customerId));
+  // A real account's customers come from its leads; the demo list is the demo's own.
+  const storeCustomer = useAppStore((s) => s.customers.find((c) => c.id === ticket?.customerId));
+  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
+  const customer = demoMode ? storeCustomer : customersFromLeads(leadsApi.data ?? []).find((c) => c.id === ticket?.customerId);
   const ticketsStore = useAppStore((s) => s.tickets);
   const otherTickets = ticketsStore.filter((t) => t.customerId === ticket?.customerId && t.id !== ticket?.id);
-  const updateTicketStatus = useAppStore((s) => s.updateTicketStatus);
-  const assignTicket = useAppStore((s) => s.assignTicket);
-  const takeOverConversation = useAppStore((s) => s.takeOverConversation);
-  const resolveTicket = useAppStore((s) => s.resolveTicket);
   const company = useCompany(customer?.companyId);
+  const membersApi = useApi<{ user_id: string; name: string }[]>(demoMode ? null : "/members");
+
+  React.useEffect(() => {
+    syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
+  }, []);
 
   if (!ticket || !customer) {
     return (
@@ -58,7 +74,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const assignee = users.find((u) => u.id === ticket.assigneeId);
+  // A real account's people are its members on the server; the demo team is the demo's own.
+  const people = demoMode
+    ? users.filter((u) => u.role.includes("support") || u.role === "owner").map((u) => ({ id: u.id, name: u.name }))
+    : (membersApi.data ?? []).map((m) => ({ id: m.user_id, name: m.name }));
+  const assignee = people.find((p) => p.id === ticket.assigneeId);
   const showHandoff = !!ticket.handoff && !["resolved", "closed"].includes(ticket.status);
   const showAiSupport = !showHandoff && ["open", "ai_handling", "waiting_customer"].includes(ticket.status) && ticket.aiConfidence !== undefined;
 
@@ -94,8 +114,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           variant="secondary"
           disabled={ticket.status === "resolved" || ticket.status === "closed"}
           onClick={() => {
-            resolveTicket(ticket.id);
-            toast.success("Ticket resolved");
+            void resolveSupportTicket(ticket.id).then((error) => (error ? toast.error(error) : toast.success("Ticket resolved")));
           }}
         >
           <CheckCircle2 className="size-3.5" />
@@ -106,8 +125,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           variant="secondary"
           disabled={ticket.status === "escalated"}
           onClick={() => {
-            updateTicketStatus(ticket.id, "escalated");
-            toast("Ticket escalated to a human agent");
+            void setSupportTicketStatus(ticket.id, "escalated").then((error) => (error ? toast.error(error) : toast("Ticket escalated to a human agent")));
           }}
         >
           <ArrowUpCircle className="size-3.5" />
@@ -121,8 +139,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {users.filter((u) => u.role.includes("support") || u.role === "owner").map((u) => (
-              <DropdownMenuItem key={u.id} onSelect={() => { assignTicket(ticket.id, u.id); toast.success(`Assigned to ${u.name}`); }}>
+            {people.length === 0 ? <DropdownMenuItem disabled>No teammates to assign</DropdownMenuItem> : null}
+            {people.map((u) => (
+              <DropdownMenuItem key={u.id} onSelect={() => { void assignSupportTicket(ticket.id, u.id).then((error) => (error ? toast.error(error) : toast.success(`Assigned to ${u.name}`))); }}>
                 {u.name}
               </DropdownMenuItem>
             ))}
@@ -133,8 +152,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           variant="ghost"
           disabled={ticket.status === "closed"}
           onClick={() => {
-            updateTicketStatus(ticket.id, "closed");
-            toast.success("Ticket closed");
+            void setSupportTicketStatus(ticket.id, "closed").then((error) => (error ? toast.error(error) : toast.success("Ticket closed")));
           }}
         >
           <XCircle className="size-3.5" />
@@ -175,8 +193,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 <Button
                   size="sm"
                   onClick={() => {
-                    takeOverConversation(ticket.id);
-                    toast.success("You're now handling this conversation", { description: "AI has stopped sending automated messages." });
+                    void takeOverSupportTicket(ticket.id, currentUser.id).then((error) =>
+                      error
+                        ? toast.error(error)
+                        : toast.success("You're now handling this conversation", { description: "AI has stopped sending automated messages." }),
+                    );
                   }}
                 >
                   <UserRound className="size-3.5" />
@@ -223,8 +244,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    updateTicketStatus(ticket.id, "escalated");
-                    toast("Escalated to a human agent");
+                    void setSupportTicketStatus(ticket.id, "escalated").then((error) => (error ? toast.error(error) : toast("Escalated to a human agent")));
                   }}
                 >
                   <ArrowUpCircle className="size-3.5" />

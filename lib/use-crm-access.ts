@@ -1,5 +1,6 @@
 "use client";
 
+import { demoMode } from "@/lib/demo-mode";
 import { useMemo } from "react";
 import type { Approval, AppNotification, Ticket } from "@/lib/types";
 import type { WhatsAppConversation } from "@/lib/api/types";
@@ -27,7 +28,8 @@ export function useCrmAccess() {
     const owners = visibleOwners(account);
     const me = account?.crmUserId ?? "";
     const support = account?.crm === "support";
-    const everything = owners === null;
+    // A real account has no demo persona, so the screens show what the server returns (the server scopes leads).
+    const everything = !demoMode || owners === null;
     const customerVisible = (customerId: string) => everything || (!support && leads.some((lead) => key(lead.customerId) === key(customerId) && owners!.has(lead.ownerId ?? "")));
     const ticketVisible = (ticket: Ticket) => everything || (support ? !ticket.assigneeId || ticket.assigneeId === me : customerVisible(ticket.customerId));
     const approvalVisible = (approval: Approval) => everything || (!support && account?.crm === "team" && (customerVisible(approval.customerId) || owners!.has(approval.requestedById)));

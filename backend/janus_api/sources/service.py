@@ -85,7 +85,7 @@ async def list_connections(
         for connection in (
             await db.scalars(
                 select(SourceConnection)
-                .where(SourceConnection.id > after_id)
+                .where(SourceConnection.id > after_id, SourceConnection.kind != "manual")
                 .order_by(SourceConnection.id)
                 .limit(limit)
             )

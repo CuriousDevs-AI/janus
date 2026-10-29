@@ -6,6 +6,9 @@ import { useSession } from "@/components/auth/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { approveCreditNote, rejectCreditNote } from "@/lib/invoice-records";
+import { approveAdjustment, rejectAdjustment } from "@/lib/operations-records";
+import { approveFundRequest, rejectFundRequest } from "@/lib/fund-records";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { useProjectsStore } from "@/lib/stores/projects-store";
@@ -25,9 +28,10 @@ interface QueueItem {
   reason: string;
   date: string;
   waitingFor: string;
-  approve: (by: string) => string | null;
-  reject?: (by: string) => string | null;
+  approve: (by: string) => string | null | Promise<string | null>;
+  reject?: (by: string) => string | null | Promise<string | null>;
 }
+
 
 const inr = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 
@@ -36,14 +40,8 @@ export function MoneyApprovalsQueue() {
   const me = session.user.name ?? session.user.email ?? "You";
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const fundRequests = useFinanceStore((state) => state.fundRequests);
-  const approveCreditNote = useFinanceStore((state) => state.decideCreditNote);
-  const rejectCreditNote = useFinanceStore((state) => state.rejectCreditNote);
-  const approveFund = useFinanceStore((state) => state.approveFundRequest);
-  const rejectFund = useFinanceStore((state) => state.rejectFundRequest);
   const adjustments = useOperationsStore((state) => state.adjustments);
   const items = useOperationsStore((state) => state.items);
-  const approveAdjustment = useOperationsStore((state) => state.approveAdjustment);
-  const rejectAdjustment = useOperationsStore((state) => state.rejectAdjustment);
   const changes = useProjectsStore((state) => state.changes);
   const projects = useProjectsStore((state) => state.projects);
   const decideChange = useProjectsStore((state) => state.decideChange);
@@ -60,15 +58,15 @@ export function MoneyApprovalsQueue() {
         reason: f.purpose,
         date: f.date,
         waitingFor: f.status === "pending" ? "Owner" : "Finance",
-        approve: (by: string) => approveFund(f.id, f.status === "pending" ? "owner" : "finance", by),
-        reject: (by: string) => { rejectFund(f.id, "Rejected from the approvals queue", by); return null; },
+        approve: (by: string) => approveFundRequest(f.id, f.status === "pending" ? "owner" : "finance", by),
+        reject: (by: string) => rejectFundRequest(f.id, "Rejected from the approvals queue", by),
       })),
     ...creditNotes
       .filter((c) => c.status === "pending")
       .map((c) => ({
         key: `cn-${c.id}`,
         module: "Finance" as const,
-        title: `Credit note ${c.number}`,
+        title: `${c.kind === "write-off" ? "Write-off" : "Credit note"} ${c.number}`,
         amount: c.amount,
         requester: c.createdBy,
         reason: c.reason,
@@ -138,8 +136,8 @@ export function MoneyApprovalsQueue() {
               <p className="text-xs text-muted-foreground">Waiting for: {item.waitingFor}</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => decide(item.approve(me), `${item.title} approved`)}>Approve</Button>
-              {item.reject ? <Button size="sm" variant="outline" onClick={() => decide(item.reject?.(me) ?? null, `${item.title} rejected`)}>Reject</Button> : null}
+              <Button size="sm" onClick={async () => decide(await item.approve(me), `${item.title} approved`)}>Approve</Button>
+              {item.reject ? <Button size="sm" variant="outline" onClick={async () => decide((await item.reject?.(me)) ?? null, `${item.title} rejected`)}>Reject</Button> : null}
             </div>
           </div>
         ))}

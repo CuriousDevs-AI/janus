@@ -213,6 +213,77 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const currentStage = stages.indexOf(leadData.stage as (typeof stages)[number]);
   const sourceLabel = label(leadData.source);
   const hasRecentActivity = leadData.lastActivityAt !== leadData.createdAt;
+  // One list, newest first, as the timeline's label says.
+  const timeline = [
+    {
+      key: "captured",
+      at: leadData.createdAt,
+      node: (
+        <TimelineItem
+          key="captured"
+          icon={<CheckCircle2 className="size-4" />}
+          title="Lead captured"
+          detail={`Captured from ${sourceLabel}${leadData.campaign ? ` · Campaign ${leadData.campaign}` : ""}.`}
+          time={formatDateTime(leadData.createdAt)}
+          tone="success"
+        />
+      ),
+    },
+    ...(hasRecentActivity
+      ? [
+          {
+            key: "activity",
+            at: leadData.lastActivityAt,
+            node: (
+              <TimelineItem
+                key="activity"
+                icon={<MessageCircle className="size-4" />}
+                title="Last activity recorded"
+                detail="This lead has a newer activity timestamp. Open the unified inbox to continue the conversation."
+                time={formatDateTime(leadData.lastActivityAt)}
+                tone="info"
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(dealEvents.data ?? []).map((event) => ({
+      key: `deal-${event.id}`,
+      at: event.createdAt,
+      node: (
+        <TimelineItem
+          key={`deal-${event.id}`}
+          icon={<CalendarClock className="size-4" />}
+          title={event.action === "deal.created" ? "Deal created" : "Deal updated"}
+          detail={
+            event.details.to_stage
+              ? `Deal moved to ${label(String(event.details.to_stage))}.`
+              : "Deal details changed."
+          }
+          time={formatDateTime(event.createdAt)}
+          tone="accent"
+        />
+      ),
+    })),
+    ...(leadData.recordingUrl && /^https?:\/\//.test(leadData.recordingUrl)
+      ? [
+          {
+            key: "recording",
+            at: leadData.lastActivityAt || leadData.createdAt,
+            node: (
+              <TimelineItem
+                key="recording"
+                icon={<Phone className="size-4" />}
+                title="Call recording available"
+                detail="The recording was attached to this lead by the call provider."
+                time={formatDateTime(leadData.lastActivityAt || leadData.createdAt)}
+                tone="warning"
+              />
+            ),
+          },
+        ]
+      : []),
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 p-6">
@@ -284,47 +355,9 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             </div>
             <div className="relative mt-5 pl-0">
               <div className="absolute bottom-2 left-4 top-2 w-px bg-border" />
-              <TimelineItem
-                icon={<CheckCircle2 className="size-4" />}
-                title="Lead captured"
-                detail={`Captured from ${sourceLabel}${leadData.campaign ? ` · Campaign ${leadData.campaign}` : ""}.`}
-                time={formatDateTime(leadData.createdAt)}
-                tone="success"
-              />
-              {hasRecentActivity && (
-                <TimelineItem
-                  icon={<MessageCircle className="size-4" />}
-                  title="Last activity recorded"
-                  detail="This lead has a newer activity timestamp. Open the unified inbox to continue the conversation."
-                  time={formatDateTime(leadData.lastActivityAt)}
-                  tone="info"
-                />
-              )}
-              {dealEvents.data?.map((event) => (
-                <TimelineItem
-                  key={event.id}
-                  icon={<CalendarClock className="size-4" />}
-                  title={event.action === "deal.created" ? "Deal created" : "Deal updated"}
-                  detail={
-                    event.details.to_stage
-                      ? `Deal moved to ${label(String(event.details.to_stage))}.`
-                      : "Deal details changed."
-                  }
-                  time={formatDateTime(event.createdAt)}
-                  tone="accent"
-                />
-              ))}
+              {timeline.map((item) => item.node)}
               {dealEvents.loading && <p className="pl-11 text-xs text-muted-foreground">Loading deal history…</p>}
               {dealEvents.error && <p role="alert" className="pl-11 text-xs text-danger">Unable to load deal history: {dealEvents.error}</p>}
-              {leadData.recordingUrl && /^https?:\/\//.test(leadData.recordingUrl) && (
-                <TimelineItem
-                  icon={<Phone className="size-4" />}
-                  title="Call recording available"
-                  detail="The recording was attached to this lead by the call provider."
-                  time={formatDateTime(leadData.lastActivityAt || leadData.createdAt)}
-                  tone="warning"
-                />
-              )}
             </div>
           </section>
 

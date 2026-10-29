@@ -18,11 +18,12 @@ import {
   costByCategory,
   costByDay,
   getAgentById,
-  automations,
   tenant,
 } from "@/lib/mock-data";
 import type { UsageRecord } from "@/lib/types";
 import { automationTriggerMeta } from "@/lib/status-meta";
+import { demoMode } from "@/lib/demo-mode";
+import { useAppStore } from "@/lib/stores/app-store";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -64,6 +65,7 @@ function groupByCost(records: UsageRecord[], keyFn: (r: UsageRecord) => string, 
 const PER_RUN_COST = 9; // illustrative ₹ / automation run — not separately metered elsewhere on this page
 
 export default function UsagePage() {
+  const automations = useAppStore((s) => s.automations);
   const rawCategoryData = costByCategory();
   const categoryData = CATEGORY_ORDER.map((cat) => {
     const found = rawCategoryData.find((r) => r.category === cat);
@@ -92,7 +94,7 @@ export default function UsagePage() {
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader
         title="Usage & Cost"
-        description={`${tenant.name} · ${tenant.plan} plan — this workspace only`}
+        description={demoMode ? `${tenant.name} · ${tenant.plan} plan — this workspace only` : `${tenant.name} · no AI usage recorded yet`}
       />
 
       <div className="flex flex-col gap-6 px-6 pb-8">

@@ -37,7 +37,9 @@ const acme_hrCandidates: HrCandidate[] = [
   { id: "cand-003", name: "Divya Nair", email: "divya@example.com", phone: "+91 98990 22331", role: "Account Executive", department: "Sales", stage: "screening", ownerName: "Arjun Mehta", score: 76, updatedAt: "2026-10-18" },
   { id: "cand-004", name: "Kabir Singh", email: "kabir@example.com", phone: "+91 98700 11552", role: "Finance Analyst", department: "Finance", stage: "accepted", ownerName: "Aman Verma", score: 92, updatedAt: "2026-10-16" },
 ];
-export const hrCandidates: HrCandidate[] = isFirstCompany ? acme_hrCandidates : [];
+export const demoHrCandidates: HrCandidate[] = acme_hrCandidates;
+
+export const hrCandidates: HrCandidate[] = isFirstCompany ? demoHrCandidates : [];
 
 const acmeTodayAttendance: HrAttendanceRecord[] = [
   { id: "att-001", employeeId: "emp-003", employeeName: "Arjun Mehta", date: "2026-10-23", status: "present", checkIn: "09:08", checkOut: null, shift: "09:00–18:00", overtimeHours: 0, anomaly: null },
@@ -76,7 +78,9 @@ export const acme_hrLeaveRequests: HrLeaveRequest[] = [
   { id: "leave-002", employeeId: "emp-006", employeeName: "Vikas Jain", managerId: "emp-005", managerName: "Neha Verma", type: "sick", from: "2026-10-23", to: "2026-10-23", days: 1, reason: "Not feeling well", status: "needs_clarification", step: "manager", createdAt: "2026-10-23" },
   { id: "leave-003", employeeId: "emp-005", employeeName: "Neha Verma", managerId: "emp-001", managerName: "Pankaj Neema", type: "casual", from: "2026-11-04", to: "2026-11-05", days: 2, reason: "Personal work", status: "approved", step: "complete", createdAt: "2026-10-18" },
 ];
-export const hrLeaveRequests: HrLeaveRequest[] = isFirstCompany ? acme_hrLeaveRequests : [];
+export const demoHrLeaveRequests: HrLeaveRequest[] = acme_hrLeaveRequests;
+
+export const hrLeaveRequests: HrLeaveRequest[] = isFirstCompany ? demoHrLeaveRequests : [];
 
 const acme_hrDocuments: HrDocument[] = [
   { id: "doc-001", employeeId: "emp-004", employeeName: "Riya Kapoor", name: "Employment agreement", category: "Employment", visibility: "employee_manager", version: 2, status: "current", signatureStatus: "signed", issuedAt: "2025-02-03", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: "2025-02-03" },
@@ -88,7 +92,9 @@ const acme_hrDocuments: HrDocument[] = [
   { id: "doc-007", employeeId: "emp-008", employeeName: "Karan Bhatt", name: "Exit clearance checklist", category: "Exit", visibility: "hr", version: 1, status: "current", signatureStatus: "signed", issuedAt: "2026-10-18", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: "2026-10-22" },
   { id: "doc-008", employeeId: "emp-006", employeeName: "Vikas Jain", name: "Handbook acknowledgement", category: "Policy", visibility: "employee", version: 1, status: "current", signatureStatus: "sent", issuedAt: "2026-10-14", expiresAt: null, ownerName: "Shaista Khan", acknowledgedAt: null },
 ];
-export const hrDocuments: HrDocument[] = isFirstCompany ? acme_hrDocuments : [];
+export const demoHrDocuments: HrDocument[] = acme_hrDocuments;
+
+export const hrDocuments: HrDocument[] = isFirstCompany ? demoHrDocuments : [];
 
 const acme_hrOnboardingTasks: HrOnboardingTask[] = [
   { id: "onb-001", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Upload bank account proof", ownerRole: "employee", status: "todo", dueAt: "2026-10-25" },
@@ -96,7 +102,9 @@ const acme_hrOnboardingTasks: HrOnboardingTask[] = [
   { id: "onb-003", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Confirm first-day shift", ownerRole: "manager", status: "done", dueAt: "2026-10-20" },
   { id: "onb-004", employeeId: "emp-006", employeeName: "Vikas Jain", title: "Create payroll profile", ownerRole: "finance", status: "todo", dueAt: "2026-10-27" },
 ];
-export const hrOnboardingTasks: HrOnboardingTask[] = isFirstCompany ? acme_hrOnboardingTasks : [];
+export const demoHrOnboardingTasks: HrOnboardingTask[] = acme_hrOnboardingTasks;
+
+export const hrOnboardingTasks: HrOnboardingTask[] = isFirstCompany ? demoHrOnboardingTasks : [];
 
 const acmePayrollRuns: HrPayrollRun[] = [
   { id: "pay-2026-10", month: "October 2026", status: "review", employeeCount: 8, gross: 615000, deductions: 68500, net: 546500, deltaPercent: 4.8, issueCount: 2, updatedAt: "2026-10-23T09:10:00+05:30" },
@@ -107,35 +115,44 @@ const otherPayrollRuns: HrPayrollRun[] = [
   { id: "pay-2026-10", month: "October 2026", status: "review", employeeCount: hrEmployees.length, gross: grossPay, deductions: Math.round(grossPay * 0.11), net: grossPay - Math.round(grossPay * 0.11), deltaPercent: 0, issueCount: 0, updatedAt: "2026-10-23T10:00:00+05:30" },
   { id: "pay-2026-09", month: "September 2026", status: "locked", employeeCount: hrEmployees.length, gross: grossPay, deductions: Math.round(grossPay * 0.11), net: grossPay - Math.round(grossPay * 0.11), deltaPercent: 0, issueCount: 0, updatedAt: "2026-09-28T10:00:00+05:30" },
 ];
-export const hrPayrollRuns: HrPayrollRun[] = isFirstCompany ? acmePayrollRuns : otherPayrollRuns;
+export const demoPayrollRuns: HrPayrollRun[] = isFirstCompany ? acmePayrollRuns : otherPayrollRuns;
+export const hrPayrollRuns: HrPayrollRun[] = isFirstCompany ? demoPayrollRuns : [];
 
 const acme_hrPayrollIssues: HrPayrollIssue[] = [
   { id: "issue-001", employeeId: "emp-006", employeeName: "Vikas Jain", severity: "high", title: "Bank account proof missing", detail: "Payroll profile cannot be released until the employee uploads a verified account proof.", status: "open", amountDelta: 0 },
   { id: "issue-002", employeeId: "emp-008", employeeName: "Karan Bhatt", severity: "medium", title: "Notice-period leave adjustment", detail: "Two leave days overlap with the recorded notice period and need HR review.", status: "open", amountDelta: -5200 },
   { id: "issue-003", employeeId: "emp-004", employeeName: "Riya Kapoor", severity: "low", title: "Variable commission changed", detail: "Commission is ₹3,500 higher than September based on approved CRM deals.", status: "resolved", amountDelta: 3500 },
 ];
-export const hrPayrollIssues: HrPayrollIssue[] = isFirstCompany ? acme_hrPayrollIssues : [];
+export const demoHrPayrollIssues: HrPayrollIssue[] = acme_hrPayrollIssues;
+
+export const hrPayrollIssues: HrPayrollIssue[] = isFirstCompany ? demoHrPayrollIssues : [];
 
 const acme_hrWhatsAppActions: HrWhatsAppAction[] = [
   { id: "wa-001", employeeId: "emp-004", employeeName: "Riya Kapoor", action: "leave", status: "delivered", createdAt: "2026-10-22T16:30:00+05:30" },
   { id: "wa-002", employeeId: "emp-006", employeeName: "Vikas Jain", action: "onboarding", status: "sent", createdAt: "2026-10-22T10:10:00+05:30" },
   { id: "wa-003", employeeId: "emp-005", employeeName: "Neha Verma", action: "payslip", status: "approved", createdAt: "2026-10-01T11:20:00+05:30" },
 ];
-export const hrWhatsAppActions: HrWhatsAppAction[] = isFirstCompany ? acme_hrWhatsAppActions : [];
+export const demoHrWhatsAppActions: HrWhatsAppAction[] = acme_hrWhatsAppActions;
+
+export const hrWhatsAppActions: HrWhatsAppAction[] = isFirstCompany ? demoHrWhatsAppActions : [];
 
 export const acme_hrExpenseClaims: HrExpenseClaim[] = [
   { id: "expense-001", employeeId: "emp-006", employeeName: "Vikas Jain", category: "travel", amount: 1840, submittedAt: "2026-10-22", status: "manager_review", approverName: "Neha Verma", receiptAttached: true },
   { id: "expense-002", employeeId: "emp-004", employeeName: "Riya Kapoor", category: "meals", amount: 1260, submittedAt: "2026-10-21", status: "hr_review", approverName: "Shaista Khan", receiptAttached: true },
   { id: "expense-003", employeeId: "emp-005", employeeName: "Neha Verma", category: "phone", amount: 899, submittedAt: "2026-10-18", status: "paid", approverName: "Pankaj Neema", receiptAttached: true },
 ];
-export const hrExpenseClaims: HrExpenseClaim[] = isFirstCompany ? acme_hrExpenseClaims : [];
+export const demoHrExpenseClaims: HrExpenseClaim[] = acme_hrExpenseClaims;
+
+export const hrExpenseClaims: HrExpenseClaim[] = isFirstCompany ? demoHrExpenseClaims : [];
 
 const acme_hrSignatureAudits: HrSignatureAudit[] = [
   { id: "sig-001", documentId: "doc-001", documentName: "Employment agreement", employeeName: "Riya Kapoor", event: "signed", actorName: "Riya Kapoor", occurredAt: "2026-10-21T16:20:00+05:30", device: "Chrome · Delhi" },
   { id: "sig-002", documentId: "doc-004", documentName: "Offer letter", employeeName: "Vikas Jain", event: "viewed", actorName: "Vikas Jain", occurredAt: "2026-10-22T11:05:00+05:30", device: "Android · Jaipur" },
   { id: "sig-003", documentId: "doc-005", documentName: "Experience letter", employeeName: "Karan Bhatt", event: "sent", actorName: "Shaista Khan", occurredAt: "2026-10-20T09:15:00+05:30", device: "Janus · Gurugram" },
 ];
-export const hrSignatureAudits: HrSignatureAudit[] = isFirstCompany ? acme_hrSignatureAudits : [];
+export const demoHrSignatureAudits: HrSignatureAudit[] = acme_hrSignatureAudits;
+
+export const hrSignatureAudits: HrSignatureAudit[] = isFirstCompany ? demoHrSignatureAudits : [];
 
 const acmeComplianceItems: HrComplianceItem[] = [
   { id: "compliance-001", title: "PF / ECR filing", jurisdiction: "EPFO · All states", dueAt: "2026-11-15", ownerName: "Aman Verma", status: "upcoming", detail: "October contribution file is ready for review." },

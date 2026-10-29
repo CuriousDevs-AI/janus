@@ -1,4 +1,5 @@
 import type { FunnelStage, TimeSeriesPoint } from "@/lib/types";
+import { isFirstCompany } from "@/lib/companies";
 import { dealRows, lakh, leadRows, owners, stats as crm } from "@/lib/demo-universe";
 import { customers } from "./customers";
 import { tickets } from "./tickets";
@@ -95,7 +96,7 @@ export const automationStats = {
   approvalsTriggered30d: 14,
 };
 
-export const costSummary = {
+const demoCostSummary = {
   totalThisMonth: 1860,
   llm: 980,
   embeddings: 120,
@@ -106,6 +107,8 @@ export const costSummary = {
   costPerConversation: 28,
   costPerResolvedTicket: 54,
 };
+
+export const costSummary = isFirstCompany ? demoCostSummary : { totalThisMonth: 0, llm: 0, embeddings: 0, voice: 0, whatsapp: 0, email: 0, costPerLead: 0, costPerConversation: 0, costPerResolvedTicket: 0 };
 
 /** The same figures for any slice of the CRM. Used to scope analytics to what someone is allowed to see. */
 export interface StatsInput { leads: { stage: string; source: string; ownerId: string | null; ownerName?: string | null }[]; deals: { stage: string; amount: string; ownerId: string | null; ownerName?: string | null; expectedCloseAt: string | null }[]; customers: { health: { category: string } }[]; tickets: { status: string; priority: string }[] }

@@ -1,4 +1,5 @@
 import type { HrEmployee } from "@/lib/types";
+import { acmeEmployees } from "@/lib/mock-data/hr-people";
 
 export type ImportFieldKey = "name" | "email" | "phone" | "title" | "department" | "branch" | "manager" | "employmentType" | "joiningDate" | "location" | "salaryMonthly";
 export interface ImportField { key: ImportFieldKey; label: string; required: boolean; aliases: string[]; hint: string }
@@ -162,8 +163,9 @@ export function validateRows(rows: string[][], mapping: Mapping, existing: HrEmp
   });
 }
 
-export function nextEmployeeIds(existing: HrEmployee[], count: number) {
-  const max = existing.reduce((highest, item) => { const match = /^emp-(\d+)$/.exec(item.id); return match ? Math.max(highest, Number(match[1])) : highest; }, 0);
+export function nextEmployeeIds(existing: HrEmployee[], count: number, demo: HrEmployee[] = []) {
+  // The demo's ids are counted too, so a new record never reuses one, even after the demo records are dropped.
+  const max = [...existing, ...demo].reduce((highest, item) => { const match = /^emp-(\d+)$/.exec(item.id); return match ? Math.max(highest, Number(match[1])) : highest; }, 0);
   return Array.from({ length: count }, (_, index) => `emp-${String(max + index + 1).padStart(3, "0")}`);
 }
 
@@ -173,7 +175,7 @@ const palette = ["#2563eb", "#7c3aed", "#0891b2", "#059669", "#d97706", "#dc2626
 export function buildImport(rows: ImportRow[], existing: HrEmployee[], duplicates: "skip" | "update") {
   const usable = rows.filter((row) => row.employee && (row.state !== "duplicate" || duplicates === "update"));
   const creating = usable.filter((row) => !row.duplicateOf);
-  const ids = nextEmployeeIds(existing, creating.length);
+  const ids = nextEmployeeIds(existing, creating.length, acmeEmployees);
   const idByEmail = new Map<string, string>();
   existing.forEach((item) => idByEmail.set(item.email.toLowerCase(), item.id));
   creating.forEach((row, index) => idByEmail.set(row.employee!.email, ids[index]));

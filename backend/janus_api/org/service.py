@@ -29,11 +29,20 @@ PERMISSIONS = {
     "agents:manage",
     "automations:manage",
     "approvals:manage",
+    "stock:adjust",
+    "projects:manage",
 }
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
     "admin": sorted(PERMISSIONS - {"billing:manage"}),
-    "manager": ["leads:read_own", "leads:read_team", "leads:write", "leads:assign"],
+    "manager": [
+        "leads:read_own",
+        "leads:read_team",
+        "leads:write",
+        "leads:assign",
+        "stock:adjust",
+        "projects:manage",
+    ],
     "agent": ["leads:read_own", "leads:write"],
 }
 

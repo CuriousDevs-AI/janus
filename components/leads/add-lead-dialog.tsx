@@ -29,7 +29,7 @@ export function AddLeadDialog({ open, onOpenChange, onAdded }: { open: boolean; 
     setSaving(true);
     setError("");
     try {
-      await api<Lead>("/leads", { method: "POST", body: JSON.stringify({ ...form, source: "manual" }) });
+      await api<Lead>("/leads", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ ...form, source: "manual" }) });
       toast.success("Lead added");
       close(false);
       onAdded();

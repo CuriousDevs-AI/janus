@@ -1,7 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { activeSpec } from "@/lib/companies";
+import { activeSpec, isFirstCompany } from "@/lib/companies";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { HrDemoRole, HrDocument } from "@/lib/types";
@@ -24,7 +25,7 @@ const seedPolicies: CompanyPolicy[] = [
   policy("policy-expenses", "Travel & reimbursement guide", "Expense policy", `# Travel and reimbursement guide\n${note}## Submitting a claim\nAdd the expense date, category, business purpose and receipt. Your manager checks the business purpose before Finance verifies the amount. Keep receipts until reimbursement is reconciled.\n\n## Payment\nA submitted claim is not a payment instruction. Approved claims remain pending until Finance records payment.\n\n- A receipt is required for claims above ₹1,000.\n- Claims can go back 90 days at most.`),
   policy("policy-security", "Information security & acceptable use", "Security policy", `# Information security and acceptable use\n${note}## Everyday use\nUse company-approved systems for business records. Do not share passwords or download another employee's personal documents.\n\n## Devices\nReturn assigned devices and revoke access during exit clearance.\n\nReport lost devices and suspected data exposure to IT and HR immediately.`),
 ];
-const policies = seedPolicies;
+const policies = isFirstCompany ? seedPolicies : [];
 
 interface HrDocumentState {
   extras: Record<string, DocumentExtras>;
@@ -52,6 +53,8 @@ export const useHrDocumentStore = create<HrDocumentState>()(persist((set) => ({
   name: scoped("janus.hr-document-centre.v1"),
   version: 2,
   storage: createJSONStorage(() => localStorage),
+  // A saved copy drops the demo policies outside demo mode; policies HR added stay.
+  merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<HrDocumentState>) } as HrDocumentState, { policies: seedPolicies }),
   // Version 2 replaced the sample policy wording. Refresh those four and keep any policy HR added.
   migrate: (persisted, version) => {
     const state = persisted as Partial<HrDocumentState>;

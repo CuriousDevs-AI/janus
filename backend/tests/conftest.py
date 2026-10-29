@@ -49,7 +49,15 @@ async def admin_engine() -> AsyncIterator[AsyncEngine]:
 async def clean_database(admin_engine: AsyncEngine) -> AsyncIterator[None]:
     async with admin_engine.begin() as connection:
         await connection.execute(
-            text("TRUNCATE users, login_attempts, contacts RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE users, login_attempts, contacts, finance_budget_lines,"
+                " finance_budget_movements, finance_invoices, finance_invoice_lines,"
+                " finance_payments, finance_credit_notes, ops_items, ops_batches, ops_movements,"
+                " ops_adjustments, ops_dispatches, ops_dispatch_lines, ops_returns, ops_transfers,"
+                " ops_counts, ops_count_lines, ops_purchase_orders, ops_po_lines,"
+                " ops_requisitions, finance_bills, finance_bill_payments, finance_fund_requests,"
+                " jobs, raw_events, company_rules RESTART IDENTITY CASCADE"
+            )
         )
         await connection.execute(text("DELETE FROM roles WHERE tenant_id IS NOT NULL"))
         await connection.execute(text("DELETE FROM teams"))

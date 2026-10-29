@@ -22,7 +22,9 @@ const acme_approvals: Approval[] = specs.map(({ daysAgo, time, decidedAfterHours
   return { ...rest, requestedAt, decidedAt };
 });
 
-export const approvals: Approval[] = isFirstCompany ? acme_approvals : [];
+export const demoApprovals: Approval[] = acme_approvals;
+
+export const approvals: Approval[] = isFirstCompany ? demoApprovals : [];
 
 export function getApprovalById(id?: string): Approval | undefined {
   if (!id) return undefined;

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { demoMode } from "@/lib/demo-mode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,7 +80,7 @@ export function HrAttendanceView({ role, actorId }: { role: HrDemoRole; actorId:
     {editing && <AttendanceEditDialog record={editing === "new" ? undefined : editing} defaultDate={date} actorId={actorId} onClose={() => setEditing(null)} />}
     {fixing && actor && <RegulariseDialog employeeId={actor.id} date={fixing.date} onClose={() => setFixing(null)} onSubmit={(request) => { addRegularisation(request); log({ recordId: request.id, actorId, action: "regularisation_requested", reason: request.reason }); toast.success("Correction sent for approval"); setFixing(null); }} />}
     {rejecting && <RejectDialog onClose={() => setRejecting(null)} onSubmit={(reason) => { decideRegularisation(rejecting.id, { status: "rejected", decidedBy: actorId, decisionReason: reason }); log({ recordId: rejecting.id, actorId, action: "regularisation_rejected", reason }); toast.success("Correction rejected"); setRejecting(null); }} />}
-    <p className="text-[11px] text-muted-foreground">Acting as {actorName}. Demo punches use this device&apos;s clock in IST and stay in this browser.</p>
+    <p className="text-[11px] text-muted-foreground">Acting as {actorName}. {demoMode ? "Demo punches use this device's clock in IST and stay in this browser." : "Punches are saved in this browser only. They are not on the server yet."}</p>
   </div>;
 }
 

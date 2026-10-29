@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { companyProfile } from "@/lib/company-profile";
+import { demoMode } from "@/lib/demo-mode";
 
 const profile = companyProfile();
 import { Check, Download, Plus, Sparkles } from "lucide-react";
@@ -38,6 +39,13 @@ export function BillingSection() {
   const current = plans.find((item) => item.id === plan) ?? plans[1];
 
   function switchCycle() { const next = cycle === "annual" ? "monthly" : "annual"; setCycle(next); toast.success(`Switched to ${next} billing preview`); }
+  // Billing is not connected to a payment provider yet, so a real account has no plan, seats, usage or invoices to show.
+  if (!demoMode) return <div className="flex flex-col gap-5">
+    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Account</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Plan & Billing</h2></div>
+    <SectionCard title="Billing is not set up yet" description="No subscription, payment method or invoice is recorded for this company.">
+      <p className="text-sm text-muted-foreground">Plan changes, seats, payment methods and GST invoices will appear here once billing is connected. Nothing is charged until then.</p>
+    </SectionCard>
+  </div>;
   function choosePlan(value: string) { setPlan(value); setPlanOpen(false); toast.success(`${value === "business" ? "Janus Business" : value[0].toUpperCase() + value.slice(1)} selected in this demo`); }
 
   return <div className="flex flex-col gap-5">

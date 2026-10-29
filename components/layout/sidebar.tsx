@@ -240,7 +240,7 @@ export function SidebarNav({
                   </Link>
                 );
                 return (
-                  <li key={item.href}>
+                  <li key={`${item.href}:${item.label}`}>
                     {collapsed ? (
                       <Tooltip>
                         <TooltipTrigger asChild>{link}</TooltipTrigger>

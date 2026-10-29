@@ -1,3 +1,6 @@
+import hashlib
+import json
+import secrets
 from typing import cast
 
 import phonenumbers
@@ -11,8 +14,9 @@ from janus_api.core.errors import ApiError, ProcessingError
 from janus_api.core.security import now
 from janus_api.crm import schemas
 from janus_api.crm.models import Contact, Deal, Lead
-from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut, LeadSource
+from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut, LeadSource, ManualLeadIn
 from janus_api.org.service import active_member, teammate_user_ids
+from janus_api.sources.models import IngestReceipt, SourceConnection
 
 
 def normalize_phone(value: str | None) -> str | None:
@@ -34,6 +38,7 @@ async def capture(
     fields: dict[str, str],
     owner_id: int | None,
     source: str = "webhook",
+    actor_id: int | None = None,
 ) -> tuple[int, int, str]:
     try:
         data = CapturedContact.model_validate(fields)
@@ -99,6 +104,7 @@ async def capture(
     record(
         db,
         "lead.captured",
+        user_id=actor_id,
         tenant_id=tenant_id,
         details={
             "lead_id": lead.id,
@@ -139,9 +145,7 @@ def canonical_source(value: str) -> LeadSource:
     return "manual"
 
 
-def lead_out(
-    lead: Lead, contact: Contact | None = None, owner: User | None = None
-) -> LeadOut:
+def lead_out(lead: Lead, contact: Contact | None = None, owner: User | None = None) -> LeadOut:
     return LeadOut(
         id=str(lead.id),
         customerId=str(lead.contact_id),
@@ -507,3 +511,80 @@ async def update_contact_consent(
         consentSource=contact.consent_source,
         consentUpdatedAt=contact.consent_updated_at,
     )
+
+
+async def manual_connection(db: AsyncSession, tenant_id: int) -> SourceConnection:
+    """The company's connection for leads typed in by hand, created when first needed."""
+    connection = await db.scalar(
+        select(SourceConnection).where(
+            SourceConnection.tenant_id == tenant_id, SourceConnection.kind == "manual"
+        )
+    )
+    if connection is None:
+        connection = SourceConnection(
+            tenant_id=tenant_id,
+            name="Manual entry",
+            description="Enquiries typed in by a person in Janus.",
+            kind="manual",
+            preset="manual",
+            field_mapping=[],
+            public_key=f"manual-{tenant_id}-{secrets.token_hex(8)}",
+            status="connected",
+        )
+        db.add(connection)
+        await db.flush()
+    return connection
+
+
+async def create_manual_lead(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    data: ManualLeadIn,
+    idempotency_key: str,
+) -> tuple[LeadOut, bool]:
+    """Creates a lead for the person who typed it in, once per key. Returns (lead, created)."""
+    connection = await manual_connection(db, tenant_id)
+    fields = data.model_dump(mode="json")
+    existing = await db.scalar(
+        select(IngestReceipt).where(
+            IngestReceipt.tenant_id == tenant_id,
+            IngestReceipt.connection_id == connection.id,
+            IngestReceipt.idempotency_key == idempotency_key,
+        )
+    )
+    if existing is not None:
+        replayed = await db.scalar(
+            select(Lead.id).where(Lead.tenant_id == tenant_id, Lead.receipt_id == existing.id)
+        )
+        if replayed is None:
+            raise ApiError("not_found", "Lead not found.", 404)
+        return await get_lead(db, tenant_id, user_id, permissions, replayed), False
+    payload = json.dumps(fields, sort_keys=True).encode()
+    receipt = IngestReceipt(
+        tenant_id=tenant_id,
+        connection_id=connection.id,
+        idempotency_key=idempotency_key,
+        payload_hash=hashlib.sha256(payload).hexdigest(),
+        received_day=now().date(),
+    )
+    db.add(receipt)
+    await db.flush()
+    try:
+        _, lead_id, _ = await capture(
+            db, tenant_id, receipt.id, fields, user_id, source="manual", actor_id=user_id
+        )
+    except ProcessingError as error:
+        raise ApiError(
+            "invalid_lead", _LEAD_PROBLEMS.get(error.code, "Check the lead and try again."), 422
+        ) from error
+    return await get_lead(db, tenant_id, user_id, permissions, lead_id), True
+
+
+_LEAD_PROBLEMS = {
+    "missing_contact_identity": "Enter a mobile number or an email, so the lead can be reached.",
+    "contact_identity_conflict": "Another contact already uses this mobile or email.",
+    "invalid_contact_fields": "Check the lead's details.",
+    "invalid_phone": "Enter a mobile number with its country code, such as +91 98111 22334.",
+}

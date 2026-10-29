@@ -37,7 +37,9 @@ const acme_auditEvents: AuditEvent[] = rows.map(([daysAgo, time, actor, action, 
   id: `aud-${index + 1}`, at: at(daysAgo, time), actor, action, customerId: customer ? `cus-${customer}` : undefined, objectLabel, objectKind, result, reason, policy, approvalRequired,
 })).sort((x, y) => (x.at < y.at ? 1 : -1));
 
-export const auditEvents: AuditEvent[] = isFirstCompany ? acme_auditEvents : [];
+export const demoAuditEvents: AuditEvent[] = acme_auditEvents;
+
+export const auditEvents: AuditEvent[] = isFirstCompany ? demoAuditEvents : [];
 
 export function getAuditForCustomer(customerId: string): AuditEvent[] {
   return auditEvents.filter((a) => a.customerId === customerId);

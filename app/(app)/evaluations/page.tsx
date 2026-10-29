@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, FlaskConical } from "lucide-react";
-import { agents, evaluationRuns, getAgentById, getEvaluationsForAgent } from "@/lib/mock-data";
+import { evaluationRuns, getAgentById, getEvaluationsForAgent } from "@/lib/mock-data";
+import { useAppStore } from "@/lib/stores/app-store";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatDate } from "@/lib/utils";
 
 export default function EvaluationsPage() {
+  const agents = useAppStore((s) => s.agents);
   const [agentFilter, setAgentFilter] = React.useState<string>("all");
 
   const latestByAgent = agents

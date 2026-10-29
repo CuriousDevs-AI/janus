@@ -1,5 +1,6 @@
 "use client";
-import { Menu, Search, LogOut } from "lucide-react";
+import { Hash, Menu, Search, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
 import { usePageTitle } from "@/components/layout/use-page-title";
@@ -9,6 +10,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { demoAccounts } from "@/lib/demo-accounts";
 import { useDemoAccount, useLoginAccount, viewAs } from "@/lib/demo-persona";
 import { toast } from "sonner";
+import { ChatPanel } from "@/components/chat/chat-panel";
 export function Topbar() {
   const { workspace } = useWorkspace();
   const session = useSession();
@@ -18,6 +20,7 @@ export function Topbar() {
   const title = usePageTitle();
   const account = useDemoAccount();
   const login = useLoginAccount();
+  const router = useRouter();
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -38,6 +41,11 @@ export function Topbar() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        <ChatPanel />
+        <Button variant="secondary" size="sm" aria-label="Open team chat" onClick={() => router.push("/team")}>
+          <Hash className="size-3.5" />
+          <span className="hidden sm:inline">Team</span>
+        </Button>
         <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
           <Search className="size-3.5" />
           <span className="hidden sm:inline">Go to… ⌘K</span>

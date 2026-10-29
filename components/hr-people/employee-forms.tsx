@@ -11,6 +11,7 @@ import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrCareerStore } from "@/lib/stores/hr-career-store";
 import { changeLines, kindLabels, subordinatesOf } from "@/lib/hr-career";
 import { nextEmployeeIds, normalisePhone, parseDate, todayIst } from "@/lib/hr-import";
+import { acmeEmployees } from "@/lib/mock-data/hr-people";
 import { standardTasks } from "@/components/hr-people/onboarding";
 import { HrField, HrModal, hrDate, hrInputClass } from "@/components/hr-people/operations-ui";
 import type { HrEmployee, HrOnboardingTask } from "@/lib/types";
@@ -37,7 +38,7 @@ export function EmployeeFormDialog({ employee, actorId, onClose }: { employee?: 
   const joining = parseDate(form.joiningDate);
   const today = todayIst();
   const salary = form.salary.trim() === "" ? 0 : Number(form.salary);
-  const error = form.name.trim().length < 2 ? "Enter the full name." : !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? "Enter a valid work email." : employees.some((item) => item.id !== employee?.id && item.email.toLowerCase() === email) ? "Someone already has this email." : form.phone.trim() && !phone ? "Enter a 10-digit Indian mobile number, or leave it blank." : form.title.trim().length < 2 ? "Enter the role." : form.department.trim().length < 2 ? "Enter the department." : form.branch.trim().length < 2 ? "Enter the branch." : !joining ? "Enter a valid joining date." : joining > `${Number(today.slice(0, 4)) + 1}${today.slice(4)}` ? "The joining date is more than a year away." : form.birthDate && (!parseDate(form.birthDate) || form.birthDate > `${Number(today.slice(0, 4)) - 16}${today.slice(4)}` || form.birthDate < "1940-01-01") ? "Check the date of birth. People must be at least 16." : !editing && !form.managerId ? "Choose who they report to." : !editing && (!Number.isFinite(salary) || salary < 0 || salary > 10_000_000) ? "Monthly pay must be between ₹0 and ₹1 crore." : "";
+  const error = form.name.trim().length < 2 ? "Enter the full name." : !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? "Enter a valid work email." : employees.some((item) => item.id !== employee?.id && item.email.toLowerCase() === email) ? "Someone already has this email." : form.phone.trim() && !phone ? "Enter a 10-digit Indian mobile number, or leave it blank." : form.title.trim().length < 2 ? "Enter the role." : form.department.trim().length < 2 ? "Enter the department." : form.branch.trim().length < 2 ? "Enter the branch." : !joining ? "Enter a valid joining date." : joining > `${Number(today.slice(0, 4)) + 1}${today.slice(4)}` ? "The joining date is more than a year away." : form.birthDate && (!parseDate(form.birthDate) || form.birthDate > `${Number(today.slice(0, 4)) - 16}${today.slice(4)}` || form.birthDate < "1940-01-01") ? "Check the date of birth. People must be at least 16." : !editing && !form.managerId && managers.length > 0 ? "Choose who they report to." : !editing && (!Number.isFinite(salary) || salary < 0 || salary > 10_000_000) ? "Monthly pay must be between ₹0 and ₹1 crore." : "";
   const showError = Boolean(error) && (form.name !== "" || form.email !== "");
   const manager = managers.find((item) => item.id === form.managerId);
 
@@ -54,9 +55,9 @@ export function EmployeeFormDialog({ employee, actorId, onClose }: { employee?: 
       log({ recordId: employee.id, actorId, action: "employee_edited", reason: `${actor} changed ${[...changed.filter((key) => key !== "location"), ...(managerChanged ? ["reporting manager"] : [])].join(", ")}` });
       toast.success(`Saved.${moved ? ` ${moved} pending ${moved === 1 ? "request" : "requests"} moved to ${manager?.name ?? "HR"}.` : ""}`);
     } else {
-      const id = nextEmployeeIds(employees, 1)[0];
+      const id = nextEmployeeIds(employees, 1, acmeEmployees)[0];
       const onboarding = form.checklist || joining > today;
-      const created: HrEmployee = { id, name: form.name.trim(), email, phone: phone || "", title: form.title.trim(), department: form.department.trim(), branch: form.branch.trim(), managerId: form.managerId, managerName: manager?.name ?? null, status: onboarding ? "onboarding" : "active", employmentType: form.type, joiningDate: joining, location: form.branch.trim(), avatarColor: palette[employees.length % palette.length], birthDate: form.birthDate || undefined, salaryMonthly: salary, onboardingPercent: onboarding ? 0 : 100, documentsDue: onboarding ? 3 : 0 };
+      const created: HrEmployee = { id, name: form.name.trim(), email, phone: phone || "", title: form.title.trim(), department: form.department.trim(), branch: form.branch.trim(), managerId: form.managerId || null, managerName: manager?.name ?? null, status: onboarding ? "onboarding" : "active", employmentType: form.type, joiningDate: joining, location: form.branch.trim(), avatarColor: palette[employees.length % palette.length], birthDate: form.birthDate || undefined, salaryMonthly: salary, onboardingPercent: onboarding ? 0 : 100, documentsDue: onboarding ? 3 : 0 };
       addEmployee(created);
       if (form.checklist) {
         const start = new Date(`${joining > today ? joining : today}T12:00:00`);
@@ -77,7 +78,7 @@ export function EmployeeFormDialog({ employee, actorId, onClose }: { employee?: 
         <HrField label="Role"><Input required maxLength={60} value={form.title} onChange={(event) => set("title", event.target.value)} className="rounded-none" /></HrField>
         <HrField label="Department"><select required className={hrInputClass} value={form.department} onChange={(event) => pickDepartment(event.target.value)}><option value="">Choose a department</option>{departments.map((item) => <option key={item} value={item}>{item}</option>)}</select></HrField>
         <HrField label="Branch"><Input required list="emp-branches" maxLength={40} value={form.branch} onChange={(event) => set("branch", event.target.value)} className="rounded-none" /></HrField>
-        <HrField label="Reports to"><select className={hrInputClass} value={form.managerId} onChange={(event) => set("managerId", event.target.value)}><option value="">{editing ? "No one" : "Choose…"}</option>{managers.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.title}</option>)}</select></HrField>
+        <HrField label="Reports to"><select className={hrInputClass} value={form.managerId} onChange={(event) => set("managerId", event.target.value)}><option value="">{editing ? "No one" : managers.length > 0 ? "Choose…" : "No manager yet (reports to HR)"}</option>{managers.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.title}</option>)}</select></HrField>
         <HrField label="Employment type"><select className={hrInputClass} value={form.type} onChange={(event) => set("type", event.target.value as HrEmployee["employmentType"])}>{typeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></HrField>
         <HrField label="Joining date"><Input type="date" value={form.joiningDate} onChange={(event) => set("joiningDate", event.target.value)} className="rounded-none" /></HrField>
         <HrField label="Date of birth · optional"><Input type="date" value={form.birthDate} onChange={(event) => set("birthDate", event.target.value)} className="rounded-none" /></HrField>

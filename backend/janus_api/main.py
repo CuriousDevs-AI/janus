@@ -15,8 +15,23 @@ from janus_api.business.router import router as business_router
 from janus_api.core.db import check_database_role
 from janus_api.core.errors import install_errors
 from janus_api.crm.router import router as crm_router
+from janus_api.finance.bills import router as finance_bills_router
+from janus_api.finance.funds import router as finance_funds_router
+from janus_api.finance.records import router as finance_records_router
+from janus_api.finance.router import router as finance_router
+from janus_api.it.router import router as it_router
+from janus_api.operations.router import router as operations_router
 from janus_api.org.router import router as org_router
+from janus_api.projects.effort import router as effort_router
+from janus_api.projects.planning import router as planning_router
+from janus_api.projects.router import router as project_records_router
+from janus_api.rules.router import router as rules_router
 from janus_api.sources.router import router as sources_router
+from janus_api.state.router import router as state_router
+from janus_api.support.router import router as support_router
+from janus_api.team.router import router as team_router
+from janus_api.timeline.router import router as timeline_router
+from janus_api.vault.router import router as vault_router
 from janus_api.whatsapp.router import router as whatsapp_router
 
 
@@ -42,6 +57,21 @@ app.include_router(org_router)
 app.include_router(sources_router)
 app.include_router(crm_router)
 app.include_router(whatsapp_router)
+app.include_router(state_router)
+app.include_router(vault_router)
+app.include_router(timeline_router)
+app.include_router(project_records_router)
+app.include_router(planning_router)
+app.include_router(effort_router)
+app.include_router(finance_router)
+app.include_router(finance_records_router)
+app.include_router(finance_bills_router)
+app.include_router(finance_funds_router)
+app.include_router(rules_router)
+app.include_router(it_router)
+app.include_router(support_router)
+app.include_router(operations_router)
+app.include_router(team_router)
 
 
 @app.get("/health")

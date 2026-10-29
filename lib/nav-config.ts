@@ -8,10 +8,12 @@ import {
   CalendarClock,
   ClipboardList,
   Database,
+  Truck,
   FileText,
   FileCheck2,
   FlaskConical,
   Gauge,
+  Hash,
   Handshake,
   LayoutDashboard,
   LifeBuoy,
@@ -24,6 +26,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  MessageSquare,
   UserRoundPlus,
   Users,
   WalletCards,
@@ -132,6 +135,8 @@ export const portfolioNavSections: NavSection[] = [
     { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard },
     { label: "Analytics", href: "/portfolio?view=analytics", icon: BarChart3 },
     { label: "Finance", href: "/portfolio?view=finance", icon: WalletCards },
+    { label: "Work inbox", href: "/work", icon: ShieldCheck },
+    { label: "Activity", href: "/activity", icon: ScrollText },
   ] },
   { title: "Manage", items: [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
@@ -210,8 +215,11 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Bills & Payables", href: "/workspace/finance-accounting?view=payables", icon: FileText },
       { label: "Budgets", href: "/workspace/finance-accounting?view=budgets", icon: Gauge },
       { label: "Cash Flow", href: "/workspace/finance-accounting?view=cash-flow", icon: BarChart3 },
+      { label: "Bank Reconciliation", href: "/workspace/finance-accounting?view=reconciliation", icon: Handshake },
+      { label: "Month-End Close", href: "/workspace/finance-accounting?view=month-end", icon: ShieldCheck },
       { label: "Profit & Loss", href: "/workspace/finance-accounting?view=profit-loss", icon: FileText },
       { label: "Financial Reports", href: "/workspace/finance-accounting?view=reports", icon: BarChart3 },
+      { label: "GST Summary", href: "/workspace/finance-accounting?view=gst", icon: FileText },
       { label: "Finance AI Chat", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
       { label: "Finance Settings", href: "/settings?tab=billing", icon: Settings2, requiredPermission: "billing:manage" },
     ] },
@@ -227,6 +235,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Timesheets", href: "/workspace/projects-delivery?view=timesheets", icon: CalendarClock },
       { label: "Project Calendar", href: "/workspace/projects-delivery?view=calendar", icon: CalendarClock },
       { label: "Client Delivery", href: "/workspace/projects-delivery?view=client-delivery", icon: Handshake },
+      { label: "Project Timeline", href: "/workspace/projects-delivery?view=timeline", icon: MessageSquare },
       { label: "Project Reports", href: "/workspace/projects-delivery?view=reports", icon: BarChart3 },
       { label: "Project AI Chat", href: "/ai?workspace=projects-delivery", icon: Sparkles, requiredPermission: "ai:manage" },
       { label: "Project Settings", href: "/settings?tab=workspace", icon: Settings2, requiredPermission: "settings:manage" },
@@ -253,6 +262,9 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Inventory", href: "/workspace/operations-inventory?view=inventory", icon: Package },
       { label: "Products & Stock", href: "/workspace/operations-inventory?view=products", icon: Package },
       { label: "Warehouses & Locations", href: "/workspace/operations-inventory?view=warehouses", icon: Building2 },
+      { label: "Physical Count", href: "/workspace/operations-inventory?view=counts", icon: Database },
+      { label: "Transit Transfers", href: "/workspace/operations-inventory?view=transfers", icon: Truck },
+      { label: "Workflows", href: "/workspace/operations-inventory?view=workflows", icon: ShieldCheck },
       { label: "Procurement", href: "/workspace/operations-inventory?view=procurement", icon: FileText },
       { label: "Purchase Orders", href: "/workspace/operations-inventory?view=purchase-orders", icon: Receipt },
       { label: "Vendors", href: "/workspace/operations-inventory?view=vendors", icon: Users },
@@ -281,11 +293,19 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   ],
 };
 
+/** Company-wide places that belong to no one workspace, so they sit above every workspace's menu. */
+export const companyNavSection: NavSection = {
+  title: "Company",
+  items: [{ label: "Team Chat", href: "/team", icon: Hash }],
+};
+
 export function getNavSectionsForWorkspace(workspaceId: WorkspaceId): NavSection[] {
-  if (workspaceId === "crm-sales") return crmNavSections;
-  if (workspaceId === "business") return businessNavSections;
   if (workspaceId === "portfolio") return portfolioNavSections;
-  return moduleNavSections[workspaceId];
+  const sections =
+    workspaceId === "crm-sales" ? crmNavSections
+    : workspaceId === "business" ? businessNavSections
+    : moduleNavSections[workspaceId];
+  return [companyNavSection, ...sections];
 }
 
 export function appendWorkspace(href: string, workspaceId: WorkspaceId) {

@@ -11,13 +11,17 @@ export type TrailModule = "finance" | "operations" | "projects" | "support" | "i
 export interface TrailEntry {
   id: string;
   module: TrailModule;
+  /** The business date the change belongs to (YYYY-MM-DD). */
   at: string;
+  /** When the change was made (ISO time), so entries on the same day keep their order. */
+  ts: string;
   by: string;
   text: string;
 }
 
 export function trailEntry(module: TrailModule, at: string, by: string, text: string): TrailEntry {
-  return { id: `trail-${module}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, module, at, by, text };
+  const now = new Date();
+  return { id: `trail-${module}-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`, module, at, ts: now.toISOString(), by, text };
 }
 
 /** Prepend an entry and keep the list within the cap. */

@@ -67,7 +67,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (answer !== NOT_HANDLED) return answer as T;
   }
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type"))
+  // A form upload sets its own multipart type, with the boundary the browser picks.
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");
   const send = () =>
     fetch(`/api/backend${path}`, {

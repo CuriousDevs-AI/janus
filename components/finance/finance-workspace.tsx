@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { message } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,24 +14,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/components/auth/session-provider";
+import { hasPermission } from "@/lib/demo-persona";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
 import { PeriodLockView } from "@/components/finance/period-lock-view";
-import { periodLockProblem } from "@/lib/stores/period-lock-store";
+import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-store";
+import { monthEnd, monthEndChecks } from "@/lib/month-end";
+import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
+import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
+import { addBill, recordBillPayment, syncBills } from "@/lib/bill-records";
+import { addFundRequest, approveFundRequest, rejectFundRequest, syncFundRequests } from "@/lib/fund-records";
+import { setPeriodLock, syncCompanyRules } from "@/lib/company-rules-records";
+import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
-import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, invoiceStatus, invoiceTotals, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { stockOn, useOperationsStore } from "@/lib/stores/operations-store";
+import { syncOperations } from "@/lib/operations-records";
+import { useVendorsStore } from "@/lib/stores/vendors-store";
+import { threeWayMatch } from "@/lib/three-way-match";
+import { workflowRules } from "@/lib/stores/workflow-rules-store";
+import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, bookPayments, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
+import { todayIso } from "@/lib/today";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
-  expenses: "Expense claims live in HR & People (Expenses & Reimbursements). Finance pay-out and register come next.",
-  budgets: "Budget plans per year and quarter come in phase 2. Budget lines and draws are in Fund requests & budgets.",
-  "cash-flow": "Cash flow needs bank statements. Planned for phase 2.",
-  "profit-loss": "Profit and loss needs expenses and bills. Planned for phase 2.",
-  reports: "Financial reports come after invoices, payments and credit notes are in use.",
 };
 
 export function FinanceWorkspace() {
@@ -38,9 +48,19 @@ export function FinanceWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
   const me = session.user.name ?? session.user.email ?? "You";
+  React.useEffect(() => {
+    syncCompanyRules().catch((error: unknown) => toast.warning(`Period lock not loaded from the server: ${message(error)}`));
+    // The overview and receivables read these records, so they load before the page shows figures.
+    syncInvoices().catch((error: unknown) => toast.warning(`Invoices not loaded from the server: ${message(error)}`));
+    syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
+    syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
+    syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+    // The bill form matches a bill to a purchase order, so the orders load here too.
+    syncOperations().catch((error: unknown) => toast.warning(`Purchase orders not loaded from the server: ${message(error)}`));
+  }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
 
   if (view in comingSoon) {
     return (
@@ -61,8 +81,16 @@ export function FinanceWorkspace() {
         {view === "approvals" && <MoneyApprovalsQueue />}
         {view === "periods" && <PeriodLockView />}
         {view === "payables" && <PayablesView me={me} />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables"].includes(view) && <OverviewView />}
-        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables"].includes(view) && <FinanceTrail />}
+        {view === "profit-loss" && <ProfitLossView />}
+        {view === "budgets" && <BudgetsView me={me} />}
+        {view === "cash-flow" && <CashFlowView me={me} />}
+        {view === "reconciliation" && <ReconciliationView me={me} />}
+        {view === "month-end" && <MonthEndView me={me} />}
+        {view === "expenses" && <ExpensesView me={me} />}
+        {view === "gst" && <GstView />}
+        {view === "reports" && <ReportsView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses", "gst", "reports"].includes(view) && <OverviewView />}
+        {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses", "gst", "reports"].includes(view) && <FinanceTrail />}
       </div>
     </div>
   );
@@ -71,24 +99,35 @@ export function FinanceWorkspace() {
 /** Vendor bills: what the company owes, when it is due, and what has been paid so far. */
 function PayablesView({ me }: { me: string }) {
   const bills = useFinanceStore((state) => state.bills);
-  const addBill = useFinanceStore((state) => state.addBill);
-  const recordBillPayment = useFinanceStore((state) => state.recordBillPayment);
   const [vendor, setVendor] = React.useState("");
   const [vendorBillNo, setVendorBillNo] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState("2026-11-15");
+  /** A vendor's payment terms set the due date: the bill date plus its days. Vendors without terms use 30 days. */
+  function chooseVendor(name: string) {
+    setVendor(name);
+    const days = vendors.find((v) => v.name === name)?.paymentTermsDays ?? 30;
+    setDueDate(new Date(Date.parse(today) + days * 86400000).toISOString().slice(0, 10));
+  }
+  const [poId, setPoId] = React.useState("");
+  const purchaseOrders = useOperationsStore((state) => state.purchaseOrders);
+  const vendors = useVendorsStore((state) => state.vendors);
   const [payAmounts, setPayAmounts] = React.useState<Record<string, string>>({});
-  const today = "2026-10-23";
+  const today = todayIso();
 
-  function create() {
-    const problem = addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount) }, me);
+  React.useEffect(() => {
+    syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
+  }, []);
+
+  async function create() {
+    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
-    setVendor(""); setVendorBillNo(""); setAmount("");
+    setVendor(""); setVendorBillNo(""); setAmount(""); setPoId("");
   }
 
-  function pay(billId: string) {
-    const problem = recordBillPayment(billId, { amount: Number(payAmounts[billId]), method: "Bank transfer", reference: "Paid from Payables", date: today }, me);
+  async function pay(billId: string) {
+    const problem = await recordBillPayment(billId, { amount: Number(payAmounts[billId]), method: "Bank transfer", reference: "Paid from Payables", date: today }, me);
     if (problem) return toast.error(problem);
     toast.success("Payment recorded");
     setPayAmounts((current) => ({ ...current, [billId]: "" }));
@@ -101,10 +140,11 @@ function PayablesView({ me }: { me: string }) {
         <CardContent className="grid gap-3">
           <p className="text-xs text-muted-foreground">A bill is what the company owes a vendor. Pay it in one or more payments; each payment cannot be more than the amount still owed.</p>
           <div className="grid gap-3 sm:grid-cols-5">
-            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><Input id="bill-vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><select id="bill-vendor" className={selectClass} value={vendor} onChange={(e) => chooseVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-po">Purchase order (optional)</Label><select id="bill-po" className={selectClass} value={poId} onChange={(e) => setPoId(e.target.value)}><option value="">No order</option>{purchaseOrders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.vendor}</option>)}</select></div>
             <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0)} onClick={create}>Record bill</Button>
           </div>
         </CardContent>
@@ -112,13 +152,16 @@ function PayablesView({ me }: { me: string }) {
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] text-sm">
-            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Bill</th><th className="px-4 py-2">Due</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2 text-right">Owed</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Pay</th></tr></thead>
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Bill</th><th className="px-4 py-2">Due</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2 text-right">Owed</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Order match</th><th className="px-4 py-2">Pay</th></tr></thead>
             <tbody>
-              {bills.length === 0 ? <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No bills yet.</td></tr> : null}
+              {bills.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No bills yet.</td></tr> : null}
               {bills.map((bill) => {
                 const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
                 const owed = Math.round((bill.amount - paid) * 100) / 100;
                 const status = owed <= 0 ? "paid" : bill.dueDate < today ? "overdue" : paid > 0 ? "part paid" : "open";
+                const order = purchaseOrders.find((o) => o.id === bill.poId);
+                const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
+                const held = bill.poId !== undefined && !match.matched && owed > 0;
                 return (
                   <tr key={bill.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{bill.number}<span className="block text-xs font-normal text-muted-foreground">{bill.vendor} · {bill.vendorBillNo}</span></td>
@@ -126,11 +169,12 @@ function PayablesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(owed)}</td>
                     <td className="px-4 py-3"><Badge variant={status === "paid" ? "success" : status === "overdue" ? "danger" : "warning"}>{status}</Badge></td>
+                    <td className="px-4 py-3 text-xs">{order ? <span className={match.matched ? "text-success" : "text-warning"}>{order.number}: {match.status}</span> : <span className="text-muted-foreground">no order</span>}</td>
                     <td className="px-4 py-3">
                       {owed > 0 ? (
                         <div className="flex items-center gap-2">
                           <Input aria-label={`Amount to pay on ${bill.number}`} type="number" min={0} className="h-8 w-28" value={payAmounts[bill.id] ?? ""} onChange={(e) => setPayAmounts((current) => ({ ...current, [bill.id]: e.target.value }))} />
-                          <Button size="sm" variant="secondary" disabled={!(Number(payAmounts[bill.id]) > 0)} onClick={() => pay(bill.id)}>Pay</Button>
+                          <Button size="sm" variant="secondary" disabled={held || !(Number(payAmounts[bill.id]) > 0)} title={held ? `Held: ${match.status}` : undefined} onClick={() => pay(bill.id)}>Pay</Button>
                         </div>
                       ) : <span className="text-xs text-muted-foreground">Settled</span>}
                     </td>
@@ -142,6 +186,567 @@ function PayablesView({ me }: { me: string }) {
         </CardContent>
       </Card>
     </>
+  );
+}
+
+/** Profit and loss to date, from invoices, approved credit notes and bills. Payroll and expense claims come later. */
+/** Plan against actual for each budget line, for one quarter of the financial year. */
+function BudgetsView({ me }: { me: string }) {
+  const lines = useFinanceStore((state) => state.budgetLines);
+  const draws = useFinanceStore((state) => state.draws);
+  const plans = useFinanceStore((state) => state.plans);
+  const setBudgetPlan = useFinanceStore((state) => state.setBudgetPlan);
+  const current = fiscalPeriod(todayIso());
+  const [fiscalYear] = React.useState(current.fiscalYear);
+  const [quarter, setQuarter] = React.useState<1 | 2 | 3 | 4>(current.quarter);
+  const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+
+  function save(lineId: string) {
+    const planned = Number(drafts[lineId] ?? "");
+    const problem = setBudgetPlan(lineId, fiscalYear, quarter, planned, me);
+    if (problem) return toast.error(problem);
+    toast.success("Plan saved");
+    setDrafts((current) => ({ ...current, [lineId]: "" }));
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Budget plan, FY {fiscalYear}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Plan what each budget line may spend in a quarter. Actual is the spend recorded in that quarter, from the dated draws on the line.</p>
+          <div className="flex items-center gap-2"><Label htmlFor="bp-quarter">Quarter</Label><select id="bp-quarter" className={selectClass} value={quarter} onChange={(e) => setQuarter(Number(e.target.value) as 1 | 2 | 3 | 4)}>{[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}</select></div>
+          <table className="w-full text-sm tabular-nums">
+            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">Budget line</th><th className="text-right">Planned</th><th className="text-right">Actual</th><th className="text-right">Left</th><th className="text-right">Set plan</th></tr></thead>
+            <tbody>
+              {lines.map((line) => {
+                const plan = plans.find((item) => item.lineId === line.id && item.fiscalYear === fiscalYear && item.quarter === quarter);
+                const actual = draws.filter((draw) => draw.lineId === line.id && fiscalPeriod(draw.date).fiscalYear === fiscalYear && fiscalPeriod(draw.date).quarter === quarter).reduce((sum, draw) => sum + draw.amount, 0);
+                const planned = plan?.planned ?? 0;
+                const left = planned - actual;
+                return (
+                  <tr key={line.id} className="border-b border-border last:border-0">
+                    <td className="py-2">{line.name}<span className="block text-xs text-muted-foreground">{line.owner}</span></td>
+                    <td className="text-right">{plan ? money(planned) : <span className="text-muted-foreground">not planned</span>}</td>
+                    <td className="text-right">{money(actual)}</td>
+                    <td className={`text-right ${plan && left < 0 ? "text-danger" : ""}`}>{plan ? (left < 0 ? `over by ${money(Math.abs(left))}` : money(left)) : "—"}</td>
+                    <td className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Input aria-label={`Plan for ${line.name}`} type="number" min={0} className="h-8 w-28" value={drafts[line.id] ?? ""} onChange={(e) => setDrafts((current) => ({ ...current, [line.id]: e.target.value }))} />
+                        <Button size="sm" variant="secondary" disabled={!(Number(drafts[line.id]) >= 0) || drafts[line.id] === undefined || drafts[line.id] === ""} onClick={() => save(line.id)}>Save</Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Month-end close: the checks for one month, the sign-offs still needed, and the period lock that closes the books. */
+function MonthEndView({ me }: { me: string }) {
+  const session = useSession();
+  const isOwner = hasPermission(session.permissions, "billing:manage");
+  const invoices = useFinanceStore((state) => state.invoices);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankLines = useFinanceStore((state) => state.bankLines);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const closeReviews = useFinanceStore((state) => state.closeReviews);
+  const markCloseReviewed = useFinanceStore((state) => state.markCloseReviewed);
+  const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
+  const months = ["2026-08", "2026-09", "2026-10"];
+  const [month, setMonth] = React.useState("2026-10");
+  const payments = bookPayments(invoices, bills);
+  const matchedKeys = new Set<string | null>(bankLines.map((l) => l.matchedKey));
+  const checks = monthEndChecks({ month, invoices, bills, bankLines, bookPayments: payments, matchedKeys, lockedThrough, reviews: closeReviews.filter((r) => r.startsWith(`${month}:`)).map((r) => r.slice(month.length + 1)), dueAmount, creditNotes });
+  const ready = checks.every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
+  const end = monthEnd(month);
+
+  function signOff(item: string) {
+    const problem = markCloseReviewed(month, item, me);
+    if (problem) return toast.error(problem);
+    toast.success("Signed off");
+  }
+
+  async function lockMonth() {
+    const problem = await setPeriodLock(end, isOwner);
+    if (problem) return toast.error(problem);
+    toast.success(`Books locked through ${end}`);
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Month-end close · {month}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="close-month">Month</Label>
+            <select id="close-month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((m) => <option key={m} value={m}>{m}</option>)}</select>
+            <Badge variant={ready ? "success" : "warning"}>{ready ? "ready to close" : "not ready"}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">Checks read the records. Two need a person to sign them off. The owner then locks the books through the month end, so nothing dated in it can change.</p>
+          {checks.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+              <span>
+                <span className="font-medium">{c.label}</span>
+                <span className="block text-xs text-muted-foreground">{c.detail}</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <Badge variant={c.passed ? "success" : "warning"}>{c.passed ? "passed" : c.manual ? "to sign off" : "open"}</Badge>
+                {c.manual && !c.passed ? <Button size="sm" variant="secondary" onClick={() => signOff(c.id)}>Sign off</Button> : null}
+              </span>
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <Button disabled={!ready || !isOwner || (lockedThrough !== null && lockedThrough >= end)} onClick={lockMonth}>Lock books through {end}</Button>
+            {!isOwner ? <span className="text-xs text-muted-foreground">Only the owner can lock the books.</span> : null}
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Business expenses, paid from the petty cash float or the bank, and the petty cash balance. */
+function ExpensesView({ me }: { me: string }) {
+  const expenses = useFinanceStore((state) => state.expenses);
+  const topUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const addExpense = useFinanceStore((state) => state.addExpense);
+  const topUpPettyCash = useFinanceStore((state) => state.topUpPettyCash);
+  const balance = pettyCashBalance(topUps, expenses);
+  const [date, setDate] = React.useState(todayIso());
+  const [category, setCategory] = React.useState<(typeof EXPENSE_CATEGORIES)[number]>("Travel");
+  const [payee, setPayee] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [gstRate, setGstRate] = React.useState("18");
+  const [paidFrom, setPaidFrom] = React.useState<"petty cash" | "bank">("petty cash");
+  const [topUp, setTopUp] = React.useState("");
+
+  function save() {
+    const problem = addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Expense recorded");
+    setPayee(""); setAmount("");
+  }
+
+  function topUpCash() {
+    const problem = topUpPettyCash({ date, amount: Number(topUp) }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Petty cash topped up");
+    setTopUp("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Petty cash · ₹{balance.toLocaleString("en-IN")} in hand</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Petty cash is a float kept for small payments. Top it up from the bank; a petty cash expense cannot be more than what is in hand.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input aria-label="Top-up amount" type="number" min={0} className="h-8 w-40" placeholder="Top-up ₹" value={topUp} onChange={(e) => setTopUp(e.target.value)} />
+            <Button size="sm" variant="secondary" disabled={!(Number(topUp) > 0)} onClick={topUpCash}>Top up from bank</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Record an expense</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input aria-label="Expense date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <select aria-label="Expense category" className={selectClass} value={category} onChange={(e) => setCategory(e.target.value as (typeof EXPENSE_CATEGORIES)[number])}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            <Input aria-label="Paid to" placeholder="Paid to" value={payee} onChange={(e) => setPayee(e.target.value)} />
+            <Input aria-label="Expense amount" type="number" min={0} placeholder="Amount ex-GST ₹" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input aria-label="GST rate" type="number" min={0} max={28} placeholder="GST %" value={gstRate} onChange={(e) => setGstRate(e.target.value)} />
+            <select aria-label="Paid from" className={selectClass} value={paidFrom} onChange={(e) => setPaidFrom(e.target.value as "petty cash" | "bank")}><option value="petty cash">Petty cash</option><option value="bank">Bank</option></select>
+            <Button disabled={payee.trim().length < 2 || !(Number(amount) > 0)} onClick={save}>Record expense</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">An expense counts as a cost in profit and loss at its amount before GST. A bank expense is paid with GST in cash flow.</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[640px] text-sm tabular-nums">
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Date</th><th className="px-4 py-2">Category</th><th className="px-4 py-2">Paid to</th><th className="px-4 py-2">Paid from</th><th className="px-4 py-2 text-right">Ex-GST</th></tr></thead>
+            <tbody>
+              {expenses.length === 0 ? <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No expenses yet.</td></tr> : null}
+              {expenses.map((e) => (
+                <tr key={e.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3">{e.date}</td>
+                  <td className="px-4 py-3">{e.category}</td>
+                  <td className="px-4 py-3">{e.payee}</td>
+                  <td className="px-4 py-3">{e.paidFrom}</td>
+                  <td className="px-4 py-3 text-right">{money(e.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** GST summary for one month: output tax on sales by rate, input tax on expenses, and the net to check. */
+function GstView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const months = ["2026-08", "2026-09", "2026-10"];
+  const [month, setMonth] = React.useState("2026-10");
+  const summary = gstSummary(month, invoices, creditNotes, expenses);
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">GST summary · {month}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="flex items-center gap-2"><Label htmlFor="gst-month">Month</Label><select id="gst-month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
+          <p className="text-xs text-muted-foreground">A summary to check the month, not a return. Approved credit notes reduce the output tax. Bad-debt write-offs are not GST credit notes, so they are not included here. Confirm these figures with the company&apos;s accountant before filing.</p>
+          <table className="w-full text-sm tabular-nums">
+            <thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th className="py-2">GST rate</th><th className="text-right">Taxable</th><th className="text-right">CGST</th><th className="text-right">SGST</th><th className="text-right">IGST</th></tr></thead>
+            <tbody>
+              {summary.rows.length === 0 ? <tr><td colSpan={5} className="py-4 text-center text-muted-foreground">No sales invoices this month.</td></tr> : null}
+              {summary.rows.map((r) => (
+                <tr key={r.rate} className="border-b border-border last:border-0"><td className="py-2">{r.rate}%</td><td className="text-right">{money(r.taxable)}</td><td className="text-right">{money(r.cgst)}</td><td className="text-right">{money(r.sgst)}</td><td className="text-right">{money(r.igst)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="grid gap-1 text-sm tabular-nums">
+            <div className="flex justify-between"><span>Output tax on sales</span><span>{money(summary.outputTax)}</span></div>
+            <div className="flex justify-between text-xs text-muted-foreground"><span>Less tax on approved credit notes this month</span><span>{money(summary.creditTax)}</span></div>
+            <div className="flex justify-between"><span>Input tax on expenses</span><span>{money(summary.inputTax)}</span></div>
+            <div className="flex justify-between font-semibold"><span>Net to check before filing</span><span>{summary.netPayable < 0 ? `-${money(Math.abs(summary.netPayable))}` : money(summary.netPayable)}</span></div>
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Key figures for the company across the books: profit, what customers and vendors owe, cash and the aging of receivables. */
+function ReportsView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const bills = useFinanceStore((state) => state.bills);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const topUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const openingCash = useFinanceStore((state) => state.openingCash);
+  const pnl = profitAndLoss(invoices, creditNotes, bills, expenses);
+  const live = invoices.filter((i) => !i.cancelled);
+  const receivable = live.reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const overdue = live.filter((i) => i.dueDate < todayIso()).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const owedToVendors = bills.reduce((sum, b) => sum + (b.amount - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
+  const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
+  const closing = months.length > 0 ? months[months.length - 1].closing : openingCash;
+  const buckets = ["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"];
+  const aging = buckets.map((bucket) => ({ bucket, amount: live.filter((i) => agingBucket(i, creditNotes) === bucket).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0) }));
+  const cards: [string, number][] = [
+    ["Sales (ex-GST)", pnl.sales],
+    ["Profit before payroll", pnl.profit],
+    ["Owed by customers", receivable],
+    ["Overdue from customers", overdue],
+    ["Owed to vendors", owedToVendors],
+    ["Closing cash", closing],
+  ];
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {cards.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-border bg-surface p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className={`mt-1 text-xl font-semibold tabular-nums ${value < 0 ? "text-danger" : ""}`}>{money(value)}</p>
+          </div>
+        ))}
+      </div>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Receivables aging</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm tabular-nums">
+          {aging.map((row) => <div key={row.bucket} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{row.bucket}</span><span>{money(row.amount)}</span></div>)}
+          <p className="text-xs text-muted-foreground">Petty cash in hand: {money(pettyCashBalance(topUps, expenses))}. Figures come from the records in this workspace.</p>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Bank statement lines matched to the payments recorded in the books. A match needs the same amount and direction. */
+function ReconciliationView({ me }: { me: string }) {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankLines = useFinanceStore((state) => state.bankLines);
+  const importBankStatement = useFinanceStore((state) => state.importBankStatement);
+  const matchBankLine = useFinanceStore((state) => state.matchBankLine);
+  const [text, setText] = React.useState("");
+  const [errors, setErrors] = React.useState<string[]>([]);
+  const payments = bookPayments(invoices, bills);
+  const matchedKeys = new Set(bankLines.filter((l) => l.matchedKey).map((l) => l.matchedKey));
+  const unmatchedPayments = payments.filter((p) => !matchedKeys.has(p.key));
+  const unmatchedLines = bankLines.filter((l) => !l.matchedKey).length;
+
+  function save() {
+    const result = importBankStatement(text, me);
+    setErrors(result.errors);
+    if (result.imported > 0) {
+      toast.success(`${result.imported} line${result.imported === 1 ? "" : "s"} imported`);
+      setText("");
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Import a bank statement</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Paste one line per bank entry: date, description, amount. Use a plus for money in and a minus for money out, for example 2026-10-20,NEFT from Kavita Rao,30000 or 2026-10-21,NEFT to Vendor Co,-12500.</p>
+          <Textarea aria-label="Bank statement lines" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="2026-10-20,NEFT from Kavita Rao,30000" />
+          {errors.length > 0 ? <ul className="list-disc pl-5 text-xs text-danger">{errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
+          <Button className="w-fit" disabled={text.trim().length === 0} onClick={save}>Import lines</Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Statement lines · {unmatchedLines} not matched</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 text-sm">
+          {bankLines.length === 0 ? <p className="text-muted-foreground">No statement lines yet.</p> : null}
+          {bankLines.map((line) => {
+            const options = payments.filter((p) => (p.direction === 1) === (line.amount > 0) && (!matchedKeys.has(p.key) || p.key === line.matchedKey));
+            return (
+              <div key={line.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
+                <span>
+                  <span className="text-muted-foreground">{line.date} · </span>{line.description} · <span className="tabular-nums">{line.amount < 0 ? `-${money(Math.abs(line.amount))}` : money(line.amount)}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant={line.matchedKey ? "success" : "warning"}>{line.matchedKey ? "matched" : "not matched"}</Badge>
+                  <select aria-label={`Match ${line.description}`} className={selectClass} value={line.matchedKey ?? ""} onChange={(e) => { const p = matchBankLine(line.id, e.target.value || null, me); if (p) toast.error(p); }}>
+                    <option value="">{line.matchedKey ? "Unmatch…" : "Match to a payment…"}</option>
+                    {options.map((o) => <option key={o.key} value={o.key}>{o.label} · {money(o.amount)} · {o.date}</option>)}
+                  </select>
+                </span>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Payments in the books not on a statement line · {unmatchedPayments.length}</CardTitle></CardHeader>
+        <CardContent className="grid gap-1 text-sm">
+          {unmatchedPayments.length === 0 ? <p className="text-muted-foreground">Every recorded payment is on a statement line.</p> : null}
+          {unmatchedPayments.map((p) => <p key={p.key}><span className="text-muted-foreground">{p.date} · </span>{p.label} · {money(p.amount)}</p>)}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/** Cash in and out by month, from the invoice payments and bill payments recorded, plus bank movements entered by hand. */
+function CashFlowView({ me }: { me: string }) {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const pettyCashTopUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const openingCash = useFinanceStore((state) => state.openingCash);
+  const setOpeningCash = useFinanceStore((state) => state.setOpeningCash);
+  const addBankEntry = useFinanceStore((state) => state.addBankEntry);
+  const [opening, setOpening] = React.useState(String(openingCash));
+  const [description, setDescription] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [direction, setDirection] = React.useState<"in" | "out">("out");
+  const [date, setDate] = React.useState(todayIso());
+  const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, pettyCashTopUps);
+  const lastClosing = months.length > 0 ? months[months.length - 1].closing : openingCash;
+
+  function saveOpening() {
+    const problem = setOpeningCash(Number(opening), me);
+    if (problem) return toast.error(problem);
+    toast.success("Opening cash saved");
+  }
+
+  function saveEntry() {
+    const sign = direction === "in" ? 1 : -1;
+    const problem = addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) }, me);
+    if (problem) return toast.error(problem);
+    toast.success("Bank movement recorded");
+    setDescription(""); setAmount("");
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Cash position</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Cash in is customer payments recorded on invoices. Cash out is bill payments. Bank charges, loans and other bank movements that are not in the books are entered below. Compare the closing figure with the bank statement; any difference is a movement not yet entered.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="cf-opening">Opening cash (₹)</Label>
+            <Input id="cf-opening" type="number" min={0} className="h-8 w-40" value={opening} onChange={(e) => setOpening(e.target.value)} />
+            <Button size="sm" variant="secondary" onClick={saveOpening}>Save opening cash</Button>
+          </div>
+          <p>Closing cash to date: <span className="font-semibold tabular-nums">{money(lastClosing)}</span></p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[640px] text-sm tabular-nums">
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Month</th><th className="px-4 py-2 text-right">Cash in</th><th className="px-4 py-2 text-right">Cash out</th><th className="px-4 py-2 text-right">Bank movements</th><th className="px-4 py-2 text-right">Net</th><th className="px-4 py-2 text-right">Closing</th></tr></thead>
+            <tbody>
+              {months.length === 0 ? <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No cash movements yet.</td></tr> : null}
+              {months.map((row) => (
+                <tr key={row.month} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3 font-medium">{row.month}</td>
+                  <td className="px-4 py-3 text-right">{money(row.receipts)}</td>
+                  <td className="px-4 py-3 text-right">{money(row.payments)}</td>
+                  <td className={`px-4 py-3 text-right ${row.other < 0 ? "text-danger" : ""}`}>{row.other < 0 ? `-${money(Math.abs(row.other))}` : money(row.other)}</td>
+                  <td className={`px-4 py-3 text-right ${row.net < 0 ? "text-danger" : ""}`}>{row.net < 0 ? `-${money(Math.abs(row.net))}` : money(row.net)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{money(row.closing)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Bank movement not in the books</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-5">
+            <Input aria-label="Bank movement date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input aria-label="Bank movement description" placeholder="e.g. Bank charges, September" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input aria-label="Bank movement amount" type="number" min={0} placeholder="Amount ₹" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <select aria-label="Direction" className={selectClass} value={direction} onChange={(e) => setDirection(e.target.value as "in" | "out")}><option value="out">Money out</option><option value="in">Money in</option></select>
+            <Button disabled={description.trim().length < 3 || !(Number(amount) > 0)} onClick={saveEntry}>Record movement</Button>
+          </div>
+          {bankEntries.map((entry) => (
+            <p key={entry.id} className="text-xs"><span className="text-muted-foreground">{entry.date} · </span>{entry.description} · {entry.amount < 0 ? `-${money(Math.abs(entry.amount))}` : money(entry.amount)}</p>
+          ))}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function ProfitLossView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const bills = useFinanceStore((state) => state.bills);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const [from, setFrom] = React.useState("");
+  const [to, setTo] = React.useState("");
+  // A blank end leaves that side open, so the default is still "to date".
+  const inPeriod = (date: string) => (!from || date >= from) && (!to || date <= to);
+  const pnl = profitAndLoss(
+    invoices.filter((i) => inPeriod(i.date)),
+    creditNotes.filter((c) => inPeriod(c.date)),
+    bills.filter((b) => inPeriod(b.date)),
+    expenses.filter((e) => inPeriod(e.date)),
+  );
+  // `|| 0` turns a negative zero into zero, so an empty line does not read "-₹0".
+  const rows: [string, number, boolean][] = [
+    ["Sales (ex-GST)", pnl.sales, false],
+    ["Less approved credit notes (ex-GST)", -pnl.credits || 0, false],
+    ["Net sales", pnl.netSales, true],
+    ["Less bills recorded", -(pnl.costs - pnl.writeOffs) || 0, false],
+    ["Less bad debt written off", -pnl.writeOffs || 0, false],
+    ["Profit before payroll and expenses", pnl.profit, true],
+  ];
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Profit and loss{from || to ? " for the period" : " to date"}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="flex flex-wrap items-end gap-3 text-xs">
+            <label className="grid gap-1">From <Input type="date" aria-label="Period from" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+            <label className="grid gap-1">To <Input type="date" aria-label="Period to" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+            {from || to ? <Button size="sm" variant="ghost" onClick={() => { setFrom(""); setTo(""); }}>Clear period</Button> : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs as they were entered. Payroll and expense claims are not in this figure yet.
+          </p>
+          <table className="w-full text-sm tabular-nums">
+            <tbody>
+              {rows.map(([label, value, strong]) => (
+                <tr key={label} className={`border-b border-border last:border-0 ${strong ? "font-semibold" : ""}`}>
+                  <td className="py-2">{label}</td>
+                  <td className={`py-2 text-right ${value < 0 ? "text-danger" : ""}`}>{value < 0 ? `-${money(Math.abs(value))}` : money(value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-sm">Margin on net sales: {pnl.margin === null ? "not available yet" : `${pnl.margin}%`}</p>
+        </CardContent>
+      </Card>
+      <BalanceSheetCard />
+    </>
+  );
+}
+
+/**
+ * Balance sheet to date (plan §8.7 V2, Schedule III layout). Every figure comes from a record: cash from the cash flow
+ * closing balance, receivables from invoices still owed, stock at the item rate, and payables from bills still owed.
+ * Equity is the share capital entered plus reserves and surplus (the profit to date). Any gap is shown as a difference.
+ */
+function BalanceSheetCard() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const bills = useFinanceStore((state) => state.bills);
+  const bankEntries = useFinanceStore((state) => state.bankEntries);
+  const openingCash = useFinanceStore((state) => state.openingCash);
+  const expenses = useFinanceStore((state) => state.expenses);
+  const topUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const items = useOperationsStore((state) => state.items);
+  const movements = useOperationsStore((state) => state.movements);
+  const session = useSession();
+  const me = session.user.name ?? session.user.email ?? "You";
+  const shareCapital = useFinanceStore((state) => state.shareCapital);
+  const setShareCapital = useFinanceStore((state) => state.setShareCapital);
+  const [capitalInput, setCapitalInput] = React.useState(String(shareCapital));
+  const flow = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
+  const cash = flow.length > 0 ? flow[flow.length - 1].closing : openingCash;
+  const receivables = invoices.filter((i) => !i.cancelled).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
+  const stock = items.reduce((sum, item) => sum + stockOn(movements, item.id) * item.rate, 0);
+  const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
+  // Schedule III, vertical form: equity is share capital plus reserves and surplus; reserves include the profit to date.
+  const reserves = profitAndLoss(invoices, creditNotes, bills, expenses).profit;
+  const equity = shareCapital + reserves;
+  const assets = cash + receivables + stock;
+  const liabilitiesAndEquity = equity + payables;
+  const difference = Math.round((assets - liabilitiesAndEquity) * 100) / 100;
+  const rows: [string, number, boolean][] = [
+    ["Share capital", shareCapital, false],
+    ["Reserves and surplus (profit to date)", reserves, false],
+    ["Total equity", equity, true],
+    ["Trade payables (bills still owed)", payables, false],
+    ["Total equity and liabilities", liabilitiesAndEquity, true],
+    ["Cash and bank", cash, false],
+    ["Trade receivables (owed by customers)", receivables, false],
+    ["Inventories (at item rate)", stock, false],
+    ["Total assets", assets, true],
+    ["Difference to reconcile", difference, false],
+  ];
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Balance sheet to date</CardTitle></CardHeader>
+      <CardContent className="grid gap-3 text-sm">
+        <p className="text-xs text-muted-foreground">Laid out as Schedule III requires: equity and liabilities, then assets. Enter the share capital from the company&apos;s records. A difference other than zero means some entries are still missing, such as opening balances or fixed assets, and is shown rather than hidden.</p>
+        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const p = setShareCapital(Number(capitalInput) || 0, me); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
+          <Label htmlFor="share-capital" className="grid gap-1 text-xs">Share capital (₹)<Input id="share-capital" type="number" min={0} value={capitalInput} onChange={(e) => setCapitalInput(e.target.value)} className="w-40" /></Label>
+          <Button type="submit" size="sm" variant="secondary">Save share capital</Button>
+        </form>
+        <table className="w-full text-sm tabular-nums">
+          <tbody>
+            {rows.map(([label, value, strong]) => (
+              <tr key={label} className={`border-b border-border last:border-0 ${strong ? "font-semibold" : ""}`}>
+                <td className="py-2">{label}</td>
+                <td className={`py-2 text-right ${value < 0 ? "text-danger" : ""}`}>{value < 0 ? `-${money(Math.abs(value))}` : money(value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -197,6 +802,9 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "war
 }
 
 function InvoicesView({ me }: { me: string }) {
+  React.useEffect(() => {
+    syncInvoices().catch((error: unknown) => toast.warning(`Invoices not loaded from the server: ${message(error)}`));
+  }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const [creating, setCreating] = React.useState(false);
@@ -226,7 +834,7 @@ function InvoicesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right tabular-nums">{money(invoiceTotals(invoice).total)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(dueAmount(invoice, creditNotes))}</td>
                     <td className="px-4 py-3"><Badge variant={status === "overdue" ? "warning" : status === "paid" ? "success" : "neutral"}>{status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><Button size="sm" variant="secondary" disabled={status === "paid"} onClick={() => setPaying(invoice)}>Record payment</Button></td>
+                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="secondary" disabled={status === "paid"} onClick={() => setPaying(invoice)}>Record payment</Button>{status === "overdue" ? <Button size="sm" variant="ghost" asChild><Link href={`/workspace/finance-accounting?view=credit-notes&workspace=finance-accounting&invoice=${invoice.id}&kind=write-off`}>Write off</Link></Button> : null}</div></td>
                   </tr>
                 );
               })}
@@ -242,7 +850,8 @@ function InvoicesView({ me }: { me: string }) {
 }
 
 function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) {
-  const addInvoice = useFinanceStore((state) => state.addInvoice);
+  const session = useSession();
+  const canCreate = hasPermission(session.permissions, "billing:manage");
   const [customer, setCustomer] = React.useState("");
   const [customerCompany, setCustomerCompany] = React.useState("");
   const [dealId, setDealId] = React.useState("");
@@ -251,20 +860,21 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   const [dueDays, setDueDays] = React.useState("30");
   const [lines, setLines] = React.useState<InvoiceLine[]>([{ item: "", hsn: "", qty: 1, rate: 0, gstRate: 18 }]);
   const [error, setError] = React.useState("");
-  const today = "2026-10-23";
+  const today = todayIso();
   const due = new Date(Date.parse(today) + Number(dueDays || 0) * 86400000).toISOString().slice(0, 10);
   const preview = invoiceTotals({ sameState, lines, id: "", number: "", customer, customerCompany, date: today, dueDate: due, payments: [], createdBy: me });
 
   function update(index: number, patch: Partial<InvoiceLine>) {
     setLines((current) => current.map((line, i) => i === index ? { ...line, ...patch } : line));
   }
-  function save() {
+  async function save() {
     if (customer.trim().length < 2) return setError("Enter the customer name.");
     if (lines.some((line) => line.item.trim().length < 2 || !/^\d{4,8}$/.test(line.hsn.trim()) || line.qty <= 0 || line.rate <= 0)) return setError("Each line needs an item, an HSN code (4 to 8 digits), a quantity and a rate above zero.");
     const locked = periodLockProblem(today);
     if (locked) return setError(locked);
-    const number = addInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), dealId: dealId || undefined, date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
-    toast.success(`Invoice ${number} created`);
+    const created = await createInvoice({ customer: customer.trim(), customerCompany: customerCompany.trim(), dealId: dealId || undefined, date: today, dueDate: due, sameState, lines: lines.map((line) => ({ ...line, item: line.item.trim(), hsn: line.hsn.trim() })) }, me);
+    if (created.error) return setError(created.error);
+    toast.success(`Invoice ${created.number} created`);
     onClose();
   }
 
@@ -298,7 +908,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
           <div className="flex justify-between font-semibold"><span>Total</span><span>{money(preview.total)}</span></div>
         </div>
         {error ? <p role="alert" className="text-xs text-danger">{error}</p> : null}
-        <DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save}>Create invoice</Button></DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!canCreate} title={canCreate ? undefined : "Needs the billing:manage permission"} onClick={save}>Create invoice</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -307,16 +917,15 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
 function PaymentDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const recordPayment = useFinanceStore((state) => state.recordPayment);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const due = dueAmount(invoice, creditNotes);
   const [amount, setAmount] = React.useState(String(due));
   const [method, setMethod] = React.useState<"UPI" | "Bank transfer" | "Cash" | "Cheque">("UPI");
   const [reference, setReference] = React.useState("");
   const [error, setError] = React.useState("");
-  function save() {
+  async function save() {
     if (reference.trim().length < 3) return setError("Enter the payment reference (UTR, cheque number or receipt).");
-    const problem = recordPayment(invoice.id, { amount: Number(amount), method, reference: reference.trim(), date: "2026-10-23" }, me);
+    const problem = await recordInvoicePayment(invoice.id, { amount: Number(amount), method, reference: reference.trim(), date: todayIso() }, me);
     if (problem) return setError(problem);
     toast.success("Payment recorded");
     onClose();
@@ -360,7 +969,7 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => 
           <div className="flex justify-between"><span>Credited (approved)</span><span>{money(creditNotes.filter((n) => n.invoiceId === invoice.id && n.status === "approved").reduce((s, n) => s + n.amount, 0))}</span></div>
           <div className="flex justify-between font-semibold"><span>Due now</span><span>{money(dueAmount(invoice, creditNotes))}</span></div>
         </div>
-        <div className="border-t border-border pt-3"><p className="mb-2 text-sm font-medium">Documents</p><RecordDocuments recordKind="invoice" recordId={invoice.id} addedBy={me} today="2026-10-23" /></div>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-sm font-medium">Documents</p><RecordDocuments recordKind="invoice" recordId={invoice.id} addedBy={me} today={todayIso()} /></div>
         <p className="text-xs text-muted-foreground">Created by {invoice.createdBy}. Tax rules to be confirmed by the company&apos;s accountant before filing.</p>
         <DialogFooter><Button variant="secondary" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
@@ -369,23 +978,27 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice; onClose: () => 
 }
 
 function CreditNotesView({ me }: { me: string }) {
+  React.useEffect(() => {
+    syncInvoices().catch((error: unknown) => toast.warning(`Credit notes not loaded from the server: ${message(error)}`));
+  }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const addCreditNote = useFinanceStore((state) => state.addCreditNote);
-  const decide = useFinanceStore((state) => state.decideCreditNote);
-  const [invoiceId, setInvoiceId] = React.useState("");
+  // The invoices view links an overdue invoice here with the invoice and type already chosen.
+  const params = useSearchParams();
+  const [invoiceId, setInvoiceId] = React.useState(() => params.get("invoice") ?? "");
   const [amount, setAmount] = React.useState("");
   const [reason, setReason] = React.useState("");
-  const [date] = React.useState("2026-10-23");
+  const [date] = React.useState(todayIso());
   const [ticketId, setTicketId] = React.useState("");
+  const [kind, setKind] = React.useState<"credit" | "write-off">(() => (params.get("kind") === "write-off" ? "write-off" : "credit"));
   const [docsFor, setDocsFor] = React.useState<CreditNote | null>(null);
   const links = useCrmLinkOptions();
   const invoice = invoices.find((item) => item.id === invoiceId);
 
-  function create() {
-    const problem = addCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined }, me);
+  async function create() {
+    const problem = await raiseCreditNote({ invoiceId, amount: Number(amount), reason, date, ticketId: ticketId || undefined, kind }, me);
     if (problem) return toast.error(problem);
-    toast.success("Credit note raised. It takes effect once approved by someone else.");
+    toast.success(kind === "write-off" ? "Write-off raised. It takes effect once approved by someone else." : "Credit note raised. It takes effect once approved by someone else.");
     setAmount(""); setReason(""); setTicketId("");
   }
   return (
@@ -393,13 +1006,14 @@ function CreditNotesView({ me }: { me: string }) {
       <Dialog open={docsFor !== null} onOpenChange={(open) => !open && setDocsFor(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Documents for {docsFor?.number}</DialogTitle><DialogDescription>Approval notes, the customer&apos;s letter or the stock report behind this credit note.</DialogDescription></DialogHeader>
-          {docsFor ? <RecordDocuments recordKind="credit-note" recordId={docsFor.id} addedBy={me} today="2026-10-23" /> : null}
+          {docsFor ? <RecordDocuments recordKind="credit-note" recordId={docsFor.id} addedBy={me} today={todayIso()} /> : null}
         </DialogContent>
       </Dialog>
       <Card>
         <CardHeader><CardTitle className="text-base">Raise a credit note</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">Credit notes refer to an original invoice. They reduce what the customer owes once approved. Another person must approve, not the one who raised it.</p>
+          <p className="text-xs text-muted-foreground">Credit notes refer to an original invoice. They reduce what the customer owes once approved. Another person must approve, not the one who raised it. A write-off clears debt the customer will not pay; it is booked as bad debt in profit and loss, not as a cut to sales.</p>
+          <div className="flex flex-col gap-1.5 sm:w-64"><Label htmlFor="cn-kind">Type</Label><select id="cn-kind" className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as "credit" | "write-off")}><option value="credit">Credit note</option><option value="write-off">Write off bad debt</option></select></div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-invoice">Invoice</Label><select id="cn-invoice" className={selectClass} value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}><option value="">Choose…</option>{invoices.map((item) => <option key={item.id} value={item.id}>{item.number} · {item.customer}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-amount">Amount (₹, incl. GST)</Label><Input id="cn-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
@@ -407,7 +1021,7 @@ function CreditNotesView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="cn-ticket">Support ticket (optional)</Label><select id="cn-ticket" className={selectClass} value={ticketId} onChange={(e) => setTicketId(e.target.value)}><option value="">None</option>{links.openTickets.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
           </div>
           {invoice ? <p className="text-xs text-muted-foreground">Invoice total {money(invoiceTotals(invoice).total)}.</p> : null}
-          <Button className="w-fit" disabled={!invoiceId || !amount || !reason} onClick={create}>Raise credit note</Button>
+          <Button className="w-fit" disabled={!invoiceId || !amount || !reason} onClick={create}>{kind === "write-off" ? "Raise write-off" : "Raise credit note"}</Button>
         </CardContent>
       </Card>
       <Card>
@@ -420,12 +1034,12 @@ function CreditNotesView({ me }: { me: string }) {
                 const original = invoices.find((item) => item.id === note.invoiceId);
                 return (
                   <tr key={note.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3 font-medium">{note.number}</td>
+                    <td className="px-4 py-3 font-medium">{note.number}{note.kind === "write-off" ? <span className="block text-xs font-normal text-muted-foreground">Bad debt write-off</span> : null}</td>
                     <td className="px-4 py-3">{original?.number ?? "—"}{linkedLabel(links.tickets, note.ticketId) ? <span className="block text-xs text-muted-foreground">{linkedLabel(links.tickets, note.ticketId)}</span> : null}</td>
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>
                     <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : note.status === "rejected" ? "danger" : "warning"}>{note.status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { const problem = decide(note.id, me); if (problem) toast.error(problem); else toast.success("Credit note approved"); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
+                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { void approveCreditNote(note.id, me).then((problem) => (problem ? toast.error(problem) : toast.success("Credit note approved"))); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
                   </tr>
                 );
               })}
@@ -441,10 +1055,11 @@ function FundsView({ me }: { me: string }) {
   const lines = useFinanceStore((state) => state.budgetLines);
   const requests = useFinanceStore((state) => state.fundRequests);
   const draws = useFinanceStore((state) => state.draws);
-  const add = useFinanceStore((state) => state.addFundRequest);
-  const approve = useFinanceStore((state) => state.approveFundRequest);
-  const reject = useFinanceStore((state) => state.rejectFundRequest);
-  const drawBudget = useFinanceStore((state) => state.drawBudget);
+  React.useEffect(() => {
+    // The balances shown are the server's. Lines that only exist on this screen are created on the server.
+    syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+    syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
+  }, []);
   const [purpose, setPurpose] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [lineId, setLineId] = React.useState("");
@@ -453,12 +1068,39 @@ function FundsView({ me }: { me: string }) {
   const [drawNote, setDrawNote] = React.useState("");
   const [rejecting, setRejecting] = React.useState<FundRequest | null>(null);
   const [reason, setReason] = React.useState("");
+  const addBudgetLine = useFinanceStore((state) => state.addBudgetLine);
+  const [lineName, setLineName] = React.useState("");
+  const [lineOwner, setLineOwner] = React.useState(me);
+  const [lineAllocated, setLineAllocated] = React.useState("");
 
   const statusTone = (status: FundRequest["status"]) => status === "approved" ? "success" : status === "rejected" ? "danger" : "warning";
   const statusLabel = (status: FundRequest["status"]) => status === "awaiting_finance" ? "awaiting finance" : status;
 
+  function createLine(event: React.FormEvent) {
+    event.preventDefault();
+    const allocated = Number(lineAllocated);
+    if (lineName.trim().length < 2) return toast.error("Name the budget line.");
+    if (!(allocated > 0)) return toast.error("Enter the amount the line may spend.");
+    addBudgetLine({ name: lineName.trim(), owner: lineOwner.trim() || me, allocated });
+    syncBudgetLines()
+      .then(() => { setLineName(""); setLineAllocated(""); toast.success(`${lineName.trim()} is on the budget.`); })
+      .catch((error: unknown) => toast.error(`The budget line was not saved: ${message(error)}`));
+  }
+
   return (
     <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Add a budget line</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={createLine} className="grid gap-3 sm:grid-cols-4">
+            <div className="flex flex-col gap-1.5"><Label htmlFor="line-name">Name</Label><Input id="line-name" value={lineName} onChange={(e) => setLineName(e.target.value)} placeholder="e.g. Sales and marketing" /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="line-owner">Owner</Label><Input id="line-owner" value={lineOwner} onChange={(e) => setLineOwner(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="line-allocated">Amount (₹)</Label><Input id="line-allocated" type="number" min="1" value={lineAllocated} onChange={(e) => setLineAllocated(e.target.value)} /></div>
+            <div className="flex items-end"><Button type="submit" disabled={lineName.trim().length < 2 || !(Number(lineAllocated) > 0)}>Add budget line</Button></div>
+          </form>
+          <p className="mt-2 text-xs text-muted-foreground">Projects, fund requests and requisitions draw from a budget line, so add one before them.</p>
+        </CardContent>
+      </Card>
       <div className="grid gap-3 sm:grid-cols-3">
         {lines.map((line) => (
           <Card key={line.id}><CardContent className="p-4">
@@ -480,7 +1122,7 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="fr-amount">Amount (₹)</Label><Input id="fr-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="fr-line">Budget line</Label><select id="fr-line" className={selectClass} value={lineId} onChange={(e) => setLineId(e.target.value)}><option value="">Choose…</option>{lines.map((line) => <option key={line.id} value={line.id}>{line.name}</option>)}</select></div>
           </div>
-          <Button className="w-fit" disabled={purpose.trim().length < 3 || !(Number(amount) > 0) || !lineId} onClick={() => { add({ purpose: purpose.trim(), amount: Number(amount), lineId, date: "2026-10-23" }, me); toast.success("Fund request sent for approval"); setPurpose(""); setAmount(""); }}>Send request</Button>
+          <Button className="w-fit" disabled={purpose.trim().length < 3 || !(Number(amount) > 0) || !lineId} onClick={async () => { const p = await addFundRequest({ purpose: purpose.trim(), amount: Number(amount), lineId, date: todayIso() }, me); if (p) { toast.error(p); return; } toast.success("Fund request sent for approval"); setPurpose(""); setAmount(""); }}>Send request</Button>
         </CardContent>
       </Card>
 
@@ -503,7 +1145,7 @@ function FundsView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right">
                       {open ? (
                         <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="secondary" onClick={() => { const p = approve(request.id, request.status === "pending" ? "owner" : "finance", me); if (p) toast.error(p); else toast.success("Approved"); }}>{request.status === "pending" ? "Owner approve" : "Finance approve"}</Button>
+                          <Button size="sm" variant="secondary" onClick={async () => { const p = await approveFundRequest(request.id, request.status === "pending" ? "owner" : "finance", me); if (p) toast.error(p); else toast.success("Approved"); }}>{request.status === "pending" ? "Owner approve" : "Finance approve"}</Button>
                           <Button size="sm" variant="ghost" onClick={() => setRejecting(request)}>Reject</Button>
                         </div>
                       ) : null}
@@ -524,8 +1166,8 @@ function FundsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="dr-amount">Amount (₹)</Label><Input id="dr-amount" type="number" min={0} value={drawAmount} onChange={(e) => setDrawAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="dr-note">Note</Label><Input id="dr-note" value={drawNote} onChange={(e) => setDrawNote(e.target.value)} /></div>
           </div>
-          <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={() => { const p = drawBudget(drawLine, Number(drawAmount), drawNote.trim(), me, "2026-10-23"); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
-          {draws.length > 0 ? <ul className="text-xs text-muted-foreground">{draws.slice(0, 5).map((draw) => <li key={draw.id}>{draw.date} · {lines.find((l) => l.id === draw.lineId)?.name} · {money(draw.amount)} · {draw.note} · by {draw.by}</li>)}</ul> : null}
+          <Button className="w-fit" disabled={!drawLine || !(Number(drawAmount) > 0) || drawNote.trim().length < 3} onClick={async () => { const p = await moveBudget("draw", drawLine, Number(drawAmount), drawNote.trim(), me, todayIso()); if (p) return toast.error(p); toast.success("Spend recorded"); setDrawAmount(""); setDrawNote(""); }}>Record spend</Button>
+          {draws.length > 0 ? <ul className="text-xs text-muted-foreground">{draws.slice(0, 5).map((draw) => <li key={draw.id}>{draw.date} · {lines.find((l) => l.id === draw.lineId)?.name} · {draw.amount < 0 ? `Released ${money(-draw.amount)}` : money(draw.amount)} · {draw.note} · by {draw.by}</li>)}</ul> : null}
         </CardContent>
       </Card>
 
@@ -534,7 +1176,7 @@ function FundsView({ me }: { me: string }) {
           <DialogContent>
             <DialogHeader><DialogTitle>Reject {rejecting.number}</DialogTitle><DialogDescription>Give a reason, so the requester knows what to change.</DialogDescription></DialogHeader>
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
-            <DialogFooter><Button variant="secondary" onClick={() => setRejecting(null)}>Cancel</Button><Button disabled={reason.trim().length < 3} onClick={() => { reject(rejecting.id, reason.trim(), me); setRejecting(null); setReason(""); toast.success("Request rejected"); }}>Reject request</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setRejecting(null)}>Cancel</Button><Button disabled={reason.trim().length < 3} onClick={async () => { const p = await rejectFundRequest(rejecting.id, reason.trim(), me); setRejecting(null); setReason(""); if (p) toast.error(p); else toast.success("Request rejected"); }}>Reject request</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}

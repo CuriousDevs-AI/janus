@@ -2,10 +2,18 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { workspaceStorage } from "@/lib/stores/workspace-storage";
+import { mergeServerOwned } from "@/lib/stores/server-owned";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
+import { useOperationsStore } from "@/lib/stores/operations-store";
+import { threeWayMatch } from "@/lib/three-way-match";
+import { workflowRules } from "@/lib/stores/workflow-rules-store";
+import { demoMode } from "@/lib/demo-mode";
+import { api } from "@/lib/api/client";
+import { todayIso } from "@/lib/today";
 
 /**
  * Finance & Accounting (phase 1): invoices with GST split, payments, credit notes,
@@ -23,15 +31,39 @@ export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
   sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
 }
-export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string }
+/** A write-off is bad debt: it clears what the customer owes, but it is a cost in profit and loss, not a cut to sales. */
+export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string; kind?: "credit" | "write-off" }
 export interface BudgetLine { id: string; name: string; owner: string; allocated: number; drawn: number }
 export interface FundRequest {
   id: string; number: string; purpose: string; amount: number; lineId: string; requestedBy: string; date: string;
   status: "pending" | "awaiting_finance" | "approved" | "rejected"; ownerApprovedBy?: string; financeApprovedBy?: string; rejectedBy?: string; rejectedReason?: string;
 }
 export interface Draw { id: string; lineId: string; amount: number; note: string; by: string; date: string }
+/** A bank movement that is not in the books: bank charges, loan instalments, capital in. Amount is signed: + in, − out. */
+export interface BankEntry { id: string; date: string; description: string; amount: number }
+
+/** A line from the bank statement. Amount is signed: + credit (money in), − debit (money out). */
+export interface BankLine { id: string; date: string; description: string; amount: number; matchedKey: string | null }
+
+/** A business expense: paid from the petty cash float or from the bank. Amount is ex-GST, as entered. */
+export interface Expense { id: string; date: string; category: (typeof EXPENSE_CATEGORIES)[number]; payee: string; amount: number; gstRate: number; paidFrom: "petty cash" | "bank"; by: string }
+/** Money moved from the bank into the petty cash float. */
+export interface PettyCashTopUp { id: string; date: string; amount: number; by: string }
+export const EXPENSE_CATEGORIES = ["Travel", "Office", "Utilities", "Repairs", "Other"] as const;
+
+/** The planned spend for one budget line in one quarter of an Indian financial year (April to March). */
+export interface BudgetPlan { id: string; lineId: string; fiscalYear: string; quarter: 1 | 2 | 3 | 4; planned: number }
+
+/** The financial year and quarter a date falls in. 2026-10-23 is Q3 of FY 2026-27. */
+export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2 | 3 | 4 } {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const startYear = month >= 4 ? year : year - 1;
+  const quarter = month >= 4 && month <= 6 ? 1 : month >= 7 && month <= 9 ? 2 : month >= 10 && month <= 12 ? 3 : 4;
+  return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
+}
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
-export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string }
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;
@@ -58,24 +90,46 @@ interface FinanceState {
   fundRequests: FundRequest[];
   draws: Draw[];
   bills: Bill[];
+  plans: BudgetPlan[];
+  bankEntries: BankEntry[];
+  openingCash: number;
+  bankLines: BankLine[];
+  /** Checks a person has signed off for a month, e.g. "2026-10:variances". */
+  closeReviews: string[];
+  expenses: Expense[];
+  pettyCashTopUps: PettyCashTopUp[];
   trail: TrailEntry[];
   addInvoice: (invoice: Omit<Invoice, "id" | "number" | "payments" | "createdBy">, by: string) => string;
   recordPayment: (invoiceId: string, payment: Omit<Payment, "id">, by: string) => string | null;
-  addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number }, by: string) => string | null;
+  addBankEntry: (input: Omit<BankEntry, "id">, by: string) => string | null;
+  markCloseReviewed: (month: string, item: string, by: string) => string | null;
+  addExpense: (input: Omit<Expense, "id" | "by">, by: string) => string | null;
+  topUpPettyCash: (input: { date: string; amount: number }, by: string) => string | null;
+  importBankStatement: (text: string, by: string) => { imported: number; errors: string[] };
+  matchBankLine: (lineId: string, key: string | null, by: string) => string | null;
+  setOpeningCash: (amount: number, by: string) => string | null;
+  /** Share capital as the company's books state it (Schedule III, equity). Entered once and kept; it is not derived from sales. */
+  shareCapital: number;
+  setShareCapital: (amount: number, by: string) => string | null;
+  setBudgetPlan: (lineId: string, fiscalYear: string, quarter: BudgetPlan["quarter"], planned: number, by: string) => string | null;
+  addBill: (input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; poId?: string }, by: string) => string | null;
   recordBillPayment: (billId: string, payment: Omit<Payment, "id">, by: string) => string | null;
-  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string }, by: string) => string | null;
+  addCreditNote: (input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string; kind?: "credit" | "write-off" }, by: string) => string | null;
   decideCreditNote: (id: string, by: string) => string | null;
   rejectCreditNote: (id: string, reason: string, by: string) => string | null;
   addFundRequest: (input: { purpose: string; amount: number; lineId: string; date: string }, by: string) => void;
-  approveFundRequest: (id: string, step: "owner" | "finance", by: string) => string | null;
+  approveFundRequest: (id: string, step: "owner" | "finance", by: string) => Promise<string | null>;
   rejectFundRequest: (id: string, reason: string, by: string) => void;
   addBudgetLine: (input: { name: string; owner: string; allocated: number }) => void;
   drawBudget: (lineId: string, amount: number, note: string, by: string, date: string) => string | null;
+  /** Hands unused money back to a budget line, for example when a project closes under budget. */
+  releaseBudget: (lineId: string, amount: number, note: string, by: string, date: string) => string | null;
 }
 
-const today = "2026-10-23";
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills"> => {
-  if (!isFirstCompany) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [] };
+const today = todayIso();
+const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps"> => {
+  // Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
+  if (!isFirstCompany || !demoMode) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [] };
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
@@ -94,7 +148,15 @@ const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetL
     { id: "bill-1", number: "BILL-2026-0101", vendor: "Gurugram Packaging Co", vendorBillNo: "GPC/2610/88", date: "2026-10-15", dueDate: "2026-10-30", amount: 45000, payments: [], createdBy: "Aman Verma" },
     { id: "bill-2", number: "BILL-2026-0102", vendor: "Udyog Electricals", vendorBillNo: "UE-4471", date: "2026-10-01", dueDate: "2026-10-12", amount: 12500, payments: [{ id: "bpay-1", amount: 12500, method: "Bank transfer", reference: "NEFT-55201", date: "2026-10-11" }], createdBy: "Aman Verma" },
   ];
-  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills };
+  const bankEntries: BankEntry[] = [
+    { id: "bank-1", date: "2026-10-05", description: "Bank charges, September", amount: -850 },
+  ];
+  const bankLines: BankLine[] = [
+    { id: "bl-1", date: "2026-10-10", description: "NEFT Kavita Rao", amount: 30000, matchedKey: "inv:inv-1:pay-1" },
+    { id: "bl-2", date: "2026-10-11", description: "NEFT Udyog Electricals", amount: -12500, matchedKey: "bill:bill-2:bpay-1" },
+    { id: "bl-3", date: "2026-10-18", description: "NEFT from unknown remitter", amount: 5000, matchedKey: null },
+  ];
+  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines, closeReviews: [], expenses: [], pettyCashTopUps: [] };
 };
 
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
@@ -105,7 +167,82 @@ export const useFinanceStore = create<FinanceState>()(
       ...seedFinance(),
       trail: [],
       bills: seedFinance().bills,
+      plans: [],
+      shareCapital: 0,
+      setShareCapital: (amount, by) => {
+        if (!(amount >= 0)) return "Share capital cannot be negative.";
+        set((state) => ({ shareCapital: amount, trail: withTrail(state.trail, trailEntry("finance", today, by, `Set share capital to ₹${amount.toLocaleString("en-IN")}`)) }));
+        return null;
+      },
+      setOpeningCash: (amount, by) => {
+        if (!(amount >= 0)) return "The opening cash cannot be negative.";
+        set((state) => ({ openingCash: amount, trail: withTrail(state.trail, trailEntry("finance", today, by, `Set opening cash to ₹${amount.toLocaleString("en-IN")}`)) }));
+        return null;
+      },
+      importBankStatement: (text, by) => {
+        const errors: string[] = [];
+        const lines: BankLine[] = [];
+        text.split("\n").map((row) => row.trim()).filter(Boolean).forEach((row, index) => {
+          const [date, ...rest] = row.split(",");
+          const amountText = rest.pop() ?? "";
+          const description = rest.join(",").trim();
+          const amount = Number(amountText.trim());
+          if (!/^\d{4}-\d{2}-\d{2}$/.test((date ?? "").trim())) return errors.push(`Line ${index + 1}: the date must be YYYY-MM-DD.`);
+          if (description.length < 2) return errors.push(`Line ${index + 1}: add a description.`);
+          if (!Number.isFinite(amount) || amount === 0) return errors.push(`Line ${index + 1}: the amount must be a number, + for money in and - for money out.`);
+          lines.push({ id: `bl-${Date.now()}-${index}`, date: date.trim(), description, amount, matchedKey: null });
+        });
+        if (lines.length > 0) {
+          set((state) => ({
+            bankLines: [...lines, ...state.bankLines],
+            trail: withTrail(state.trail, trailEntry("finance", today, by, `Imported ${lines.length} bank statement line${lines.length === 1 ? "" : "s"}`)),
+          }));
+        }
+        return { imported: lines.length, errors };
+      },
+      matchBankLine: (lineId, key, by) => {
+        const line = get().bankLines.find((l) => l.id === lineId);
+        if (!line) return "Bank line not found.";
+        if (key === null) {
+          set((state) => ({ bankLines: state.bankLines.map((l) => l.id === lineId ? { ...l, matchedKey: null } : l) }));
+          return null;
+        }
+        const taken = get().bankLines.some((l) => l.id !== lineId && l.matchedKey === key);
+        if (taken) return "That payment is already matched to another bank line.";
+        const [kind, recordId, paymentId] = key.split(":");
+        if (kind === "inv") {
+          const invoice = get().invoices.find((i) => i.id === recordId);
+          const payment = invoice?.payments.find((p) => p.id === paymentId);
+          if (!payment) return "Payment not found.";
+          if (line.amount <= 0) return "A money-out line cannot match a customer payment.";
+          if (Math.abs(line.amount - payment.amount) > 0.001) return `Amounts differ: the bank line is ₹${line.amount.toLocaleString("en-IN")} and the payment is ₹${payment.amount.toLocaleString("en-IN")}.`;
+        } else if (kind === "bill") {
+          const bill = get().bills.find((b) => b.id === recordId);
+          const payment = bill?.payments.find((p) => p.id === paymentId);
+          if (!payment) return "Payment not found.";
+          if (line.amount >= 0) return "A money-in line cannot match a bill payment.";
+          if (Math.abs(-line.amount - payment.amount) > 0.001) return `Amounts differ: the bank line is ₹${Math.abs(line.amount).toLocaleString("en-IN")} and the payment is ₹${payment.amount.toLocaleString("en-IN")}.`;
+        } else return "Choose a payment to match.";
+        set((state) => ({
+          bankLines: state.bankLines.map((l) => l.id === lineId ? { ...l, matchedKey: key } : l),
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Matched bank line ${line.description} to ${key}`)),
+        }));
+        return null;
+      },
+      addBankEntry: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (input.description.trim().length < 3) return "Describe the bank movement.";
+        if (!(input.amount !== 0)) return "Enter an amount.";
+        const entry: BankEntry = { id: `bank-${Date.now()}`, date: input.date, description: input.description.trim(), amount: input.amount };
+        set((state) => ({
+          bankEntries: [entry, ...state.bankEntries],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Bank ${input.amount > 0 ? "in" : "out"} ₹${Math.abs(input.amount).toLocaleString("en-IN")}: ${entry.description}`)),
+        }));
+        return null;
+      },
       addInvoice: (input, by) => {
+        if (!demoMode) return "";
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
         const invoice: Invoice = { ...input, id, number, payments: [], createdBy: by };
@@ -114,6 +251,7 @@ export const useFinanceStore = create<FinanceState>()(
         return number;
       },
       recordPayment: (invoiceId, payment, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const locked = periodLockProblem(payment.date);
         if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === invoiceId);
@@ -128,21 +266,28 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addCreditNote: (input, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const locked = periodLockProblem(input.date);
         if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === input.invoiceId);
         if (!invoice) return "Invoice not found.";
         if (input.amount <= 0) return "Enter an amount above zero.";
-        if (input.amount > invoiceTotals(invoice).total - creditedAmount(invoice.id, get().creditNotes, true)) return "A credit note cannot be more than the invoice total left to credit.";
-        if (input.reason.trim().length < 3) return "Give a reason for the credit note.";
-        const number = nextNumber("CN", get().creditNotes.length);
+        const writeOff = input.kind === "write-off";
+        const left = writeOff
+          ? dueAmount(invoice, get().creditNotes)
+          : invoiceTotals(invoice).total - creditedAmount(invoice.id, get().creditNotes, true);
+        if (input.amount > left) return writeOff ? "A write-off cannot be more than what the customer still owes." : "A credit note cannot be more than the invoice total left to credit.";
+        if (input.reason.trim().length < 3) return writeOff ? "Give the reason this debt cannot be recovered." : "Give a reason for the credit note.";
+        const number = nextNumber(writeOff ? "WO" : "CN", get().creditNotes.length);
+        const label = writeOff ? "write-off" : "credit note";
         set((state) => ({
-          creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input }, ...state.creditNotes],
-          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested credit note ${number} of ₹${input.amount.toLocaleString("en-IN")} against ${invoice.number}`)),
+          creditNotes: [{ id: `cn-${Date.now()}`, number, status: "pending", createdBy: by, ...input, kind: writeOff ? "write-off" : "credit" }, ...state.creditNotes],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested ${label} ${number} of ₹${input.amount.toLocaleString("en-IN")} against ${invoice.number}`)),
         }));
         return null;
       },
       decideCreditNote: (id, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.createdBy === by) return "The person who created a credit note cannot approve it.";
@@ -153,6 +298,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       rejectCreditNote: (id, reason, by) => {
+        if (!demoMode) return "Recorded on the server.";
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.status !== "pending") return "Only a pending credit note can be rejected.";
@@ -164,15 +310,71 @@ export const useFinanceStore = create<FinanceState>()(
         }));
         return null;
       },
+      addExpense: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (input.payee.trim().length < 2) return "Enter who was paid.";
+        if (!(input.amount > 0)) return "Enter an amount above zero.";
+        if (!(input.gstRate >= 0 && input.gstRate <= 28)) return "GST rate must be between 0 and 28.";
+        if (input.paidFrom === "petty cash") {
+          const balance = pettyCashBalance(get().pettyCashTopUps, get().expenses);
+          if (input.amount > balance + 0.001) return `Petty cash has ₹${balance.toLocaleString("en-IN")}. Top it up before paying ₹${input.amount.toLocaleString("en-IN")} from it.`;
+        }
+        const expense: Expense = { ...input, id: `exp-${Date.now()}`, payee: input.payee.trim(), by };
+        set((state) => ({
+          expenses: [expense, ...state.expenses],
+          trail: withTrail(state.trail, trailEntry("finance", input.date, by, `Expense ${input.category}: ₹${input.amount.toLocaleString("en-IN")} to ${expense.payee}, paid from ${input.paidFrom}`)),
+        }));
+        return null;
+      },
+      topUpPettyCash: (input, by) => {
+        const locked = periodLockProblem(input.date);
+        if (locked) return locked;
+        if (!(input.amount > 0)) return "Enter an amount above zero.";
+        const topUp: PettyCashTopUp = { id: `pct-${Date.now()}`, date: input.date, amount: input.amount, by };
+        set((state) => ({
+          pettyCashTopUps: [topUp, ...state.pettyCashTopUps],
+          trail: withTrail(state.trail, trailEntry("finance", input.date, by, `Moved ₹${input.amount.toLocaleString("en-IN")} from the bank to petty cash`)),
+        }));
+        return null;
+      },
+      markCloseReviewed: (month, item, by) => {
+        const key = `${month}:${item}`;
+        if (get().closeReviews.includes(key)) return "This check is already signed off.";
+        set((state) => ({
+          closeReviews: [...state.closeReviews, key],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Signed off ${item} for ${month}`)),
+        }));
+        return null;
+      },
+      setBudgetPlan: (lineId, fiscalYear, quarter, planned, by) => {
+        const line = get().budgetLines.find((item) => item.id === lineId);
+        if (!line) return "Budget line not found.";
+        if (!(planned >= 0)) return "The plan cannot be negative.";
+        const existing = get().plans.find((item) => item.lineId === lineId && item.fiscalYear === fiscalYear && item.quarter === quarter);
+        const plan: BudgetPlan = existing ? { ...existing, planned } : { id: `plan-${Date.now()}`, lineId, fiscalYear, quarter, planned };
+        set((state) => ({
+          plans: existing ? state.plans.map((item) => item.id === existing.id ? plan : item) : [...state.plans, plan],
+          trail: withTrail(state.trail, trailEntry("finance", today, by, `Planned ₹${planned.toLocaleString("en-IN")} for ${line.name}, Q${quarter} ${fiscalYear}`)),
+        }));
+        return null;
+      },
       addBill: (input, by) => {
+        if (!demoMode) return "Bills are recorded on the server.";
         const locked = periodLockProblem(input.date);
         if (locked) return locked;
         if (input.vendor.trim().length < 2) return "Enter the vendor name.";
         if (input.vendorBillNo.trim().length < 2) return "Enter the vendor's bill number.";
         if (!(input.amount > 0)) return "Enter an amount above zero.";
         if (input.dueDate < input.date) return "The due date cannot be before the bill date.";
+        if (input.poId) {
+          const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === input.poId);
+          if (!order) return "The purchase order was not found.";
+          const received = threeWayMatch(input.amount, order, workflowRules().matchTolerancePercent);
+          if (received.status === "goods not received") return `No goods have been received against ${order.number} yet.`;
+        }
         const number = nextNumber("BILL", get().bills.length);
-        const bill: Bill = { id: `bill-${Date.now()}`, number, vendor: input.vendor.trim(), vendorBillNo: input.vendorBillNo.trim(), date: input.date, dueDate: input.dueDate, amount: input.amount, payments: [], createdBy: by };
+        const bill: Bill = { id: `bill-${Date.now()}`, number, vendor: input.vendor.trim(), vendorBillNo: input.vendorBillNo.trim(), date: input.date, dueDate: input.dueDate, amount: input.amount, payments: [], createdBy: by, poId: input.poId };
         set((state) => ({
           bills: [bill, ...state.bills],
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Recorded bill ${number} from ${bill.vendor} · ₹${input.amount.toLocaleString("en-IN")}`)),
@@ -180,10 +382,16 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       recordBillPayment: (billId, payment, by) => {
+        if (!demoMode) return "Bills are recorded on the server.";
         const locked = periodLockProblem(payment.date);
         if (locked) return locked;
         const bill = get().bills.find((item) => item.id === billId);
         if (!bill) return "Bill not found.";
+        if (bill.poId) {
+          const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === bill.poId);
+          const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
+          if (!match.matched) return `Payment is held: ${bill.number} does not match its order yet (${match.status}).`;
+        }
         const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
         const due = Math.round((bill.amount - paid) * 100) / 100;
         if (payment.amount <= 0) return "Enter an amount above zero.";
@@ -195,37 +403,45 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addFundRequest: (input, by) => {
+        if (!demoMode) return "Fund requests are recorded on the server.";
         const number = nextNumber("FR", get().fundRequests.length);
         set((state) => ({
           fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests],
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Requested funds ${number} of ₹${input.amount.toLocaleString("en-IN")}: ${input.purpose}`)),
         }));
       },
-      approveFundRequest: (id, step, by) => {
+      approveFundRequest: async (id, step, by) => {
+        if (!demoMode) return "Fund requests are recorded on the server.";
         const request = get().fundRequests.find((item) => item.id === id);
         if (!request) return "Request not found.";
         if (request.requestedBy === by) return "You cannot approve your own request.";
         if (step === "owner") {
           if (request.status !== "pending") return "This request is not waiting for the owner.";
           const needsFinance = request.amount > FUND_OWNER_LIMIT;
+          // Money is allocated before the approval is recorded, so a failed allocation leaves the request as it was.
+          if (!needsFinance) {
+            const problem = await allocateFunds(request);
+            if (problem) return problem;
+          }
           const text = needsFinance ? `Owner approved ${request.number}; waiting for finance` : `Owner approved ${request.number}; budget allocated`;
           set((state) => ({
             fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, ownerApprovedBy: by, status: needsFinance ? "awaiting_finance" : "approved" } : item),
             trail: withTrail(state.trail, trailEntry("finance", today, by, text)),
           }));
-          if (!needsFinance) allocate(request.lineId, request.amount);
           return null;
         }
         if (request.status !== "awaiting_finance") return "This request is not waiting for finance.";
         if (request.ownerApprovedBy === by) return "The approver must be a different person from the owner's approval.";
+        const problem = await allocateFunds(request);
+        if (problem) return problem;
         set((state) => ({
           fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, financeApprovedBy: by, status: "approved" } : item),
           trail: withTrail(state.trail, trailEntry("finance", today, by, `Finance approved ${request.number}; budget allocated`)),
         }));
-        allocate(request.lineId, request.amount);
         return null;
       },
       rejectFundRequest: (id, reason, by) => {
+        if (!demoMode) return "Fund requests are recorded on the server.";
         const request = get().fundRequests.find((item) => item.id === id);
         set((state) => ({
           fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item),
@@ -239,6 +455,8 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
       drawBudget: (lineId, amount, note, by, date) => {
+        // Real mode moves budget money on the server only (see lib/finance-records.ts).
+        if (!demoMode) return "Budget money moves on the server.";
         const locked = periodLockProblem(date);
         if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);
@@ -252,16 +470,158 @@ export const useFinanceStore = create<FinanceState>()(
         }));
         return null;
       },
+      releaseBudget: (lineId, amount, note, by, date) => {
+        if (!demoMode) return "Budget money moves on the server.";
+        const locked = periodLockProblem(date);
+        if (locked) return locked;
+        const line = get().budgetLines.find((item) => item.id === lineId);
+        if (!line) return "Budget line not found.";
+        if (amount <= 0) return "Nothing to release.";
+        if (amount > line.drawn) return `Only ₹${line.drawn.toLocaleString("en-IN")} is drawn on this line.`;
+        set((state) => ({
+          budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, drawn: item.drawn - amount } : item),
+          draws: [{ id: `draw-${Date.now()}`, lineId, amount: -amount, note, by, date }, ...state.draws],
+          trail: withTrail(state.trail, trailEntry("finance", date, by, `Released ₹${amount.toLocaleString("en-IN")} to ${line.name} from ${note}`)),
+        }));
+        return null;
+      },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => localStorage), partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, trail: state.trail }) },
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills", "draws", "bankEntries", "openingCash", "bankLines", "closeReviews", "expenses", "pettyCashTopUps"]),
+    partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, shareCapital: state.shareCapital, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
   ),
 );
+
+/** Adds an approved request's amount to its budget line. Real mode asks the server; the request id is the idempotency key, so a retry allocates once. */
+async function allocateFunds(request: FundRequest): Promise<string | null> {
+  if (demoMode) {
+    allocate(request.lineId, request.amount);
+    return null;
+  }
+  try {
+    const result = await api<{ budget: { allocated_paise: number; drawn_paise: number } }>(
+      `/finance/budget-lines/${encodeURIComponent(request.lineId)}/allocations`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": `fund-${request.id}` },
+        body: JSON.stringify({ amount_paise: Math.round(request.amount * 100), note: `${request.number}: ${request.purpose}`, booked_on: today }),
+      },
+    );
+    useFinanceStore.setState((state) => ({
+      budgetLines: state.budgetLines.map((item) => item.id === request.lineId ? { ...item, allocated: result.budget.allocated_paise / 100, drawn: result.budget.drawn_paise / 100 } : item),
+    }));
+    return null;
+  } catch (error: unknown) {
+    return error instanceof Error ? error.message : "The budget could not be allocated. Try again.";
+  }
+}
 
 function allocate(lineId: string, amount: number) {
   useFinanceStore.setState((state) => ({ budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, allocated: item.allocated + amount } : item) }));
 }
 
 /** Credit notes reduce what the customer owes. Pending notes are counted only when `ignorePending` is false. */
+/**
+ * Profit and loss to date (plan §8.7 V2). Sales are ex-GST. An approved credit note reduces sales by its
+ * taxable share of the invoice it refers to. Bills are costs as entered. Payroll and expense claims are
+ * not included yet.
+ */
+export interface GstRow { rate: number; taxable: number; cgst: number; sgst: number; igst: number }
+
+/**
+ * GST summary for one month (plan §8.7 V2). Output tax is from the sales invoices, by GST rate; approved credit
+ * notes reduce it by their tax share. Input tax is the GST on expenses. This is a summary to check, not a return:
+ * it is confirmed with the company's accountant before filing.
+ */
+export function gstSummary(month: string, invoices: Invoice[], creditNotes: CreditNote[], expenses: Expense[]) {
+  const byRate = new Map<number, GstRow>();
+  const round = (value: number) => Math.round(value * 100) / 100;
+  for (const invoice of invoices.filter((i) => !i.cancelled && i.date.startsWith(month))) {
+    for (const line of invoice.lines) {
+      const { taxable, tax } = lineTotals(line);
+      const row = byRate.get(line.gstRate) ?? { rate: line.gstRate, taxable: 0, cgst: 0, sgst: 0, igst: 0 };
+      row.taxable += taxable;
+      if (invoice.sameState) { row.cgst += tax / 2; row.sgst += tax / 2; } else row.igst += tax;
+      byRate.set(line.gstRate, row);
+    }
+  }
+  const rows = [...byRate.values()].sort((a, b) => a.rate - b.rate).map((r) => ({ rate: r.rate, taxable: round(r.taxable), cgst: round(r.cgst), sgst: round(r.sgst), igst: round(r.igst) }));
+  let creditTax = 0;
+  // A bad-debt write-off is a book entry, not a GST credit note: non-payment is not a ground for one under Section 34 of the CGST Act.
+  for (const note of creditNotes.filter((n) => n.status === "approved" && n.kind !== "write-off" && n.date.startsWith(month))) {
+    const invoice = invoices.find((i) => i.id === note.invoiceId);
+    if (!invoice) continue;
+    const totals = invoiceTotals(invoice);
+    if (totals.total > 0) creditTax += note.amount * ((totals.cgst + totals.sgst + totals.igst) / totals.total);
+  }
+  const outputTax = round(rows.reduce((sum, r) => sum + r.cgst + r.sgst + r.igst, 0) - creditTax);
+  const inputExpenses = expenses.filter((e) => e.date.startsWith(month));
+  const inputTax = round(inputExpenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0));
+  return { rows, creditTax: round(creditTax), outputTax, inputTax, netPayable: round(outputTax - inputTax) };
+}
+
+export function pettyCashBalance(topUps: PettyCashTopUp[], expenses: Expense[]) {
+  const topped = topUps.reduce((sum, t) => sum + t.amount, 0);
+  const spent = expenses.filter((e) => e.paidFrom === "petty cash").reduce((sum, e) => sum + e.amount, 0);
+  return Math.round((topped - spent) * 100) / 100;
+}
+
+export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bills: Bill[], expenses: Expense[] = []) {
+  const live = invoices.filter((invoice) => !invoice.cancelled);
+  const sales = live.reduce((sum, invoice) => sum + invoiceTotals(invoice).taxable, 0);
+  const credits = creditNotes
+    .filter((note) => note.status === "approved" && note.kind !== "write-off")
+    .reduce((sum, note) => {
+      const invoice = invoices.find((item) => item.id === note.invoiceId);
+      if (!invoice) return sum;
+      const totals = invoiceTotals(invoice);
+      const taxableShare = totals.total > 0 ? totals.taxable / totals.total : 0;
+      return sum + note.amount * taxableShare;
+    }, 0);
+  const writeOffs = creditNotes.filter((note) => note.status === "approved" && note.kind === "write-off").reduce((sum, note) => sum + note.amount, 0);
+  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0) + expenses.reduce((sum, e) => sum + e.amount, 0) + writeOffs;
+  const round = (value: number) => Math.round(value * 100) / 100;
+  const netSales = round(sales - credits);
+  const profit = round(netSales - costs);
+  return { sales: round(sales), credits: round(credits), netSales, writeOffs: round(writeOffs), costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
+}
+
+export interface CashFlowMonth { month: string; receipts: number; payments: number; other: number; net: number; closing: number }
+
+/**
+ * Cash flow by month (plan §8.7 V2). Receipts are customer payments recorded on invoices; payments are bill
+ * payments; other is bank movements entered by hand. Closing cash starts from the opening cash.
+ */
+export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries: BankEntry[], openingCash: number, expenses: Expense[] = [], topUps: PettyCashTopUp[] = []): CashFlowMonth[] {
+  const byMonth = new Map<string, { receipts: number; payments: number; other: number }>();
+  const add = (date: string, key: "receipts" | "payments" | "other", amount: number) => {
+    const month = date.slice(0, 7);
+    const row = byMonth.get(month) ?? { receipts: 0, payments: 0, other: 0 };
+    row[key] += amount;
+    byMonth.set(month, row);
+  };
+  for (const invoice of invoices.filter((i) => !i.cancelled)) for (const payment of invoice.payments) add(payment.date, "receipts", payment.amount);
+  for (const bill of bills) for (const payment of bill.payments) add(payment.date, "payments", payment.amount);
+  for (const entry of bankEntries) add(entry.date, "other", entry.amount);
+  for (const expense of expenses.filter((e) => e.paidFrom === "bank")) add(expense.date, "payments", expense.amount * (1 + expense.gstRate / 100));
+  for (const topUp of topUps) add(topUp.date, "payments", topUp.amount);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  let closing = openingCash;
+  return [...byMonth.keys()].sort().map((month) => {
+    const row = byMonth.get(month)!;
+    const net = round(row.receipts - row.payments + row.other);
+    closing = round(closing + net);
+    return { month, receipts: round(row.receipts), payments: round(row.payments), other: round(row.other), net, closing };
+  });
+}
+
+/** Every book payment (customer receipts and bill payments) with the key a bank line matches it by. */
+export function bookPayments(invoices: Invoice[], bills: Bill[]) {
+  return [
+    ...invoices.flatMap((invoice) => invoice.payments.map((p) => ({ key: `inv:${invoice.id}:${p.id}`, date: p.date, amount: p.amount, label: `Receipt ${invoice.number} · ${invoice.customer}`, direction: 1 as const }))),
+    ...bills.flatMap((bill) => bill.payments.map((p) => ({ key: `bill:${bill.id}:${p.id}`, date: p.date, amount: p.amount, label: `Payment ${bill.number} · ${bill.vendor}`, direction: -1 as const }))),
+  ];
+}
+
 export function creditedAmount(invoiceId: string, notes: CreditNote[], includePending: boolean) {
   return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || (includePending && note.status === "pending"))).reduce((sum, note) => sum + note.amount, 0);
 }

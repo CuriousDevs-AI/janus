@@ -24,7 +24,9 @@ const rows: Row[] = [
 
 const acme_notifications: AppNotification[] = rows.map(([category, title, description, daysAgo, time, read, href, high], index) => ({ id: `notif-${index + 1}`, category, title, description, createdAt: at(daysAgo, time), read, href, priority: high ? "high" : "normal" }));
 
-export const notifications: AppNotification[] = isFirstCompany ? acme_notifications : [];
+export const demoNotifications: AppNotification[] = acme_notifications;
+
+export const notifications: AppNotification[] = isFirstCompany ? demoNotifications : [];
 
 export function unreadCount(list: AppNotification[] = notifications): number {
   return list.filter((n) => !n.read).length;

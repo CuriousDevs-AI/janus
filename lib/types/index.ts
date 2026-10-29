@@ -189,6 +189,7 @@ export type HrDemoRole =
   | "hr_manager"
   | "reporting_manager"
   | "payroll_admin"
+  | "finance_viewer"
   | "employee";
 
 export type EmployeeStatus = "active" | "onboarding" | "notice" | "archived";
@@ -348,6 +349,8 @@ export interface HrExpenseClaim {
   id: ID;
   employeeId: ID;
   employeeName: string;
+  /** The person who approved the claim; they cannot also mark it paid. */
+  approvedById?: ID;
   category: "travel" | "meals" | "phone" | "supplies" | "other";
   amount: number;
   submittedAt: string;
