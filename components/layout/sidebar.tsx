@@ -26,6 +26,8 @@ import { OPERATIONAL_WORKSPACES, workspaceDefinitions } from "@/lib/workspace-co
 import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import type { HrDemoRole } from "@/lib/types";
+import { useTeamChatStore } from "@/lib/stores/team-chat-store";
+import { TeamChatSidebarList } from "@/components/team/chat-list";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -116,6 +118,7 @@ export function SidebarNav({
   }
 
   const ownerView = !demoMode || hrDemoRole === "owner";
+  const hasTeamChatList = useTeamChatStore((state) => state.actions !== null);
   const accessibleWorkspaces = React.useMemo(() => withTeamChat((() => {
     const businessEntry = { id: "business", name: "Business Management", description: "Overview, people, workspaces, reports and settings." };
     const catalogue: Record<string, { id: string; name: string; description: string }> = { "crm-sales": { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }, "hr-people": { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." } };
@@ -139,6 +142,8 @@ export function SidebarNav({
     ];
     return [];
   })()), [hasActiveWorkspace, workspacesApi.data, ownerView, account]);
+
+  const teamChatList = !collapsed && workspaceId === "team-chat" && pathname === "/team" && hasTeamChatList;
 
   function workspaceHref(id: string) {
     if (id === "crm-sales") return "/dashboard?workspace=crm-sales";
@@ -207,8 +212,8 @@ export function SidebarNav({
         </DropdownMenu>}
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3">
+      {/* Nav. In Team Chat the chats themselves take the menu's place, as in WhatsApp. */}
+      {teamChatList ? <TeamChatSidebarList onNavigate={onNavigate} /> : <nav className="flex-1 overflow-y-auto py-3">
         {visibleSections.map((section) => (
           <div
             key={section.title}
@@ -264,7 +269,7 @@ export function SidebarNav({
             </ul>
           </div>
         ))}
-      </nav>
+      </nav>}
 
       {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
@@ -321,11 +326,13 @@ export function SidebarNav({
 }
 
 export function Sidebar() {
+  const { workspaceId } = useWorkspace();
   return (
     <TooltipProvider delayDuration={200}>
       <aside
         className={cn(
-          "hidden w-[258px] shrink-0 flex-col border-r border-border bg-surface md:flex",
+          "hidden shrink-0 flex-col border-r border-border bg-surface md:flex",
+          workspaceId === "team-chat" ? "w-[320px]" : "w-[258px]",
         )}
       >
         <SidebarNav />

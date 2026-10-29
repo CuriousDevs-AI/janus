@@ -60,12 +60,15 @@ export function MessageList({
   onOpenThread,
   onChanged,
   activeThreadId,
+  showAuthors = true,
 }: {
   messages: TeamMessage[];
   emptyText: string;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
   activeThreadId?: string | null;
+  /** Names and avatars beside other people's messages; a DM has only one other person, so no. */
+  showAuthors?: boolean;
 }) {
   const ordered = [...messages].reverse();
   if (ordered.length === 0) {
@@ -79,10 +82,8 @@ export function MessageList({
     const day = dayLabel(item.createdAt);
     if (day !== lastDay) {
       rows.push(
-        <div key={`day-${item.id}`} className="my-4 flex items-center gap-3 px-6" role="separator">
-          <span className="h-px flex-1 bg-border" />
-          <span className="text-xs font-medium text-muted-foreground">{day}</span>
-          <span className="h-px flex-1 bg-border" />
+        <div key={`day-${item.id}`} className="my-3 flex justify-center px-6" role="separator" aria-label={day}>
+          <span className="rounded-md bg-surface px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">{day}</span>
         </div>,
       );
       lastDay = day;
@@ -98,6 +99,7 @@ export function MessageList({
         key={item.id}
         item={item}
         grouped={grouped}
+        showAuthors={showAuthors}
         active={activeThreadId === item.id}
         onOpenThread={onOpenThread}
         onChanged={onChanged}
@@ -110,12 +112,14 @@ export function MessageList({
 function MessageRow({
   item,
   grouped,
+  showAuthors,
   active,
   onOpenThread,
   onChanged,
 }: {
   item: TeamMessage;
   grouped: boolean;
+  showAuthors: boolean;
   active: boolean;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
@@ -168,14 +172,14 @@ function MessageRow({
   return (
     <div
       className={cn(
-        "group relative flex gap-2 px-6 hover:bg-surface-2/40",
+        "group relative flex gap-2 px-4 sm:px-6",
         item.mine ? "justify-end" : "justify-start",
-        active && "bg-accent-muted/40",
-        grouped ? "pt-0.5" : "pt-3",
+        active && "bg-accent-muted/30",
+        grouped ? "pt-0.5" : "pt-2",
       )}
     >
-      {item.mine ? null : (
-      <div className="w-9 shrink-0">
+      {item.mine || !showAuthors ? null : (
+      <div className="w-8 shrink-0">
         {grouped ? (
           <time
             dateTime={item.createdAt}
@@ -184,7 +188,7 @@ function MessageRow({
             {timeOf(item.createdAt)}
           </time>
         ) : (
-          <Avatar className="size-9">
+          <Avatar className="size-8">
             <AvatarFallback style={{ backgroundColor: colorFor(item.author.name) }} className="text-xs text-white">
               {initials(item.author.name)}
             </AvatarFallback>
@@ -193,16 +197,11 @@ function MessageRow({
       </div>
       )}
       <div className={cn("flex min-w-0 max-w-[80%] flex-col", item.mine ? "items-end" : "items-start")}>
-        {grouped ? null : (
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold text-foreground">{item.mine ? "You" : item.author.name}</span>
-            <time className="text-xs text-muted-foreground" dateTime={item.createdAt}>
-              {timeOf(item.createdAt)}
-            </time>
-          </div>
-        )}
         {item.deleted ? (
-          <p className="text-sm italic text-muted-foreground">This message was deleted.</p>
+          <p className="rounded-lg bg-surface px-3 py-1.5 text-sm italic text-muted-foreground shadow-sm">
+            This message was deleted.
+            <span className="ml-3 text-[10px] not-italic">{timeOf(item.createdAt)}</span>
+          </p>
         ) : editing ? (
           <div className="mt-1 space-y-2">
             <Textarea
@@ -230,15 +229,23 @@ function MessageRow({
           </div>
         ) : (
           <div
-            title={timeOf(item.createdAt)}
             className={cn(
-              "rounded-2xl px-3 py-2 text-sm shadow-sm",
-              item.mine ? "rounded-br-sm bg-accent text-accent-foreground" : "rounded-bl-sm border border-border bg-surface text-foreground",
+              "rounded-lg px-2.5 py-1.5 text-sm text-foreground shadow-sm",
+              item.mine ? "bg-accent-muted" : "bg-surface",
+              grouped ? "" : item.mine ? "rounded-tr-none" : "rounded-tl-none",
             )}
           >
+            {!item.mine && showAuthors && !grouped ? (
+              <p className="mb-0.5 text-xs font-semibold" style={{ color: colorFor(item.author.name) }}>
+                {item.author.name}
+              </p>
+            ) : null}
             <p className="whitespace-pre-wrap break-words">
               {item.body}
-              {item.editedAt ? <span className="ml-1 text-[11px] opacity-70">(edited)</span> : null}
+              <span className="float-right ml-3 mt-1.5 select-none text-[10px] leading-none text-muted-foreground">
+                {item.editedAt ? "edited · " : ""}
+                <time dateTime={item.createdAt}>{timeOf(item.createdAt)}</time>
+              </span>
             </p>
           </div>
         )}
