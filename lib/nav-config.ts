@@ -53,7 +53,6 @@ export const crmNavSections: NavSection[] = [
     items: [
       { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write" },
       { label: "Chats", href: "/inbox", icon: MessageCircle },
-      { label: "Team Chat", href: "/team", icon: Hash },
       { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage" },
       { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write" },
       { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write" },
@@ -294,11 +293,19 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   ],
 };
 
+/** Company-wide places that belong to no one workspace, so they sit above every workspace's menu. */
+export const companyNavSection: NavSection = {
+  title: "Company",
+  items: [{ label: "Team Chat", href: "/team", icon: Hash }],
+};
+
 export function getNavSectionsForWorkspace(workspaceId: WorkspaceId): NavSection[] {
-  if (workspaceId === "crm-sales") return crmNavSections;
-  if (workspaceId === "business") return businessNavSections;
   if (workspaceId === "portfolio") return portfolioNavSections;
-  return moduleNavSections[workspaceId];
+  const sections =
+    workspaceId === "crm-sales" ? crmNavSections
+    : workspaceId === "business" ? businessNavSections
+    : moduleNavSections[workspaceId];
+  return [companyNavSection, ...sections];
 }
 
 export function appendWorkspace(href: string, workspaceId: WorkspaceId) {
