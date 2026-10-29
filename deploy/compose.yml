@@ -64,6 +64,10 @@ services:
       JANUS_S3_ACCESS_KEY_ID: ${JANUS_S3_ACCESS_KEY_ID:-}
       JANUS_S3_SECRET_ACCESS_KEY: ${JANUS_S3_SECRET_ACCESS_KEY:-}
       JANUS_S3_PUBLIC_BASE_URL: ${JANUS_S3_PUBLIC_BASE_URL:-}
+      # Voice calls relay through the turn service; credentials are minted per person.
+      JANUS_STUN_URLS: stun:${TURN_DOMAIN:?Set TURN_DOMAIN}:3478
+      JANUS_TURN_URLS: turn:${TURN_DOMAIN}:3478?transport=udp,turn:${TURN_DOMAIN}:3478?transport=tcp
+      JANUS_TURN_SECRET: ${JANUS_TURN_SECRET:?Generate deploy/.env first}
     healthcheck:
       test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
@@ -99,6 +103,39 @@ services:
       start_period: 20s
     depends_on:
       api: {condition: service_healthy}
+  # TURN relay for voice calls between browsers that cannot reach each other directly. It needs its
+  # own UDP ports, so it uses the host network instead of the proxy. It refuses to relay to private,
+  # loopback and link-local addresses, so it cannot be used to reach this server's own network.
+  turn:
+    <<: *runtime
+    image: coturn/coturn:4.6.3
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=${TURN_DOMAIN}
+      - --use-auth-secret
+      - --static-auth-secret=${JANUS_TURN_SECRET}
+      - --fingerprint
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --no-multicast-peers
+      - --total-quota=100
+      - --user-quota=12
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=::1
+      - --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      - --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
   proxy:
     <<: *runtime
     image: caddy:2-alpine

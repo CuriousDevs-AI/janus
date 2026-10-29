@@ -27,6 +27,12 @@ The database is private to the Compose network; only Caddy publishes host ports.
 
 `init` refuses to overwrite an existing file. Keep a separate encrypted backup of `deploy/.env`, especially `JANUS_ENCRYPTION_KEY`. Changing that key makes saved WhatsApp/provider credentials unreadable. Changing a database password in `.env` does not change an existing Postgres role; role rotation requires a coordinated database update.
 
+## Voice calls
+
+Team Chat calls connect browser to browser. When two people cannot reach each other directly, as on most office and mobile networks, the call relays through the `turn` service (coturn). Point `TURN_DOMAIN` at this VPS with an A record, and allow inbound UDP and TCP 3478 plus UDP 49160–49200. `init` generates `JANUS_TURN_SECRET`; on an existing install, add it to `deploy/.env` yourself with `python3 -c "import secrets; print(secrets.token_hex(32))"`, and set `TURN_DOMAIN`. The API mints each person a TURN credential that lasts an hour, so the secret never reaches a browser.
+
+The relay refuses private, loopback and link-local addresses, so it cannot be used to reach this server's own network. It listens without TLS; browsers still encrypt the call media end to end. A call is a mesh, one connection per pair of people, which suits small team calls; a large call would need a media server. Relayed calls use this VPS's bandwidth.
+
 ## First real enquiry
 
 1. Open the app over HTTPS. Create the pilot workspace, receive its verification email, verify it and sign in. Check that the email links use the app domain.

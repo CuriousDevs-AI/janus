@@ -22,6 +22,7 @@ def init(path: Path) -> None:
         "APP_DB_PASSWORD",
         "WORKER_DB_PASSWORD",
         "JANUS_JWT_SECRET",
+        "JANUS_TURN_SECRET",
     ):
         contents = contents.replace(f"GENERATE_{key}", secrets.token_hex(32))
     contents = contents.replace(
@@ -50,6 +51,10 @@ def validate(config: dict) -> list[str]:
         errors.append("Database roles must have different passwords.")
     if not re.fullmatch(r"[a-f0-9]{64}", api["JANUS_JWT_SECRET"]):
         errors.append("JANUS_JWT_SECRET: use the generated secret.")
+    if not re.fullmatch(r"[a-f0-9]{64}", api.get("JANUS_TURN_SECRET", "")):
+        errors.append("JANUS_TURN_SECRET: use a generated 64-character hexadecimal secret.")
+    if api.get("JANUS_TURN_SECRET") == api["JANUS_JWT_SECRET"]:
+        errors.append("JANUS_TURN_SECRET must differ from JANUS_JWT_SECRET.")
     try:
         key = base64.b64decode(api["JANUS_ENCRYPTION_KEY"], altchars=b"-_", validate=True)
         if len(key) != 32:
