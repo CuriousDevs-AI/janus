@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Hash, LogIn, LogOut, Menu, Plus, Users, X } from "lucide-react";
+import { Hash, LogIn, LogOut, Menu, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer, MessageList } from "@/components/team/team-messages";
-import type { TeamMessage, TeamPerson, TeamSpace } from "@/components/team/types";
+import type { TeamMessage, TeamPerson, TeamSearchHit, TeamSpace } from "@/components/team/types";
 import { useSession } from "@/components/auth/session-provider";
 
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
@@ -41,6 +41,9 @@ export function TeamChat() {
   const [mobileNav, setMobileNav] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [picking, setPicking] = React.useState(false);
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [term, setTerm] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const channels = useApi<TeamSpace[]>(demoMode ? null : "/team/channels");
@@ -48,6 +51,11 @@ export function TeamChat() {
   const people = useApi<TeamPerson[]>(demoMode ? null : "/team/people");
   const messages = useApi<TeamMessage[]>(
     demoMode || !selected ? null : `/team/spaces/${selected}/messages?limit=50`,
+  );
+  const hits = useApi<TeamSearchHit[]>(
+    demoMode || !searchOpen || term.length < 2
+      ? null
+      : `/team/search?q=${encodeURIComponent(term)}&limit=30`,
   );
   const replies = useApi<TeamMessage[]>(
     demoMode || !threadId ? null : `/team/messages/${threadId}/replies`,
@@ -67,6 +75,12 @@ export function TeamChat() {
     }, REFRESH_MS);
     return () => clearInterval(timer);
   }, [reloadChannels, reloadDirect, reloadMessages, reloadReplies]);
+
+  // Search waits for a short pause in typing, so each keystroke does not ask the server.
+  React.useEffect(() => {
+    const timer = setTimeout(() => setTerm(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const all = [...(channels.data ?? []), ...(direct.data ?? [])];
   const space = all.find((item) => item.id === selected) ?? null;
@@ -110,14 +124,26 @@ export function TeamChat() {
     return () => window.removeEventListener("keydown", onKey);
   }, [threadId]);
 
-  async function send(body: string, parentId?: string) {
+  async function send(body: string, parentId?: string, file?: File | null) {
     if (!selected) return;
     try {
-      await api(`/team/spaces/${selected}/messages`, {
-        method: "POST",
-        body: JSON.stringify(parentId ? { body, parent_id: Number(parentId) } : { body }),
-        headers: { "Idempotency-Key": newKey() },
-      });
+      if (file) {
+        // A file goes up as a form; the caption is the text, or the file name when there is none.
+        const form = new FormData();
+        form.append("file", file, file.name);
+        form.append("body", body);
+        await api(`/team/spaces/${selected}/files`, {
+          method: "POST",
+          body: form,
+          headers: { "Idempotency-Key": newKey() },
+        });
+      } else {
+        await api(`/team/spaces/${selected}/messages`, {
+          method: "POST",
+          body: JSON.stringify(parentId ? { body, parent_id: Number(parentId) } : { body }),
+          headers: { "Idempotency-Key": newKey() },
+        });
+      }
       reloadMessages();
       reloadReplies();
       reloadChannels();
@@ -218,6 +244,9 @@ export function TeamChat() {
               </p>
             ) : null}
           </div>
+          <Button variant="ghost" size="icon" aria-label="Search team messages" aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>
+            <Search className="size-4" />
+          </Button>
           {space?.kind === "channel" ? (
             space.joined ? (
               <Button size="sm" variant="secondary" onClick={() => void changeMembership("leave")}>
@@ -231,7 +260,16 @@ export function TeamChat() {
           ) : null}
         </header>
 
-        {!selected ? (
+        {searchOpen ? (
+          <SearchPanel
+            query={query}
+            term={term}
+            hits={hits}
+            onQuery={(value) => { setQuery(value); }}
+            onOpen={(hit) => { choose(hit.spaceId); setSearchOpen(false); setQuery(""); setTerm(""); }}
+            onClose={() => { setSearchOpen(false); setQuery(""); setTerm(""); }}
+          />
+        ) : !selected ? (
           <EmptyPanel
             title="Pick a channel or start a message"
             text="Channels are open to everyone in the company. Direct messages are only seen by the two people in them."
@@ -260,7 +298,7 @@ export function TeamChat() {
                 autoFocusKey={selected}
                 disabled={!space || (space.kind === "channel" && !space.joined)}
                 disabledReason={space?.kind === "channel" && !space.joined ? `You are viewing #${space.name}. Join the channel to post.` : undefined}
-                onSend={(body) => send(body)}
+                onSend={(body, file) => send(body, undefined, file)}
               />
             </div>
 
@@ -287,6 +325,7 @@ export function TeamChat() {
                   placeholder="Reply to the thread"
                   autoFocusKey={threadId}
                   disabled={!space || (space.kind === "channel" && !space.joined)}
+                  allowFiles={false}
                   onSend={(body) => send(body, threadId)}
                 />
               </aside>
@@ -511,5 +550,87 @@ function PeopleDialog({
         </ul>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function highlight(text: string, term: string) {
+  if (!term) return text;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  return parts.map((part, index) =>
+    part.toLowerCase() === term.toLowerCase() ? (
+      <mark key={index} className="rounded bg-warning-muted px-0.5 text-foreground">{part}</mark>
+    ) : (
+      <React.Fragment key={index}>{part}</React.Fragment>
+    ),
+  );
+}
+
+function SearchPanel({
+  query,
+  term,
+  hits,
+  onQuery,
+  onOpen,
+  onClose,
+}: {
+  query: string;
+  term: string;
+  hits: { data?: TeamSearchHit[]; error?: string; loading: boolean };
+  onQuery: (value: string) => void;
+  onOpen: (hit: TeamSearchHit) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-2 border-b border-border p-3">
+        <Search className="size-4 shrink-0 text-muted-foreground" />
+        <Input
+          autoFocus
+          aria-label="Search team messages"
+          placeholder="Search channels and your conversations"
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") onClose();
+          }}
+        />
+        <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {term.length < 2 ? (
+          <p className="px-2 py-6 text-center text-sm text-muted-foreground">Type at least two characters to search.</p>
+        ) : hits.error ? (
+          <p className="px-2 py-6 text-center text-sm text-destructive">{hits.error}</p>
+        ) : hits.loading && !hits.data ? (
+          <p className="px-2 py-6 text-center text-sm text-muted-foreground">Searching…</p>
+        ) : !hits.data?.length ? (
+          <p className="px-2 py-6 text-center text-sm text-muted-foreground">No messages match &ldquo;{term}&rdquo;.</p>
+        ) : (
+          <ul className="space-y-1">
+            {hits.data.map((hit) => (
+              <li key={hit.message.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(hit)}
+                  className="w-full rounded-md px-3 py-2.5 text-left hover:bg-surface-2"
+                >
+                  <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+                    <span className="truncate font-medium text-foreground">
+                      {hit.spaceLabel}
+                    </span>
+                    <time dateTime={hit.message.createdAt} className="shrink-0">
+                      {new Date(hit.message.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    </time>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm text-foreground">{highlight(hit.message.body ?? "", term)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{hit.message.author.name}</p>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

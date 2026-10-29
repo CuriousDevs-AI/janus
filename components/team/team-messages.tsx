@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquare, MoreHorizontal, Pencil, SmilePlus, Trash2 } from "lucide-react";
+import { Download, FileText, MessageSquare, MoreHorizontal, Paperclip, Pencil, SmilePlus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { cn, initials } from "@/lib/utils";
@@ -22,7 +22,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
-import { TEAM_EMOJI, type TeamMessage } from "@/components/team/types";
+import {
+  TEAM_EMOJI,
+  TEAM_FILE_ACCEPT,
+  TEAM_MAX_FILE_BYTES,
+  type TeamAttachment,
+  type TeamMessage,
+} from "@/components/team/types";
 
 const COLORS = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
 
@@ -214,6 +220,8 @@ function MessageRow({
           </p>
         )}
 
+        {!item.deleted && item.attachments.length > 0 ? <AttachmentList items={item.attachments} /> : null}
+
         {!item.deleted && item.reactions.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {item.reactions.map((reaction) => (
@@ -312,6 +320,47 @@ function MessageRow({
   );
 }
 
+export function fileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Images show as a preview; other files show as a row you can download. */
+function AttachmentList({ items }: { items: TeamAttachment[] }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-2">
+      {items.map((file) =>
+        file.isImage ? (
+          <a
+            key={file.id}
+            href={`/api/backend/team/attachments/${file.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open image ${file.filename}`}
+            className="block overflow-hidden rounded-lg border border-border bg-surface-2"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/backend/team/attachments/${file.id}`} alt={file.filename} loading="lazy" className="max-h-64 max-w-full object-contain" />
+          </a>
+        ) : (
+          <a
+            key={file.id}
+            href={`/api/backend/team/attachments/${file.id}`}
+            download={file.filename}
+            className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-2"
+          >
+            <FileText className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate font-medium">{file.filename}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{fileSize(file.sizeBytes)}</span>
+            <Download className="size-3.5 shrink-0 text-muted-foreground" />
+          </a>
+        ),
+      )}
+    </div>
+  );
+}
+
 function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
   return (
     <DropdownMenu>
@@ -337,31 +386,48 @@ export function Composer({
   disabled,
   disabledReason,
   onSend,
+  allowFiles = true,
   autoFocusKey,
 }: {
   placeholder: string;
   disabled?: boolean;
   disabledReason?: string;
-  onSend: (body: string) => Promise<void>;
+  onSend: (body: string, file: File | null) => Promise<void>;
+  allowFiles?: boolean;
   autoFocusKey?: string;
 }) {
   const [text, setText] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
   const [busy, setBusy] = React.useState(false);
   const ref = React.useRef<HTMLTextAreaElement>(null);
+  const picker = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (!disabled) ref.current?.focus();
   }, [autoFocusKey, disabled]);
 
   async function submit() {
     const body = text.trim();
-    if (!body || busy || disabled) return;
+    if ((!body && !file) || busy || disabled) return;
     setBusy(true);
     try {
-      await onSend(body);
+      await onSend(body, file);
       setText("");
+      setFile(null);
     } finally {
       setBusy(false);
     }
+  }
+
+  function choose(event: React.ChangeEvent<HTMLInputElement>) {
+    const picked = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!picked) return;
+    if (picked.size > TEAM_MAX_FILE_BYTES) {
+      toast.error("Choose a file no larger than 5 MB.");
+      return;
+    }
+    setFile(picked);
+    ref.current?.focus();
   }
 
   return (
@@ -369,12 +435,37 @@ export function Composer({
       {disabled && disabledReason ? (
         <p className="mb-2 text-xs text-muted-foreground">{disabledReason}</p>
       ) : null}
+      {file ? (
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-sm">
+          <FileText className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate">{file.name}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{fileSize(file.size)}</span>
+          <Button variant="ghost" size="icon" className="size-6" aria-label="Remove file" onClick={() => setFile(null)}>
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      ) : null}
       <div
         className={cn(
           "flex items-end gap-2 rounded-lg border border-border bg-surface px-3 py-2 focus-within:ring-2 focus-within:ring-ring/40",
           disabled && "opacity-60",
         )}
       >
+        {allowFiles ? (
+          <>
+            <input ref={picker} type="file" accept={TEAM_FILE_ACCEPT} className="hidden" aria-label="Choose a file to send" onChange={choose} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              aria-label="Attach a file"
+              disabled={disabled || busy}
+              onClick={() => picker.current?.click()}
+            >
+              <Paperclip className="size-4" />
+            </Button>
+          </>
+        ) : null}
         <Textarea
           ref={ref}
           aria-label={placeholder}
@@ -391,7 +482,7 @@ export function Composer({
           }}
           className="max-h-40 min-h-9 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0"
         />
-        <Button size="sm" onClick={() => void submit()} disabled={disabled || busy || !text.trim()}>
+        <Button size="sm" onClick={() => void submit()} disabled={disabled || busy || (!text.trim() && !file)}>
           Send
         </Button>
       </div>
