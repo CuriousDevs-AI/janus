@@ -19,15 +19,8 @@ import { OperationsWorkspace } from "@/components/operations/operations-workspac
 import { ProjectsWorkspace } from "@/components/projects/projects-workspace";
 import { SupportWorkspace } from "@/components/support/support-workspace";
 import { ITWorkspace } from "@/components/it/it-workspace";
+import { mayOpenWorkspace } from "@/lib/access";
 
-const workspacePermissions: Record<string, string> = {
-  "hr-people": "hr:self",
-  "finance-accounting": "billing:manage",
-  "projects-delivery": "projects:manage",
-  "customer-support": "leads:read_team",
-  "operations-inventory": "stock:adjust",
-  "it-infrastructure": "settings:manage",
-};
 
 export default function WorkspacePage({
   params,
@@ -55,8 +48,7 @@ function WorkspacePageInner({
     return <p className="p-6 text-sm text-muted-foreground">This workspace is not available.</p>;
   }
 
-  const requiredPermission = workspacePermissions[routeWorkspaceId];
-  if (requiredPermission && !session.permissions.includes("*") && !session.permissions.includes(requiredPermission) && !(routeWorkspaceId === "hr-people" && session.permissions.includes("members:manage"))) {
+  if (!mayOpenWorkspace(routeWorkspaceId, session.permissions)) {
     return <p className="p-6 text-sm text-muted-foreground">You do not have permission to open this workspace.</p>;
   }
 
