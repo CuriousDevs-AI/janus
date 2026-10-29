@@ -7,6 +7,7 @@ import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { addDays } from "@/lib/stores/projects-store";
 import { demoMode } from "@/lib/demo-mode";
+import { withoutDemoRecords } from "@/lib/stores/server-owned";
 
 /**
  * IT & Infrastructure (phase 1): asset register with assignment and return, access grants per person
@@ -74,8 +75,7 @@ interface ITState {
   freeSeat: (licenceId: string, person: string, by: string) => string | null;
 }
 
-const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => {
-  if (!isFirstCompany) return { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [] };
+const demoSeed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => {
   return {
     assets: [
       { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta" },
@@ -107,6 +107,8 @@ const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpd
     ],
   };
 };
+
+const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => (isFirstCompany ? demoSeed() : { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [] });
 
 /** Renewal due inside the next 30 days. */
 export function renewalSoon(licence: Licence) {
@@ -358,6 +360,8 @@ export const useITStore = create<ITState>()(
         },
       };
     },
-    { name: scoped("janus.it.v1"), storage: createJSONStorage(() => workspaceStorage) },
+    { name: scoped("janus.it.v1"), storage: createJSONStorage(() => workspaceStorage),
+      // A saved copy drops the demo records outside demo mode; records the company made stay.
+      merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<ITState>) } as ITState, demoSeed()) },
   ),
 );

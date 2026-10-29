@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
+import { demoMode } from "@/lib/demo-mode";
 
 /**
  * The vendor master (plan §8.7, Operations V2). Purchase orders and vendor bills pick a vendor from this
@@ -24,13 +25,13 @@ interface VendorsState {
   addVendor: (input: { name: string; gstin: string; paymentTermsDays: number }) => string | null;
 }
 
-const seed = (): Vendor[] => {
-  if (!isFirstCompany) return [];
-  return [
-    { id: "ven-1", name: "Gurugram Packaging Co", gstin: "06AAGCG5555P1ZA", paymentTermsDays: 30 },
-    { id: "ven-2", name: "Udyog Electricals", gstin: "06AAFCU4321K1Z3", paymentTermsDays: 15 },
-  ];
-};
+/** The demo vendors, kept whole so a saved copy can be recognised outside demo mode. */
+const demoVendors: Vendor[] = [
+  { id: "ven-1", name: "Gurugram Packaging Co", gstin: "06AAGCG5555P1ZA", paymentTermsDays: 30 },
+  { id: "ven-2", name: "Udyog Electricals", gstin: "06AAFCU4321K1Z3", paymentTermsDays: 15 },
+];
+
+const seed = (): Vendor[] => (isFirstCompany ? demoVendors : []);
 
 export const useVendorsStore = create<VendorsState>()(
   persist(
@@ -57,6 +58,13 @@ export const useVendorsStore = create<VendorsState>()(
         return {
           vendors: (state.vendors ?? []).map(({ id, name, gstin, paymentTermsDays }) => ({ id, name, gstin, paymentTermsDays })),
         } as VendorsState;
+      },
+      // A saved copy drops the demo vendors outside demo mode; vendors the company added stay.
+      merge: (persisted, current) => {
+        const saved = { ...current, ...(persisted as Partial<VendorsState>) } as VendorsState;
+        if (demoMode) return saved;
+        const demoIds = new Set(demoVendors.map((vendor) => vendor.id));
+        return { ...saved, vendors: saved.vendors.filter((vendor) => !demoIds.has(vendor.id)) };
       },
     },
   ),

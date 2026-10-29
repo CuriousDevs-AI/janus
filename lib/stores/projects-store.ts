@@ -10,7 +10,7 @@ import { moveBudget } from "@/lib/finance-records";
 import { createInvoice } from "@/lib/invoice-records";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
-import { mergeServerOwned } from "@/lib/stores/server-owned";
+import { mergeServerOwned, withoutDemoRecords } from "@/lib/stores/server-owned";
 
 /**
  * Projects & Delivery (phase 1): projects with a budget drawn from a fund allocation, milestones
@@ -76,8 +76,7 @@ interface ProjectsState {
   closeProject: (id: string, by: string) => Promise<string | null>;
 }
 
-const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => {
-  if (!isFirstCompany) return { projects: [], milestones: [], tasks: [], changes: [], timesheets: [], allocations: [] };
+const demoSeed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => {
   return {
     projects: [
       { id: "prj-1", name: "Rajasthan distributor onboarding", client: "Rajputana Wholesale Co-op", type: "Fixed price", owner: "Arjun Mehta", start: "2026-10-01", end: "2026-12-15", budget: 42000, budgetLineId: "line-sales", status: "active", createdBy: "Arjun Mehta" },
@@ -102,6 +101,8 @@ const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "chan
     ],
   };
 };
+
+const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => (isFirstCompany ? demoSeed() : { projects: [], milestones: [], tasks: [], changes: [], timesheets: [], allocations: [] });
 
 /** Delivery health from dates and open work, never typed in by hand. */
 /** Profit on a project to date: milestones accepted and billed, against the cost of the hours logged on it. */
@@ -326,6 +327,6 @@ export const useProjectsStore = create<ProjectsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<ProjectsState>(["trail"]) },
+    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage), merge: (persisted, current) => withoutDemoRecords(mergeServerOwned<ProjectsState>(["trail"])(persisted, current), demoSeed()) },
   ),
 );
