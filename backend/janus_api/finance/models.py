@@ -159,3 +159,46 @@ class FinanceCreditNote(Base):
     rejected_by_name: Mapped[str | None] = mapped_column(String(160))
     rejected_reason: Mapped[str | None] = mapped_column(String(300))
     idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class FinanceBill(Base):
+    """What the company owes a vendor. A bill for a purchase order is paid only when it matches."""
+
+    __tablename__ = "finance_bills"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "idempotency_key"),
+        CheckConstraint("amount_paise > 0", name="ck_finance_bills_amount"),
+        CheckConstraint("due_date >= bill_date", name="ck_finance_bills_dates"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    number: Mapped[str] = mapped_column(String(20))
+    vendor: Mapped[str] = mapped_column(String(160))
+    vendor_bill_no: Mapped[str] = mapped_column(String(80))
+    bill_date: Mapped[date] = mapped_column(Date)
+    due_date: Mapped[date] = mapped_column(Date)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    po_key: Mapped[str | None] = mapped_column(String(64))
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_by_name: Mapped[str] = mapped_column(String(160))
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class FinanceBillPayment(Base):
+    __tablename__ = "finance_bill_payments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key"),
+        CheckConstraint("amount_paise > 0", name="ck_finance_bill_payments_amount"),
+        CheckConstraint(
+            "method IN ('UPI', 'Bank transfer', 'Cash', 'Cheque')",
+            name="ck_finance_bill_payments_method",
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    bill_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("finance_bills.id"))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    method: Mapped[str] = mapped_column(String(20))
+    reference: Mapped[str] = mapped_column(String(80))
+    paid_on: Mapped[date] = mapped_column(Date)
+    recorded_by_name: Mapped[str] = mapped_column(String(160))
+    idempotency_key: Mapped[str] = mapped_column(String(80))

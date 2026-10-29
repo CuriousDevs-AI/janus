@@ -22,6 +22,7 @@ import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
+import { addBill, recordBillPayment, syncBills } from "@/lib/bill-records";
 import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
@@ -84,8 +85,6 @@ export function FinanceWorkspace() {
 /** Vendor bills: what the company owes, when it is due, and what has been paid so far. */
 function PayablesView({ me }: { me: string }) {
   const bills = useFinanceStore((state) => state.bills);
-  const addBill = useFinanceStore((state) => state.addBill);
-  const recordBillPayment = useFinanceStore((state) => state.recordBillPayment);
   const [vendor, setVendor] = React.useState("");
   const [vendorBillNo, setVendorBillNo] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -102,15 +101,19 @@ function PayablesView({ me }: { me: string }) {
   const [payAmounts, setPayAmounts] = React.useState<Record<string, string>>({});
   const today = "2026-10-23";
 
-  function create() {
-    const problem = addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), poId: poId || undefined }, me);
+  React.useEffect(() => {
+    syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
+  }, []);
+
+  async function create() {
+    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
     setVendor(""); setVendorBillNo(""); setAmount(""); setPoId("");
   }
 
-  function pay(billId: string) {
-    const problem = recordBillPayment(billId, { amount: Number(payAmounts[billId]), method: "Bank transfer", reference: "Paid from Payables", date: today }, me);
+  async function pay(billId: string) {
+    const problem = await recordBillPayment(billId, { amount: Number(payAmounts[billId]), method: "Bank transfer", reference: "Paid from Payables", date: today }, me);
     if (problem) return toast.error(problem);
     toast.success("Payment recorded");
     setPayAmounts((current) => ({ ...current, [billId]: "" }));

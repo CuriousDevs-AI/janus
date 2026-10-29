@@ -357,6 +357,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addBill: (input, by) => {
+        if (!demoMode) return "Bills are recorded on the server.";
         const locked = periodLockProblem(input.date);
         if (locked) return locked;
         if (input.vendor.trim().length < 2) return "Enter the vendor name.";
@@ -378,6 +379,7 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       recordBillPayment: (billId, payment, by) => {
+        if (!demoMode) return "Bills are recorded on the server.";
         const locked = periodLockProblem(payment.date);
         if (locked) return locked;
         const bill = get().bills.find((item) => item.id === billId);
