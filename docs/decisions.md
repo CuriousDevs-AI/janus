@@ -78,3 +78,10 @@ One line per decision. Newest items go at the bottom.
 - Purchase orders (opening import): the demo's purchase orders are part of the one-time opening import, so they are on the server with their numbers.
 - Purchase orders (retries): raising an order and each receipt send an Idempotency-Key. A retried receipt returns the order with its received quantities unchanged.
 - Permission: raising an order and receiving against it need `stock:adjust`, as the rest of the ledger does.
+- Requisitions (scope): requisitions are on the server, with their approval and ordering as a purchase order. Bills and the fund-request approval chain are the remaining local parts of Finance and Operations.
+- Requisitions (budget): approval reads the budget line on the server, which is allocated minus drawn, and refuses when the requisition's value (quantity times estimated rate) is more than what is left. The screen's figure is not sent, so it cannot approve money the server does not have.
+- Requisitions (budget line): a requisition needs its budget line on the server. The Operations screen loads budget lines when it opens, so the lines are there before anyone raises a requisition.
+- Requisitions (approval): the person who raised a requisition cannot approve or reject it; the check uses the user id. A pending requisition can be decided once.
+- Requisitions (ordering): an approved requisition becomes one purchase order to the chosen vendor, delivered to the requisition's location. A second order is refused because the requisition is already ordered.
+- Numbers and keys: requisitions are numbered `REQ-<year>-<n>` by the server. The screen's id is kept as the requisition's key.
+- Permission: raising, approving, rejecting and ordering need `stock:adjust`, as the rest of the ledger does. Budget lines are still managed with `billing:manage` in Finance.

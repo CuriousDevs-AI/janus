@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
-import { addItemRecord, addPurchaseOrder, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveAgainstPO, receiveStock, recordCount, requestAdjustment, receiveTransfer, sendTransfer, syncOperations } from "@/lib/operations-records";
+import { syncBudgetLines } from "@/lib/finance-records";
+import { addRequisition, approveRequisition, orderRequisition, rejectRequisition, addItemRecord, addPurchaseOrder, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveAgainstPO, receiveStock, recordCount, requestAdjustment, receiveTransfer, sendTransfer, syncOperations } from "@/lib/operations-records";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
@@ -36,6 +37,8 @@ const comingSoon: Record<string, string> = {
 export function OperationsWorkspace() {
   React.useEffect(() => {
     syncOperations().catch((error: unknown) => toast.warning(`Stock not loaded from the server: ${message(error)}`));
+    // Requisitions are paid from budget lines, which the server must have before they can be approved.
+    syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
   }, []);
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
@@ -312,10 +315,6 @@ function PhysicalCountView({ me }: { me: string }) {
 function RequisitionsView({ me }: { me: string }) {
   const items = useOperationsStore((state) => state.items);
   const requisitions = useOperationsStore((state) => state.requisitions);
-  const addRequisition = useOperationsStore((state) => state.addRequisition);
-  const approveRequisition = useOperationsStore((state) => state.approveRequisition);
-  const rejectRequisition = useOperationsStore((state) => state.rejectRequisition);
-  const orderRequisition = useOperationsStore((state) => state.orderRequisition);
   const locations = useLocationsStore((state) => state.locations);
   const vendors = useVendorsStore((state) => state.vendors);
   const budgetLines = useFinanceStore((state) => state.budgetLines);
@@ -327,25 +326,25 @@ function RequisitionsView({ me }: { me: string }) {
   const [reason, setReason] = React.useState("");
   const [vendorFor, setVendorFor] = React.useState<Record<string, string>>({});
 
-  function raise() {
-    const problem = addRequisition({ itemId, qty: Number(qty), estimatedRate: Number(rate), locationId: Number(locationId), budgetLineId, reason }, me);
+  async function raise() {
+    const problem = await addRequisition({ itemId, qty: Number(qty), estimatedRate: Number(rate), locationId: Number(locationId), budgetLineId, reason }, me);
     if (problem) return toast.error(problem);
     toast.success("Requisition raised");
     setQty(""); setRate(""); setReason("");
   }
 
-  function approve(id: string, lineId: string) {
+  async function approve(id: string, lineId: string) {
     const line = budgetLines.find((l) => l.id === lineId);
     const available = line ? line.allocated - line.drawn : 0;
-    const problem = approveRequisition(id, available, me);
+    const problem = await approveRequisition(id, available, me);
     if (problem) return toast.error(problem);
     toast.success("Requisition approved");
   }
 
-  function order(id: string) {
+  async function order(id: string) {
     const vendor = vendorFor[id] ?? vendors[0]?.name ?? "";
     if (!vendor) return toast.error("Add a vendor first.");
-    const problem = orderRequisition(id, vendor, me);
+    const problem = await orderRequisition(id, vendor, me);
     if (problem) return toast.error(problem);
     toast.success("Purchase order raised from the requisition");
   }
@@ -385,7 +384,7 @@ function RequisitionsView({ me }: { me: string }) {
                   {r.status === "pending" ? (
                     <>
                       <Button size="sm" variant="secondary" onClick={() => approve(r.id, r.budgetLineId)}>Approve</Button>
-                      <Button size="sm" variant="ghost" onClick={() => { const p = rejectRequisition(r.id, "Rejected from requisitions", me); if (p) toast.error(p); }}>Reject</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { void rejectRequisition(r.id, "Rejected from requisitions", me).then((p) => { if (p) toast.error(p); }); }}>Reject</Button>
                     </>
                   ) : null}
                   {r.status === "approved" ? (
@@ -682,14 +681,13 @@ function OverviewView() {
   const low = items.filter((item) => stockOn(movements, item.id) <= item.reorderLevel);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const addRequisition = useOperationsStore((state) => state.addRequisition);
   const requisitions = useOperationsStore((state) => state.requisitions);
   const locations = useLocationsStore((state) => state.locations);
   const budgetLines = useFinanceStore((state) => state.budgetLines);
   // Reorders are paid from the warehouse budget line. The person who raised one cannot approve it, so approval stays with someone else.
   const warehouseLine = budgetLines.find((line) => line.name === "Warehouse operations");
-  function reorder(item: (typeof items)[number], onHand: number) {
-    const problem = addRequisition({
+  async function reorder(item: (typeof items)[number], onHand: number) {
+    const problem = await addRequisition({
       itemId: item.id,
       qty: Math.max(item.reorderLevel * 2 - onHand, 1),
       estimatedRate: item.rate,

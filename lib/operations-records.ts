@@ -12,6 +12,7 @@ import {
   type Item,
   type Movement,
   type PurchaseOrder,
+  type Requisition,
   type Return,
   type StockCount,
   type Transfer,
@@ -130,7 +131,24 @@ interface ServerPurchaseOrder {
   created_by: string;
   lines: { item_key: string; qty: number; rate_paise: number; received: number }[];
 }
+interface ServerRequisition {
+  id: string;
+  number: string;
+  requester: string;
+  item_key: string;
+  qty: number;
+  estimated_rate_paise: number;
+  location_id: number;
+  budget_line_key: string;
+  reason: string;
+  status: Requisition["status"];
+  decided_by: string | null;
+  rejected_reason: string | null;
+  po_number: string | null;
+  raised_on: string;
+}
 interface ServerLedger {
+  requisitions: ServerRequisition[];
   purchase_orders: ServerPurchaseOrder[];
   items: ServerItem[];
   batches: ServerBatch[];
@@ -240,6 +258,23 @@ const toPurchaseOrder = (row: ServerPurchaseOrder): PurchaseOrder => ({
   createdBy: row.created_by,
 });
 
+const toRequisition = (row: ServerRequisition): Requisition => ({
+  id: row.id,
+  number: row.number,
+  requester: row.requester,
+  itemId: row.item_key,
+  qty: row.qty,
+  estimatedRate: row.estimated_rate_paise / 100,
+  locationId: row.location_id,
+  budgetLineId: row.budget_line_key,
+  reason: row.reason,
+  status: row.status,
+  decidedBy: row.decided_by ?? undefined,
+  rejectedReason: row.rejected_reason ?? undefined,
+  poNumber: row.po_number ?? undefined,
+  raisedOn: row.raised_on,
+});
+
 const toReturn = (row: ServerReturn): Return => ({
   id: row.id,
   number: row.number,
@@ -266,6 +301,7 @@ function apply(ledger: ServerLedger) {
     transfers: ledger.transfers.map(toTransfer),
     counts: ledger.counts.map(toCount),
     purchaseOrders: ledger.purchase_orders.map(toPurchaseOrder),
+    requisitions: ledger.requisitions.map(toRequisition),
   });
 }
 
@@ -664,6 +700,83 @@ export async function receiveAgainstPO(
     await syncOperations();
     const summary = receipts.map((receipt) => `${receipt.qty} ${useOperationsStore.getState().items.find((item) => item.id === receipt.itemId)?.unit ?? ""}`).join(", ");
     addTrail(trailEntry("operations", TODAY, by, `Received goods against ${order?.number ?? poId}: ${summary}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Raises a requisition to buy. The server checks that the budget line exists. */
+export async function addRequisition(
+  input: { itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string },
+  by: string,
+): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().addRequisition(input, by);
+  try {
+    const row = await api<ServerRequisition>("/operations/requisitions", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        key: `req-${crypto.randomUUID()}`,
+        item_key: input.itemId,
+        qty: input.qty,
+        estimated_rate_paise: toPaise(input.estimatedRate),
+        location_id: input.locationId,
+        budget_line_key: input.budgetLineId,
+        reason: input.reason.trim(),
+      }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Raised requisition ${row.number} for ${input.qty}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/**
+ * Approves a requisition. The server reads the budget line itself, so the figure the screen shows is
+ * not used here; the server refuses when the line no longer has the money.
+ */
+export async function approveRequisition(id: string, _availableBudget: number, by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().approveRequisition(id, _availableBudget, by);
+  const number = useOperationsStore.getState().requisitions.find((item) => item.id === id)?.number ?? id;
+  try {
+    await api(`/operations/requisitions/${encodeURIComponent(id)}/approve`, { method: "POST" });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Approved requisition ${number}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+export async function rejectRequisition(id: string, reason: string, by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().rejectRequisition(id, reason, by);
+  const number = useOperationsStore.getState().requisitions.find((item) => item.id === id)?.number ?? id;
+  try {
+    await api(`/operations/requisitions/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Rejected requisition ${number}: ${reason.trim()}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Turns an approved requisition into a purchase order to the vendor, once. */
+export async function orderRequisition(id: string, vendor: string, by: string): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().orderRequisition(id, vendor, by);
+  try {
+    const row = await api<ServerRequisition>(`/operations/requisitions/${encodeURIComponent(id)}/order`, {
+      method: "POST",
+      body: JSON.stringify({ vendor }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Raised purchase order ${row.po_number ?? ""} from ${row.number}`));
     return null;
   } catch (error: unknown) {
     return message(error);

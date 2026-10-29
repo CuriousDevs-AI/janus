@@ -287,3 +287,38 @@ class OpsPoLine(Base):
     qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     rate_paise: Mapped[int] = mapped_column(BigInteger)
     received_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal(0))
+
+
+class OpsRequisition(Base):
+    """A request to buy. Another person approves it against a budget line with money left."""
+
+    __tablename__ = "ops_requisitions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "req_key"),
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "idempotency_key"),
+        CheckConstraint(
+            "qty > 0 AND estimated_rate_paise >= 0", name="ck_ops_requisitions_amounts"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'ordered')",
+            name="ck_ops_requisitions_status",
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    req_key: Mapped[str] = mapped_column(String(64))
+    number: Mapped[str] = mapped_column(String(20))
+    item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ops_items.id"))
+    qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    estimated_rate_paise: Mapped[int] = mapped_column(BigInteger)
+    location_id: Mapped[int] = mapped_column(Integer)
+    budget_line_key: Mapped[str] = mapped_column(String(80))
+    reason: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(10))
+    requested_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    requested_by_name: Mapped[str] = mapped_column(String(160))
+    decided_by_name: Mapped[str | None] = mapped_column(String(160))
+    rejected_reason: Mapped[str | None] = mapped_column(String(300))
+    po_key: Mapped[str | None] = mapped_column(String(64))
+    raised_on: Mapped[date] = mapped_column(Date)
+    idempotency_key: Mapped[str] = mapped_column(String(80))

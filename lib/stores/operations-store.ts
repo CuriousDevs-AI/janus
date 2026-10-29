@@ -131,6 +131,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       addRequisition: (input, by) => {
+        if (!demoMode) return "Requisitions are recorded on the server.";
         if (!get().items.some((i) => i.id === input.itemId)) return "Choose an item.";
         if (!(input.qty > 0)) return "Enter a quantity above zero.";
         if (!(input.estimatedRate >= 0)) return "The estimated rate cannot be negative.";
@@ -145,6 +146,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       approveRequisition: (id, availableBudget, by) => {
+        if (!demoMode) return "Requisitions are recorded on the server.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "pending") return "Only a pending requisition can be approved.";
@@ -158,6 +160,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       rejectRequisition: (id, reason, by) => {
+        if (!demoMode) return "Requisitions are recorded on the server.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "pending") return "Only a pending requisition can be rejected.";
@@ -170,7 +173,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       orderRequisition: (id, vendor, by) => {
-        if (!demoMode) return "Ordering from a requisition is not on the server yet; raise the purchase order directly.";
+        if (!demoMode) return "Requisitions are recorded on the server.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "approved") return "Only an approved requisition can be turned into an order.";

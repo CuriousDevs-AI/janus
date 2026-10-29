@@ -7,6 +7,7 @@ and writes its audit row in the same transaction. Requests that could book stock
 Idempotency-Key.
 """
 
+import uuid
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Literal
@@ -19,6 +20,7 @@ from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
+from janus_api.finance.models import FinanceBudgetLine
 from janus_api.operations.models import (
     OpsAdjustment,
     OpsBatch,
@@ -30,6 +32,7 @@ from janus_api.operations.models import (
     OpsMovement,
     OpsPoLine,
     OpsPurchaseOrder,
+    OpsRequisition,
     OpsReturn,
     OpsTransfer,
 )
@@ -260,6 +263,23 @@ class PurchaseOrderOut(BaseModel):
     lines: list[PoLineOut]
 
 
+class RequisitionOut(BaseModel):
+    id: str
+    number: str
+    requester: str
+    item_key: str
+    qty: float
+    estimated_rate_paise: int
+    location_id: int
+    budget_line_key: str
+    reason: str
+    status: str
+    decided_by: str | None
+    rejected_reason: str | None
+    po_number: str | None
+    raised_on: date
+
+
 class LedgerOut(BaseModel):
     items: list[ItemOut]
     batches: list[BatchOut]
@@ -270,6 +290,7 @@ class LedgerOut(BaseModel):
     transfers: list[TransferOut]
     counts: list[CountOut]
     purchase_orders: list[PurchaseOrderOut]
+    requisitions: list[RequisitionOut]
 
 
 def _item_out(row: OpsItem) -> ItemOut:
@@ -404,6 +425,13 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
             select(OpsReturn).where(OpsReturn.tenant_id == tenant_id).order_by(OpsReturn.id.desc())
         )
     ).all()
+    requisitions = (
+        await db.scalars(
+            select(OpsRequisition)
+            .where(OpsRequisition.tenant_id == tenant_id)
+            .order_by(OpsRequisition.id.desc())
+        )
+    ).all()
     purchase_orders = (
         await db.scalars(
             select(OpsPurchaseOrder)
@@ -472,6 +500,7 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
         transfers=[await _transfer_out(db, row) for row in transfers],
         counts=[await _count_out(db, row) for row in counts],
         purchase_orders=[await _po_out(db, row) for row in purchase_orders],
+        requisitions=[await _requisition_out(db, row) for row in requisitions],
     )
 
 
@@ -1784,3 +1813,235 @@ async def receive_against_order(
 async def _items_by_id(db: Db, ids: list[int]) -> dict[int, OpsItem]:
     rows = (await db.scalars(select(OpsItem).where(OpsItem.id.in_(ids)))).all()
     return {row.id: row for row in rows}
+
+
+# ---- Requisitions ------------------------------------------------------------------------------
+
+
+class RequisitionIn(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    item_key: str = Field(min_length=1, max_length=64)
+    qty: Decimal = Field(gt=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+    estimated_rate_paise: int = Field(ge=0, le=10**12)
+    location_id: int = Field(ge=0, le=999)
+    budget_line_key: str = Field(min_length=1, max_length=80)
+    reason: str = Field(min_length=5, max_length=300)
+
+
+class RequisitionOrderIn(BaseModel):
+    vendor: str = Field(min_length=2, max_length=160)
+
+
+async def _requisition_out(db: Db, row: OpsRequisition) -> RequisitionOut:
+    item = await _item_by_id(db, row.item_id)
+    po_number = None
+    if row.po_key is not None:
+        po_number = await db.scalar(
+            select(OpsPurchaseOrder.number).where(
+                OpsPurchaseOrder.tenant_id == row.tenant_id,
+                OpsPurchaseOrder.po_key == row.po_key,
+            )
+        )
+    return RequisitionOut(
+        id=row.req_key,
+        number=row.number,
+        requester=row.requested_by_name,
+        item_key=item.item_key,
+        qty=float(row.qty),
+        estimated_rate_paise=row.estimated_rate_paise,
+        location_id=row.location_id,
+        budget_line_key=row.budget_line_key,
+        reason=row.reason,
+        status=row.status,
+        decided_by=row.decided_by_name,
+        rejected_reason=row.rejected_reason,
+        po_number=po_number,
+        raised_on=row.raised_on,
+    )
+
+
+async def _req(db: Db, tenant_id: int, key: str, *, lock: bool = False) -> OpsRequisition:
+    query = select(OpsRequisition).where(
+        OpsRequisition.tenant_id == tenant_id, OpsRequisition.req_key == key
+    )
+    if lock:
+        query = query.with_for_update()
+    row = await db.scalar(query)
+    if row is None:
+        raise ApiError("not_found", "Requisition not found.", 404)
+    return row
+
+
+@router.post("/requisitions", response_model=RequisitionOut, status_code=201)
+async def raise_requisition(
+    data: RequisitionIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> RequisitionOut:
+    tenant_id = actor.session.tenant_id
+    existing = await db.scalar(
+        select(OpsRequisition).where(
+            OpsRequisition.tenant_id == tenant_id,
+            OpsRequisition.idempotency_key == idempotency_key,
+        )
+    )
+    if existing is not None:
+        response.status_code = 200
+        return await _requisition_out(db, existing)
+    item = await _item(db, tenant_id, data.item_key)
+    budget = await db.scalar(
+        select(FinanceBudgetLine.id).where(
+            FinanceBudgetLine.tenant_id == tenant_id,
+            FinanceBudgetLine.external_key == data.budget_line_key,
+        )
+    )
+    if budget is None:
+        raise ApiError(
+            "budget_line_not_found", "Choose the budget line this buying is paid from.", 422
+        )
+    count = await db.scalar(
+        select(func.count())
+        .select_from(OpsRequisition)
+        .where(OpsRequisition.tenant_id == tenant_id)
+    )
+    row = OpsRequisition(
+        tenant_id=tenant_id,
+        req_key=data.key,
+        number=f"REQ-{_today().year}-{101 + (count or 0):04d}",
+        item_id=item.id,
+        qty=data.qty,
+        estimated_rate_paise=data.estimated_rate_paise,
+        location_id=data.location_id,
+        budget_line_key=data.budget_line_key,
+        reason=data.reason.strip(),
+        status="pending",
+        requested_by=actor.user.id,
+        requested_by_name=actor.user.name,
+        raised_on=_today(),
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    audit.record(
+        db,
+        "operations.requisition_raised",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"requisition": row.number, "item": item.sku, "qty": str(data.qty)},
+    )
+    return await _requisition_out(db, row)
+
+
+@router.post("/requisitions/{key}/approve", response_model=RequisitionOut)
+async def approve_requisition(key: str, actor: Stock, db: Db, request: Request) -> RequisitionOut:
+    """Approves a requisition if its budget line still has the money, read on the server."""
+    tenant_id = actor.session.tenant_id
+    row = await _req(db, tenant_id, key, lock=True)
+    if row.status != "pending":
+        raise ApiError("not_pending", "Only a pending requisition can be approved.", 409)
+    if row.requested_by == actor.user.id:
+        raise ApiError(
+            "self_approval", "The person who raised a requisition cannot approve it.", 403
+        )
+    budget = await db.scalar(
+        select(FinanceBudgetLine).where(
+            FinanceBudgetLine.tenant_id == tenant_id,
+            FinanceBudgetLine.external_key == row.budget_line_key,
+        )
+    )
+    if budget is None:
+        raise ApiError(
+            "budget_line_not_found",
+            "The budget line for this requisition is not on the server.",
+            422,
+        )
+    available = budget.allocated_paise - budget.drawn_paise
+    value = int((row.qty * row.estimated_rate_paise).to_integral_value(rounding=ROUND_HALF_UP))
+    if value > available:
+        raise ApiError(
+            "over_budget",
+            f"The budget line has {available / 100:,.2f} left; this needs {value / 100:,.2f}.",
+            422,
+        )
+    row.status = "approved"
+    row.decided_by_name = actor.user.name
+    await db.flush()
+    audit.record(
+        db,
+        "operations.requisition_approved",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"requisition": row.number, "value_paise": value},
+    )
+    return await _requisition_out(db, row)
+
+
+@router.post("/requisitions/{key}/reject", response_model=RequisitionOut)
+async def reject_requisition(
+    key: str, data: RejectIn, actor: Stock, db: Db, request: Request
+) -> RequisitionOut:
+    tenant_id = actor.session.tenant_id
+    row = await _req(db, tenant_id, key, lock=True)
+    if row.status != "pending":
+        raise ApiError("not_pending", "Only a pending requisition can be rejected.", 409)
+    if row.requested_by == actor.user.id:
+        raise ApiError(
+            "self_approval", "The person who raised a requisition cannot reject it.", 403
+        )
+    row.status = "rejected"
+    row.decided_by_name = actor.user.name
+    row.rejected_reason = data.reason.strip()
+    await db.flush()
+    audit.record(
+        db,
+        "operations.requisition_rejected",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"requisition": row.number},
+    )
+    return await _requisition_out(db, row)
+
+
+@router.post("/requisitions/{key}/order", response_model=RequisitionOut)
+async def order_requisition(
+    key: str, data: RequisitionOrderIn, actor: Stock, db: Db, request: Request
+) -> RequisitionOut:
+    """Turns an approved requisition into a purchase order to the chosen vendor, once."""
+    tenant_id = actor.session.tenant_id
+    row = await _req(db, tenant_id, key, lock=True)
+    if row.status != "approved":
+        raise ApiError(
+            "not_approved", "Only an approved requisition can be turned into an order.", 409
+        )
+    item = await _item_by_id(db, row.item_id)
+    order = await _insert_purchase_order(
+        db,
+        tenant_id,
+        actor,
+        f"po-{uuid.uuid4().hex}",
+        None,
+        data.vendor,
+        row.location_id,
+        [PoLineIn(item_key=item.item_key, qty=row.qty, rate_paise=row.estimated_rate_paise)],
+        idempotency_key=f"req-{row.req_key}"[:80],
+        booked_on=_today(),
+        item_by_key={item.item_key: item},
+    )
+    row.status = "ordered"
+    row.po_key = order.po_key
+    await db.flush()
+    audit.record(
+        db,
+        "operations.requisition_ordered",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"requisition": row.number, "order": order.number},
+    )
+    return await _requisition_out(db, row)
