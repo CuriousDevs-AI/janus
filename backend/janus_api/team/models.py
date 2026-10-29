@@ -131,8 +131,9 @@ class TeamSignal(Base):
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
     space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
-    from_user: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
-    to_user: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    # No user keys: a key-share lock on the recipient deadlocked with the per-request user lock.
+    from_user: Mapped[int] = mapped_column(BigInteger)
+    to_user: Mapped[int] = mapped_column(BigInteger, index=True)
     kind: Mapped[str] = mapped_column(String(10))
     payload: Mapped[dict[str, object]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

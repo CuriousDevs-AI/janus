@@ -554,7 +554,7 @@ async def test_a_voice_call_tracks_who_is_in_it_and_relays_messages_between_them
         headers=asha,
         json={"to_user_id": ids["owner@example.com"], "kind": "offer", "payload": {"sdp": "v=0"}},
     )
-    assert offer.status_code == 202, offer.text
+    assert offer.status_code == 204, offer.text
     inbox = (await client.get(f"/v1/team/voice/{space}/signals", headers=owner.headers)).json()
     assert [(item["kind"], item["fromUserId"]) for item in inbox] == [
         ("offer", ids["asha@example.com"])

@@ -195,10 +195,10 @@ async def call_state(
     return await service.set_call_state(db, actor, space_id, data)
 
 
-@router.post("/voice/{space_id}/signal", status_code=202)
+@router.post("/voice/{space_id}/signal", status_code=204)
 async def signal(space_id: int, data: schemas.SignalIn, actor: CurrentActor, db: Db) -> Response:
     await service.send_signal(db, actor, space_id, data)
-    return Response(status_code=202)
+    return Response(status_code=204)
 
 
 @router.get("/voice/{space_id}/signals", response_model=list[schemas.SignalOut])
