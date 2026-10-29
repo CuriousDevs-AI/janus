@@ -128,3 +128,4 @@ One line per decision. Newest items go at the bottom.
 - HR access (real accounts): an HR person's access comes from their account's permissions (owner: billing:manage; HR manager: people or members management), never from a browser setting that defaults to owner. An HR manager has the same HR permissions as the owner, and approves leave as HR; the approver also needs their own employee record.
 - Expenses: whoever approves a claim cannot also mark it paid. The claim records its approver; Finance (or HR on a real account) marks it paid.
 - Members (roles): on a real account, a role change on People & Access is saved on the server (PATCH /members), and name and email are read-only there, since the server does not change them from that screen.
+- IT (people): the IT screens list the company's members on a real account (usePeople). The demo team was the list before, so a real account had no one to grant access to or assign.

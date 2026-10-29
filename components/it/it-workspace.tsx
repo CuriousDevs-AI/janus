@@ -10,13 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/components/auth/session-provider";
-import { users } from "@/lib/mock-data";
+import { usePeople } from "@/lib/people-directory";
 import { completeITChange, decideITChange, requestITChange, syncITChanges } from "@/lib/it-records";
 import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore, type ITChange, type Incident } from "@/lib/stores/it-store";
 
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
 const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
-const names = users.map((u) => u.name);
 const comingSoon: Record<string, string> = {
 };
 
@@ -97,6 +96,7 @@ function OverviewView() {
 
 /** IT requests from people in the company: raised, assigned, started and resolved. */
 function HelpdeskView() {
+  const people = usePeople();
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const tickets = useITStore((state) => state.helpdesk);
@@ -125,7 +125,7 @@ function HelpdeskView() {
         <CardContent className="grid gap-3">
           <p className="text-xs text-muted-foreground">Requests from people in the company. Each one is worked by an IT assignee until it is resolved.</p>
           <div className="grid gap-3 sm:grid-cols-5">
-            <select aria-label="Requester" className={selectClass} value={requester} onChange={(e) => setRequester(e.target.value)}><option value="">Requester…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Requester" className={selectClass} value={requester} onChange={(e) => setRequester(e.target.value)}><option value="">Requester…</option>{people.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
             <select aria-label="Category" className={selectClass} value={category} onChange={(e) => setCategory(e.target.value as (typeof HELPDESK_CATEGORIES)[number])}>{HELPDESK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
             <select aria-label="Priority" className={selectClass} value={priority} onChange={(e) => setPriority(e.target.value as (typeof HELPDESK_PRIORITIES)[number])}>{HELPDESK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
             <Input aria-label="Problem" placeholder="What is the problem?" value={subject} onChange={(e) => setSubject(e.target.value)} />
@@ -154,7 +154,7 @@ function HelpdeskView() {
                   <>
                     <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assignee ?? ""} onChange={(e) => { if (e.target.value) assignTicket(t.id, e.target.value, me); }}>
                       <option value="">Assign to…</option>
-                      {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                      {people.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                     </select>
                     {t.status === "open" ? <Button size="sm" variant="secondary" onClick={() => { const p = setTicketStatus(t.id, "in progress", me); if (p) toast.error(p); }}>Start</Button> : null}
                     <Button size="sm" variant="outline" onClick={() => { const p = resolveTicket(t.id, me); if (p) toast.error(p); else toast.success(`${t.number} resolved`); }}>Resolve</Button>
@@ -381,6 +381,8 @@ function MonitoringView() {
 }
 
 function AssetsView() {
+  const people = usePeople();
+  const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const assets = useITStore((state) => state.assets);
@@ -459,6 +461,8 @@ function AssetsView() {
 }
 
 function AccessView() {
+  const people = usePeople();
+  const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const access = useITStore((state) => state.access);
@@ -515,6 +519,8 @@ function AccessView() {
 }
 
 function LicensesView() {
+  const people = usePeople();
+  const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const licences = useITStore((state) => state.licences);
