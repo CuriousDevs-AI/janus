@@ -30,6 +30,7 @@ import {
   type TeamMessage,
 } from "@/components/team/types";
 
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
 const COLORS = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
 
 function colorFor(name: string) {
@@ -73,6 +74,7 @@ export function MessageList({
   const rows: React.ReactNode[] = [];
   let lastDay = "";
   let previousAuthor = "";
+  let previousAt = 0;
   for (const item of ordered) {
     const day = dayLabel(item.createdAt);
     if (day !== lastDay) {
@@ -86,8 +88,11 @@ export function MessageList({
       lastDay = day;
       previousAuthor = "";
     }
-    const grouped = previousAuthor === item.author.name;
+    // A run from one person groups only within a few minutes, so a later reply shows who and when.
+    const at = new Date(item.createdAt).getTime();
+    const grouped = previousAuthor === item.author.name && at - previousAt < GROUP_WINDOW_MS;
     previousAuthor = item.author.name;
+    previousAt = at;
     rows.push(
       <MessageRow
         key={item.id}
@@ -171,7 +176,14 @@ function MessageRow({
     >
       {item.mine ? null : (
       <div className="w-9 shrink-0">
-        {grouped ? null : (
+        {grouped ? (
+          <time
+            dateTime={item.createdAt}
+            className="invisible block pt-2 text-right text-[10px] leading-none text-muted-foreground group-hover:visible"
+          >
+            {timeOf(item.createdAt)}
+          </time>
+        ) : (
           <Avatar className="size-9">
             <AvatarFallback style={{ backgroundColor: colorFor(item.author.name) }} className="text-xs text-white">
               {initials(item.author.name)}
@@ -218,6 +230,7 @@ function MessageRow({
           </div>
         ) : (
           <div
+            title={timeOf(item.createdAt)}
             className={cn(
               "rounded-2xl px-3 py-2 text-sm shadow-sm",
               item.mine ? "rounded-br-sm bg-accent text-accent-foreground" : "rounded-bl-sm border border-border bg-surface text-foreground",

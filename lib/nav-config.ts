@@ -29,7 +29,6 @@ import {
   MessageSquare,
   UserRoundPlus,
   Users,
-  Volume2,
   WalletCards,
   Workflow,
 } from "lucide-react";
@@ -153,7 +152,6 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   "team-chat": [
     { title: "Team Chat", items: [
       { label: "Chat", href: "/team?workspace=team-chat", icon: Hash },
-      { label: "Voice channels", href: "/team?view=voice&workspace=team-chat", icon: Volume2 },
     ] },
   ],
   "hr-people": [
