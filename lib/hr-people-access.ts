@@ -2,6 +2,7 @@ import type { HrDemoRole, HrEmployee } from "@/lib/types";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import { hasPermission } from "@/lib/hr-org";
 import { actorEmployeeId } from "@/lib/demo-persona";
+import { demoMode } from "@/lib/demo-mode";
 
 export const hrRoleLabels: Record<HrDemoRole, string> = {
   owner: "Owner",
@@ -49,7 +50,16 @@ export function salaryVisible(role: HrDemoRole) {
 }
 
 /** Demo identity each preview role acts as, so documents and signatures resolve to one employee record. */
+let signedInEmployee = "";
+
+/** The HR record of the person signed in, set by the HR workspace before its views render. */
+export function setSignedInEmployee(id: string) {
+  signedInEmployee = id;
+}
+
 export function demoActorId(role: HrDemoRole) {
+  // A real account acts as its own employee record; only the demo acts as one of its demo people.
+  if (!demoMode) return signedInEmployee;
   const signedIn = actorEmployeeId(role);
   if (signedIn) return signedIn;
   const actors: Record<HrDemoRole, string> = {

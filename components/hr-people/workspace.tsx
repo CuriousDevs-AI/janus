@@ -56,7 +56,8 @@ import { HrPayrollView } from "@/components/hr-people/payroll";
 import { HrRecruitmentView } from "@/components/hr-people/recruitment";
 import { HrOffboardingView } from "@/components/hr-people/offboarding";
 import { HrDocumentsView, HrSignaturesView } from "@/components/hr-people/documents";
-import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, visibleEmployees } from "@/lib/hr-people-access";
+import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, setSignedInEmployee, visibleEmployees } from "@/lib/hr-people-access";
+import { useSession } from "@/components/auth/session-provider";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
@@ -82,6 +83,9 @@ export function HrPeopleWorkspace() {
   const role = useHrPeopleStore((state) => state.demoRole);
   const setDemoRole = useHrPeopleStore((state) => state.setDemoRole);
   const employees = useHrPeopleStore((state) => state.employees);
+  const session = useSession();
+  // The person signed in acts as the employee record with their email; a real account's owner adds that record first.
+  setSignedInEmployee(employees.find((item) => item.email.toLowerCase() === (session.user.email ?? "").toLowerCase())?.id ?? "");
   const employeeRows = visibleEmployees(role, employees);
   // An employee lands on Home, not the HR dashboard.
   const landing = role === "employee" ? "my-home" : role === "payroll_admin" ? "payroll" : null;

@@ -11,6 +11,7 @@ import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrCareerStore } from "@/lib/stores/hr-career-store";
 import { changeLines, kindLabels, subordinatesOf } from "@/lib/hr-career";
 import { nextEmployeeIds, normalisePhone, parseDate, todayIst } from "@/lib/hr-import";
+import { acmeEmployees } from "@/lib/mock-data/hr-people";
 import { standardTasks } from "@/components/hr-people/onboarding";
 import { HrField, HrModal, hrDate, hrInputClass } from "@/components/hr-people/operations-ui";
 import type { HrEmployee, HrOnboardingTask } from "@/lib/types";
@@ -54,7 +55,7 @@ export function EmployeeFormDialog({ employee, actorId, onClose }: { employee?: 
       log({ recordId: employee.id, actorId, action: "employee_edited", reason: `${actor} changed ${[...changed.filter((key) => key !== "location"), ...(managerChanged ? ["reporting manager"] : [])].join(", ")}` });
       toast.success(`Saved.${moved ? ` ${moved} pending ${moved === 1 ? "request" : "requests"} moved to ${manager?.name ?? "HR"}.` : ""}`);
     } else {
-      const id = nextEmployeeIds(employees, 1)[0];
+      const id = nextEmployeeIds(employees, 1, acmeEmployees)[0];
       const onboarding = form.checklist || joining > today;
       const created: HrEmployee = { id, name: form.name.trim(), email, phone: phone || "", title: form.title.trim(), department: form.department.trim(), branch: form.branch.trim(), managerId: form.managerId || null, managerName: manager?.name ?? null, status: onboarding ? "onboarding" : "active", employmentType: form.type, joiningDate: joining, location: form.branch.trim(), avatarColor: palette[employees.length % palette.length], birthDate: form.birthDate || undefined, salaryMonthly: salary, onboardingPercent: onboarding ? 0 : 100, documentsDue: onboarding ? 3 : 0 };
       addEmployee(created);
