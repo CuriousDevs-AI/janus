@@ -1,6 +1,7 @@
 "use client";
 
 import { ContactConversation } from "@/components/chat/contact-conversation";
+import { CustomerCalls } from "@/components/calls/customer-call";
 import { use, type ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -362,6 +363,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           </section>
 
           <ContactConversation contactId={leadData.customerId} />
+          <CustomerCalls contactId={leadData.customerId} />
           <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <div className="flex items-center gap-2">
               <FileText className="size-4 text-warning" />

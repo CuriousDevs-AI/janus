@@ -74,7 +74,7 @@ interface IceConfig {
  * STUN and TURN servers from the server, with TURN credentials that expire. Without a TURN server
  * a call still connects on the same network.
  */
-async function fetchIceConfig(): Promise<{ config: RTCConfiguration; ttl: number }> {
+export async function fetchIceConfig(): Promise<{ config: RTCConfiguration; ttl: number }> {
   try {
     const ice = await api<IceConfig>("/team/ice-servers");
     return {

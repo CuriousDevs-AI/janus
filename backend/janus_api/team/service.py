@@ -900,6 +900,10 @@ async def prune_call(db: Db, space_id: int) -> None:
 
 
 def ice_config(actor: Actor) -> schemas.IceConfigOut:
+    return ice_for(str(actor.user.id))
+
+
+def ice_for(label: str) -> schemas.IceConfigOut:
     """STUN and TURN servers for a call. TURN credentials last turn_ttl_seconds and name the person.
 
     This is coturn's REST scheme: the username is "<expiry>:<user id>" and the password is an
@@ -912,7 +916,7 @@ def ice_config(actor: Actor) -> schemas.IceConfigOut:
     secret = settings.turn_secret.get_secret_value()
     relay = bool(settings.turn_list and secret)
     if relay:
-        username = f"{int(time.time()) + settings.turn_ttl_seconds}:{actor.user.id}"
+        username = f"{int(time.time()) + settings.turn_ttl_seconds}:{label}"
         digest = hmac.new(secret.encode(), username.encode(), hashlib.sha1).digest()
         servers.append(
             schemas.IceServerOut(
