@@ -10,6 +10,7 @@ import { moveBudget } from "@/lib/finance-records";
 import { createInvoice } from "@/lib/invoice-records";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
+import { mergeServerOwned } from "@/lib/stores/server-owned";
 
 /**
  * Projects & Delivery (phase 1): projects with a budget drawn from a fund allocation, milestones
@@ -325,6 +326,6 @@ export const useProjectsStore = create<ProjectsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage) },
+    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<ProjectsState>(["trail"]) },
   ),
 );

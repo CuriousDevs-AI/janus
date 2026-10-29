@@ -36,7 +36,9 @@ const acme_tickets: Ticket[] = specs.map((spec): Ticket => {
   };
 });
 
-export const tickets: Ticket[] = isFirstCompany ? acme_tickets : [];
+export const demoTickets: Ticket[] = acme_tickets;
+
+export const tickets: Ticket[] = isFirstCompany ? demoTickets : [];
 
 export function getTicketById(id?: string): Ticket | undefined {
   if (!id) return undefined;

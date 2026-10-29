@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
+import { demoMode } from "@/lib/demo-mode";
 import { scoped } from "@/lib/company";
 import type {
   Lead,
@@ -39,6 +40,13 @@ import {
   activities as initialActivities,
   agents as initialAgents,
   knowledgeDocuments as initialKnowledge,
+  demoKnowledgeDocuments,
+  demoTickets,
+  demoApprovals,
+  demoNotifications,
+  demoConversations,
+  demoMessages,
+  demoActivities,
   customers as initialCustomers,
   companies as initialCompanies,
   currentUser,
@@ -126,20 +134,40 @@ interface AppState {
   resetDemoData: () => void;
 }
 
-export const useAppStore = create<AppState>()(persist((set, get) => ({
+/** Demo records are seeded only in demo mode. A real company starts with none and creates its own. */
+const demoOnly = <T,>(items: T[]): T[] => (demoMode ? items : []);
+
+/** The demo records each collection starts with, so a saved copy of them can be told apart from real records. */
+const demoSeeds = {
   leads: initialLeads,
   deals: initialDeals,
-  tickets: initialTickets,
-  approvals: initialApprovals,
+  tickets: demoTickets,
+  approvals: demoApprovals,
   automations: initialAutomations,
-  notifications: initialNotifications,
-  conversations: initialConversations,
-  messages: initialMessages,
-  activities: initialActivities,
+  notifications: demoNotifications,
+  conversations: demoConversations,
+  messages: demoMessages,
+  activities: demoActivities,
   agents: initialAgents,
-  knowledgeDocuments: initialKnowledge,
+  knowledgeDocuments: demoKnowledgeDocuments,
   customers: initialCustomers,
   companies: initialCompanies,
+} as const;
+
+export const useAppStore = create<AppState>()(persist((set, get) => ({
+  leads: demoOnly(initialLeads),
+  deals: demoOnly(initialDeals),
+  tickets: demoOnly(initialTickets),
+  approvals: demoOnly(initialApprovals),
+  automations: demoOnly(initialAutomations),
+  notifications: demoOnly(initialNotifications),
+  conversations: demoOnly(initialConversations),
+  messages: demoOnly(initialMessages),
+  activities: demoOnly(initialActivities),
+  agents: demoOnly(initialAgents),
+  knowledgeDocuments: demoOnly(initialKnowledge),
+  customers: demoOnly(initialCustomers),
+  companies: demoOnly(initialCompanies),
 
   sidebarCollapsed: false,
   commandPaletteOpen: false,
@@ -630,6 +658,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 }), {
   // Tickets, approvals, notifications and the rest survive a reload, like leads and HR records do.
   name: scoped("janus.crm-records.v1"), version: 1, storage: createJSONStorage(() => workspaceStorage),
+  // A saved copy from an earlier demo drops its demo records outside demo mode; records the company made stay.
+  merge: (persisted, current) => {
+    const saved = { ...current, ...(persisted as Partial<AppState>) } as AppState;
+    if (demoMode) return saved;
+    const next = { ...saved } as Record<string, unknown>;
+    for (const key of Object.keys(demoSeeds) as (keyof typeof demoSeeds)[]) {
+      const seeded = new Set((demoSeeds[key] as { id: string }[]).map((item) => item.id));
+      const kept = ((saved[key] as { id: string }[] | undefined) ?? []).filter((item) => !seeded.has(item.id));
+      next[key] = kept;
+    }
+    return next as unknown as AppState;
+  },
   partialize: (state) => ({ leads: state.leads, deals: state.deals, tickets: state.tickets, approvals: state.approvals, automations: state.automations, notifications: state.notifications, conversations: state.conversations, messages: state.messages, activities: state.activities, agents: state.agents, knowledgeDocuments: state.knowledgeDocuments, customers: state.customers, companies: state.companies }),
 }));
 

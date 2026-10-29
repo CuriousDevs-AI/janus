@@ -18,7 +18,10 @@ const acme_knowledgeDocuments: KnowledgeDocument[] = docs.map((doc) => ({
   versions: doc.history.map(([version, updatedBy, changeSummary], index) => ({ version, updatedAt: at(doc.updatedDaysAgo + index * 45, "10:00"), updatedBy, changeSummary })).sort((a, b) => b.version - a.version),
 }));
 
-export const knowledgeDocuments: KnowledgeDocument[] = isFirstCompany ? acme_knowledgeDocuments : [];
+/** The demo documents, kept whole so a saved copy can still be recognised outside demo mode. */
+export const demoKnowledgeDocuments: KnowledgeDocument[] = acme_knowledgeDocuments;
+
+export const knowledgeDocuments: KnowledgeDocument[] = isFirstCompany ? demoKnowledgeDocuments : [];
 
 export function getKnowledgeDocById(id?: string): KnowledgeDocument | undefined {
   if (!id) return undefined;

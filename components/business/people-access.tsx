@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { isFirstCompany } from "@/lib/companies";
+import { demoMode } from "@/lib/demo-mode";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
 import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
@@ -92,6 +93,14 @@ const initialMembers: AccessMember[] = [...users.map((user, index) => ({
 })),
 ];
 
+type ServerMember = { id: string; user_id: string; name: string; email: string; role: string; status: string };
+
+/** A member as the server lists it. The server does not hold departments or workspace access yet. */
+function toAccessMember(member: ServerMember): AccessMember {
+  const role = (roleOrder as string[]).includes(member.role) ? (member.role as Role) : "read_only";
+  return { id: member.id, name: member.name, email: member.email, role, department: isManagementRole(role) ? "Management" : "Unassigned", status: member.status === "active" ? "Active" : "Suspended", businessAccess: role === "owner" || isManagementRole(role), workspaces: [], permissions: rolePermissions[role], lastActive: "Not yet" };
+}
+
 const initialRoles: RoleRecord[] = roleOrder.map((role) => ({ id: role, label: roleMeta[role].label, summary: roleMeta[role].summary, tone: roleMeta[role].tone as RoleRecord["tone"], permissions: rolePermissions[role], builtIn: true }));
 const emptyMemberForm: MemberForm = { name: "", email: "", password: "", role: "business_manager", businessAccess: true, department: "Management", workspaces: [], permissions: rolePermissions.business_manager };
 
@@ -101,7 +110,8 @@ function isManagementRole(role: Role) {
 
 export function BusinessPeopleAccess({ initialSection = "members" }: { initialSection?: string }) {
   const [section, setSection] = React.useState<string>(initialSection);
-  const [members, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", () => {
+  const [demoMembers, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", () => {
+    if (!demoMode) return [];
     // Everyone in the HR directory belongs here too, so people added while setting a company up are not missing.
     const known = new Set(initialMembers.flatMap((item) => [item.email.toLowerCase(), item.name.toLowerCase()]));
     const fromHr = useHrPeopleStore.getState().employees
@@ -109,6 +119,10 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
       .map((item): AccessMember => ({ id: item.id, name: item.name, email: item.email, role: "read_only", department: item.department, status: "Active", businessAccess: false, workspaces: ["hr-people"], permissions: rolePermissions.read_only, lastActive: "Not yet" }));
     return [...initialMembers, ...fromHr];
   });
+  // Real accounts list the people the server knows about. Demo people never show on them.
+  const membersApi = useApi<ServerMember[]>(demoMode ? null : "/members");
+  const serverMembers = React.useMemo(() => (membersApi.data ?? []).map(toAccessMember), [membersApi.data]);
+  const members = demoMode ? demoMembers : serverMembers;
   const workspacesApi = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const [storedWorkspace, setStoredWorkspace] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -125,10 +139,11 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     return workspaceOptions.filter(([key]) => active.has(key));
   }, [storedWorkspace, workspacesApi.data]);
   const activeWorkspaceKeys = React.useMemo(() => new Set(activeWorkspaceOptions.map(([key]) => key)), [activeWorkspaceOptions]);
-  const [invites, setInvites] = usePersistedState<PendingInvite[]>("janus.business-invites.v1", isFirstCompany ? [
+  const [savedInvites, setInvites] = usePersistedState<PendingInvite[]>("janus.business-invites.v1", isFirstCompany ? [
     { id: "invite-1", name: "Tarun Sethi", email: "tarun@acmetraders.in", role: "sales_agent", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
     { id: "invite-2", name: "Priya Shah", email: "priya@acmetraders.in", role: "analyst", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Yesterday", status: "Pending" },
   ] : []);
+  const invites = demoMode ? savedInvites : [];
   const [roles, setRoles] = usePersistedState<RoleRecord[]>("janus.business-roles.v1", initialRoles);
   const [departments, setDepartments] = usePersistedState<string[]>("janus.business-departments.v1", () => [...new Set(useHrPeopleStore.getState().employees.filter((item) => item.status !== "archived").map((item) => item.department))]);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -145,12 +160,18 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
   const [departmentDialog, setDepartmentDialog] = React.useState(false);
   const [departmentName, setDepartmentName] = React.useState("");
 
+  /** Real accounts cannot change people or access yet, so the change is refused with a notice. */
+  function serverOnly(): boolean {
+    if (demoMode) return false;
+    setNotice("People and access changes are not saved on the server yet, so nothing was changed.");
+    return true;
+  }
   function setMemberField<K extends keyof MemberForm>(field: K, value: MemberForm[K]) { setMemberForm((current) => ({ ...current, [field]: value })); }
   function toggleWorkspace(workspace: WorkspaceKey) { setMemberField("workspaces", memberForm.workspaces.includes(workspace) ? memberForm.workspaces.filter((item) => item !== workspace) : [...memberForm.workspaces, workspace]); }
   function toggleBusinessAccess() { if (memberForm.role === "owner") return; setMemberField("businessAccess", !memberForm.businessAccess); }
   function togglePermission(permission: PermissionKey) { setMemberField("permissions", memberForm.permissions.includes(permission) ? memberForm.permissions.filter((item) => item !== permission) : [...memberForm.permissions, permission]); }
-  function openInvite() { setMemberForm(emptyMemberForm); setMemberError(null); setMemberDialog("invite"); }
-  function openEdit(member: AccessMember) { setEditingMemberId(member.id); setMemberForm({ name: member.name, email: member.email, password: "", role: member.role, businessAccess: member.businessAccess, department: member.department, workspaces: member.workspaces, permissions: member.permissions }); setMemberError(null); setMemberDialog("edit"); }
+  function openInvite() { if (serverOnly()) return; setMemberForm(emptyMemberForm); setMemberError(null); setMemberDialog("invite"); }
+  function openEdit(member: AccessMember) { if (serverOnly()) return; setEditingMemberId(member.id); setMemberForm({ name: member.name, email: member.email, password: "", role: member.role, businessAccess: member.businessAccess, department: member.department, workspaces: member.workspaces, permissions: member.permissions }); setMemberError(null); setMemberDialog("edit"); }
   function closeMemberDialog() { setMemberDialog(null); setEditingMemberId(null); setMemberError(null); }
   function changeMemberRole(role: Role) {
     setMemberField("role", role);
@@ -181,17 +202,17 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     }
     closeMemberDialog();
   }
-  function removeMember(member: AccessMember) { if (member.role === "owner") return; setRemoveTarget(member); }
-  function confirmRemoveMember() { if (!removeTarget || removeTarget.role === "owner") return; setMembers((current) => current.filter((item) => item.id !== removeTarget.id)); setNotice(`${removeTarget.name} was removed from this demo business.`); setRemoveTarget(null); }
-  function openOwnerSwitch() { const candidate = members.find((member) => member.role !== "owner" && member.status === "Active"); setOwnerCandidateId(candidate?.id ?? ""); setOwnerSwitchOpen(true); }
-  function confirmOwnerSwitch() { const candidate = members.find((member) => member.id === ownerCandidateId && member.role !== "owner" && member.status === "Active"); if (!candidate) return; setMembers((current) => current.map((member) => member.role === "owner" ? { ...member, role: "admin", department: "Management", businessAccess: true, permissions: rolePermissions.admin } : member.id === candidate.id ? { ...member, role: "owner", department: "Management", businessAccess: true, permissions: rolePermissions.owner } : member)); setNotice(`${candidate.name} is now the Owner. The previous Owner is now an Admin.`); setOwnerSwitchOpen(false); }
-  function openRoleEdit(role: RoleRecord) { setEditingRoleId(role.id); setRoleForm({ name: role.label, summary: role.summary, permissions: role.permissions }); setRoleDialog("edit"); }
-  function openRoleNew() { setEditingRoleId(null); setRoleForm({ name: "", summary: "", permissions: ["records:view"] }); setRoleDialog("new"); }
-  function saveRole(event: React.FormEvent) { event.preventDefault(); if (!roleForm.name.trim() || roleForm.permissions.length === 0) return; if (roleDialog === "new") { setRoles((current) => [...current, { id: `custom-${Date.now()}`, label: roleForm.name.trim(), summary: roleForm.summary.trim() || "Custom business role", tone: "neutral", permissions: roleForm.permissions, builtIn: false }]); setNotice(`${roleForm.name.trim()} role created.`); } else if (editingRoleId) { setRoles((current) => current.map((role) => role.id === editingRoleId ? { ...role, label: roleForm.name.trim(), summary: roleForm.summary.trim(), permissions: roleForm.permissions } : role)); setNotice(`${roleForm.name.trim()} permissions were updated.`); } setRoleDialog(null); }
-  function deleteRole() { if (!editingRoleId || roles.find((role) => role.id === editingRoleId)?.builtIn) return; setRoles((current) => current.filter((role) => role.id !== editingRoleId)); setRoleDialog(null); setNotice("Custom role removed."); }
-  function toggleMemberWorkspace(memberId: string, workspace: WorkspaceKey) { setMembers((current) => current.map((member) => member.id === memberId ? { ...member, workspaces: member.workspaces.includes(workspace) ? member.workspaces.filter((item) => item !== workspace) : [...member.workspaces, workspace] } : member)); setNotice("Workspace access updated."); }
-  function toggleMemberBusinessAccess(memberId: string) { setMembers((current) => current.map((member) => member.id === memberId && member.role !== "owner" ? { ...member, businessAccess: !member.businessAccess } : member)); setNotice("Business Management access updated."); }
-  function saveDepartment(event: React.FormEvent) { event.preventDefault(); if (!departmentName.trim()) return; setDepartments((current) => [...current, departmentName.trim()]); setDepartmentName(""); setDepartmentDialog(false); setNotice("Department added."); }
+  function removeMember(member: AccessMember) { if (serverOnly()) return; if (member.role === "owner") return; setRemoveTarget(member); }
+  function confirmRemoveMember() { if (serverOnly()) return; if (!removeTarget || removeTarget.role === "owner") return; setMembers((current) => current.filter((item) => item.id !== removeTarget.id)); setNotice(`${removeTarget.name} was removed from this demo business.`); setRemoveTarget(null); }
+  function openOwnerSwitch() { if (serverOnly()) return; const candidate = members.find((member) => member.role !== "owner" && member.status === "Active"); setOwnerCandidateId(candidate?.id ?? ""); setOwnerSwitchOpen(true); }
+  function confirmOwnerSwitch() { if (serverOnly()) return; const candidate = members.find((member) => member.id === ownerCandidateId && member.role !== "owner" && member.status === "Active"); if (!candidate) return; setMembers((current) => current.map((member) => member.role === "owner" ? { ...member, role: "admin", department: "Management", businessAccess: true, permissions: rolePermissions.admin } : member.id === candidate.id ? { ...member, role: "owner", department: "Management", businessAccess: true, permissions: rolePermissions.owner } : member)); setNotice(`${candidate.name} is now the Owner. The previous Owner is now an Admin.`); setOwnerSwitchOpen(false); }
+  function openRoleEdit(role: RoleRecord) { if (serverOnly()) return; setEditingRoleId(role.id); setRoleForm({ name: role.label, summary: role.summary, permissions: role.permissions }); setRoleDialog("edit"); }
+  function openRoleNew() { if (serverOnly()) return; setEditingRoleId(null); setRoleForm({ name: "", summary: "", permissions: ["records:view"] }); setRoleDialog("new"); }
+  function saveRole(event: React.FormEvent) { if (serverOnly()) return; event.preventDefault(); if (!roleForm.name.trim() || roleForm.permissions.length === 0) return; if (roleDialog === "new") { setRoles((current) => [...current, { id: `custom-${Date.now()}`, label: roleForm.name.trim(), summary: roleForm.summary.trim() || "Custom business role", tone: "neutral", permissions: roleForm.permissions, builtIn: false }]); setNotice(`${roleForm.name.trim()} role created.`); } else if (editingRoleId) { setRoles((current) => current.map((role) => role.id === editingRoleId ? { ...role, label: roleForm.name.trim(), summary: roleForm.summary.trim(), permissions: roleForm.permissions } : role)); setNotice(`${roleForm.name.trim()} permissions were updated.`); } setRoleDialog(null); }
+  function deleteRole() { if (serverOnly()) return; if (!editingRoleId || roles.find((role) => role.id === editingRoleId)?.builtIn) return; setRoles((current) => current.filter((role) => role.id !== editingRoleId)); setRoleDialog(null); setNotice("Custom role removed."); }
+  function toggleMemberWorkspace(memberId: string, workspace: WorkspaceKey) { if (serverOnly()) return; setMembers((current) => current.map((member) => member.id === memberId ? { ...member, workspaces: member.workspaces.includes(workspace) ? member.workspaces.filter((item) => item !== workspace) : [...member.workspaces, workspace] } : member)); setNotice("Workspace access updated."); }
+  function toggleMemberBusinessAccess(memberId: string) { if (serverOnly()) return; setMembers((current) => current.map((member) => member.id === memberId && member.role !== "owner" ? { ...member, businessAccess: !member.businessAccess } : member)); setNotice("Business Management access updated."); }
+  function saveDepartment(event: React.FormEvent) { if (serverOnly()) return; event.preventDefault(); if (!departmentName.trim()) return; setDepartments((current) => [...current, departmentName.trim()]); setDepartmentName(""); setDepartmentDialog(false); setNotice("Department added."); }
 
   return <div className="flex flex-col gap-5">
     <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">People & Access</h2><p className="mt-1 text-sm text-muted-foreground">Who can sign in to this company, what they can open and their role. Employee records are kept in <Link href="/workspace/hr-people?view=people&workspace=hr-people" className="text-accent underline-offset-2 hover:underline">HR &amp; People</Link>.</p></div><Button size="sm" onClick={openInvite}><UserPlus className="size-3.5" />Add person</Button></div></div>

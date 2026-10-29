@@ -43,5 +43,6 @@ export function specForRecord(record: CompanyRecord): CompanySpec {
 }
 /** The company on show, read once when the page loads. Switching company reloads the page. */
 export const activeSpec: CompanySpec = specForRecord(activeCompany());
-export const isFirstCompany = activeSpec.id === "acme";
+// Built-in demo records only exist in demo mode; a real company starts empty and loads from the server.
+export const isFirstCompany = demoMode && activeSpec.id === "acme";
 export { initials };

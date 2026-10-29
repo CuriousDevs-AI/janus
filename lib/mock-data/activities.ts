@@ -69,7 +69,9 @@ const acme_activities: Activity[] = [
   a(6, "stage_changed", H.arjun, "Moved to Qualified", 4, "12:00", { relatedId: "deal-6", relatedKind: "deal" }),
 ];
 
-export const activities: Activity[] = isFirstCompany ? acme_activities : [];
+export const demoActivities: Activity[] = acme_activities;
+
+export const activities: Activity[] = isFirstCompany ? demoActivities : [];
 
 export function getActivitiesForCustomer(customerId: string): Activity[] {
   return activities.filter((a) => a.customerId === customerId).sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1));

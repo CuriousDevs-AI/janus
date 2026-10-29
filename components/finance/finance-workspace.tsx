@@ -48,6 +48,11 @@ export function FinanceWorkspace() {
   const me = session.user.name ?? session.user.email ?? "You";
   React.useEffect(() => {
     syncCompanyRules().catch((error: unknown) => toast.warning(`Period lock not loaded from the server: ${message(error)}`));
+    // The overview and receivables read these records, so they load before the page shows figures.
+    syncInvoices().catch((error: unknown) => toast.warning(`Invoices not loaded from the server: ${message(error)}`));
+    syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
+    syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
+    syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
   }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);

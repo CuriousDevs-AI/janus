@@ -80,7 +80,8 @@ interface OperationsState {
 }
 
 const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts" | "transfers" | "returns"> => {
-  if (!isFirstCompany) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [], returns: [] };
+  // Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
+  if (!isFirstCompany || !demoMode) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [], returns: [] };
   const items: Item[] = [
     { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
     { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
@@ -459,7 +460,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<OperationsState>(["items", "batches", "movements", "adjustments", "dispatches", "returns", "transfers", "counts", "purchaseOrders", "requisitions"]),
+    { name: scoped("janus.operations.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<OperationsState>(["trail", "items", "batches", "movements", "adjustments", "dispatches", "returns", "transfers", "counts", "purchaseOrders", "requisitions"]),
     partialize: (state) => ({ items: state.items, batches: state.batches, movements: state.movements, dispatches: state.dispatches, adjustments: state.adjustments, purchaseOrders: state.purchaseOrders, requisitions: state.requisitions, counts: state.counts, transfers: state.transfers, returns: state.returns, trail: state.trail }) },
   ),
 );
