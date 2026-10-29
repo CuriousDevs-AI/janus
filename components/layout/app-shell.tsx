@@ -14,12 +14,15 @@ import { demoMode } from "@/lib/demo-mode";
 import { homeFor, personaMayOpen, useDemoAccount } from "@/lib/demo-persona";
 import { businessHome, readCompanies } from "@/lib/company";
 import { WorkspaceProvider } from "@/components/layout/workspace-context";
+import { VoiceCallProvider } from "@/components/team/voice-call";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <React.Suspense fallback={<div className="min-h-dvh bg-background" />}>
       <WorkspaceProvider>
-        <AppShellContent>{children}</AppShellContent>
+        <VoiceCallProvider>
+          <AppShellContent>{children}</AppShellContent>
+        </VoiceCallProvider>
       </WorkspaceProvider>
     </React.Suspense>
   );

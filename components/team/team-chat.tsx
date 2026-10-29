@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Hash, LogIn, LogOut, Menu, Plus, Search, Users, X } from "lucide-react";
+import { Check, Hash, LogIn, LogOut, Menu, Plus, Search, Users, Volume2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -25,6 +25,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Composer, MessageList } from "@/components/team/team-messages";
 import type { TeamMessage, TeamPerson, TeamSearchHit, TeamSpace } from "@/components/team/types";
 import { useSession } from "@/components/auth/session-provider";
+import { useVoiceCall } from "@/components/team/voice-call";
+import { CallBar, VoiceStage } from "@/components/team/voice-stage";
 
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const REFRESH_MS = 4000;
@@ -36,10 +38,11 @@ function newKey() {
 export function TeamChat() {
   const session = useSession();
   const requested = useSearchParams().get("space");
+  const view = useSearchParams().get("view");
   const [selected, setSelected] = React.useState<string | null>(requested);
   const [threadId, setThreadId] = React.useState<string | null>(null);
   const [mobileNav, setMobileNav] = React.useState(false);
-  const [creating, setCreating] = React.useState(false);
+  const [creating, setCreating] = React.useState<false | "text" | "voice">(false);
   const [picking, setPicking] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -180,16 +183,16 @@ export function TeamChat() {
     }
   }
 
-  async function createChannel(name: string, topic: string) {
+  async function createChannel(name: string, topic: string, voice: boolean) {
     const created = await api<TeamSpace>("/team/channels", {
       method: "POST",
-      body: JSON.stringify({ name, topic }),
+      body: JSON.stringify({ name, topic, voice }),
     });
     reloadChannels();
     choose(created.id);
     setCreating(false);
     setMobileNav(false);
-    toast.success(`Created #${created.name}`);
+    toast.success(voice ? `Created voice channel ${created.name}` : `Created #${created.name}`);
   }
 
   function pick(item: TeamSpace) {
@@ -203,7 +206,8 @@ export function TeamChat() {
       direct={direct.data ?? []}
       selected={selected}
       onPick={pick}
-      onCreate={() => setCreating(true)}
+      onCreate={() => setCreating("text")}
+      onCreateVoice={() => setCreating("voice")}
       onNewMessage={() => setPicking(true)}
       loading={channels.loading && !channels.data}
       meName={session.user.name}
@@ -238,6 +242,9 @@ export function TeamChat() {
           </Button>
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[15px] font-semibold text-foreground">{title}</h2>
+            {space?.kind === "voice" ? (
+              <p className="truncate text-xs text-muted-foreground">Voice channel · {space.inCall.length} in the call</p>
+            ) : null}
             {space?.kind === "channel" ? (
               <p className="truncate text-xs text-muted-foreground">
                 {space.topic || "No topic yet"} · <span className="inline-flex items-center gap-1"><Users className="size-3" />{space.memberCount}</span>
@@ -271,8 +278,8 @@ export function TeamChat() {
           />
         ) : !selected ? (
           <EmptyPanel
-            title="Pick a channel or start a message"
-            text="Channels are open to everyone in the company. Direct messages are only seen by the two people in them."
+            title={view === "voice" ? "Pick a voice channel" : "Pick a channel or start a message"}
+            text={view === "voice" ? "Join a voice channel to talk with your team and share your screen. Anyone in the company can join." : "Channels are open to everyone in the company. Direct messages are only seen by the two people in them."}
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <Button size="sm" variant="secondary" className="md:hidden" onClick={() => setMobileNav(true)}>
@@ -284,6 +291,8 @@ export function TeamChat() {
               </div>
             }
           />
+        ) : space?.kind === "voice" ? (
+          <VoiceStage space={space} />
         ) : (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col">
@@ -343,7 +352,12 @@ export function TeamChat() {
         )}
       </section>
 
-      <CreateChannelDialog open={creating} onOpenChange={setCreating} onCreate={createChannel} />
+      <CreateChannelDialog
+        open={creating !== false}
+        voice={creating === "voice"}
+        onOpenChange={(open) => setCreating(open ? creating : false)}
+        onCreate={createChannel}
+      />
       <PeopleDialog
         open={picking}
         onOpenChange={setPicking}
@@ -360,6 +374,7 @@ function Sidebar({
   selected,
   onPick,
   onCreate,
+  onCreateVoice,
   onNewMessage,
   loading,
   meName,
@@ -369,10 +384,13 @@ function Sidebar({
   selected: string | null;
   onPick: (item: TeamSpace) => void;
   onCreate: () => void;
+  onCreateVoice: () => void;
   onNewMessage: () => void;
   loading: boolean;
   meName: string;
 }) {
+  const textChannels = channels.filter((item) => item.kind === "channel");
+  const voiceChannels = channels.filter((item) => item.kind === "voice");
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-3">
@@ -388,12 +406,29 @@ function Sidebar({
             </Button>
           </div>
           {loading ? <p className="px-2 text-xs text-muted-foreground">Loading…</p> : null}
-          {!loading && channels.length === 0 ? (
+          {!loading && textChannels.length === 0 ? (
             <p className="px-2 text-xs text-muted-foreground">No channels yet. Create one for your team.</p>
           ) : null}
           <ul className="space-y-0.5">
-            {channels.map((item) => (
+            {textChannels.map((item) => (
               <SpaceRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
+            ))}
+          </ul>
+        </section>
+
+        <section aria-label="Voice channels">
+          <div className="flex items-center justify-between px-2 pb-1">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Voice channels</h3>
+            <Button variant="ghost" size="icon" className="size-6" aria-label="Create voice channel" onClick={onCreateVoice}>
+              <Plus className="size-3.5" />
+            </Button>
+          </div>
+          {!loading && voiceChannels.length === 0 ? (
+            <p className="px-2 text-xs text-muted-foreground">No voice channels yet. Create one to talk and share screens.</p>
+          ) : null}
+          <ul className="space-y-0.5">
+            {voiceChannels.map((item) => (
+              <VoiceRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
             ))}
           </ul>
         </section>
@@ -413,7 +448,51 @@ function Sidebar({
           </ul>
         </section>
       </div>
+      <CallBar />
     </div>
+  );
+}
+
+/** A voice channel, with the people in its call listed under it, as in Discord. */
+function VoiceRow({ item, active, onPick }: { item: TeamSpace; active: boolean; onPick: (item: TeamSpace) => void }) {
+  const call = useVoiceCall();
+  const live = call.spaceId === item.id;
+  const people = live ? call.participants : item.inCall;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onPick(item)}
+        aria-current={active ? "true" : undefined}
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+          active ? "bg-accent-muted text-accent" : "text-foreground hover:bg-surface-2",
+          live && !active && "text-success",
+        )}
+      >
+        <Volume2 className={cn("size-3.5 shrink-0", live ? "text-success" : "text-muted-foreground")} />
+        <span className="min-w-0 flex-1 truncate">{item.name}</span>
+        {people.length > 0 ? <span className="text-[10px] tabular-nums text-muted-foreground">{people.length}</span> : null}
+      </button>
+      {people.length > 0 ? (
+        <ul className="mb-1 ml-6 space-y-0.5" aria-label={`In ${item.name}`}>
+          {people.map((person) => (
+            <li key={person.id} className="flex items-center gap-2 px-2 py-0.5 text-xs text-muted-foreground">
+              <span
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full bg-surface-3 text-[9px] font-semibold text-foreground ring-2 ring-transparent",
+                  live && call.speaking.has(person.id) && "ring-success",
+                )}
+              >
+                {initials(person.name)}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{person.name}</span>
+              {person.muted ? <span className="sr-only">muted</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 
@@ -462,12 +541,14 @@ function EmptyPanel({ title, text, action }: { title: string; text: string; acti
 
 function CreateChannelDialog({
   open,
+  voice,
   onOpenChange,
   onCreate,
 }: {
   open: boolean;
+  voice: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (name: string, topic: string) => Promise<void>;
+  onCreate: (name: string, topic: string, voice: boolean) => Promise<void>;
 }) {
   const [name, setName] = React.useState("");
   const [topic, setTopic] = React.useState("");
@@ -482,7 +563,7 @@ function CreateChannelDialog({
     setBusy(true);
     setError("");
     try {
-      await onCreate(normalized, topic.trim());
+      await onCreate(normalized, topic.trim(), voice);
       setName("");
       setTopic("");
     } catch (err) {
@@ -497,14 +578,18 @@ function CreateChannelDialog({
       <DialogContent>
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Create a channel</DialogTitle>
-            <DialogDescription>Everyone in the company can find and read a channel. Lowercase letters, numbers and dashes.</DialogDescription>
+            <DialogTitle>{voice ? "Create a voice channel" : "Create a channel"}</DialogTitle>
+            <DialogDescription>
+              {voice
+                ? "Anyone in the company can join a voice channel to talk and share their screen. Lowercase letters, numbers and dashes."
+                : "Everyone in the company can find and read a channel. Lowercase letters, numbers and dashes."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="channel-name">Name</Label>
             <div className="flex items-center gap-1.5">
-              <Hash className="size-4 text-muted-foreground" />
-              <Input id="channel-name" autoFocus placeholder="e.g. sales-floor" value={name} onChange={(event) => setName(event.target.value)} aria-invalid={name.length > 0 && !valid} />
+              {voice ? <Volume2 className="size-4 text-muted-foreground" /> : <Hash className="size-4 text-muted-foreground" />}
+              <Input id="channel-name" autoFocus placeholder={voice ? "e.g. standup" : "e.g. sales-floor"} value={name} onChange={(event) => setName(event.target.value)} aria-invalid={name.length > 0 && !valid} />
             </div>
             {name.length > 0 && !valid ? <p className="text-xs text-destructive">Use 2 to 40 letters, numbers or dashes, starting with a letter or number.</p> : null}
           </div>
@@ -515,7 +600,7 @@ function CreateChannelDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={!valid || busy}>Create channel</Button>
+            <Button type="submit" disabled={!valid || busy}>{voice ? "Create voice channel" : "Create channel"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

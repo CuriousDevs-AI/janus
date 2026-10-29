@@ -11,6 +11,7 @@ import { demoAccounts } from "@/lib/demo-accounts";
 import { useDemoAccount, useLoginAccount, viewAs } from "@/lib/demo-persona";
 import { toast } from "sonner";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { CallPill } from "@/components/team/voice-stage";
 export function Topbar() {
   const { workspace } = useWorkspace();
   const session = useSession();
@@ -43,6 +44,7 @@ export function Topbar() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        {onTeam ? null : <CallPill />}
         <ChatPanel />
         <Button variant={onTeam ? "default" : "secondary"} size="sm" aria-label="Open team chat" aria-current={onTeam ? "page" : undefined} onClick={() => router.push("/team")}>
           <Hash className="size-3.5" />
