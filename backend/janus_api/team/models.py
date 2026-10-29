@@ -5,6 +5,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -81,3 +82,23 @@ class TeamReaction(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_messages.id"), index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     emoji: Mapped[str] = mapped_column(String(16))
+
+
+class TeamAttachment(Base):
+    """A file posted with a message. The bytes stay in the row, under row-level security.
+
+    The list views never read `data`; only the download does.
+    """
+
+    __tablename__ = "team_attachments"
+    __table_args__ = (
+        CheckConstraint("size_bytes BETWEEN 1 AND 5242880", name="ck_team_attachments_size"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_messages.id"), index=True)
+    uploader_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    filename: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

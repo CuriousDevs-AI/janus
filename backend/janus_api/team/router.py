@@ -1,6 +1,7 @@
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Header, Response
+from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile
 from pydantic import Field
 
 from janus_api.core.deps import CurrentActor, Db
@@ -9,6 +10,7 @@ from janus_api.team import schemas, service
 router = APIRouter(prefix="/v1/team", tags=["Team chat"])
 IdempotencyKey = Annotated[str, Header(min_length=1, max_length=80)]
 Limit = Annotated[int, Field(ge=1, le=100)]
+MAX_UPLOAD = 5 * 1024 * 1024
 
 
 @router.get("/channels", response_model=list[schemas.SpaceOut])
@@ -112,3 +114,50 @@ async def remove_reaction(
 @router.get("/people", response_model=list[schemas.PersonOut])
 async def people(actor: CurrentActor, db: Db) -> list[schemas.PersonOut]:
     return await service.list_people(db, actor)
+
+
+@router.post("/spaces/{space_id}/files", response_model=schemas.MessageOut, status_code=201)
+async def upload(
+    space_id: int,
+    actor: CurrentActor,
+    db: Db,
+    response: Response,
+    idempotency_key: IdempotencyKey,
+    file: Annotated[UploadFile, File()],
+    body: Annotated[str, Form()] = "",
+) -> schemas.MessageOut:
+    data = await file.read(MAX_UPLOAD + 1)
+    message, created = await service.post_file(
+        db, actor, space_id, body, file.filename, data, idempotency_key
+    )
+    if not created:
+        response.status_code = 200
+    return message
+
+
+@router.get("/attachments/{attachment_id}")
+async def download(attachment_id: int, actor: CurrentActor, db: Db) -> Response:
+    attachment = await service.get_attachment(db, actor, attachment_id)
+    image = attachment.content_type in service.IMAGE_TYPES
+    disposition = "inline" if image else "attachment"
+    name = quote(attachment.filename)
+    return Response(
+        content=attachment.data,
+        media_type=attachment.content_type,
+        headers={
+            # Images show inline; everything else downloads. Nothing is sniffed into another type.
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{name}",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-cache",
+        },
+    )
+
+
+@router.get("/search", response_model=list[schemas.SearchHit])
+async def find_messages(
+    actor: CurrentActor,
+    db: Db,
+    q: str = Query(min_length=2, max_length=100),
+    limit: Limit = 20,
+) -> list[schemas.SearchHit]:
+    return await service.search(db, actor, q.strip(), limit)

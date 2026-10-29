@@ -64,6 +64,21 @@ class ReactionOut(BaseModel):
     mine: bool
 
 
+class AttachmentOut(BaseModel):
+    id: str
+    filename: str
+    contentType: str
+    sizeBytes: int
+    isImage: bool
+
+
+class SearchHit(BaseModel):
+    message: "MessageOut"
+    spaceId: str
+    spaceLabel: str
+    spaceKind: Literal["channel", "dm"]
+
+
 class MessageOut(BaseModel):
     id: str
     spaceId: str
@@ -76,3 +91,7 @@ class MessageOut(BaseModel):
     mine: bool
     replyCount: int
     reactions: list[ReactionOut]
+    attachments: list[AttachmentOut] = []
+
+
+SearchHit.model_rebuild()

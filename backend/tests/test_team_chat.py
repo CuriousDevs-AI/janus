@@ -276,3 +276,195 @@ async def test_every_member_can_list_the_people_they_can_message(
     owner, asha, _, _ = await _two_members(client, mailbox)
     people = (await client.get("/v1/team/people", headers=asha)).json()
     assert sorted(person["name"] for person in people) == ["Member", "Member", "Owner"]
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+
+async def test_a_member_posts_a_file_and_others_download_it_safely(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, _, _ = await _two_members(client, mailbox)
+    space = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "files"})
+    ).json()["id"]
+    await client.post(f"/v1/team/channels/{space}/join", headers=asha)
+    sent = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers={**owner.headers, **_key("f-1")},
+        data={"body": "Floor plan"},
+        files={"file": ("plan.png", PNG, "image/png")},
+    )
+    assert sent.status_code == 201, sent.text
+    attachment = sent.json()["attachments"][0]
+    assert attachment["filename"] == "plan.png" and attachment["isImage"] is True
+    assert attachment["contentType"] == "image/png" and attachment["sizeBytes"] == len(PNG)
+
+    download = await client.get(f"/v1/team/attachments/{attachment['id']}", headers=asha)
+    assert download.status_code == 200 and download.content == PNG
+    assert download.headers["content-type"] == "image/png"
+    assert download.headers["x-content-type-options"] == "nosniff"
+    assert download.headers["content-disposition"].startswith("inline")
+
+
+async def test_a_file_must_match_its_extension_and_size_limits(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _, _, _ = await _two_members(client, mailbox)
+    space = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "checks"})
+    ).json()["id"]
+
+    fake = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers={**owner.headers, **_key("f-fake")},
+        files={"file": ("evil.png", b"<script>alert(1)</script>", "image/png")},
+    )
+    assert fake.status_code == 422 and fake.json()["error"]["code"] == "file_type_not_allowed"
+
+    unknown = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers={**owner.headers, **_key("f-exe")},
+        files={"file": ("tool.exe", b"MZ" + b"0" * 10, "application/octet-stream")},
+    )
+    assert unknown.status_code == 422
+
+    too_big = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers={**owner.headers, **_key("f-big")},
+        files={"file": ("big.txt", b"a" * (5 * 1024 * 1024 + 1), "text/plain")},
+    )
+    assert too_big.status_code == 413 and too_big.json()["error"]["code"] == "file_too_large"
+
+
+async def test_a_file_needs_a_join_and_a_direct_file_stays_between_its_members(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, ravi, ids = await _two_members(client, mailbox)
+    space = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "join-first"})
+    ).json()["id"]
+    refused = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers={**asha, **_key("f-nojoin")},
+        files={"file": ("a.png", PNG, "image/png")},
+    )
+    assert refused.status_code == 403 and refused.json()["error"]["code"] == "not_joined"
+
+    dm = (
+        await client.post(
+            "/v1/team/conversations", headers=asha, json={"user_id": ids["owner@example.com"]}
+        )
+    ).json()["id"]
+    sent = await client.post(
+        f"/v1/team/spaces/{dm}/files",
+        headers={**asha, **_key("f-dm")},
+        files={"file": ("contract.pdf", b"%PDF-1.4 test", "application/pdf")},
+    )
+    assert sent.status_code == 201
+    file_id = sent.json()["attachments"][0]["id"]
+    assert (
+        await client.get(f"/v1/team/attachments/{file_id}", headers=owner.headers)
+    ).status_code == 200
+    outsider = await client.get(f"/v1/team/attachments/{file_id}", headers=ravi)
+    assert outsider.status_code == 404
+
+
+async def test_a_retried_file_post_does_not_send_twice(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _, _, _ = await _two_members(client, mailbox)
+    space = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "retry-file"})
+    ).json()["id"]
+    headers = {**owner.headers, **_key("f-same")}
+    first = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers=headers,
+        files={"file": ("n.txt", b"note", "text/plain")},
+    )
+    second = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers=headers,
+        files={"file": ("n.txt", b"note", "text/plain")},
+    )
+    assert first.status_code == 201 and second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+
+
+async def test_a_deleted_message_takes_its_file_with_it(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _, _, _ = await _two_members(client, mailbox)
+    space = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "gone"})
+    ).json()["id"]
+    sent = await client.post(
+        f"/v1/team/spaces/{space}/files",
+        headers={**owner.headers, **_key("f-gone")},
+        files={"file": ("gone.txt", b"bye", "text/plain")},
+    )
+    file_id = sent.json()["attachments"][0]["id"]
+    await client.delete(f"/v1/team/messages/{sent.json()['id']}", headers=owner.headers)
+    assert (
+        await client.get(f"/v1/team/attachments/{file_id}", headers=owner.headers)
+    ).status_code == 404
+
+
+async def test_search_finds_channel_messages_and_only_your_own_conversations(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, ravi, ids = await _two_members(client, mailbox)
+    channel = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "searchable"})
+    ).json()["id"]
+    await client.post(
+        f"/v1/team/spaces/{channel}/messages",
+        headers={**owner.headers, **_key("s-1")},
+        json={"body": "Invoice for the Mumbai order is ready"},
+    )
+    dm = (
+        await client.post(
+            "/v1/team/conversations", headers=asha, json={"user_id": ids["owner@example.com"]}
+        )
+    ).json()["id"]
+    await client.post(
+        f"/v1/team/spaces/{dm}/messages",
+        headers={**asha, **_key("s-2")},
+        json={"body": "Private: the Mumbai contract terms"},
+    )
+
+    found = (await client.get("/v1/team/search", headers=asha, params={"q": "mumbai"})).json()
+    labels = sorted(hit["spaceLabel"] for hit in found)
+    assert labels == ["#searchable", "Owner"]
+
+    outsider = (await client.get("/v1/team/search", headers=ravi, params={"q": "mumbai"})).json()
+    assert [hit["spaceLabel"] for hit in outsider] == ["#searchable"]
+
+    short = await client.get("/v1/team/search", headers=ravi, params={"q": "m"})
+    assert short.status_code == 422
+
+
+async def test_search_treats_percent_and_underscore_as_plain_text(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _, _, _ = await _two_members(client, mailbox)
+    channel = (
+        await client.post("/v1/team/channels", headers=owner.headers, json={"name": "literal"})
+    ).json()["id"]
+    for index, body in enumerate(
+        ["Discount 100% today", "Discount 1000 today", "snake_case_name", "snakeXcaseXname"]
+    ):
+        await client.post(
+            f"/v1/team/spaces/{channel}/messages",
+            headers={**owner.headers, **_key(f"lit-{index}")},
+            json={"body": body},
+        )
+    percent = (
+        await client.get("/v1/team/search", headers=owner.headers, params={"q": "100%"})
+    ).json()
+    assert [hit["message"]["body"] for hit in percent] == ["Discount 100% today"]
+    underscore = (
+        await client.get("/v1/team/search", headers=owner.headers, params={"q": "snake_case"})
+    ).json()
+    assert [hit["message"]["body"] for hit in underscore] == ["snake_case_name"]
