@@ -170,6 +170,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       orderRequisition: (id, vendor, by) => {
+        if (!demoMode) return "Ordering from a requisition is not on the server yet; raise the purchase order directly.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "approved") return "Only an approved requisition can be turned into an order.";
@@ -182,6 +183,7 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       addPurchaseOrder: (input, by) => {
+        if (!demoMode) return "Purchase orders are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         if (input.vendor.trim().length < 2) return "Enter the vendor name.";
@@ -202,7 +204,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receiveAgainstPO: (poId, receipts, by) => {
-        if (!demoMode) return "This step is not on the server yet, so real mode does not record it.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const order = get().purchaseOrders.find((o) => o.id === poId);

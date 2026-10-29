@@ -28,6 +28,8 @@ from janus_api.operations.models import (
     OpsDispatchLine,
     OpsItem,
     OpsMovement,
+    OpsPoLine,
+    OpsPurchaseOrder,
     OpsReturn,
     OpsTransfer,
 )
@@ -69,10 +71,34 @@ class MovementIn(BaseModel):
     booked_on: date
 
 
+class PoLineIn(BaseModel):
+    item_key: str = Field(min_length=1, max_length=64)
+    qty: Decimal = Field(gt=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+    rate_paise: int = Field(ge=0, le=10**12)
+
+
+class PurchaseOrderIn(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    number: str | None = Field(default=None, max_length=20)
+    vendor: str = Field(min_length=2, max_length=160)
+    location_id: int = Field(ge=0, le=999)
+    lines: list[PoLineIn] = Field(min_length=1, max_length=200)
+
+
+class ReceiptLineIn(BaseModel):
+    item_key: str = Field(min_length=1, max_length=64)
+    qty: Decimal = Field(gt=0, le=MAX_QTY, max_digits=12, decimal_places=3)
+
+
+class PurchaseReceiveIn(BaseModel):
+    receipts: list[ReceiptLineIn] = Field(min_length=1, max_length=200)
+
+
 class LedgerImport(BaseModel):
     items: list[ItemCreate] = Field(max_length=2000)
     batches: list[BatchIn] = Field(default=[], max_length=5000)
     movements: list[MovementIn] = Field(default=[], max_length=20000)
+    purchase_orders: list[PurchaseOrderIn] = Field(default=[], max_length=2000)
 
 
 class ReceiptIn(BaseModel):
@@ -217,6 +243,23 @@ class CountOut(BaseModel):
     lines: list[CountLineOut]
 
 
+class PoLineOut(BaseModel):
+    item_key: str
+    qty: float
+    rate_paise: int
+    received: float
+
+
+class PurchaseOrderOut(BaseModel):
+    id: str
+    number: str
+    vendor: str
+    location_id: int
+    booked_on: date
+    created_by: str
+    lines: list[PoLineOut]
+
+
 class LedgerOut(BaseModel):
     items: list[ItemOut]
     batches: list[BatchOut]
@@ -226,6 +269,7 @@ class LedgerOut(BaseModel):
     returns: list[ReturnOut]
     transfers: list[TransferOut]
     counts: list[CountOut]
+    purchase_orders: list[PurchaseOrderOut]
 
 
 def _item_out(row: OpsItem) -> ItemOut:
@@ -360,6 +404,13 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
             select(OpsReturn).where(OpsReturn.tenant_id == tenant_id).order_by(OpsReturn.id.desc())
         )
     ).all()
+    purchase_orders = (
+        await db.scalars(
+            select(OpsPurchaseOrder)
+            .where(OpsPurchaseOrder.tenant_id == tenant_id)
+            .order_by(OpsPurchaseOrder.id.desc())
+        )
+    ).all()
     transfers = (
         await db.scalars(
             select(OpsTransfer)
@@ -420,6 +471,7 @@ async def ledger(actor: Stock, db: Db) -> LedgerOut:
         returns=[await _return_out(db, row) for row in returns],
         transfers=[await _transfer_out(db, row) for row in transfers],
         counts=[await _count_out(db, row) for row in counts],
+        purchase_orders=[await _po_out(db, row) for row in purchase_orders],
     )
 
 
@@ -535,6 +587,27 @@ async def import_opening_ledger(
                 booked_on=move.booked_on,
                 recorded_by_name=actor.user.name,
             )
+        )
+    for order in data.purchase_orders:
+        for line in order.lines:
+            if line.item_key not in by_key:
+                raise ApiError(
+                    "unknown_item",
+                    "A purchase order refers to an item that is not in the import.",
+                    422,
+                )
+        await _insert_purchase_order(
+            db,
+            tenant_id,
+            actor,
+            order.key,
+            order.number,
+            order.vendor,
+            order.location_id,
+            order.lines,
+            idempotency_key=f"import-{order.key}",
+            booked_on=_today(),
+            item_by_key=by_key,
         )
     await db.flush()
     audit.record(
@@ -1475,3 +1548,239 @@ async def record_count(
         details={"count": row.number, "lines": len(priced)},
     )
     return await _count_out(db, row)
+
+
+# ---- Purchase orders and goods received against them -----------------------------------------
+
+
+async def _po_out(db: Db, row: OpsPurchaseOrder) -> PurchaseOrderOut:
+    lines = (
+        await db.scalars(
+            select(OpsPoLine).where(OpsPoLine.po_id == row.id).order_by(OpsPoLine.position)
+        )
+    ).all()
+    out: list[PoLineOut] = []
+    for line in lines:
+        item = await _item_by_id(db, line.item_id)
+        out.append(
+            PoLineOut(
+                item_key=item.item_key,
+                qty=float(line.qty),
+                rate_paise=line.rate_paise,
+                received=float(line.received_qty),
+            )
+        )
+    return PurchaseOrderOut(
+        id=row.po_key,
+        number=row.number,
+        vendor=row.vendor,
+        location_id=row.location_id,
+        booked_on=row.booked_on,
+        created_by=row.created_by_name,
+        lines=out,
+    )
+
+
+async def _insert_purchase_order(
+    db: Db,
+    tenant_id: int,
+    actor: Actor,
+    key: str,
+    number: str | None,
+    vendor: str,
+    location_id: int,
+    lines: list[PoLineIn],
+    *,
+    idempotency_key: str,
+    booked_on: date,
+    item_by_key: dict[str, OpsItem] | None = None,
+) -> OpsPurchaseOrder:
+    if number is None:
+        count = await db.scalar(
+            select(func.count())
+            .select_from(OpsPurchaseOrder)
+            .where(OpsPurchaseOrder.tenant_id == tenant_id)
+        )
+        number = f"PO-{booked_on.year}-{101 + (count or 0):04d}"
+    row = OpsPurchaseOrder(
+        tenant_id=tenant_id,
+        po_key=key,
+        number=number,
+        vendor=vendor.strip(),
+        location_id=location_id,
+        booked_on=booked_on,
+        created_by=actor.user.id,
+        created_by_name=actor.user.name,
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    for position, line in enumerate(lines):
+        item = (
+            item_by_key[line.item_key]
+            if item_by_key is not None
+            else await _item(db, tenant_id, line.item_key)
+        )
+        db.add(
+            OpsPoLine(
+                tenant_id=tenant_id,
+                po_id=row.id,
+                position=position,
+                item_id=item.id,
+                qty=line.qty,
+                rate_paise=line.rate_paise,
+                received_qty=Decimal(0),
+            )
+        )
+    await db.flush()
+    return row
+
+
+async def _po(db: Db, tenant_id: int, key: str, *, lock: bool = False) -> OpsPurchaseOrder:
+    query = select(OpsPurchaseOrder).where(
+        OpsPurchaseOrder.tenant_id == tenant_id, OpsPurchaseOrder.po_key == key
+    )
+    if lock:
+        query = query.with_for_update()
+    row = await db.scalar(query)
+    if row is None:
+        raise ApiError("not_found", "Purchase order not found.", 404)
+    return row
+
+
+@router.post("/purchase-orders", response_model=PurchaseOrderOut, status_code=201)
+async def create_purchase_order(
+    data: PurchaseOrderIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> PurchaseOrderOut:
+    tenant_id = actor.session.tenant_id
+    existing = await db.scalar(
+        select(OpsPurchaseOrder).where(
+            OpsPurchaseOrder.tenant_id == tenant_id,
+            OpsPurchaseOrder.idempotency_key == idempotency_key,
+        )
+    )
+    if existing is not None:
+        response.status_code = 200
+        return await _po_out(db, existing)
+    for line in data.lines:
+        await _item(db, tenant_id, line.item_key)
+    row = await _insert_purchase_order(
+        db,
+        tenant_id,
+        actor,
+        data.key,
+        data.number,
+        data.vendor,
+        data.location_id,
+        data.lines,
+        idempotency_key=idempotency_key,
+        booked_on=_today(),
+    )
+    audit.record(
+        db,
+        "operations.purchase_order_raised",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"order": row.number, "lines": len(data.lines)},
+    )
+    return await _po_out(db, row)
+
+
+@router.post("/purchase-orders/{key}/receive", response_model=PurchaseOrderOut)
+async def receive_against_order(
+    key: str,
+    data: PurchaseReceiveIn,
+    actor: Stock,
+    db: Db,
+    request: Request,
+    response: Response,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+) -> PurchaseOrderOut:
+    """Books goods received against an order, up to what is still due on each line.
+
+    The order is locked, so two receipts cannot both take the same quantity. Batch-tracked items are
+    received with their batch from the stock ledger, not against the order.
+    """
+    tenant_id = actor.session.tenant_id
+    row = await _po(db, tenant_id, key, lock=True)
+    replay = await db.scalar(
+        select(OpsMovement.id).where(
+            OpsMovement.tenant_id == tenant_id,
+            OpsMovement.idempotency_key == f"{idempotency_key}-0",
+        )
+    )
+    if replay is not None:
+        response.status_code = 200
+        return await _po_out(db, row)
+    lines = (
+        await db.scalars(
+            select(OpsPoLine).where(OpsPoLine.po_id == row.id).order_by(OpsPoLine.position)
+        )
+    ).all()
+    by_item_id = {line.item_id: line for line in lines}
+    # Several receipts for the same item are added up before the check against what is due.
+    totals: dict[str, Decimal] = {}
+    for receipt in data.receipts:
+        totals[receipt.item_key] = totals.get(receipt.item_key, Decimal(0)) + receipt.qty
+    for item_key, qty in totals.items():
+        item = await _item(db, tenant_id, item_key)
+        line = by_item_id.get(item.id)
+        if line is None:
+            raise ApiError("not_on_order", "That item is not on this order.", 422)
+        if item.track_batch:
+            raise ApiError(
+                "batch_item",
+                f"{item.name} tracks batches. Receive it with its batch from the stock ledger.",
+                422,
+            )
+        due = line.qty - line.received_qty
+        if qty > due:
+            raise ApiError(
+                "over_receipt",
+                f"Only {due} {item.unit} of {item.name} is still due on this order.",
+                422,
+            )
+    today = _today()
+    for position, receipt in enumerate(data.receipts):
+        item = await _item(db, tenant_id, receipt.item_key)
+        db.add(
+            OpsMovement(
+                tenant_id=tenant_id,
+                move_key=f"po-{idempotency_key[:40]}-{position}",
+                item_id=item.id,
+                location_id=row.location_id,
+                batch_no=None,
+                kind="receipt",
+                qty=receipt.qty,
+                reason=f"Goods received against {row.number}",
+                booked_on=today,
+                recorded_by_name=actor.user.name,
+                idempotency_key=f"{idempotency_key}-{position}",
+            )
+        )
+    items_by_id = await _items_by_id(db, [line.item_id for line in lines])
+    for line in lines:
+        added = totals.get(items_by_id[line.item_id].item_key)
+        if added:
+            line.received_qty = line.received_qty + added
+    await db.flush()
+    audit.record(
+        db,
+        "operations.goods_received",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        ip=request_ip(request),
+        details={"order": row.number, "lines": len(totals)},
+    )
+    return await _po_out(db, row)
+
+
+async def _items_by_id(db: Db, ids: list[int]) -> dict[int, OpsItem]:
+    rows = (await db.scalars(select(OpsItem).where(OpsItem.id.in_(ids)))).all()
+    return {row.id: row for row in rows}

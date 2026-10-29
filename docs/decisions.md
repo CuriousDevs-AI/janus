@@ -71,3 +71,10 @@ One line per decision. Newest items go at the bottom.
 - Numbers: transfers `TRF-<year>-<n>`, counts `CNT-<year>-<n>`, unique per company.
 - Permission: transfers and counts need `stock:adjust`, as the rest of the ledger does.
 - Screen: each change reloads the ledger from the server, so the system figures a count shows are the server's.
+- Purchase orders (scope): purchase orders and goods received against them are on the server. Requisitions are still local, so ordering from an approved requisition is refused in real mode with a message; the purchase order can be raised directly. Bills, which match a bill to a purchase order, remain local.
+- Purchase orders (receipts): a receipt can be at most what is still due on the line. Receipts for several lines of the same item are added up before the check. The order is locked, so two receipts cannot both take the same quantity. A receipt adds stock at the order's location and is a receipt movement in the ledger.
+- Purchase orders (batch items): a batch-tracked item is refused on an order receipt and must be received with its batch from the stock ledger, as the screen already says; the order is not used for batch items.
+- Purchase orders (numbers and keys): the server numbers new orders `PO-<year>-<n>`. An order keeps the id the screen gives it, so the opening orders from the demo keep their numbers and ids on the server.
+- Purchase orders (opening import): the demo's purchase orders are part of the one-time opening import, so they are on the server with their numbers.
+- Purchase orders (retries): raising an order and each receipt send an Idempotency-Key. A retried receipt returns the order with its received quantities unchanged.
+- Permission: raising an order and receiving against it need `stock:adjust`, as the rest of the ledger does.

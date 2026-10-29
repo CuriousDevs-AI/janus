@@ -249,3 +249,41 @@ class OpsCountLine(Base):
     system_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     counted_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     variance: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+
+
+class OpsPurchaseOrder(Base):
+    """A purchase order to a vendor. Goods received against it add stock at its location."""
+
+    __tablename__ = "ops_purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "po_key"),
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "idempotency_key"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    po_key: Mapped[str] = mapped_column(String(64))
+    number: Mapped[str] = mapped_column(String(20))
+    vendor: Mapped[str] = mapped_column(String(160))
+    location_id: Mapped[int] = mapped_column(Integer)
+    booked_on: Mapped[date] = mapped_column(Date)
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_by_name: Mapped[str] = mapped_column(String(160))
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class OpsPoLine(Base):
+    __tablename__ = "ops_po_lines"
+    __table_args__ = (
+        UniqueConstraint("po_id", "position"),
+        CheckConstraint("qty > 0 AND rate_paise >= 0", name="ck_ops_po_lines_amounts"),
+        CheckConstraint(
+            "received_qty >= 0 AND received_qty <= qty", name="ck_ops_po_lines_received"
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    po_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ops_purchase_orders.id"))
+    position: Mapped[int] = mapped_column(Integer)
+    item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ops_items.id"))
+    qty: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    rate_paise: Mapped[int] = mapped_column(BigInteger)
+    received_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal(0))

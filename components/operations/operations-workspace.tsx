@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GST_RATES } from "@/lib/stores/finance-store";
 import { TODAY, isExpired, stockOn, useOperationsStore, type Dispatch, type PurchaseOrder } from "@/lib/stores/operations-store";
-import { addItemRecord, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveStock, recordCount, requestAdjustment, receiveTransfer, sendTransfer, syncOperations } from "@/lib/operations-records";
+import { addItemRecord, addPurchaseOrder, approveAdjustment, authoriseReturn, checkpointDispatch, createDispatch, inspectReturn, markDelivered, receiveAgainstPO, receiveStock, recordCount, requestAdjustment, receiveTransfer, sendTransfer, syncOperations } from "@/lib/operations-records";
 import { useLocationsStore } from "@/lib/stores/company-locations-store";
 import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
@@ -408,8 +408,6 @@ function RequisitionsView({ me }: { me: string }) {
 function PurchaseOrdersView({ me }: { me: string }) {
   const items = useOperationsStore((state) => state.items);
   const orders = useOperationsStore((state) => state.purchaseOrders);
-  const addPurchaseOrder = useOperationsStore((state) => state.addPurchaseOrder);
-  const receiveAgainstPO = useOperationsStore((state) => state.receiveAgainstPO);
   const locations = useLocationsStore((state) => state.locations);
   const vendors = useVendorsStore((state) => state.vendors);
   const [vendor, setVendor] = React.useState("");
@@ -423,20 +421,20 @@ function PurchaseOrdersView({ me }: { me: string }) {
     setLines((current) => current.map((line, i) => i === index ? { ...line, ...patch } : line));
   }
 
-  function create() {
+  async function create() {
     if (locationId === "") return toast.error("Choose the location the goods come to.");
-    const problem = addPurchaseOrder({ vendor, locationId: Number(locationId), lines: lines.map((line) => ({ itemId: line.itemId, qty: Number(line.qty), rate: Number(line.rate) })) }, me);
+    const problem = await addPurchaseOrder({ vendor, locationId: Number(locationId), lines: lines.map((line) => ({ itemId: line.itemId, qty: Number(line.qty), rate: Number(line.rate) })) }, me);
     if (problem) return toast.error(problem);
     toast.success("Purchase order raised");
     setVendor(""); setLines([{ itemId: "", qty: "", rate: "" }]);
   }
 
-  function receive(orderId: string, order: PurchaseOrder) {
+  async function receive(orderId: string, order: PurchaseOrder) {
     const entries = order.lines
       .map((line) => ({ itemId: line.itemId, qty: Number(receipts[`${orderId}:${line.itemId}`] ?? 0) }))
       .filter((entry) => entry.qty > 0);
     if (entries.length === 0) return toast.error("Enter the quantity received on at least one line.");
-    const problem = receiveAgainstPO(orderId, entries, me);
+    const problem = await receiveAgainstPO(orderId, entries, me);
     if (problem) return toast.error(problem);
     toast.success("Goods received");
     setReceipts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${orderId}:`))));

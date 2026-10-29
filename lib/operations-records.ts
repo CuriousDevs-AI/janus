@@ -11,6 +11,7 @@ import {
   type Dispatch,
   type Item,
   type Movement,
+  type PurchaseOrder,
   type Return,
   type StockCount,
   type Transfer,
@@ -120,7 +121,17 @@ interface ServerCount {
   counted_by: string;
   lines: { item_key: string; batch_no: string | null; system: number; counted: number; variance: number }[];
 }
+interface ServerPurchaseOrder {
+  id: string;
+  number: string;
+  vendor: string;
+  booked_on: string;
+  location_id: number;
+  created_by: string;
+  lines: { item_key: string; qty: number; rate_paise: number; received: number }[];
+}
 interface ServerLedger {
+  purchase_orders: ServerPurchaseOrder[];
   items: ServerItem[];
   batches: ServerBatch[];
   movements: ServerMovement[];
@@ -219,6 +230,16 @@ const toCount = (row: ServerCount): StockCount => ({
   by: row.counted_by,
 });
 
+const toPurchaseOrder = (row: ServerPurchaseOrder): PurchaseOrder => ({
+  id: row.id,
+  number: row.number,
+  vendor: row.vendor,
+  date: row.booked_on,
+  locationId: row.location_id,
+  lines: row.lines.map((line) => ({ itemId: line.item_key, qty: line.qty, rate: line.rate_paise / 100, received: line.received })),
+  createdBy: row.created_by,
+});
+
 const toReturn = (row: ServerReturn): Return => ({
   id: row.id,
   number: row.number,
@@ -244,6 +265,7 @@ function apply(ledger: ServerLedger) {
     returns: ledger.returns.map(toReturn),
     transfers: ledger.transfers.map(toTransfer),
     counts: ledger.counts.map(toCount),
+    purchaseOrders: ledger.purchase_orders.map(toPurchaseOrder),
   });
 }
 
@@ -282,6 +304,13 @@ async function loadLedger(): Promise<void> {
           track_batch: item.trackBatch,
         })),
         batches: local.batches.map((batch) => ({ key: batch.id, item_key: batch.itemId, batch_no: batch.batchNo, expiry: batch.expiry })),
+        purchase_orders: local.purchaseOrders.map((order) => ({
+          key: order.id,
+          number: order.number,
+          vendor: order.vendor,
+          location_id: order.locationId,
+          lines: order.lines.map((line) => ({ item_key: line.itemId, qty: line.qty, rate_paise: toPaise(line.rate) })),
+        })),
         // Only goods received are loaded; the other movements in the demo come from steps not on the server yet.
         movements: local.movements
           .filter((move) => move.type === "receipt")
@@ -583,6 +612,58 @@ export async function recordCount(
     await syncOperations();
     const differences = row.lines.filter((line) => line.variance !== 0).length;
     addTrail(trailEntry("operations", TODAY, by, `Counted ${row.number}: ${differences} difference${differences === 1 ? "" : "s"}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Raises a purchase order on the server. The order's number comes from the server. */
+export async function addPurchaseOrder(
+  input: { vendor: string; locationId: number; lines: { itemId: string; qty: number; rate: number }[] },
+  by: string,
+): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().addPurchaseOrder(input, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  try {
+    const row = await api<ServerPurchaseOrder>("/operations/purchase-orders", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        key: `po-${crypto.randomUUID()}`,
+        vendor: input.vendor,
+        location_id: input.locationId,
+        lines: input.lines.map((line) => ({ item_key: line.itemId, qty: line.qty, rate_paise: toPaise(line.rate) })),
+      }),
+    });
+    await syncOperations();
+    addTrail(trailEntry("operations", TODAY, by, `Raised purchase order ${row.number} to ${row.vendor}`));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Books goods received against a purchase order, up to what is still due on each line. */
+export async function receiveAgainstPO(
+  poId: string,
+  receipts: { itemId: string; qty: number }[],
+  by: string,
+): Promise<string | null> {
+  if (demoMode) return useOperationsStore.getState().receiveAgainstPO(poId, receipts, by);
+  const locked = periodLockProblem(TODAY);
+  if (locked) return locked;
+  const order = useOperationsStore.getState().purchaseOrders.find((item) => item.id === poId);
+  try {
+    await api<ServerPurchaseOrder>(`/operations/purchase-orders/${encodeURIComponent(poId)}/receive`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ receipts: receipts.map((receipt) => ({ item_key: receipt.itemId, qty: receipt.qty })) }),
+    });
+    await syncOperations();
+    const summary = receipts.map((receipt) => `${receipt.qty} ${useOperationsStore.getState().items.find((item) => item.id === receipt.itemId)?.unit ?? ""}`).join(", ");
+    addTrail(trailEntry("operations", TODAY, by, `Received goods against ${order?.number ?? poId}: ${summary}`));
     return null;
   } catch (error: unknown) {
     return message(error);
