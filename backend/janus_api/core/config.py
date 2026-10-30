@@ -1,3 +1,4 @@
+import base64
 from functools import lru_cache
 from typing import Literal, Self
 
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     turn_secret: SecretStr = SecretStr("")
     turn_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
     ice_transport_policy: Literal["all", "relay"] = "all"
+    # Web Push (VAPID): the raw P-256 private key, base64url, and a contact for push services.
+    # Empty turns push off; announcements still go by email and in-app alerts.
+    vapid_private_key: SecretStr = SecretStr("")
+    vapid_subject: str = "mailto:support@janus.local"
 
     @property
     def stun_list(self) -> list[str]:
@@ -54,6 +59,20 @@ class Settings(BaseSettings):
             raise ValueError("Each JANUS_TURN_URLS entry must start with turn: or turns:")
         if self.turn_list and len(self.turn_secret.get_secret_value()) < 32:
             raise ValueError("TURN servers need a JANUS_TURN_SECRET of at least 32 characters")
+        return self
+
+    @model_validator(mode="after")
+    def push_settings(self) -> Self:
+        key = self.vapid_private_key.get_secret_value()
+        if key:
+            try:
+                raw = base64.urlsafe_b64decode(key + "=" * (-len(key) % 4))
+            except ValueError as error:
+                raise ValueError("JANUS_VAPID_PRIVATE_KEY must be base64url") from error
+            if len(raw) != 32:
+                raise ValueError("JANUS_VAPID_PRIVATE_KEY must be a 32-byte P-256 key")
+        if not self.vapid_subject.startswith(("mailto:", "https://")):
+            raise ValueError("JANUS_VAPID_SUBJECT must be a mailto: or https:// contact")
         return self
 
     @model_validator(mode="after")

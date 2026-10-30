@@ -27,6 +27,7 @@ from janus_api.org.router import router as org_router
 from janus_api.projects.effort import router as effort_router
 from janus_api.projects.planning import router as planning_router
 from janus_api.projects.router import router as project_records_router
+from janus_api.push.router import router as push_router
 from janus_api.rules.router import router as rules_router
 from janus_api.sources.router import router as sources_router
 from janus_api.state.router import router as state_router
@@ -61,6 +62,7 @@ app.include_router(crm_router)
 app.include_router(whatsapp_router)
 app.include_router(calls_router)
 app.include_router(calls_public_router)
+app.include_router(push_router)
 app.include_router(state_router)
 app.include_router(vault_router)
 app.include_router(timeline_router)
