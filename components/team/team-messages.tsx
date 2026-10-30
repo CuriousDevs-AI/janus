@@ -170,16 +170,18 @@ function MessageRow({
     }
   }
 
+  // Announcements, kudos, polls and events stand apart from the chat: centred, full cards.
+  const post = item.kind !== "text" && !item.deleted && !editing;
   return (
     <div
       className={cn(
         "group relative flex gap-2 px-4 sm:px-6",
-        item.mine ? "justify-end" : "justify-start",
+        post ? "justify-center py-3" : item.mine ? "justify-end" : "justify-start",
         active && "bg-accent-muted/30",
-        grouped ? "pt-0.5" : "pt-2",
+        post ? "" : grouped ? "pt-0.5" : "pt-2",
       )}
     >
-      {item.mine || !showAuthors ? null : (
+      {item.mine || !showAuthors || post ? null : (
       <div className="w-8 shrink-0">
         {grouped ? (
           <time
@@ -197,13 +199,13 @@ function MessageRow({
         )}
       </div>
       )}
-      <div className={cn("flex min-w-0 max-w-[80%] flex-col", item.mine ? "items-end" : "items-start")}>
+      <div className={cn("flex min-w-0 flex-col", post ? "w-full max-w-2xl items-center" : cn("max-w-[80%]", item.mine ? "items-end" : "items-start"))}>
         {item.deleted ? (
           <p className="rounded-lg bg-surface px-3 py-1.5 text-sm italic text-muted-foreground shadow-sm">
             This message was deleted.
             <span className="ml-3 text-[10px] not-italic">{timeOf(item.createdAt)}</span>
           </p>
-        ) : item.kind !== "text" && !editing ? (
+        ) : post ? (
           <PostCard item={item} onChanged={onChanged} />
         ) : editing ? (
           <div className="mt-1 space-y-2">
