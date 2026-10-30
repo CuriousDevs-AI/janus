@@ -48,11 +48,12 @@ export function TeamChatSidebarList({ onNavigate }: { onNavigate?: () => void })
   );
 }
 
-type ChatFilter = "all" | "unread" | "channels" | "groups" | "direct";
+type ChatFilter = "all" | "unread" | "official" | "channels" | "groups" | "direct";
 
 const FILTERS: Array<{ id: ChatFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
+  { id: "official", label: "Official" },
   { id: "channels", label: "Channels" },
   { id: "groups", label: "Groups" },
   { id: "direct", label: "Direct" },
@@ -102,6 +103,7 @@ export function ChatList({
   const shown = all.filter((item) => {
     if (term && !`${item.title} ${item.name ?? ""}`.toLowerCase().includes(term)) return false;
     if (filter === "unread") return item.unread > 0;
+    if (filter === "official") return item.announcements;
     if (filter === "channels") return isChannel(item.kind);
     if (filter === "groups") return item.kind === "group";
     if (filter === "direct") return item.kind === "dm";
@@ -152,28 +154,43 @@ export function ChatList({
           />
         </div>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto px-3 pb-2" role="tablist" aria-label="Filter chats">
-        {FILTERS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={filter === item.id}
-            onClick={() => setFilter(item.id)}
-            className={cn(
-              "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-              filter === item.id ? "bg-accent-muted text-accent" : "bg-surface-2 text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap gap-1.5 px-3 pb-2" role="tablist" aria-label="Filter chats">
+        {FILTERS.map((item) => {
+          // Unread counts on the chips, so new official news stands out without opening the list.
+          const count =
+            item.id === "unread" ? all.filter((space) => space.unread > 0).length
+            : item.id === "official" ? all.filter((space) => space.announcements).reduce((sum, space) => sum + space.unread, 0)
+            : 0;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === item.id}
+              onClick={() => setFilter(item.id)}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                filter === item.id
+                  ? item.id === "official" ? "bg-warning-muted text-warning" : "bg-accent-muted text-accent"
+                  : "bg-surface-2 text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {item.id === "official" ? <Megaphone className="size-3" /> : null}
+              {item.label}
+              {count > 0 ? (
+                <span className={cn("min-w-4 rounded-full px-1 text-center text-[10px] font-semibold tabular-nums text-white", item.id === "official" ? "bg-warning" : "bg-success")}>
+                  {count > 99 ? "99+" : count}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Chats">
         {loading ? <li className="px-4 py-3 text-sm text-muted-foreground">Loading chats…</li> : null}
         {!loading && shown.length === 0 ? (
           <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-            {all.length === 0 ? "No chats yet. Start a message or create a channel." : "No chats match."}
+            {all.length === 0 ? "No chats yet. Start a message or create a channel." : filter === "official" ? "No official announcements yet." : "No chats match."}
           </li>
         ) : null}
         {shown.map((item) => (
