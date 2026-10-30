@@ -117,3 +117,35 @@ async def test_a_contact_with_no_whatsapp_conversation_returns_null(
     contact = created.json()["customerId"]
     found = await client.get(f"/v1/whatsapp/contacts/{contact}/conversation", headers=owner.headers)
     assert found.status_code == 200 and found.json() is None
+
+
+async def test_blank_optional_fields_from_the_form_are_treated_as_empty(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    # The Add lead form sends every field, with "" for the ones left empty.
+    body = {
+        "name": "Phone only",
+        "phone": "9876500001",
+        "email": "",
+        "company": "",
+        "requirement": "",
+    }
+    created = await client.post(
+        "/v1/leads", headers={**owner.headers, **_key("blank-1")}, json=body
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["email"] is None
+
+    body = {"name": "Email only", "phone": "", "email": "only@example.com"}
+    created = await client.post(
+        "/v1/leads", headers={**owner.headers, **_key("blank-2")}, json=body
+    )
+    assert created.status_code == 201, created.text
+
+    body = {"name": "Bad phone", "phone": "abc-not-a-phone", "email": ""}
+    refused = await client.post(
+        "/v1/leads", headers={**owner.headers, **_key("blank-3")}, json=body
+    )
+    assert refused.status_code == 422
+    assert "country code" in refused.json()["error"]["message"]
