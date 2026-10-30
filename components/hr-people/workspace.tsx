@@ -84,7 +84,12 @@ export function HrPeopleWorkspace() {
   const demoRole = useHrPeopleStore((state) => state.demoRole);
   const session = useSession();
   // A real person's HR access comes from their account's permissions, never from a shared browser setting.
-  const signedInRole: HrDemoRole = hasPermission(session.permissions, "billing:manage") ? "owner" : (hasPermission(session.permissions, "people:manage") || hasPermission(session.permissions, "members:manage")) ? "hr_manager" : "employee";
+  // Everyone holds hr:self with their membership, so every member gets their own HR without anyone granting it.
+  const can = (permission: string) => hasPermission(session.permissions, permission);
+  const signedInRole: HrDemoRole = can("billing:manage") && can("hr:manage") ? "owner"
+    : can("hr:manage") || can("members:manage") ? "hr_manager"
+    : can("hr:team") || can("hr:approve") ? "reporting_manager"
+    : "employee";
   const role = demoMode ? demoRole : signedInRole;
   const setDemoRole = useHrPeopleStore((state) => state.setDemoRole);
   const employees = useHrPeopleStore((state) => state.employees);
