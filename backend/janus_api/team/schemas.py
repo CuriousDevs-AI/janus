@@ -30,6 +30,31 @@ class MessageIn(BaseModel):
     parent_id: int | None = Field(default=None, gt=0)
 
 
+Option = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class PostIn(BaseModel):
+    """A post in a conversation: an announcement, kudos for someone, a poll or an event."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["announcement", "kudos", "poll", "event"]
+    body: Body
+    title: str = Field(default="", max_length=120)
+    kudos_to: int | None = Field(default=None, gt=0)
+    kudos_value: str = Field(default="", max_length=40)
+    options: list[Option] = Field(default_factory=list, max_length=6)
+    closes_at: datetime | None = None
+    starts_at: datetime | None = None
+    place: str = Field(default="", max_length=120)
+
+
+class RespondIn(BaseModel):
+    """A vote in a poll (the option's id), or an answer to an event: going, maybe or no."""
+
+    model_config = ConfigDict(extra="forbid")
+    value: str = Field(min_length=1, max_length=40)
+
+
 class MessageEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: Body
@@ -106,6 +131,9 @@ class SpaceOut(BaseModel):
     lastMessageAt: datetime | None
     lastMessagePreview: str | None
     inCall: list[CallPersonOut] = []
+    # The company's announcements channel: everyone reads it, only announcers post.
+    announcements: bool = False
+    canPost: bool = True
 
 
 class ReactionOut(BaseModel):
@@ -142,6 +170,48 @@ class MessageOut(BaseModel):
     replyCount: int
     reactions: list[ReactionOut]
     attachments: list[AttachmentOut] = []
+    kind: str = "text"
+    title: str | None = None
+    kudos: "KudosOut | None" = None
+    poll: "PollOut | None" = None
+    event: "EventOut | None" = None
+
+
+class KudosOut(BaseModel):
+    to: PersonOut
+    value: str
+
+
+class PollOptionOut(BaseModel):
+    id: str
+    text: str
+    votes: int
+
+
+class PollOut(BaseModel):
+    options: list[PollOptionOut]
+    myVote: str | None
+    total: int
+    closesAt: datetime | None
+    closed: bool
+
+
+class EventOut(BaseModel):
+    startsAt: datetime
+    place: str
+    going: int
+    maybe: int
+    declined: int
+    mine: str | None
+
+
+class AnnouncementOut(BaseModel):
+    id: str
+    spaceId: str
+    title: str | None
+    body: str
+    author: PersonOut
+    createdAt: datetime
 
 
 SearchHit.model_rebuild()
@@ -157,3 +227,6 @@ class IceConfigOut(BaseModel):
     iceServers: list[IceServerOut]
     iceTransportPolicy: Literal["all", "relay"]
     ttlSeconds: int
+
+
+MessageOut.model_rebuild()

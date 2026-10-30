@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { PostCard } from "@/components/team/team-posts";
 import {
   TEAM_EMOJI,
   TEAM_FILE_ACCEPT,
@@ -202,6 +203,8 @@ function MessageRow({
             This message was deleted.
             <span className="ml-3 text-[10px] not-italic">{timeOf(item.createdAt)}</span>
           </p>
+        ) : item.kind !== "text" && !editing ? (
+          <PostCard item={item} onChanged={onChanged} />
         ) : editing ? (
           <div className="mt-1 space-y-2">
             <Textarea
@@ -418,7 +421,10 @@ export function Composer({
   onSend,
   allowFiles = true,
   autoFocusKey,
+  extra,
 }: {
+  /** More buttons beside the attach button, such as the post menu. */
+  extra?: React.ReactNode;
   placeholder: string;
   disabled?: boolean;
   disabledReason?: string;
@@ -481,6 +487,7 @@ export function Composer({
           disabled && "opacity-60",
         )}
       >
+        {extra}
         {allowFiles ? (
           <>
             <input ref={picker} type="file" accept={TEAM_FILE_ACCEPT} className="hidden" aria-label="Choose a file to send" onChange={choose} />

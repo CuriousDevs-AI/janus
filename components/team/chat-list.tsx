@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Hash, Headphones, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
+import { Hash, Headphones, Megaphone, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import type { TeamSpace } from "@/components/team/types";
 import { useVoiceCall } from "@/components/team/voice-call";
 import { CallBar } from "@/components/team/voice-stage";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
+import { NotificationsToggle } from "@/components/team/team-posts";
 
 /** A voice channel is a channel: every conversation holds both chat and a call. */
 export function isChannel(kind?: TeamSpace["kind"]) {
@@ -131,6 +132,7 @@ export function ChatList({
               <DropdownMenuItem onSelect={onSearchMessages}>
                 <Search className="size-3.5" /> Search messages
               </DropdownMenuItem>
+              <NotificationsToggle />
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="ghost" size="icon" aria-label="Create channel" title="New channel" onClick={onCreate} className="sr-only focus:not-sr-only">
@@ -184,6 +186,13 @@ export function ChatList({
 }
 
 export function ChatAvatar({ item, label }: { item: TeamSpace; label: string }) {
+  if (item.announcements) {
+    return (
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-warning-muted text-warning">
+        <Megaphone className="size-5" />
+      </span>
+    );
+  }
   if (isChannel(item.kind)) {
     return (
       <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">

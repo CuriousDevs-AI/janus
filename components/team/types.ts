@@ -18,6 +18,9 @@ export interface TeamSpace {
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
   inCall: CallPerson[];
+  /** The company's announcements channel: everyone reads it, only announcers post. */
+  announcements: boolean;
+  canPost: boolean;
 }
 
 export interface TeamReaction {
@@ -39,6 +42,28 @@ export interface TeamMessage {
   replyCount: number;
   reactions: TeamReaction[];
   attachments: TeamAttachment[];
+  kind: TeamPostKind | "text";
+  title: string | null;
+  kudos: { to: TeamPerson; value: string } | null;
+  poll: {
+    options: Array<{ id: string; text: string; votes: number }>;
+    myVote: string | null;
+    total: number;
+    closesAt: string | null;
+    closed: boolean;
+  } | null;
+  event: { startsAt: string; place: string; going: number; maybe: number; declined: number; mine: string | null } | null;
+}
+
+export type TeamPostKind = "announcement" | "kudos" | "poll" | "event";
+
+export interface TeamAnnouncement {
+  id: string;
+  spaceId: string;
+  title: string | null;
+  body: string;
+  author: TeamPerson;
+  createdAt: string;
 }
 
 export interface TeamAttachment {

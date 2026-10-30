@@ -35,7 +35,7 @@ export function CommandPalette() {
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) && (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, account?.hrRole ?? "owner")),
+        (item) => (!item.demoOnly || demoMode) && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) && (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, account?.hrRole ?? "owner")),
       ),
     }))
     .filter((section) => section.items.length > 0);

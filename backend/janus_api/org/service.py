@@ -36,6 +36,7 @@ PERMISSIONS = {
     "hr:team",
     "hr:approve",
     "hr:manage",
+    "announcements:post",
 }
 
 # What every member holds whatever their role: their own HR (profile, leave, attendance, pay).

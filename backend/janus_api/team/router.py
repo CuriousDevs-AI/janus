@@ -1,13 +1,25 @@
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Header, Query, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import Field
 
+from janus_api.core import email
 from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db
 from janus_api.core.errors import ApiError
@@ -15,6 +27,7 @@ from janus_api.core.tenancy import set_context
 from janus_api.team import schemas, service
 
 router = APIRouter(prefix="/v1/team", tags=["Team chat"])
+log = logging.getLogger(__name__)
 IdempotencyKey = Annotated[str, Header(min_length=1, max_length=80)]
 Limit = Annotated[int, Field(ge=1, le=100)]
 MAX_UPLOAD = 5 * 1024 * 1024
@@ -74,11 +87,64 @@ async def post(
     db: Db,
     response: Response,
     idempotency_key: IdempotencyKey,
+    background: BackgroundTasks,
 ) -> schemas.MessageOut:
     message, created = await service.post_message(db, actor, space_id, data, idempotency_key)
     if not created:
         response.status_code = 200
+    else:
+        await _mail_after(db, actor, message, background)
     return message
+
+
+async def _send_mail(mail: list[tuple[str, str, str]]) -> None:
+    """Sends a post's emails after the response, so a slow mail server never holds up the chat."""
+    sender = email.get_sender()
+    for recipient, subject, body in mail:
+        try:
+            await sender.send(recipient, subject, body)
+        except Exception:  # one bad address or a mail outage must not stop the rest
+            log.warning("team post email failed", exc_info=True)
+
+
+async def _mail_after(
+    db: Db, actor: CurrentActor, message: schemas.MessageOut, background: BackgroundTasks
+) -> None:
+    mail = await service.mail_for(db, actor, message)
+    if mail:
+        background.add_task(_send_mail, mail)
+
+
+@router.post("/spaces/{space_id}/posts", response_model=schemas.MessageOut, status_code=201)
+async def post_kind(
+    space_id: int,
+    data: schemas.PostIn,
+    actor: CurrentActor,
+    db: Db,
+    response: Response,
+    idempotency_key: IdempotencyKey,
+    background: BackgroundTasks,
+) -> schemas.MessageOut:
+    message, created = await service.create_post(db, actor, space_id, data, idempotency_key)
+    if not created:
+        response.status_code = 200
+    else:
+        await _mail_after(db, actor, message, background)
+    return message
+
+
+@router.post("/messages/{message_id}/respond", response_model=schemas.MessageOut)
+async def respond(
+    message_id: int, data: schemas.RespondIn, actor: CurrentActor, db: Db
+) -> schemas.MessageOut:
+    return await service.respond(db, actor, message_id, data)
+
+
+@router.get("/announcements", response_model=list[schemas.AnnouncementOut])
+async def announcements(
+    actor: CurrentActor, db: Db, after: Annotated[int, Query(ge=0)] = 0
+) -> list[schemas.AnnouncementOut]:
+    return await service.latest_announcements(db, actor, after, 5)
 
 
 @router.post("/spaces/{space_id}/read", status_code=204)

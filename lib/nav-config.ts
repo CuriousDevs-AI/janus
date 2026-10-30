@@ -39,6 +39,8 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   requiredPermission?: string;
+  /** Only in the preview; on real accounts this lives elsewhere (Engage is in Team Chat). */
+  demoOnly?: boolean;
 }
 
 export interface NavSection {
@@ -157,7 +159,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   "hr-people": [
     { title: "My HR", items: [
       { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard },
-      { label: "Engage", href: "/workspace/hr-people?view=engage", icon: Sparkles },
+      { label: "Engage", href: "/workspace/hr-people?view=engage", icon: Sparkles, demoOnly: true },
       { label: "My profile", href: "/workspace/hr-people?view=my-profile", icon: UserRoundPlus },
       { label: "My onboarding", href: "/workspace/hr-people?view=my-onboarding", icon: UserRoundPlus },
       { label: "Document Center", href: "/workspace/hr-people?view=document-center", icon: FileText },

@@ -109,6 +109,8 @@ export function HrPeopleWorkspace() {
   React.useEffect(() => { if (demoMode && persona !== role) setDemoRole(persona); }, [persona, role, setDemoRole]);
 
   const blocked = !canOpenHrView(role, view);
+  // Engage (announcements, kudos, polls and events) is part of Team Chat on real accounts.
+  React.useEffect(() => { if (!demoMode && view === "engage") router.replace("/team?workspace=team-chat"); }, [view, router]);
   // Approved changes start on their date, so catch up whenever someone opens the workspace.
   React.useEffect(() => { applyDueChanges(demoActorId(role)); }, [role]);
 

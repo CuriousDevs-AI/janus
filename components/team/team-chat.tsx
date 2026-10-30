@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, Hash, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Plus, Search, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Hash, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -34,6 +34,8 @@ import { useVoiceCall } from "@/components/team/voice-call";
 import { CallBanner, CallPanel } from "@/components/team/voice-stage";
 import { ChatAvatar, ChatList, isChannel } from "@/components/team/chat-list";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
+import { PostMenu } from "@/components/team/team-posts";
+import { hasPermission } from "@/lib/demo-persona";
 
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const REFRESH_MS = 4000;
@@ -367,7 +369,11 @@ export function TeamChat() {
                   />
                 )}
               </div>
-              {space && isChannel(space.kind) && !space.joined ? (
+              {space && !space.canPost ? (
+                <div className="flex items-center justify-center gap-2 border-t border-border bg-surface px-4 py-3 text-sm text-muted-foreground" role="note">
+                  <Megaphone className="size-4" /> Only admins post announcements here. You get an alert and an email for each one.
+                </div>
+              ) : space && isChannel(space.kind) && !space.joined ? (
                 <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border bg-surface px-4 py-3 text-sm">
                   <span className="text-muted-foreground">You are viewing #{space.name}. Join to chat here.</span>
                   <Button size="sm" onClick={() => void changeMembership("join")}>
@@ -376,10 +382,18 @@ export function TeamChat() {
                 </div>
               ) : (
                 <Composer
-                  placeholder={space ? `Message ${isChannel(space.kind) ? `#${space.name}` : space.title}` : "Message"}
+                  placeholder={space?.announcements ? "Write an announcement; everyone gets it by email too" : space ? `Message ${isChannel(space.kind) ? `#${space.name}` : space.title}` : "Message"}
                   autoFocusKey={selected}
                   disabled={!space}
                   onSend={(body, file) => send(body, undefined, file)}
+                  extra={space ? (
+                    <PostMenu
+                      spaceId={space.id}
+                      people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
+                      canAnnounce={isChannel(space.kind) && hasPermission(session.permissions, "announcements:post")}
+                      onPosted={() => { reloadMessages(); reloadChannels(); }}
+                    />
+                  ) : null}
                 />
               )}
             </div>
