@@ -41,8 +41,10 @@ async def test_a_member_creates_a_channel_and_others_see_and_join_it(
     assert channel["name"] == "sales-floor" and channel["joined"] is True
 
     listed = (await client.get("/v1/team/channels", headers=asha)).json()
-    assert [item["name"] for item in listed] == ["sales-floor"]
-    assert listed[0]["joined"] is False and listed[0]["memberCount"] == 1
+    # The company's announcements channel comes first, and everyone is in it.
+    assert [item["name"] for item in listed] == ["announcements", "sales-floor"]
+    assert listed[0]["announcements"] and listed[0]["joined"]
+    assert listed[1]["joined"] is False and listed[1]["memberCount"] == 1
 
     joined = await client.post(f"/v1/team/channels/{channel['id']}/join", headers=asha)
     assert joined.status_code == 200 and joined.json()["joined"] is True

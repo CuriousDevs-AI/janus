@@ -98,7 +98,7 @@ export function SidebarNav({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) &&
+        (item) => (!item.demoOnly || demoMode) && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) &&
           (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, hrDemoRole)),
       ),
     }))

@@ -16,6 +16,7 @@ import { businessHome, readCompanies } from "@/lib/company";
 import { WorkspaceProvider, useWorkspace } from "@/components/layout/workspace-context";
 import { homeForPermissions, mayOpenWorkspace } from "@/lib/access";
 import { VoiceCallProvider } from "@/components/team/voice-call";
+import { AnnouncementWatcher } from "@/components/team/team-posts";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -98,6 +99,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <CommandPalette />
+      <AnnouncementWatcher />
     </div>
   );
 }

@@ -31,7 +31,17 @@ PERMISSIONS = {
     "approvals:manage",
     "stock:adjust",
     "projects:manage",
+    "hr:self",
+    "hr:read",
+    "hr:team",
+    "hr:approve",
+    "hr:manage",
+    "announcements:post",
 }
+
+# What every member holds whatever their role: their own HR (profile, leave, attendance, pay).
+# It comes with the membership, so nobody has to grant it person by person.
+MEMBER_PERMISSIONS = frozenset({"hr:self"})
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
     "admin": sorted(PERMISSIONS - {"billing:manage"}),
@@ -42,6 +52,8 @@ SYSTEM_ROLES = {
         "leads:assign",
         "stock:adjust",
         "projects:manage",
+        "hr:team",
+        "hr:approve",
     ],
     "agent": ["leads:read_own", "leads:write"],
 }
@@ -434,7 +446,11 @@ async def list_members(
 async def list_roles(db: AsyncSession) -> list[schemas.RoleOut]:
     roles = (await db.scalars(select(Role).where(Role.tenant_id.is_(None)).order_by(Role.id))).all()
     return [
-        schemas.RoleOut(id=str(role.id), name=role.name, permissions=role.permissions)
+        schemas.RoleOut(
+            id=str(role.id),
+            name=role.name,
+            permissions=sorted(set(role.permissions) | MEMBER_PERMISSIONS),
+        )
         for role in roles
     ]
 

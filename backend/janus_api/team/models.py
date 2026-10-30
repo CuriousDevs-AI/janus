@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -39,6 +40,8 @@ class TeamSpace(Base):
     kind: Mapped[str] = mapped_column(String(10))
     name: Mapped[str | None] = mapped_column(String(40))
     topic: Mapped[str] = mapped_column(String(200), server_default="")
+    # The company's announcements channel: everyone is in it, only announcers post.
+    announcements: Mapped[bool] = mapped_column(Boolean, server_default="false")
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -64,18 +67,40 @@ class TeamMessage(Base):
             "tenant_id", "author_id", "idempotency_key", name="uq_team_messages_idempotency"
         ),
         CheckConstraint("char_length(body) BETWEEN 1 AND 4000", name="ck_team_messages_body"),
+        CheckConstraint(
+            "kind IN ('text', 'announcement', 'kudos', 'poll', 'event')",
+            name="ck_team_messages_kind",
+        ),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
     space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
     parent_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("team_messages.id"))
     author_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
+    # A plain message, or a post: an announcement, kudos, a poll or an event. `meta` holds the
+    # post's own fields (a title, who the kudos are for, the poll's options, the event's time).
+    kind: Mapped[str] = mapped_column(String(12), server_default="text")
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     idempotency_key: Mapped[str] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TeamResponse(Base):
+    """A person's answer to a post: their vote in a poll, or whether they are going to an event."""
+
+    __tablename__ = "team_responses"
+    __table_args__ = (UniqueConstraint("message_id", "user_id", name="uq_team_responses"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    message_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("team_messages.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    value: Mapped[str] = mapped_column(String(40))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class TeamReaction(Base):

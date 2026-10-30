@@ -17,6 +17,9 @@ import { buildPayslip } from "@/lib/hr-payroll";
 import { canDecideExpense } from "@/components/hr-people/expenses";
 import { HrEmpty, HrPanel, hrDate, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
+import type { TeamAnnouncement } from "@/components/team/types";
+import { useApi } from "@/lib/api/use-api";
+import { demoMode } from "@/lib/demo-mode";
 
 const quotes = ["Small steps taken every day add up to big things.", "Good work is built from clear goals and kind teammates.", "Do the next right thing, and do it well.", "Progress matters more than perfection.", "A tidy habit today saves a scramble tomorrow.", "Ask early. Help often. Say thank you.", "Your best work starts with a calm first hour.", "Teams win when everyone knows what matters most."];
 const celebrationEmoji = { birthday: "🎂", anniversary: "🏅", newcomer: "👋" } as const;
@@ -32,6 +35,9 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
   const { policies, acknowledgements, extras } = useHrDocumentStore();
   const { settings, audit, regularisations, letterRequests, policyQuestions } = useHrOperationsStore();
   const { items, meta, react } = useHrEngageStore();
+  // On a real account, announcements, kudos, polls and events live in Team Chat.
+  const live = useApi<TeamAnnouncement[]>(demoMode ? null : "/team/announcements");
+  const engageHref = demoMode ? href("engage") : "/team?workspace=team-chat";
   const holidays = useHolidays();
   const types = useLeaveTypes();
   const today = hrToday();
@@ -48,18 +54,20 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
   const myTasks = onboardingTasks.filter((item) => item.employeeId === actorId && item.ownerRole === "employee" && item.status !== "done").length;
   const clarify = leaveRequests.filter((item) => item.employeeId === actorId && item.status === "needs_clarification").length;
   const approvals = leaveRequests.filter((item) => canDecide(item, actorId, role, settings, today).allowed).length + expenseClaims.filter((item) => canDecideExpense(item, employees.find((person) => person.id === item.employeeId), actorId, role, managesAny).allowed).length + regularisations.filter((item) => item.status === "pending" && item.employeeId !== actorId && (role === "owner" || role === "hr_manager" || employees.find((person) => person.id === item.employeeId)?.managerId === actorId)).length;
-  const openPolls = items.filter((item) => item.poll && item.poll.closesAt >= today && !item.poll.votes[actorId]).length;
+  const openPolls = !demoMode ? 0 : items.filter((item) => item.poll && item.poll.closesAt >= today && !item.poll.votes[actorId]).length;
   const review = [
     toSign > 0 && { text: `${toSign} ${toSign === 1 ? "document" : "documents"} to sign`, to: href("my-documents") },
     toAck > 0 && { text: `${toAck} ${toAck === 1 ? "policy" : "policies"} to acknowledge`, to: href("my-documents", "&tab=company") },
     myTasks > 0 && { text: `${myTasks} onboarding ${myTasks === 1 ? "task" : "tasks"} for you`, to: href("my-onboarding") },
     clarify > 0 && { text: `${clarify} leave ${clarify === 1 ? "request needs" : "requests need"} your reply`, to: href("my-requests") },
     approvals > 0 && { text: `${approvals} ${approvals === 1 ? "request is" : "requests are"} waiting for your approval`, to: href("approvals") },
-    openPolls > 0 && { text: `${openPolls} open ${openPolls === 1 ? "poll" : "polls"} to vote in`, to: href("engage") },
+    openPolls > 0 && { text: `${openPolls} open ${openPolls === 1 ? "poll" : "polls"} to vote in`, to: engageHref },
   ].filter(Boolean) as { text: string; to: string }[];
 
   // News
-  const announcements = items.filter((item) => item.kind === "announcement").sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt)).slice(0, 3);
+  const announcements = !demoMode
+    ? (live.data ?? []).slice(0, 3).map((item) => ({ id: item.id, title: item.title, text: item.body, pinned: false, authorName: item.author.name, createdAt: item.createdAt }))
+    : items.filter((item) => item.kind === "announcement").map((item) => ({ ...item, authorName: nameOf(item.authorId) })).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt)).slice(0, 3);
   const since = new Date(`${today}T12:00:00`); since.setDate(since.getDate() - 30);
   const newPolicies = policies.filter((item) => item.status !== "archived" && item.issuedAt && item.issuedAt >= since.toLocaleDateString("en-CA") && item.issuedAt <= today);
   const celebrations = derivedCelebrations(employees, today).slice(0, 5);
@@ -99,17 +107,17 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
     <section className="flex flex-wrap items-end justify-between gap-4 border border-border bg-surface p-5"><div><h2 className="text-2xl font-semibold tracking-tight">{greeting()}, {first}</h2><p className="mt-1 text-sm text-muted-foreground">{quote}</p></div><p className="text-sm text-muted-foreground">{new Date(`${today}T12:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></section>
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       <Card title="Needs you">{review.length ? <ul className="divide-y divide-border text-sm">{review.map((item) => <li key={item.text}><Link href={item.to} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface-2"><span>{item.text}</span><span aria-hidden className="text-muted-foreground">›</span></Link></li>)}</ul> : <HrEmpty>Hurrah! You&apos;ve nothing to review.</HrEmpty>}</Card>
-      <Card title="What's new" link={{ href: href("engage"), label: "Open Engage" }}>{announcements.length || newPolicies.length ? <ul className="divide-y divide-border text-sm">
-        {announcements.map((item) => <li key={item.id} className="space-y-1 px-5 py-3"><p className="flex items-center gap-2 font-medium"><Megaphone aria-hidden className="size-3.5 text-accent" />{item.title ?? "Announcement"}{item.pinned && <Pin aria-label="Pinned" className="size-3 text-warning" />}</p><p className="text-xs text-muted-foreground">{item.text}</p><p className="text-[11px] text-muted-foreground">{nameOf(item.authorId)} · {timeAgo(item.createdAt)}</p></li>)}
+      <Card title="What's new" link={{ href: engageHref, label: demoMode ? "Open Engage" : "Open Team Chat" }}>{announcements.length || newPolicies.length ? <ul className="divide-y divide-border text-sm">
+        {announcements.map((item) => <li key={item.id} className="space-y-1 px-5 py-3"><p className="flex items-center gap-2 font-medium"><Megaphone aria-hidden className="size-3.5 text-accent" />{item.title ?? "Announcement"}{item.pinned && <Pin aria-label="Pinned" className="size-3 text-warning" />}</p><p className="text-xs text-muted-foreground">{item.text}</p><p className="text-[11px] text-muted-foreground">{item.authorName} · {timeAgo(item.createdAt)}</p></li>)}
         {newPolicies.map((item) => <li key={item.id} className="px-5 py-3"><Link href={href("my-documents", "&tab=company")} className="block"><p className="text-sm font-medium">New policy: {item.name}</p><p className="text-xs text-muted-foreground">Issued {item.issuedAt ? hrDate(item.issuedAt) : "recently"}. Read and acknowledge it.</p></Link></li>)}
       </ul> : <HrEmpty>No news yet. Announcements from HR appear here.</HrEmpty>}</Card>
-      <Card title="Celebrations & newcomers" link={{ href: href("engage"), label: "See all" }}>{celebrations.length ? <ul className="divide-y divide-border text-sm">{celebrations.map((item) => { const wished = (meta[item.id]?.reactions["🎉"] ?? []).includes(actorId); return <li key={item.id} className="flex items-center gap-3 px-5 py-3"><span aria-hidden className="text-xl">{celebrationEmoji[item.kind]}</span><p className="min-w-0 flex-1">{item.text}</p>{item.employee.id !== actorId && <Button size="sm" variant={wished ? "default" : "outline"} aria-pressed={wished} onClick={() => react(item.id, "🎉", actorId)}>{wished ? "Wished" : item.kind === "newcomer" ? "Welcome" : "Wish"}</Button>}</li>; })}</ul> : <HrEmpty>No birthdays or anniversaries this week.</HrEmpty>}</Card>
+      <Card title="Celebrations & newcomers" link={{ href: engageHref, label: "See all" }}>{celebrations.length ? <ul className="divide-y divide-border text-sm">{celebrations.map((item) => { const wished = (meta[item.id]?.reactions["🎉"] ?? []).includes(actorId); return <li key={item.id} className="flex items-center gap-3 px-5 py-3"><span aria-hidden className="text-xl">{celebrationEmoji[item.kind]}</span><p className="min-w-0 flex-1">{item.text}</p>{item.employee.id !== actorId && <Button size="sm" variant={wished ? "default" : "outline"} aria-pressed={wished} onClick={() => react(item.id, "🎉", actorId)}>{wished ? "Wished" : item.kind === "newcomer" ? "Welcome" : "Wish"}</Button>}</li>; })}</ul> : <HrEmpty>No birthdays or anniversaries this week.</HrEmpty>}</Card>
       <Card title="Upcoming holidays" link={{ href: href("holiday-calendar"), label: "Holiday calendar" }}>{holidaysNext.length ? <ul className="divide-y divide-border text-sm">{holidaysNext.map((item) => <li key={item.id} className="flex items-center justify-between gap-3 px-5 py-3"><div><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{hrDate(item.date).replace(/ \d{4}$/, "")} · {weekday(item.date)}{item.kind === "optional" ? " · optional" : ""}</p></div>{item.kind === "optional" && ![0, 6].includes(new Date(`${item.date}T12:00:00`).getDay()) && <Button size="sm" variant="outline" asChild><Link href={href("leave-apply", `&from=${item.date}`)} aria-label={`Apply for leave on ${item.name}`}>Apply</Link></Button>}</li>)}</ul> : <HrEmpty>No holidays coming up.</HrEmpty>}</Card>
       <Card title="Payslip" link={{ href: href("my-payslips"), label: "All payslips" }}>{slip ? <div className="space-y-2 px-5 py-4"><p className="text-xs text-muted-foreground">{slip.label}</p><p className="text-3xl font-semibold">{hrMoney(slip.net)}</p><p className="text-xs text-muted-foreground">Net pay · {slip.paidDays}/{slip.totalDays} days paid</p><Button size="sm" variant="outline" asChild><Link href={href("my-payslips")}>View payslip</Link></Button></div> : <HrEmpty>Uh oh! Your payslip will show up here after payroll is released.</HrEmpty>}</Card>
       <Card title="Out today">{absentNames.length ? <ul className="divide-y divide-border text-sm">{absentNames.map((id) => { const leave = out.find((item) => item.employeeId === id); return <li key={id} className="flex items-center justify-between gap-3 px-5 py-2.5"><span>{nameOf(id)}</span><span className="text-xs text-muted-foreground">{leave ? `Back ${hrDate(leave.to).replace(/ \d{4}$/, "")}` : "On leave"}</span></li>; })}</ul> : <HrEmpty>Everyone is in today.</HrEmpty>}</Card>
       <Card title="Track my requests"><ul className="grid grid-cols-2 gap-px bg-border">{track.map((item) => <li key={item.label} className="bg-surface"><Link href={item.to} className="block px-5 py-3 hover:bg-surface-2"><span className="text-2xl font-semibold">{item.n}</span><span className="block text-xs text-muted-foreground">{item.label} in progress</span></Link></li>)}</ul></Card>
       <Card title="Updates for you">{updates.length ? <ul className="divide-y divide-border text-sm">{updates.map((item) => <li key={item.id} className="px-5 py-3"><p>{item.text}</p><p className="text-[11px] text-muted-foreground">{item.by} · {timeAgo(item.at)}</p></li>)}</ul> : <HrEmpty>No updates yet. Decisions on your requests show up here.</HrEmpty>}</Card>
-      <Card title="Quick access"><ul className="grid grid-cols-2 gap-2 p-4 text-sm">{[["Apply for leave", href("leave-apply")], ["Leave balances", href("leave-balances")], ["Attendance", href("attendance-info")], ["Regularization", href("my-regularization")], ["Payslips", href("my-payslips")], ["Document Center", href("document-center")], ["Ask about policy", href("policy-qa")], ["Engage", href("engage")]].map(([label, to]) => <li key={label}><Link href={to} className="block border border-border px-3 py-2 hover:border-accent hover:text-accent">{label}</Link></li>)}</ul></Card>
+      <Card title="Quick access"><ul className="grid grid-cols-2 gap-2 p-4 text-sm">{[["Apply for leave", href("leave-apply")], ["Leave balances", href("leave-balances")], ["Attendance", href("attendance-info")], ["Regularization", href("my-regularization")], ["Payslips", href("my-payslips")], ["Document Center", href("document-center")], ["Ask about policy", href("policy-qa")], [demoMode ? "Engage" : "Team Chat", engageHref]].map(([label, to]) => <li key={label}><Link href={to} className="block border border-border px-3 py-2 hover:border-accent hover:text-accent">{label}</Link></li>)}</ul></Card>
     </div>
   </div>;
 }
