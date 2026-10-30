@@ -12,6 +12,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Select, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 
 from janus_api.auth.models import User
 from janus_api.auth.service import Actor
@@ -339,26 +340,36 @@ async def _announcements_space(db: Db, actor: Actor) -> TeamSpace:
         select(TeamSpace).where(TeamSpace.tenant_id == tenant_id, TeamSpace.announcements)
     )
     if space is None:
-        space = await db.scalar(
-            select(TeamSpace)
-            .where(TeamSpace.tenant_id == tenant_id, TeamSpace.name == ANNOUNCEMENTS)
-            .with_for_update()
-        )
-        if space is None:
-            space = TeamSpace(
+        # Two people can open Team Chat at once: the second insert does nothing, and the row lock
+        # makes the second wait for the first to mark the channel, then see it marked.
+        await db.execute(
+            insert(TeamSpace)
+            .values(
                 tenant_id=tenant_id,
                 kind="channel",
                 name=ANNOUNCEMENTS,
                 topic="Official news from the company",
                 created_by=actor.user.id,
             )
-            db.add(space)
-        space.kind = "channel"
-        space.announcements = True
-        await db.flush()
-    if await _member(db, space.id, actor.user.id) is None:
-        db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=actor.user.id))
-        await db.flush()
+            .on_conflict_do_nothing(index_elements=["tenant_id", "name"])
+        )
+        space = await db.scalar(
+            select(TeamSpace)
+            .where(TeamSpace.tenant_id == tenant_id, TeamSpace.name == ANNOUNCEMENTS)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        assert space is not None
+        if not space.announcements:
+            space.kind = "channel"
+            space.announcements = True
+            await db.flush()
+    # The same person in two tabs joins once.
+    await db.execute(
+        insert(TeamSpaceMember)
+        .values(tenant_id=tenant_id, space_id=space.id, user_id=actor.user.id)
+        .on_conflict_do_nothing(index_elements=["space_id", "user_id"])
+    )
     return space
 
 

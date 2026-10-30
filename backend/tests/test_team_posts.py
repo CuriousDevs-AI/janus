@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -175,3 +176,23 @@ async def test_events_take_going_maybe_or_no(client: httpx.AsyncClient, mailbox:
         f"/v1/team/messages/{event['id']}/respond", headers=ravi, json={"value": "later"}
     )
     assert wrong.status_code == 422
+
+
+async def test_opening_team_chat_at_the_same_time_makes_one_announcements_channel(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, asha, ravi, _ = await _company(client, mailbox)
+    # Everyone opens Team Chat at once, one of them in two tabs.
+    loads = await asyncio.gather(
+        *[
+            client.get("/v1/team/channels", headers=headers)
+            for headers in (owner.headers, asha, asha, ravi)
+        ]
+    )
+    assert [load.status_code for load in loads] == [200, 200, 200, 200], [
+        load.text for load in loads
+    ]
+    found = {item["id"] for load in loads for item in load.json() if item["announcements"]}
+    assert len(found) == 1
+    channel = await _announcements(client, owner.headers)
+    assert channel["memberCount"] == 3
