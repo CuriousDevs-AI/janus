@@ -743,6 +743,7 @@ export interface BusinessWorkflowRun {
   startedAt?: string | null;
   endedAt?: string | null;
   steps: Array<Record<string, unknown>>;
+  result?: { error?: { code?: string; message?: string } } & Record<string, unknown>;
 }
 
 export interface BusinessAutomationCatalog {
