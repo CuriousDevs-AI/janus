@@ -59,6 +59,16 @@ class AgentDefinition(Base):
     )
 
 
+class AutomationFolder(Base):
+    """A folder the company files its workflows in. Deleting it leaves its workflows unfiled."""
+
+    __tablename__ = "automation_folders"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_automation_folders_name"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AutomationWorkflow(Base):
     __tablename__ = "automation_workflows"
     __table_args__ = (UniqueConstraint("tenant_id", "name"),)
@@ -68,6 +78,9 @@ class AutomationWorkflow(Base):
     )
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(String(1000), default="")
+    folder_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("automation_folders.id", ondelete="SET NULL")
+    )
     trigger: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     actions: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     status: Mapped[str] = mapped_column(String(20), server_default="draft")

@@ -339,6 +339,7 @@ def workflow_out(item: AutomationWorkflow) -> schemas.WorkflowOut:
         actions=item.actions,
         requiresApproval=item.requires_approval,
         workspaceId=str(item.workspace_id) if item.workspace_id else None,
+        folderId=str(item.folder_id) if item.folder_id else None,
     )
 
 

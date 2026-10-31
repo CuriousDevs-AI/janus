@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 WorkspaceType = Literal[
     "crm_sales",
@@ -120,6 +120,34 @@ class WorkflowOut(BaseModel):
     actions: list
     requiresApproval: bool
     workspaceId: str | None
+    folderId: str | None = None
+
+
+class FolderIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class FolderOut(BaseModel):
+    id: str
+    name: str
+    count: int
+
+
+class MoveToFolder(BaseModel):
+    """The folder to file a workflow in, or null to unfile it."""
+
+    model_config = ConfigDict(extra="forbid")
+    folderId: int | None = None
+
+
+class TemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    trigger: dict
+    steps: list
+    modules: list[str]
 
 
 class WorkflowCreate(BaseModel):
@@ -128,6 +156,7 @@ class WorkflowCreate(BaseModel):
     trigger: dict = Field(default_factory=dict)
     actions: list = Field(default_factory=list, max_length=100)
     workspaceId: int | None = None
+    folderId: int | None = None
     requiresApproval: bool = True
 
 

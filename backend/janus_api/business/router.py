@@ -2,12 +2,18 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy import func, or_, select, update
 
 from janus_api.auth.service import Actor
 from janus_api.business import schemas, service
-from janus_api.business.models import AgentDefinition, AutomationExecution, AutomationWorkflow
+from janus_api.business.models import (
+    AgentDefinition,
+    AutomationExecution,
+    AutomationFolder,
+    AutomationWorkflow,
+    BusinessWorkspace,
+)
 from janus_api.core.deps import CurrentActor, Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.org.service import membership
@@ -263,6 +269,211 @@ async def test_agent(
     }
 
 
+# Starting points for a workflow. Workflows run when someone runs them (or tests them), so every
+# template starts by hand; its steps describe the work for the person approving each run.
+TEMPLATES = [
+    schemas.TemplateOut(
+        id="weekly-pipeline-review",
+        name="Weekly pipeline review",
+        description="Review open deals each week, flag those without a next step, and agree follow-ups.",
+        trigger={"type": "manual"},
+        steps=[
+            {"module": "crm_sales", "action": "review_open_deals"},
+            {"module": "crm_sales", "action": "assign_follow_ups"},
+        ],
+        modules=["CRM & Sales"],
+    ),
+    schemas.TemplateOut(
+        id="overdue-invoice-reminders",
+        name="Overdue invoice reminders",
+        description="List invoices past their due date and prepare reminders for owner approval.",
+        trigger={"type": "manual"},
+        steps=[
+            {"module": "finance_accounting", "action": "list_overdue_invoices"},
+            {"module": "finance_accounting", "action": "prepare_reminders"},
+        ],
+        modules=["Finance & Accounting"],
+    ),
+    schemas.TemplateOut(
+        id="new-joiner-checklist",
+        name="New joiner checklist",
+        description="Check a new employee's documents, accounts and onboarding tasks before day one.",
+        trigger={"type": "manual"},
+        steps=[
+            {"module": "hr_people", "action": "check_documents"},
+            {"module": "it_infrastructure", "action": "request_accounts"},
+            {"module": "hr_people", "action": "confirm_onboarding_tasks"},
+        ],
+        modules=["HR & People", "IT & Infrastructure"],
+    ),
+    schemas.TemplateOut(
+        id="low-stock-reorder",
+        name="Low stock reorder",
+        description="Find items below their reorder level and draft requisitions for approval.",
+        trigger={"type": "manual"},
+        steps=[
+            {"module": "operations_inventory", "action": "list_low_stock"},
+            {"module": "operations_inventory", "action": "draft_requisitions"},
+        ],
+        modules=["Operations & Inventory"],
+    ),
+]
+
+
+MODULE_LABELS = {
+    "crm_sales": "CRM & Sales",
+    "hr_people": "HR & People",
+    "finance_accounting": "Finance & Accounting",
+    "projects_delivery": "Projects & Delivery",
+    "customer_support": "Customer Support & Success",
+    "operations_inventory": "Operations & Inventory",
+    "it_infrastructure": "IT & Infrastructure",
+}
+CORE_ACTIONS = [
+    {"type": "condition", "label": "Condition", "module": "logic"},
+    {"type": "approval", "label": "Request approval", "module": "business"},
+    {"type": "create_task", "label": "Create task", "module": "crm_sales"},
+    {"type": "update_record", "label": "Update record", "module": "crm_sales"},
+    {"type": "send_notification", "label": "Send notification", "module": "communication"},
+]
+
+
+@router.get("/business/automation-catalog")
+async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict[str, object]]]:
+    """What the workflow editor offers: the company's workspaces, how a workflow starts, its steps.
+
+    Workflows start by hand (or as a test), so that is the only trigger offered. The steps are the
+    core ones and those the templates use.
+    """
+    switched_on = set(
+        (
+            await db.scalars(
+                select(BusinessWorkspace.workspace_type).where(
+                    BusinessWorkspace.tenant_id == actor.session.tenant_id,
+                    BusinessWorkspace.status == "active",
+                )
+            )
+        ).all()
+    )
+    template_actions = [
+        {
+            "type": step["action"],
+            "label": str(step["action"]).replace("_", " ").capitalize(),
+            "module": step["module"],
+        }
+        for template in TEMPLATES
+        for step in template.steps
+    ]
+    seen: set[tuple[object, object]] = set()
+    actions = []
+    for action in CORE_ACTIONS + template_actions:
+        if (action["type"], action["module"]) not in seen:
+            seen.add((action["type"], action["module"]))
+            actions.append(action)
+    return {
+        "modules": [
+            {"id": key, "label": label, "connected": key in switched_on}
+            for key, label in MODULE_LABELS.items()
+        ],
+        "triggers": [{"type": "manual", "label": "Run by hand"}],
+        "actions": actions,
+    }
+
+
+@router.get("/business/automation-templates", response_model=list[schemas.TemplateOut])
+async def automation_templates(actor: CurrentActor) -> list[schemas.TemplateOut]:
+    return TEMPLATES
+
+
+async def _folder(db: Db, tenant_id: int, folder_id: int) -> AutomationFolder:
+    folder = await db.scalar(
+        select(AutomationFolder).where(
+            AutomationFolder.id == folder_id, AutomationFolder.tenant_id == tenant_id
+        )
+    )
+    if folder is None:
+        raise ApiError("folder_not_found", "That folder no longer exists.", 404)
+    return folder
+
+
+@router.get("/business/automation-folders", response_model=list[schemas.FolderOut])
+async def automation_folders(actor: CurrentActor, db: Db) -> list[schemas.FolderOut]:
+    rows = await db.execute(
+        select(AutomationFolder, func.count(AutomationWorkflow.id))
+        .outerjoin(
+            AutomationWorkflow,
+            (AutomationWorkflow.folder_id == AutomationFolder.id)
+            & (AutomationWorkflow.status != "archived"),
+        )
+        .where(AutomationFolder.tenant_id == actor.session.tenant_id)
+        .group_by(AutomationFolder.id)
+        .order_by(AutomationFolder.name)
+    )
+    return [
+        schemas.FolderOut(id=str(folder.id), name=folder.name, count=count)
+        for folder, count in rows.all()
+    ]
+
+
+@router.post("/business/automation-folders", response_model=schemas.FolderOut, status_code=201)
+async def create_automation_folder(
+    data: schemas.FolderIn, actor: Automations, db: Db
+) -> schemas.FolderOut:
+    taken = await db.scalar(
+        select(AutomationFolder.id).where(
+            AutomationFolder.tenant_id == actor.session.tenant_id,
+            func.lower(AutomationFolder.name) == data.name.lower(),
+        )
+    )
+    if taken is not None:
+        raise ApiError("folder_exists", "A folder with that name already exists.", 409)
+    folder = AutomationFolder(tenant_id=actor.session.tenant_id, name=data.name)
+    db.add(folder)
+    await db.flush()
+    return schemas.FolderOut(id=str(folder.id), name=folder.name, count=0)
+
+
+@router.delete("/business/automation-folders/{folder_id}", status_code=204)
+async def delete_automation_folder(folder_id: int, actor: Automations, db: Db) -> Response:
+    folder = await _folder(db, actor.session.tenant_id, folder_id)
+    # Its workflows stay, unfiled.
+    await db.execute(
+        update(AutomationWorkflow)
+        .where(
+            AutomationWorkflow.tenant_id == actor.session.tenant_id,
+            AutomationWorkflow.folder_id == folder.id,
+        )
+        .values(folder_id=None)
+    )
+    await db.delete(folder)
+    await db.flush()
+    return Response(status_code=204)
+
+
+@router.post("/business/automations/{workflow_id}/folder", response_model=schemas.WorkflowOut)
+async def move_automation(
+    workflow_id: int, data: schemas.MoveToFolder, actor: Automations, db: Db
+) -> schemas.WorkflowOut:
+    item = await db.scalar(
+        select(AutomationWorkflow)
+        .where(
+            AutomationWorkflow.id == workflow_id,
+            AutomationWorkflow.tenant_id == actor.session.tenant_id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise ApiError("not_found", "Automation not found.", 404)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
+    if data.folderId is not None:
+        await _folder(db, actor.session.tenant_id, data.folderId)
+    item.folder_id = data.folderId
+    await db.flush()
+    return service.workflow_out(item)
+
+
 @router.get("/business/automations", response_model=list[schemas.WorkflowOut])
 async def automations(actor: CurrentActor, db: Db) -> list[schemas.WorkflowOut]:
     workspace_ids = await service.accessible_workspace_ids(
@@ -289,9 +500,12 @@ async def create_automation(
     data: schemas.WorkflowCreate, actor: Automations, db: Db, request: Request
 ) -> schemas.WorkflowOut:
     await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, data.workspaceId)
+    if data.folderId is not None:
+        await _folder(db, actor.session.tenant_id, data.folderId)
     item = AutomationWorkflow(
         tenant_id=actor.session.tenant_id,
         workspace_id=data.workspaceId,
+        folder_id=data.folderId,
         name=data.name,
         description=data.description,
         trigger=data.trigger,
