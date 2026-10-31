@@ -21,6 +21,7 @@ from janus_api.finance.bills import router as finance_bills_router
 from janus_api.finance.funds import router as finance_funds_router
 from janus_api.finance.records import router as finance_records_router
 from janus_api.finance.router import router as finance_router
+from janus_api.hr.router import router as hr_router
 from janus_api.it.router import router as it_router
 from janus_api.operations.router import router as operations_router
 from janus_api.org.router import router as org_router
@@ -63,6 +64,7 @@ app.include_router(whatsapp_router)
 app.include_router(calls_router)
 app.include_router(calls_public_router)
 app.include_router(push_router)
+app.include_router(hr_router)
 app.include_router(state_router)
 app.include_router(vault_router)
 app.include_router(timeline_router)

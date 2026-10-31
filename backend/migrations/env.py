@@ -13,6 +13,7 @@ from janus_api.calls import models as calls_models
 from janus_api.core.config import get_settings
 from janus_api.core.db import Base
 from janus_api.crm import models as crm_models
+from janus_api.hr import models as hr_models
 from janus_api.org import models as org_models
 from janus_api.push import models as push_models
 from janus_api.sources import models as source_models
@@ -31,6 +32,7 @@ assert (
     and business_models
     and calls_models
     and push_models
+    and hr_models
 )
 
 
