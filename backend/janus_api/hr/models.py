@@ -33,7 +33,7 @@ class HrRecord(Base):
         CheckConstraint("kind ~ '^[a-z_]{2,24}$'", name="ck_hr_records_kind"),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
-    kind: Mapped[str] = mapped_column(String(12))
+    kind: Mapped[str] = mapped_column(String(24))
     key: Mapped[str] = mapped_column(String(80))
     subject: Mapped[str] = mapped_column(String(80), index=True)
     approvers: Mapped[list[str]] = mapped_column(ARRAY(String(80)), server_default="{}")
