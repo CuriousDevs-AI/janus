@@ -33,7 +33,7 @@ STORE_PERMISSIONS: dict[str, str] = {
     "janus.workflow-rules.v1": "settings:manage",
     "janus.it.v1": "settings:manage",
     "janus.record-documents.v1": "settings:manage",
-    "janus.crm-records.v1": "leads:write",
+    "janus.crm-records.v1": "leads:read_team",
 }
 # Who may read each store: its owners, and the workspaces whose screens read it (budget lines for
 # projects and stock, invoices for support). An empty tuple means every member, for stores that
@@ -50,7 +50,9 @@ READ_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "janus.workflow-rules.v1": ("settings:manage", "billing:manage", "stock:adjust"),
     "janus.it.v1": ("settings:manage",),
     "janus.record-documents.v1": (),
-    "janus.crm-records.v1": ("leads:read_own",),
+    # On a live account this holds support data (tickets, their emails, ticket activity); leads,
+    # deals and chats come from their own APIs, which scope them to each person.
+    "janus.crm-records.v1": ("leads:read_team",),
 }
 MAX_DOCUMENT_BYTES = 4_000_000
 

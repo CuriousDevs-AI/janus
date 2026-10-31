@@ -36,6 +36,31 @@ const DEBOUNCE_MS = 400;
 /** The server version this browser last saw or saved, per store. */
 const knownVersion = new Map<string, number>();
 const queued = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> }>();
+/**
+ * Stores that have finished loading. Until then a screen may already change the store's empty
+ * starting state; that copy is neither kept nor sent, or it would be saved over the real records.
+ */
+const loaded = new Set<string>();
+/**
+ * What the server holds for each store, in a key-order-free form. Screens often set a store to what it
+ * already holds as they open; that is not a change, and sending it would make two people viewing the
+ * same page refuse each other's saves.
+ */
+const serverCopy = new Map<string, string>();
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+const sameAsServer = (name: string, value: string) => {
+  try {
+    return serverCopy.get(name) === canonical(JSON.parse(value));
+  } catch {
+    return false;
+  }
+};
 const dirtyKey = (name: string) => `${name}:unsaved`;
 
 const synced = (name: string) => !demoMode && SYNCED_STORES.has(name);
@@ -57,7 +82,7 @@ const READ: Record<string, string[]> = {
   "janus.workflow-rules.v1": ["settings:manage", "billing:manage", "stock:adjust"],
   "janus.it.v1": ["settings:manage"],
   "janus.record-documents.v1": [],
-  "janus.crm-records.v1": ["leads:read_own"],
+  "janus.crm-records.v1": ["leads:read_team"],
 };
 const WRITE: Record<string, string> = {
   "janus.finance.v1": "billing:manage",
@@ -71,7 +96,7 @@ const WRITE: Record<string, string> = {
   "janus.workflow-rules.v1": "settings:manage",
   "janus.it.v1": "settings:manage",
   "janus.record-documents.v1": "settings:manage",
-  "janus.crm-records.v1": "leads:write",
+  "janus.crm-records.v1": "leads:read_team",
 };
 let granted: string[] | null = null;
 let announce: (permissions: string[]) => void = () => {};
@@ -120,10 +145,24 @@ async function send(name: string, value: string): Promise<boolean> {
       body: JSON.stringify({ data: JSON.parse(value), expected_version }),
     });
     knownVersion.set(name, saved.version);
+    serverCopy.set(name, canonical(JSON.parse(value)));
     setDirty(name, false);
     return true;
   } catch (error) {
     if (error instanceof APIError && error.code === "version_conflict") {
+      // Someone saved first. If they saved exactly this (two people opened the same page and it
+      // brought the store up to date for both), there is nothing to resolve.
+      try {
+        const latest = await api<{ version: number; data: unknown }>(`/workspace-state/${name}`);
+        if (canonical(latest.data) === canonical(JSON.parse(value))) {
+          knownVersion.set(name, latest.version);
+          serverCopy.set(name, canonical(latest.data));
+          setDirty(name, false);
+          return true;
+        }
+      } catch {
+        /* the server could not be checked: treat it as a real conflict */
+      }
       setDirty(name, true);
       toast.warning("Someone else saved changes to this workspace on another device. Your edits here are kept until you choose.", {
         duration: Infinity,
@@ -191,6 +230,7 @@ async function load(name: string): Promise<string | null> {
     return cached;
   }
   const fresh = JSON.stringify(doc.data);
+  serverCopy.set(name, canonical(doc.data));
   try {
     local()?.setItem(name, fresh);
   } catch {
@@ -204,9 +244,10 @@ export const workspaceStorage: StateStorage = {
     // On the server there is no browser copy and no session, so the store starts empty and loads in the browser.
     if (typeof window === "undefined") return null;
     if (!synced(name)) return local()?.getItem(name) ?? null;
-    return load(name);
+    return load(name).finally(() => loaded.add(name));
   },
   setItem: (name, value) => {
+    if (synced(name) && !loaded.has(name)) return;
     try {
       local()?.setItem(name, value);
     } catch {
@@ -215,6 +256,14 @@ export const workspaceStorage: StateStorage = {
     if (!synced(name)) return;
     // A change to a store this person may not change stays on this screen; the server would refuse it.
     if (!mayWrite(granted, name)) return;
+    if (sameAsServer(name, value)) {
+      // Nothing changed: drop any save waiting with an older value.
+      const waiting = queued.get(name);
+      if (waiting) clearTimeout(waiting.timer);
+      queued.delete(name);
+      setDirty(name, false);
+      return;
+    }
     setDirty(name, true);
     const pending = queued.get(name);
     if (pending) clearTimeout(pending.timer);

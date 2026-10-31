@@ -129,7 +129,7 @@ async def test_each_store_is_read_only_by_the_roles_whose_work_uses_it(
         "janus.projects.v1": (200, 200, 403),
         "janus.it.v1": (200, 403, 403),
         "janus.renewals.v1": (200, 200, 403),
-        "janus.crm-records.v1": (200, 200, 200),
+        "janus.crm-records.v1": (200, 200, 403),
         "janus.locations.v1": (200, 200, 200),
     }
     for key, codes in expected.items():
