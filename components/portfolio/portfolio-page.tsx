@@ -51,7 +51,7 @@ export function PortfolioPage() {
   const { summaries, hydrated } = usePortfolio();
   const [title, description] = titles[view] ?? titles.overview;
   // The Portfolio runs on the preview's company records. A live account has none yet.
-  if (!demoMode) return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is not available yet for live accounts.</div>;
+  if (!demoMode) return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio, for owners of several companies, is not available yet for live accounts. <Link className="text-accent underline" href="/settings?tab=workspace&view=overview&workspace=business">Go to the Business overview</Link></div>;
   if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under Portfolio access.</div>;
   return <div className="mx-auto flex max-w-[1240px] flex-col">
     <PageHeader title={title} description={description} actions={<Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button>} />
