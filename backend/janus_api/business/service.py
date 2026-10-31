@@ -353,6 +353,13 @@ def execution_out(item: AutomationExecution) -> schemas.ExecutionOut:
         approvedBy=str(item.approved_by) if item.approved_by else None,
         createdAt=item.created_at,
         completedAt=item.completed_at,
+        recordRef={
+            key: item.event[key] for key in ("lead_id", "ticket_id") if key in item.event
+        }
+        or None,
+        steps=list((item.result or {}).get("steps", [])),
+        startedAt=item.created_at,
+        endedAt=item.completed_at,
     )
 
 

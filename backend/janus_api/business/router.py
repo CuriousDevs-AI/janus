@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, or_, select, update
 
 from janus_api.auth.service import Actor
-from janus_api.business import schemas, service
+from janus_api.business import engine, schemas, service
 from janus_api.business.models import (
     AgentDefinition,
     AutomationExecution,
@@ -269,8 +269,9 @@ async def test_agent(
     }
 
 
-# Starting points for a workflow. Workflows run when someone runs them (or tests them), so every
-# template starts by hand; its steps describe the work for the person approving each run.
+# Starting points for a workflow. Every template starts by hand. Its steps describe the work; Janus
+# carries out only the steps in `engine.SUPPORTED`, so these templates are plans to adapt until
+# their modules' steps can run.
 TEMPLATES = [
     schemas.TemplateOut(
         id="weekly-pipeline-review",
@@ -332,9 +333,10 @@ MODULE_LABELS = {
 CORE_ACTIONS = [
     {"type": "condition", "label": "Condition", "module": "logic"},
     {"type": "approval", "label": "Request approval", "module": "business"},
-    {"type": "create_task", "label": "Create task", "module": "crm_sales"},
+    {"type": "create_task", "label": "Create project task", "module": "projects_delivery"},
+    {"type": "create_task", "label": "Create CRM follow-up task", "module": "crm_sales"},
     {"type": "update_record", "label": "Update record", "module": "crm_sales"},
-    {"type": "send_notification", "label": "Send notification", "module": "communication"},
+    {"type": "send_notification", "label": "Post in Team Chat", "module": "communication"},
 ]
 
 
@@ -343,7 +345,7 @@ async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict
     """What the workflow editor offers: the company's workspaces, how a workflow starts, its steps.
 
     Workflows start by hand (or as a test), so that is the only trigger offered. The steps are the
-    core ones and those the templates use.
+    core ones and those the templates use; `supported` says whether Janus carries one out.
     """
     switched_on = set(
         (
@@ -369,7 +371,8 @@ async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict
     for action in CORE_ACTIONS + template_actions:
         if (action["type"], action["module"]) not in seen:
             seen.add((action["type"], action["module"]))
-            actions.append(action)
+            supported = engine.is_supported(*engine.step_action(action))
+            actions.append({**action, "supported": supported})
     return {
         "modules": [
             {"id": key, "label": label, "connected": key in switched_on}
@@ -383,6 +386,14 @@ async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict
 @router.get("/business/automation-templates", response_model=list[schemas.TemplateOut])
 async def automation_templates(actor: CurrentActor) -> list[schemas.TemplateOut]:
     return TEMPLATES
+
+
+def _refuse_unsupported(workflow: AutomationWorkflow) -> None:
+    """Refuse to run a workflow with a step Janus would not carry out, naming each such step."""
+    refused = engine.refusals(workflow.actions or [])
+    if refused:
+        steps = "; ".join(f"step {item['index'] + 1}: {item['reason']}" for item in refused)
+        raise ApiError("unsupported_steps", f"Janus cannot run this workflow yet. {steps}", 422)
 
 
 async def _folder(db: Db, tenant_id: int, folder_id: int) -> AutomationFolder:
@@ -642,7 +653,7 @@ async def test_workflow(
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
     await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
-    item = AutomationExecution(tenant_id=actor.session.tenant_id, workflow_id=workflow.id, status="dry_run", event={"trigger": "test", "step_id": payload.get("stepId")}, result={"side_effects": False, "message": "Dry run completed without sending or changing business records."})
+    item = AutomationExecution(tenant_id=actor.session.tenant_id, workflow_id=workflow.id, status="dry_run", event={"trigger": "test", "step_id": payload.get("stepId")}, result={"side_effects": False, "message": "Dry run completed without sending or changing business records.", "unsupported": engine.refusals(workflow.actions or [])})
     db.add(item)
     await db.flush()
     from janus_api.audit.service import record
@@ -706,13 +717,13 @@ async def run_automation(
         select(AutomationWorkflow).where(
             AutomationWorkflow.id == workflow_id,
             AutomationWorkflow.tenant_id == actor.session.tenant_id,
+            AutomationWorkflow.status != "archived",
         )
     )
     if workflow is None:
-        from janus_api.core.errors import ApiError
-
         raise ApiError("not_found", "Automation not found.", 404)
     await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
+    _refuse_unsupported(workflow)
     item = AutomationExecution(
         tenant_id=actor.session.tenant_id,
         workflow_id=workflow.id,
@@ -753,13 +764,13 @@ async def approve_execution(
         .with_for_update()
     )
     if item is None:
-        from janus_api.core.errors import ApiError
-
         raise ApiError("not_found", "Execution not found.", 404)
     workflow = await db.scalar(select(AutomationWorkflow).where(AutomationWorkflow.id == item.workflow_id))
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
     await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
+    if item.status != "pending_approval":
+        raise ApiError("not_waiting", "This run is not waiting for an approval.", 409)
     item.status = "approved"
     item.approved_by = actor.user.id
     from janus_api.audit.service import record

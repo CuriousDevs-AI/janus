@@ -180,6 +180,11 @@ class ExecutionOut(BaseModel):
     approvedBy: str | None
     createdAt: datetime
     completedAt: datetime | None
+    # What the Runs tab shows: the record the run is about, and each step's outcome.
+    recordRef: dict | None = None
+    steps: list[dict] = Field(default_factory=list)
+    startedAt: datetime | None = None
+    endedAt: datetime | None = None
 
 
 class ReportSummary(BaseModel):

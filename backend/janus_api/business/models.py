@@ -94,7 +94,15 @@ class AutomationWorkflow(Base):
 
 class AutomationExecution(Base):
     __tablename__ = "automation_executions"
-    __table_args__ = (Index("ix_automation_executions_tenant_id", "tenant_id"),)
+    __table_args__ = (
+        Index("ix_automation_executions_tenant_id", "tenant_id"),
+        # The runs the worker still has to carry out.
+        Index(
+            "ix_automation_executions_due",
+            "id",
+            postgresql_where=text("status IN ('queued', 'approved')"),
+        ),
+    )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
     workflow_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("automation_workflows.id"))
     status: Mapped[str] = mapped_column(String(20), server_default="pending")
