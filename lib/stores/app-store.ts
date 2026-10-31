@@ -53,9 +53,22 @@ import {
 } from "@/lib/mock-data";
 
 let idCounter = 1000;
+/**
+ * A record id. These records are shared by everyone in the company, and a counter restarts in every
+ * browser, so two people would make the same id; a real account gets a random one. The preview keeps
+ * short readable ids, since its data never leaves the browser.
+ */
 function nextId(prefix: string) {
+  if (!demoMode) return `${prefix}-${crypto.randomUUID()}`;
   idCounter += 1;
   return `${prefix}-${idCounter}`;
+}
+
+/** One copy of each record by id, the latest one kept; an earlier counter-made id could repeat. */
+function unique<T extends { id: string }>(items: T[] | undefined): T[] {
+  const byId = new Map<string, T>();
+  for (const item of items ?? []) byId.set(item.id, item);
+  return [...byId.values()];
 }
 
 const HUMAN_ACTOR: ActivityActor = { type: "human", userId: currentUser.id, userName: currentUser.name };
@@ -664,9 +677,14 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     const saved = { ...current, ...(persisted as Partial<AppState>) } as AppState;
     if (demoMode) return saved;
     const next = { ...saved } as Record<string, unknown>;
+    for (const [key, value] of Object.entries(next)) {
+      if (Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string")) {
+        next[key] = unique(value as { id: string }[]);
+      }
+    }
     for (const key of Object.keys(demoSeeds) as (keyof typeof demoSeeds)[]) {
       const seeded = new Set((demoSeeds[key] as { id: string }[]).map((item) => item.id));
-      const kept = ((saved[key] as { id: string }[] | undefined) ?? []).filter((item) => !seeded.has(item.id));
+      const kept = ((next[key] as { id: string }[] | undefined) ?? []).filter((item) => !seeded.has(item.id));
       next[key] = kept;
     }
     return next as unknown as AppState;
