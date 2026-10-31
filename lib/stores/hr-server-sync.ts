@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { api, APIError, message as errorText } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
+import { useHrCareerStore } from "@/lib/stores/hr-career-store";
 import { useHrDocumentStore } from "@/lib/stores/hr-document-store";
 import { useHrImportStore } from "@/lib/stores/hr-import-store";
 import { useHrLifecycleStore } from "@/lib/stores/hr-lifecycle-store";
@@ -34,11 +35,26 @@ const documents = useHrDocumentStore as unknown as Store;
 const org = useHrOrgStore as unknown as Store;
 const lifecycle = useHrLifecycleStore as unknown as Store;
 const imports = useHrImportStore as unknown as Store;
+const career = useHrCareerStore as unknown as Store;
 
 const BINDINGS: Binding[] = [
   { kind: "employee", store: people, field: "employees", shape: "list" },
   { kind: "leave", store: people, field: "leaveRequests", shape: "list" },
   { kind: "attendance", store: people, field: "attendance", shape: "list" },
+  // About one person: they, their manager and HR see it; the server decides who changes what.
+  { kind: "document", store: people, field: "documents", shape: "list" },
+  { kind: "onboarding", store: people, field: "onboardingTasks", shape: "list" },
+  { kind: "expense", store: people, field: "expenseClaims", shape: "list" },
+  { kind: "expense_evidence", store: operations, field: "evidence", shape: "map" },
+  { kind: "review", store: operations, field: "reviews", shape: "list" },
+  { kind: "regularisation", store: operations, field: "regularisations", shape: "list" },
+  { kind: "policy_question", store: operations, field: "policyQuestions", shape: "list" },
+  { kind: "letter", store: operations, field: "letterRequests", shape: "list" },
+  { kind: "leave_adjustment", store: operations, field: "leaveAdjustments", shape: "list" },
+  { kind: "document_extra", store: documents, field: "extras", shape: "map" },
+  { kind: "acknowledgement", store: documents, field: "acknowledgements", shape: "map" },
+  { kind: "exit", store: lifecycle, field: "exits", shape: "list" },
+  { kind: "career", store: career, field: "changes", shape: "list" },
   // HR's own work: only HR sees it.
   { kind: "candidate", store: people, field: "candidates", shape: "list" },
   { kind: "payroll_issue", store: people, field: "payrollIssues", shape: "list" },
@@ -61,11 +77,18 @@ const BINDINGS: Binding[] = [
   { kind: "config", store: org, field: "roles", shape: "setting" },
   { kind: "config", store: org, field: "assignments", shape: "setting" },
 ];
-/** What a person who is not HR may send; the server checks again. */
-const SELF_SERVICE = new Set(["leave", "attendance", "audit"]);
+/** What a person who is not HR may send; the server checks each field again. */
+const SELF_SERVICE = new Set(["leave", "attendance", "audit", "document", "onboarding", "expense", "expense_evidence", "review", "regularisation", "policy_question", "letter", "document_extra", "acknowledgement", "career"]);
+/**
+ * Entries that hang off another record (a claim's receipt, a document's extras). The server finds
+ * their owner through that record, so they wait in its queue until it has been saved.
+ */
+const PARENT_KIND: Record<string, string> = { expense_evidence: "expense", document_extra: "document" };
+/** What they may withdraw (delete) while it waits. */
+const WITHDRAWABLE = new Set(["regularisation"]);
 const REFRESH_MS = 60_000;
 
-const STORE_NAMES = new Map<Store, string>([[people, "people"], [operations, "operations"], [documents, "documents"], [org, "org"], [lifecycle, "lifecycle"], [imports, "imports"]]);
+const STORE_NAMES = new Map<Store, string>([[people, "people"], [operations, "operations"], [documents, "documents"], [org, "org"], [lifecycle, "lifecycle"], [imports, "imports"], [career, "career"]]);
 const settingKey = (binding: Binding) => `${STORE_NAMES.get(binding.store)}.${binding.field}`;
 const owns = (binding: Binding, id: string) => binding.shape !== "setting" || id === settingKey(binding);
 
@@ -160,7 +183,8 @@ function push(binding: Binding, value: unknown) {
     const json = JSON.stringify(record);
     if (known.get(id)?.json === json) continue;
     known.set(id, { version: known.get(id)?.version ?? 0, json });
-    enqueue(id, async () => {
+    const parent = PARENT_KIND[binding.kind];
+    enqueue(parent ? `${parent}:${record.id}` : id, async () => {
       try {
         const saved = await api<ServerRecord>(`/hr/records/${binding.kind}/${encodeURIComponent(record.id)}`, {
           method: "PUT",
@@ -169,9 +193,14 @@ function push(binding: Binding, value: unknown) {
         const savedJson = JSON.stringify(saved.data);
         known.set(id, { version: saved.version, json: savedJson });
         // The server may keep parts of a record this person may not change; show what it kept.
-        if (savedJson !== json && binding.shape === "list") {
+        if (savedJson !== json && binding.shape !== "setting") {
           applying = true;
-          binding.store.setState((state: object) => ({ [binding.field]: ((state as Record<string, Array<{ id: string }>>)[binding.field] ?? []).map((item) => (item.id === record.id ? saved.data : item)) }));
+          binding.store.setState((state: object) => {
+            const current = (state as Record<string, unknown>)[binding.field];
+            return binding.shape === "list"
+              ? { [binding.field]: ((current as Array<{ id: string }>) ?? []).map((item) => (item.id === record.id ? saved.data : item)) }
+              : { [binding.field]: { ...((current as Record<string, unknown>) ?? {}), [record.id]: saved.data.value } };
+          });
           applying = false;
         }
       } catch (error) {
@@ -184,7 +213,7 @@ function push(binding: Binding, value: unknown) {
   for (const id of [...known.keys()]) {
     if (!id.startsWith(`${binding.kind}:`) || seen.has(id)) continue;
     known.delete(id);
-    if (!admin) continue;
+    if (!admin && !WITHDRAWABLE.has(binding.kind)) continue;
     const key = id.slice(binding.kind.length + 1);
     enqueue(id, async () => {
       try {

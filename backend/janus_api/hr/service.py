@@ -32,6 +32,7 @@ from janus_api.core.deps import Db
 from janus_api.core.errors import ApiError
 from janus_api.hr import schemas
 from janus_api.hr.models import HrRecord
+from janus_api.hr.rules import ALL, RULES, Rule
 
 FULL = "hr:manage"
 READ_ALL = "hr:read"
@@ -88,8 +89,22 @@ def _team(actor: Actor) -> bool:
     return any(_has(actor, permission) for permission in TEAM)
 
 
-def _out(row: HrRecord, *, pay: bool) -> schemas.RecordOut:
+def _hide(data: dict[str, Any], path: str) -> None:
+    head, _, rest = path.partition(".")
+    if rest and isinstance(data.get(head), dict):
+        inner = dict(data[head])
+        _hide(inner, rest)
+        data[head] = inner
+    elif not rest and head in data:
+        data[head] = 0
+
+
+def _out(row: HrRecord, *, pay: bool, own: bool = False) -> schemas.RecordOut:
     data = dict(row.data)
+    rule = RULES.get(row.kind)
+    if rule and not pay and not own:
+        for path in rule.hidden_from_managers:
+            _hide(data, path)
     if row.kind == "employee" and not pay:
         data["salaryMonthly"] = 0
         data.pop("salaryHistory", None)
@@ -128,6 +143,25 @@ async def _reports(db: Db, actor: Actor, me: str | None) -> set[str]:
         )
     )
     return set(rows.all())
+
+
+# Map entries carry no employee: they belong to whoever the record they hang off is about.
+PARENT = {"expense_evidence": "expense", "document_extra": "document"}
+
+
+async def _subject_of(db: Db, tenant_id: int, kind: str, key: str, data: dict[str, Any]) -> str:
+    if kind == "acknowledgement":
+        # Keyed "<policy>:<version>:<employee>".
+        return key.rsplit(":", 1)[-1]
+    if kind in PARENT:
+        parent = await db.scalar(
+            select(HrRecord.subject).where(
+                HrRecord.tenant_id == tenant_id, HrRecord.kind == PARENT[kind], HrRecord.key == key
+            )
+        )
+        # Extras of a company-wide document (a policy) are HR's.
+        return parent or COMPANY
+    return _subject(kind, key, data)
 
 
 def _subject(kind: str, key: str, data: dict[str, Any]) -> str:
@@ -173,7 +207,7 @@ async def list_records(db: Db, actor: Actor) -> schemas.RecordsOut:
             if read_all:
                 out[row.kind].append(_out(row, pay=pay))
         elif read_all or row.subject == me or me in row.approvers or row.subject in reports:
-            out[row.kind].append(_out(row, pay=pay))
+            out[row.kind].append(_out(row, pay=pay, own=row.subject == me))
     return schemas.RecordsOut(
         me=me,
         admin=pay,
@@ -208,8 +242,11 @@ async def save(
         raise ApiError(
             "version_conflict", "Someone else changed this record. Reload to see it.", 409
         )
-    subject = _subject(kind, key, data)
-    if not _has(actor, FULL):
+    subject = await _subject_of(db, tenant_id, kind, key, data)
+    if not _has(actor, FULL) and kind in RULES:
+        data = await _check_personal(db, actor, kind, data, subject, existing)
+        subject = existing.subject if existing else subject
+    elif not _has(actor, FULL):
         deciding = await _check_write(db, actor, kind, data, subject, existing)
         if existing is not None and deciding:
             for fact in LEAVE_FACTS:
@@ -240,7 +277,101 @@ async def save(
         existing.updated_by = actor.user.id
         existing.updated_at = datetime.now(UTC)
     await db.flush()
-    return _out(existing, pay=_has(actor, FULL))
+    return _out(existing, pay=_has(actor, FULL), own=True)
+
+
+def _fields(rule: Rule, data: dict[str, Any]) -> dict[str, Any]:
+    if not rule.in_value:
+        return data
+    # A map entry's value may be a plain value (an acknowledgement's date), with no fields.
+    value = data.get("value")
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _merge(
+    rule: Rule, old: dict[str, Any], new: dict[str, Any], allowed: tuple[str, ...]
+) -> dict[str, Any]:
+    """The stored record, with only the allowed fields taken from the new copy."""
+    if allowed == ALL:
+        return new
+    before, after = _fields(rule, old), _fields(rule, new)
+    merged = {**before, **{name: after[name] for name in allowed if name in after}}
+    return {**old, "value": merged} if rule.in_value else merged
+
+
+async def _check_personal(
+    db: Db,
+    actor: Actor,
+    kind: str,
+    data: dict[str, Any],
+    subject: str,
+    existing: HrRecord | None,
+) -> dict[str, Any]:
+    """The record to store for this save by someone who is not HR, or a refusal."""
+    rule = RULES[kind]
+    me = await _me(db, actor)
+    if me is None:
+        raise ApiError("no_employee_record", "Ask HR to add your employee record first.", 403)
+    reports = await _reports(db, actor, me)
+    owner = existing.subject if existing else subject
+    if subject != owner:
+        raise ApiError("hr_forbidden", "A record cannot move to another person.", 403)
+    status = _fields(rule, data).get("status")
+    if existing is None:
+        allowed_values: dict[str, tuple[str, ...]] | None
+        if owner == me:
+            allowed_values = rule.asker_creates
+        elif owner in reports:
+            allowed_values = rule.decider_creates
+        else:
+            allowed_values = None
+        if allowed_values is None:
+            raise ApiError("hr_forbidden", "Only HR can add this.", 403)
+        for name, values in allowed_values.items():
+            if _fields(rule, data).get(name) not in values:
+                raise ApiError("hr_status", f"A new record starts as {' or '.join(values)}.", 422)
+        if kind == "career":
+            data = await _with_current_pay(db, actor, data, owner)
+        return data
+    old = existing.data
+    old_status = _fields(rule, old).get("status")
+    if owner == me and kind != "career":
+        allowed = rule.asker_fields
+        if kind == "onboarding" and old.get("ownerRole") != "employee":
+            allowed = ()
+        if rule.asker_while is not None and (
+            old_status not in rule.asker_while or status not in rule.asker_while
+        ):
+            allowed = ()
+        if not allowed:
+            raise ApiError("hr_forbidden", "You cannot change this now; ask HR.", 403)
+        return _merge(rule, old, data, allowed)
+    if owner in reports or me in existing.approvers:
+        allowed = rule.decider_fields
+        if kind == "onboarding" and old.get("ownerRole") != "manager":
+            allowed = ()
+        if not allowed:
+            raise ApiError("hr_forbidden", "Only HR can change this.", 403)
+        if rule.decider_statuses and status != old_status and status not in rule.decider_statuses:
+            raise ApiError("hr_status", "Only HR can set that status.", 403)
+        return _merge(rule, old, data, allowed)
+    raise ApiError("hr_forbidden", "You cannot change this record.", 403)
+
+
+async def _with_current_pay(
+    db: Db, actor: Actor, data: dict[str, Any], employee: str
+) -> dict[str, Any]:
+    """A manager proposing a change cannot see current pay, so the server records it."""
+    record = await db.scalar(
+        select(HrRecord.data).where(
+            HrRecord.tenant_id == actor.session.tenant_id,
+            HrRecord.kind == "employee",
+            HrRecord.key == employee,
+        )
+    )
+    before = dict(data.get("before") or {})
+    before["salaryMonthly"] = (record or {}).get("salaryMonthly", 0)
+    return {**data, "before": before}
 
 
 async def _check_write(
@@ -299,8 +430,6 @@ async def _check_write(
 
 
 async def delete(db: Db, actor: Actor, kind: str, key: str) -> None:
-    if not _has(actor, FULL):
-        raise ApiError("hr_forbidden", "Only HR can delete HR records.", 403)
     row = await db.scalar(
         select(HrRecord).where(
             HrRecord.tenant_id == actor.session.tenant_id,
@@ -308,6 +437,15 @@ async def delete(db: Db, actor: Actor, kind: str, key: str) -> None:
             HrRecord.key == key,
         )
     )
+    if not _has(actor, FULL):
+        # Someone may withdraw their own request while it waits; anything else is HR's.
+        rule = RULES.get(kind)
+        mine = row is not None and row.subject == await _me(db, actor)
+        waiting = (
+            row is not None and rule is not None and row.data.get("status") in rule.asker_withdraws
+        )
+        if not (mine and waiting):
+            raise ApiError("hr_forbidden", "Only HR can delete HR records.", 403)
     if row is not None:
         await db.delete(row)
         await db.flush()
@@ -337,7 +475,9 @@ async def seed(db: Db, actor: Actor, body: schemas.BatchIn) -> schemas.RecordsOu
         ).all()
     )
     seen: set[tuple[str, str]] = set()
-    for kind, items in body.records.items():
+    # Records that hang off another (receipts, document extras) go after it, to find its employee.
+    ordered = sorted(body.records.items(), key=lambda pair: pair[0] in PARENT)
+    for kind, items in ordered:
         if kind not in SCOPES or (kind in present and kind != "config"):
             continue
         for item in items:
@@ -348,7 +488,7 @@ async def seed(db: Db, actor: Actor, body: schemas.BatchIn) -> schemas.RecordsOu
                 continue
             seen.add((kind, key))
             try:
-                subject = _subject(kind, key, item)
+                subject = await _subject_of(db, tenant_id, kind, key, item)
             except ApiError:
                 continue
             db.add(
@@ -363,5 +503,6 @@ async def seed(db: Db, actor: Actor, body: schemas.BatchIn) -> schemas.RecordsOu
                     updated_by=actor.user.id,
                 )
             )
+        await db.flush()
     await db.flush()
     return await list_records(db, actor)
