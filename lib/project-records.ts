@@ -229,3 +229,32 @@ export async function refreshTasks(projectId: string): Promise<void> {
     tasks: state.tasks.map((t) => (byKey.has(t.id) ? { ...t, status: byKey.get(t.id) as typeof t.status } : t)),
   }));
 }
+
+let repairing: Promise<number> | null = null;
+
+/**
+ * Copies to the server any project that exists only on the screens: its record and its timeline. A
+ * project is saved on the screens first, and if the server was out of reach then, its milestones and
+ * timeline had nowhere to live. Runs once at a time; returns how many projects were copied.
+ */
+export function repairMissingProjects(): Promise<number> {
+  if (demoMode) return Promise.resolve(0);
+  repairing ??= (async () => {
+    const records = await api<{ external_key: string }[]>("/project-records");
+    const known = new Set(records.map((record) => record.external_key));
+    const { useProjectsStore } = await import("@/lib/stores/projects-store");
+    const { syncProjectTimeline } = await import("@/lib/timeline-sync");
+    const { projectPersonRefs } = await import("@/lib/timeline-team");
+    let copied = 0;
+    for (const project of useProjectsStore.getState().projects.filter((item) => !known.has(item.id))) {
+      const links = await mirrorNewProject(project, project.owner);
+      if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(project.id, links);
+      await syncProjectTimeline(project, projectPersonRefs(project, [], [], project.id));
+      copied += 1;
+    }
+    return copied;
+  })().finally(() => {
+    repairing = null;
+  });
+  return repairing;
+}

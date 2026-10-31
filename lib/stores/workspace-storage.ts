@@ -40,6 +40,52 @@ const dirtyKey = (name: string) => `${name}:unsaved`;
 
 const synced = (name: string) => !demoMode && SYNCED_STORES.has(name);
 
+/**
+ * Who may read and change each store, as the server decides (backend state/router.py:
+ * READ_PERMISSIONS and STORE_PERMISSIONS). A store this person may not read is not asked for, and one
+ * they may not change is never sent, so neither ends in a refused request.
+ */
+const READ: Record<string, string[]> = {
+  "janus.finance.v1": ["billing:manage", "projects:manage", "stock:adjust", "leads:read_team"],
+  "janus.period-lock.v1": ["billing:manage", "projects:manage", "stock:adjust"],
+  "janus.vendors.v1": ["billing:manage", "stock:adjust"],
+  "janus.operations.v1": ["stock:adjust", "billing:manage"],
+  "janus.projects.v1": ["projects:manage", "billing:manage"],
+  "janus.renewals.v1": ["leads:read_team"],
+  "janus.feedback.v1": ["leads:read_team"],
+  "janus.locations.v1": [],
+  "janus.workflow-rules.v1": ["settings:manage", "billing:manage", "stock:adjust"],
+  "janus.it.v1": ["settings:manage"],
+  "janus.record-documents.v1": [],
+  "janus.crm-records.v1": ["leads:read_own"],
+};
+const WRITE: Record<string, string> = {
+  "janus.finance.v1": "billing:manage",
+  "janus.period-lock.v1": "billing:manage",
+  "janus.vendors.v1": "stock:adjust",
+  "janus.operations.v1": "stock:adjust",
+  "janus.projects.v1": "projects:manage",
+  "janus.renewals.v1": "leads:read_team",
+  "janus.feedback.v1": "leads:read_team",
+  "janus.locations.v1": "settings:manage",
+  "janus.workflow-rules.v1": "settings:manage",
+  "janus.it.v1": "settings:manage",
+  "janus.record-documents.v1": "settings:manage",
+  "janus.crm-records.v1": "leads:write",
+};
+let granted: string[] | null = null;
+let announce: (permissions: string[]) => void = () => {};
+const permissionsKnown = new Promise<string[]>((resolve) => { announce = resolve; });
+
+/** Called once the session is known, so stores load only what this person may see. */
+export function setStorePermissions(permissions: string[]) {
+  granted = permissions;
+  announce(permissions);
+}
+const holds = (permissions: string[], needed: string) => permissions.includes("*") || permissions.includes(needed);
+const mayRead = (permissions: string[], name: string) => (READ[name] ?? []).length === 0 || (READ[name] ?? []).some((needed) => holds(permissions, needed));
+const mayWrite = (permissions: string[] | null, name: string) => permissions !== null && holds(permissions, WRITE[name] ?? "*");
+
 function local(): Storage | null {
   try {
     return window.localStorage;
@@ -109,9 +155,29 @@ function flush(name: string) {
 async function load(name: string): Promise<string | null> {
   const cached = local()?.getItem(name) ?? null;
   let doc: { version: number; data: Record<string, unknown> | null };
+  if (!mayRead(await permissionsKnown, name)) {
+    // Not this person's workspace: forget any copy this browser kept from before, and show nothing.
+    try {
+      local()?.removeItem(name);
+      setDirty(name, false);
+    } catch {
+      /* private mode: nothing was kept */
+    }
+    return null;
+  }
   try {
     doc = await api(`/workspace-state/${name}`);
-  } catch {
+  } catch (error) {
+    // Not this person's workspace: forget any copy this browser kept from before, and show nothing.
+    if (error instanceof APIError && error.status === 403) {
+      try {
+        local()?.removeItem(name);
+        setDirty(name, false);
+      } catch {
+        /* private mode: nothing was kept */
+      }
+      return null;
+    }
     return cached;
   }
   knownVersion.set(name, doc.version);
@@ -147,6 +213,8 @@ export const workspaceStorage: StateStorage = {
       /* private mode: the value is kept in memory only */
     }
     if (!synced(name)) return;
+    // A change to a store this person may not change stays on this screen; the server would refuse it.
+    if (!mayWrite(granted, name)) return;
     setDirty(name, true);
     const pending = queued.get(name);
     if (pending) clearTimeout(pending.timer);

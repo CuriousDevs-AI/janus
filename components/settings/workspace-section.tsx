@@ -32,6 +32,7 @@ import { lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo
 import { useSession } from "@/components/auth/session-provider";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
 import { BillingSection } from "@/components/settings/billing-section";
+import { formatCurrencyINR } from "@/lib/utils";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -219,7 +220,9 @@ function BusinessOverviewPanel() {
   const leads = data?.leads ?? 0;
   const openDeals = data?.openDeals ?? 0;
   const wonDeals = data?.wonDeals ?? 0;
-  const pipeline = data?.pipelineValue ?? "—";
+  // The API sends the pipeline as a decimal string; show it as rupees, like every other amount.
+  const pipelineAmount = Number(data?.pipelineValue);
+  const pipeline = data?.pipelineValue != null && Number.isFinite(pipelineAmount) ? formatCurrencyINR(pipelineAmount, false) : "—";
   const unavailable = loading ? "Loading verified CRM records…" : error ? "CRM summary is unavailable right now." : null;
   const company = activeCompany();
   const crmOn = !demoMode || company.workspaces.includes("crm-sales");
@@ -290,7 +293,7 @@ function BusinessOverviewPanel() {
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
           <Badge variant="success">HR & People connected</Badge>
-          <Badge variant="neutral">Finance not connected</Badge>
+          <Badge variant="neutral">Finance figures not in this summary yet</Badge>
         </div>
       </SectionCard>
     </div>

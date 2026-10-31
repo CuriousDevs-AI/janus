@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import type { TicketPriority, TicketStatus } from "@/lib/types";
+import { TicketsNotAvailable, useCanWorkTickets } from "@/components/support/tickets-access";
 
 const STATUS_FILTERS: { key: "all" | TicketStatus; label: string }[] = [
   { key: "all", label: "All" },
@@ -51,7 +52,7 @@ const ticketSchema = z.object({
 });
 type TicketFormValues = z.infer<typeof ticketSchema>;
 
-export default function TicketsPage() {
+function TicketsPageContent() {
   const allTickets = useAppStore((s) => s.tickets);
   const access = useCrmAccess();
   const tickets = React.useMemo(() => access.tickets(allTickets), [access, allTickets]);
@@ -279,4 +280,10 @@ export default function TicketsPage() {
       </Dialog>
     </div>
   );
+}
+
+export default function TicketsPage() {
+  // Only people who can work tickets open them; others get a plain message, not a refused request.
+  const allowed = useCanWorkTickets();
+  return allowed ? <TicketsPageContent /> : <TicketsNotAvailable />;
 }

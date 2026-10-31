@@ -21,6 +21,7 @@ import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
 import { projectPersonRefs } from "@/lib/timeline-team";
+import { repairMissingProjects } from "@/lib/project-records";
 import { mirrorMilestone, mirrorMilestoneStatus, mirrorNewProject, mirrorTask, mirrorTaskStatus, refreshMilestones, refreshProjectRecords, refreshTasks, setProjectRecordStatus } from "@/lib/project-records";
 import { message } from "@/lib/api/client";
 
@@ -35,6 +36,15 @@ export function ProjectsWorkspace() {
   const view = searchParams.get("view") ?? "overview";
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
+  // Before any view asks the server for a project's milestones or timeline, every project is on the server.
+  const [checked, setChecked] = React.useState(demoMode);
+  React.useEffect(() => {
+    if (demoMode) return;
+    repairMissingProjects()
+      .then((copied) => { if (copied) toast.success(`${copied} ${copied === 1 ? "project was" : "projects were"} saved to the server.`); })
+      .catch((error: unknown) => toast.warning(`Some projects are not on the server yet: ${message(error)}`))
+      .finally(() => setChecked(true));
+  }, []);
   const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", calendar: "Project calendar", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
 
   if (view in comingSoon) {
@@ -50,18 +60,23 @@ export function ProjectsWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "Delivery overview"} description="Projects draw their budget from a fund allocation. Milestones bill on acceptance. Delivery health is computed from dates and open work." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "projects" && <ProjectsView me={me} />}
-        {view === "milestones" && <MilestonesView me={me} />}
-        {view === "tasks" && <TasksView />}
-        {view === "changes" && <ChangesView me={me} />}
-        {view === "timesheets" && <TimesheetsView me={me} />}
-        {view === "resources" && <ResourcesView />}
-        {view === "reports" && <ProfitabilityView />}
-        {view === "calendar" && <CalendarView />}
-        {view === "client-delivery" && <ClientView />}
-        {view === "timeline" && <TimelineView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <OverviewView />}
-        {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <ProjectsTrail />}
+        {!checked ? <p className="py-8 text-center text-sm text-muted-foreground" role="status">Loading projects…</p> : null}
+        {checked ? (
+          <>
+            {view === "projects" && <ProjectsView me={me} />}
+            {view === "milestones" && <MilestonesView me={me} />}
+            {view === "tasks" && <TasksView />}
+            {view === "changes" && <ChangesView me={me} />}
+            {view === "timesheets" && <TimesheetsView me={me} />}
+            {view === "resources" && <ResourcesView />}
+            {view === "reports" && <ProfitabilityView />}
+            {view === "calendar" && <CalendarView />}
+            {view === "client-delivery" && <ClientView />}
+            {view === "timeline" && <TimelineView />}
+            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <OverviewView />}
+            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <ProjectsTrail />}
+          </>
+        ) : null}
       </div>
     </div>
   );

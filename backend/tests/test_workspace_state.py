@@ -82,8 +82,9 @@ async def test_member_without_the_module_permission_cannot_write(
 ) -> None:
     owner = await signup(client, mailbox)
     agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    # Finance is not an agent's work, so its store is neither readable nor writable to them.
     read = await client.get(f"/v1/workspace-state/{STORE}", headers=agent)
-    assert read.status_code == 200
+    assert read.status_code == 403
     write = await client.put(
         f"/v1/workspace-state/{STORE}",
         headers=agent,
@@ -110,3 +111,28 @@ async def test_manager_can_run_stock_and_projects_but_not_finance(
             json={"data": {"ok": True}, "expected_version": 0},
         )
         assert response.status_code == expected, (key, response.text)
+
+
+async def test_each_store_is_read_only_by_the_roles_whose_work_uses_it(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    manager = await accept_new(
+        client, await invite(client, mailbox, owner, "manager@example.com", role="manager")
+    )
+    expected = {
+        # store: (owner, manager, agent)
+        "janus.finance.v1": (200, 200, 403),
+        "janus.vendors.v1": (200, 200, 403),
+        "janus.operations.v1": (200, 200, 403),
+        "janus.projects.v1": (200, 200, 403),
+        "janus.it.v1": (200, 403, 403),
+        "janus.renewals.v1": (200, 200, 403),
+        "janus.crm-records.v1": (200, 200, 200),
+        "janus.locations.v1": (200, 200, 200),
+    }
+    for key, codes in expected.items():
+        for headers, code in zip((owner.headers, manager, agent), codes, strict=True):
+            response = await client.get(f"/v1/workspace-state/{key}", headers=headers)
+            assert response.status_code == code, (key, code, response.text)
