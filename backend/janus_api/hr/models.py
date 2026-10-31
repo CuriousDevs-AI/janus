@@ -29,7 +29,8 @@ class HrRecord(Base):
     __tablename__ = "hr_records"
     __table_args__ = (
         UniqueConstraint("tenant_id", "kind", "key", name="uq_hr_records_key"),
-        CheckConstraint("kind IN ('employee', 'leave', 'attendance')", name="ck_hr_records_kind"),
+        # The kinds and their access live in hr.service.SCOPES; the database keeps the names tidy.
+        CheckConstraint("kind ~ '^[a-z_]{2,24}$'", name="ck_hr_records_kind"),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
     kind: Mapped[str] = mapped_column(String(12))

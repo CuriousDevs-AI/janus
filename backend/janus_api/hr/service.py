@@ -15,6 +15,11 @@ Who changes what:
 
 A person is linked to their employee record by email. Someone with no record yet sees the
 directory but cannot ask for leave or punch in until HR adds them.
+
+Every kind of record has a scope (SCOPES): the directory; personal records, about one employee;
+HR-only records such as recruitment and payroll issues; company-wide HR settings everyone reads;
+and payroll months, which everyone sees without the company's totals so payslips know which
+months are final.
 """
 
 from datetime import UTC, date, datetime, timedelta
@@ -35,6 +40,44 @@ PENDING = ("pending", "needs_clarification")
 # What a leave request asked for; an approver decides on it but cannot change it.
 LEAVE_FACTS = ("employeeId", "employeeName", "type", "from", "to", "days", "reason", "createdAt")
 PAY_FIELDS = ("salaryMonthly", "salaryHistory")
+RUN_TOTALS = ("gross", "deductions", "net", "deltaPercent", "issueCount", "employeeCount")
+COMPANY = "company"
+
+SCOPES: dict[str, str] = {
+    "employee": "directory",
+    # About one employee: they, their manager, their approvers and HR see it.
+    "leave": "personal",
+    "attendance": "personal",
+    "document": "personal",
+    "document_extra": "personal",
+    "onboarding": "personal",
+    "expense": "personal",
+    "expense_evidence": "personal",
+    "regularisation": "personal",
+    "letter": "personal",
+    "review": "personal",
+    "policy_question": "personal",
+    "leave_adjustment": "personal",
+    "acknowledgement": "personal",
+    "exit": "personal",
+    "career": "personal",
+    # HR's own work.
+    "candidate": "hr",
+    "candidate_detail": "hr",
+    "onboarding_note": "hr",
+    "payroll_issue": "hr",
+    "whatsapp": "hr",
+    "signature": "hr",
+    "compliance": "hr",
+    "audit": "hr",
+    "import": "hr",
+    "filing": "hr",
+    # Company-wide HR settings: departments, roles, holidays, policies, leave rules.
+    "config": "company",
+    "payroll_run": "run",
+}
+# Personal kinds a person or their manager may write in this slice; the others are HR's for now.
+SELF_SERVICE = ("leave", "attendance")
 
 
 def _has(actor: Actor, permission: str) -> bool:
@@ -50,6 +93,10 @@ def _out(row: HrRecord, *, pay: bool) -> schemas.RecordOut:
     if row.kind == "employee" and not pay:
         data["salaryMonthly"] = 0
         data.pop("salaryHistory", None)
+    if row.kind == "payroll_run" and not pay:
+        for total in RUN_TOTALS:
+            if total in data:
+                data[total] = 0
     return schemas.RecordOut.model_validate(
         {"kind": row.kind, "key": row.key, "version": row.version, "data": data}
     )
@@ -86,6 +133,8 @@ async def _reports(db: Db, actor: Actor, me: str | None) -> set[str]:
 def _subject(kind: str, key: str, data: dict[str, Any]) -> str:
     if kind == "employee":
         return key
+    if SCOPES[kind] != "personal":
+        return COMPANY
     subject = data.get("employeeId")
     if not isinstance(subject, str) or not subject:
         raise ApiError("hr_subject", "The record must name the employee it is about.", 422)
@@ -113,17 +162,23 @@ async def list_records(db: Db, actor: Actor) -> schemas.RecordsOut:
             select(HrRecord).where(HrRecord.tenant_id == tenant_id).order_by(HrRecord.id)
         )
     ).all()
-    out: dict[str, list[schemas.RecordOut]] = {"employee": [], "leave": [], "attendance": []}
+    out: dict[str, list[schemas.RecordOut]] = {kind: [] for kind in SCOPES}
     for row in rows:
-        if row.kind == "employee":
-            out["employee"].append(_out(row, pay=pay or row.key == me))
+        scope = SCOPES.get(row.kind)
+        if scope == "directory":
+            out[row.kind].append(_out(row, pay=pay or row.key == me))
+        elif scope in ("company", "run"):
+            out[row.kind].append(_out(row, pay=read_all))
+        elif scope == "hr":
+            if read_all:
+                out[row.kind].append(_out(row, pay=pay))
         elif read_all or row.subject == me or me in row.approvers or row.subject in reports:
             out[row.kind].append(_out(row, pay=pay))
     return schemas.RecordsOut(
         me=me,
         admin=pay,
-        seeded=bool(out["employee"]) or any(row.kind == "employee" for row in rows),
-        **out,
+        seeded=bool(out["employee"]),
+        records=out,
     )
 
 
@@ -199,6 +254,13 @@ async def _check_write(
     """Refuses a save this person may not make. True when they are deciding someone's request."""
     if kind == "employee":
         raise ApiError("hr_forbidden", "Only HR can add or change employee records.", 403)
+    if kind == "audit":
+        # Everyone's actions are logged; anyone adds an entry, nobody but HR reads or changes one.
+        if existing is not None:
+            raise ApiError("hr_forbidden", "The HR log cannot be changed.", 403)
+        return False
+    if kind not in SELF_SERVICE:
+        raise ApiError("hr_forbidden", "Only HR can change this.", 403)
     me = await _me(db, actor)
     if me is None:
         raise ApiError("no_employee_record", "Ask HR to add your employee record first.", 403)
@@ -256,22 +318,33 @@ async def seed(db: Db, actor: Actor, body: schemas.BatchIn) -> schemas.RecordsOu
     if not _has(actor, FULL):
         raise ApiError("hr_forbidden", "Only HR can upload HR records.", 403)
     tenant_id = actor.session.tenant_id
-    taken = await db.scalar(
-        select(func.count())
-        .select_from(HrRecord)
-        .where(HrRecord.tenant_id == tenant_id, HrRecord.kind == "employee")
+    # A kind is uploaded only while the server has none of it, so a record HR deleted cannot come
+    # back from an old browser. Settings are one record each, so each one is checked on its own.
+    present = set(
+        (
+            await db.scalars(
+                select(HrRecord.kind).where(HrRecord.tenant_id == tenant_id).distinct()
+            )
+        ).all()
     )
-    if taken:
-        raise ApiError("hr_seeded", "HR records are already on the server.", 409)
+    settings = set(
+        (
+            await db.scalars(
+                select(HrRecord.key).where(
+                    HrRecord.tenant_id == tenant_id, HrRecord.kind == "config"
+                )
+            )
+        ).all()
+    )
     seen: set[tuple[str, str]] = set()
-    for kind, items in (
-        ("employee", body.employee),
-        ("leave", body.leave),
-        ("attendance", body.attendance),
-    ):
+    for kind, items in body.records.items():
+        if kind not in SCOPES or (kind in present and kind != "config"):
+            continue
         for item in items:
             key = item.get("id")
             if not isinstance(key, str) or not key or len(key) > 80 or (kind, key) in seen:
+                continue
+            if kind == "config" and key in settings:
                 continue
             seen.add((kind, key))
             try:
