@@ -84,7 +84,11 @@ async def test_the_editor_catalog_offers_what_runs(
 ) -> None:
     owner = await signup(client, mailbox)
     catalog = (await client.get("/v1/business/automation-catalog", headers=owner.headers)).json()
-    assert catalog["triggers"] == [{"type": "manual", "label": "Run by hand"}]
+    assert [trigger["type"] for trigger in catalog["triggers"]] == [
+        "manual",
+        "lead_created",
+        "ticket_created",
+    ]
     assert {"crm_sales", "hr_people"} <= {module["id"] for module in catalog["modules"]}
     assert any(module["connected"] for module in catalog["modules"])
     types = {action["type"] for action in catalog["actions"]}

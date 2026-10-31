@@ -338,14 +338,19 @@ CORE_ACTIONS = [
     {"type": "update_record", "label": "Update record", "module": "crm_sales"},
     {"type": "send_notification", "label": "Post in Team Chat", "module": "communication"},
 ]
+TRIGGERS = [
+    {"type": "manual", "label": "Run by hand"},
+    {"type": "lead_created", "label": "When a lead is captured", "module": "crm_sales"},
+    {"type": "ticket_created", "label": "When a support ticket is opened", "module": "customer_support"},
+]
 
 
 @router.get("/business/automation-catalog")
 async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict[str, object]]]:
     """What the workflow editor offers: the company's workspaces, how a workflow starts, its steps.
 
-    Workflows start by hand (or as a test), so that is the only trigger offered. The steps are the
-    core ones and those the templates use; `supported` says whether Janus carries one out.
+    A workflow starts by hand, or when a lead is captured or a support ticket is opened. The steps
+    are the core ones and those the templates use; `supported` says whether Janus carries one out.
     """
     switched_on = set(
         (
@@ -378,7 +383,7 @@ async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict
             {"id": key, "label": label, "connected": key in switched_on}
             for key, label in MODULE_LABELS.items()
         ],
-        "triggers": [{"type": "manual", "label": "Run by hand"}],
+        "triggers": TRIGGERS,
         "actions": actions,
     }
 
@@ -633,6 +638,8 @@ async def publish_workflow(
     if item is None:
         raise ApiError("not_found", "Automation not found.", 404)
     await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    if (item.trigger or {}).get("type") in engine.EVENT_TRIGGERS:
+        _refuse_unsupported(item)
     item.status = "active"
     from janus_api.audit.service import record
     record(db, "business.automation_published", tenant_id=actor.session.tenant_id, user_id=actor.user.id, ip=request_ip(request), details={"workflow_id": workflow_id, "change_note": payload.get("changeNote", "")})

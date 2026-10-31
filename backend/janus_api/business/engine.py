@@ -41,6 +41,7 @@ UNSUPPORTED_REASONS = {
         "Use a Projects & Delivery task or a Team Chat message instead."
     ),
 }
+EVENT_TRIGGERS = ("lead_created", "ticket_created")
 # The fields of the record a run is about, by record: {"lead": {"name": ...}}.
 Values = dict[str, dict[str, Any]]
 TOKEN = re.compile(r"\{\{\s*([a-z_]+)\.([a-z_]+)\s*\}\}")
@@ -107,6 +108,41 @@ def refused_result(actions: list[Any]) -> dict[str, Any]:
             "message": "Nothing was run: this workflow has steps Janus does not carry out yet.",
         },
     }
+
+
+def initial_status(workflow: AutomationWorkflow) -> str:
+    if refusals(workflow.actions or []):
+        return "refused"
+    return "pending_approval" if workflow.requires_approval else "queued"
+
+
+async def enqueue_event(
+    db: AsyncSession, tenant_id: int, event: str, record_ref: dict[str, int]
+) -> None:
+    """Start a run of every switched-on workflow this event triggers. Runs wait for the worker."""
+    workflows = (
+        await db.scalars(
+            select(AutomationWorkflow).where(
+                AutomationWorkflow.tenant_id == tenant_id,
+                AutomationWorkflow.status == "active",
+                AutomationWorkflow.trigger["type"].astext == event,
+            )
+        )
+    ).all()
+    for workflow in workflows:
+        status = initial_status(workflow)
+        db.add(
+            AutomationExecution(
+                tenant_id=tenant_id,
+                workflow_id=workflow.id,
+                status=status,
+                event={"trigger": event, **record_ref, "requested_by": workflow.created_by},
+                result=refused_result(workflow.actions or []) if status == "refused" else {},
+                completed_at=now() if status == "refused" else None,
+            )
+        )
+    if workflows:
+        await db.flush()
 
 
 async def _context(db: AsyncSession, run: AutomationExecution) -> Values:
