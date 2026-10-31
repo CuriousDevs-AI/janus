@@ -33,6 +33,20 @@ Team Chat calls connect browser to browser. When two people cannot reach each ot
 
 The relay refuses private, loopback and link-local addresses, so it cannot be used to reach this server's own network. It listens without TLS; browsers still encrypt the call media end to end. A call is a mesh, one connection per pair of people, which suits small team calls; a large call would need a media server. Relayed calls use this VPS's bandwidth.
 
+## Push notifications
+
+Announcements and kudos reach people's browsers even when Janus is closed, once they choose
+"Turn on desktop notifications" in Team Chat's menu. `configure.py init` generates
+`JANUS_VAPID_PRIVATE_KEY`; set `JANUS_VAPID_SUBJECT` to a `mailto:` address push services can
+reach about problems. For an existing `deploy/.env`, add the key with:
+
+```bash
+python3 -c "import base64,secrets;print(base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode())"
+```
+
+Changing the key later makes every browser subscribe again on its next visit. Without a key,
+announcements still go by email and appear as alerts while Janus is open.
+
 ## First real enquiry
 
 1. Open the app over HTTPS. Create the pilot workspace, receive its verification email, verify it and sign in. Check that the email links use the app domain.

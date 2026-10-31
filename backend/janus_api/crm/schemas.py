@@ -9,6 +9,7 @@ from pydantic import (
     Field,
     HttpUrl,
     StringConstraints,
+    field_validator,
     model_validator,
 )
 
@@ -32,6 +33,12 @@ class ManualLeadIn(BaseModel):
     email: EmailStr | None = None
     company: str = Field(default="", max_length=200)
     requirement: str = Field(default="", max_length=4000)
+
+    @field_validator("phone", "email", mode="before")
+    @classmethod
+    def blank_is_none(cls, value: object) -> object:
+        # Forms send "" for a field left empty; that means no phone or no email, not a bad one.
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 class ContactOut(BaseModel):

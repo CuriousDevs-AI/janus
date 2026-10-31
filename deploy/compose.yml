@@ -68,6 +68,9 @@ services:
       JANUS_STUN_URLS: stun:${TURN_DOMAIN:?Set TURN_DOMAIN}:3478
       JANUS_TURN_URLS: turn:${TURN_DOMAIN}:3478?transport=udp,turn:${TURN_DOMAIN}:3478?transport=tcp
       JANUS_TURN_SECRET: ${JANUS_TURN_SECRET:?Generate deploy/.env first}
+      # Push notifications; left empty, announcements still go by email and in-app alerts.
+      JANUS_VAPID_PRIVATE_KEY: ${JANUS_VAPID_PRIVATE_KEY:-}
+      JANUS_VAPID_SUBJECT: ${JANUS_VAPID_SUBJECT:-mailto:support@example.com}
     healthcheck:
       test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s

@@ -24,6 +24,7 @@ from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
+from janus_api.push import service as push
 from janus_api.team import schemas, service
 
 router = APIRouter(prefix="/v1/team", tags=["Team chat"])
@@ -110,9 +111,37 @@ async def _send_mail(mail: list[tuple[str, str, str]]) -> None:
 async def _mail_after(
     db: Db, actor: CurrentActor, message: schemas.MessageOut, background: BackgroundTasks
 ) -> None:
+    """After a new post: its emails, and a push to the browsers of the people it is for."""
     mail = await service.mail_for(db, actor, message)
     if mail:
         background.add_task(_send_mail, mail)
+    url = f"/team?space={message.spaceId}&workspace=team-chat"
+    if message.kind == "announcement":
+        background.add_task(
+            push.send_to_people,
+            actor.session.tenant_id,
+            None,
+            actor.user.id,
+            {
+                "title": message.title or "New announcement",
+                "body": f"{actor.user.name}: {(message.body or '')[:180]}",
+                "url": url,
+                "tag": f"announcement-{message.id}",
+            },
+        )
+    elif message.kind == "kudos" and message.kudos:
+        background.add_task(
+            push.send_to_people,
+            actor.session.tenant_id,
+            [message.kudos.to.id],
+            actor.user.id,
+            {
+                "title": f"{actor.user.name} gave you kudos",
+                "body": (message.body or "")[:180],
+                "url": url,
+                "tag": f"kudos-{message.id}",
+            },
+        )
 
 
 @router.post("/spaces/{space_id}/posts", response_model=schemas.MessageOut, status_code=201)

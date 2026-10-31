@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Bell, CalendarDays, MapPin, Megaphone, PartyPopper, Plus } from "lucide-react";
+import { BarChart3, Bell, CalendarDays, Check, MapPin, Megaphone, PartyPopper, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message as errorText } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
-import { cn } from "@/lib/utils";
+import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,7 +33,30 @@ export const KUDOS_VALUES = ["Customer first", "Ownership", "Teamwork", "Going t
 const when = (iso: string) =>
   new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 
-/** An announcement, kudos, poll or event, shown in the conversation in place of a plain bubble. */
+const COLORS = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
+
+function colorOf(name: string) {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return COLORS[hash % COLORS.length];
+}
+
+function Face({ name, size = "sm" }: { name: string; size?: "sm" | "lg" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white",
+        size === "lg" ? "size-14 text-lg ring-4 ring-surface shadow-md" : "size-6 text-[10px]",
+      )}
+      style={{ backgroundColor: colorOf(name) }}
+      aria-hidden
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+/** An announcement, kudos, poll or event: a card of its own, centred in the conversation. */
 export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: () => void }) {
   const [busy, setBusy] = React.useState(false);
 
@@ -52,111 +75,159 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
 
   if (item.kind === "announcement") {
     return (
-      <article aria-label="Announcement" className="w-full max-w-xl overflow-hidden rounded-xl border border-accent/30 bg-surface shadow-sm">
-        <div className="flex items-center gap-2 bg-accent-muted px-4 py-2 text-xs font-semibold uppercase tracking-wide text-accent">
-          <Megaphone className="size-3.5" /> Announcement
+      <article aria-label="Announcement" className="w-full overflow-hidden rounded-2xl border border-accent/25 bg-surface shadow-md">
+        <header className="flex items-center gap-3 bg-gradient-to-r from-accent to-[#7c3aed] px-5 py-3 text-white">
+          <span className="flex size-9 items-center justify-center rounded-full bg-white/20">
+            <Megaphone className="size-4.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/80">Announcement</p>
+            <p className="text-xs text-white/90">{when(item.createdAt)}</p>
+          </div>
+          <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold">Official</span>
+        </header>
+        <div className="space-y-2 px-5 py-4">
+          {item.title ? <h3 className="text-lg font-semibold leading-snug text-foreground">{item.title}</h3> : null}
+          <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground/90">{item.body}</p>
         </div>
-        <div className="space-y-1.5 px-4 py-3">
-          {item.title ? <h3 className="text-base font-semibold text-foreground">{item.title}</h3> : null}
-          <p className="whitespace-pre-wrap break-words text-sm text-foreground">{item.body}</p>
-          <p className="text-[11px] text-muted-foreground">{item.author.name} · {when(item.createdAt)}</p>
-        </div>
+        <footer className="flex items-center gap-2 border-t border-border bg-surface-2/60 px-5 py-2.5 text-xs text-muted-foreground">
+          <Face name={item.author.name} />
+          <span className="font-medium text-foreground">{item.mine ? "You" : item.author.name}</span>
+          <span aria-hidden>·</span>
+          <span>Sent to everyone, also by email</span>
+        </footer>
       </article>
     );
   }
 
   if (item.kind === "kudos" && item.kudos) {
+    const sparks = [
+      ["left-[8%] top-[18%]", "#f59e0b"], ["left-[18%] top-[70%]", "#ec4899"], ["right-[10%] top-[22%]", "#8b5cf6"],
+      ["right-[20%] top-[75%]", "#10b981"], ["left-[45%] top-[8%]", "#3b82f6"], ["right-[40%] bottom-[6%]", "#f97316"],
+    ];
     return (
-      <article aria-label="Kudos" className="w-full max-w-md rounded-xl border border-warning/30 bg-gradient-to-br from-warning-muted to-surface p-4 shadow-sm">
-        <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <PartyPopper className="size-4 text-warning" /> Kudos to {item.kudos.to.name}
+      <article aria-label="Kudos" className="relative w-full max-w-md overflow-hidden rounded-2xl border border-warning/30 bg-gradient-to-br from-warning-muted via-surface to-accent-muted px-6 pb-5 pt-6 text-center shadow-md">
+        {sparks.map(([place, color]) => (
+          <span key={place} aria-hidden className={cn("absolute size-1.5 rotate-45 rounded-[2px]", place)} style={{ backgroundColor: color }} />
+        ))}
+        <p className="relative inline-flex items-center gap-1.5 rounded-full bg-surface/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-warning ring-1 ring-warning/30">
+          <PartyPopper className="size-3.5" /> Kudos
         </p>
+        <div className="relative mt-4 flex justify-center">
+          <Face name={item.kudos.to.name} size="lg" />
+          <span aria-hidden className="absolute -right-1 top-8 text-2xl sm:right-[calc(50%-48px)]">🎉</span>
+        </div>
+        <h3 className="relative mt-3 text-lg font-semibold text-foreground">{item.kudos.to.name}</h3>
         {item.kudos.value ? (
-          <span className="mt-2 inline-block rounded-full bg-surface px-2.5 py-0.5 text-[11px] font-medium text-warning ring-1 ring-warning/30">{item.kudos.value}</span>
+          <span className="relative mt-1.5 inline-block rounded-full bg-warning px-3 py-0.5 text-[11px] font-semibold text-white shadow-sm">{item.kudos.value}</span>
         ) : null}
-        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground">{item.body}</p>
-        <p className="mt-2 text-[11px] text-muted-foreground">from {item.mine ? "you" : item.author.name} · {when(item.createdAt)}</p>
+        <blockquote className="relative mx-auto mt-3 max-w-sm whitespace-pre-wrap break-words text-[15px] italic leading-relaxed text-foreground/90">
+          “{item.body}”
+        </blockquote>
+        <p className="relative mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <Face name={item.author.name} /> from <span className="font-medium text-foreground">{item.mine ? "you" : item.author.name}</span> · {when(item.createdAt)}
+        </p>
       </article>
     );
   }
 
   if (item.kind === "poll" && item.poll) {
     const poll = item.poll;
+    const leading = Math.max(...poll.options.map((option) => option.votes));
     return (
-      <article aria-label="Poll" className="w-full max-w-md rounded-xl border border-border bg-surface p-4 shadow-sm">
-        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <BarChart3 className="size-3.5" /> Poll
-        </p>
-        <h3 className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold">{item.body}</h3>
-        <ul className="mt-3 space-y-2" role="radiogroup" aria-label={item.body ?? "Poll"}>
-          {poll.options.map((option) => {
-            const share = poll.total ? Math.round((option.votes / poll.total) * 100) : 0;
-            const chosen = poll.myVote === option.id;
-            return (
-              <li key={option.id}>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={chosen}
-                  disabled={poll.closed || busy}
-                  onClick={() => void answer(option.id)}
-                  className={cn(
-                    "relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default",
-                    chosen ? "border-accent" : "border-border hover:border-accent/60",
-                  )}
-                >
-                  <span className="absolute inset-y-0 left-0 bg-accent-muted transition-all" style={{ width: `${share}%` }} aria-hidden />
-                  <span className="relative flex items-center justify-between gap-2">
-                    <span className={cn(chosen && "font-semibold")}>{option.text}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{option.votes} · {share}%</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {poll.total} {poll.total === 1 ? "vote" : "votes"}
-          {poll.closesAt ? ` · ${poll.closed ? "closed" : "closes"} ${when(poll.closesAt)}` : ""} · {item.author.name}
-        </p>
+      <article aria-label="Poll" className="w-full max-w-lg overflow-hidden rounded-2xl border border-info/25 bg-surface shadow-md">
+        <header className="flex items-center gap-2 border-b border-border bg-info-muted px-5 py-2.5">
+          <BarChart3 className="size-4 text-info" />
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-info">Poll</span>
+          <span className={cn("ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold", poll.closed ? "bg-surface-2 text-muted-foreground" : "bg-success-muted text-success")}>
+            {poll.closed ? "Closed" : "Open"}
+          </span>
+        </header>
+        <div className="px-5 py-4">
+          <h3 className="whitespace-pre-wrap break-words text-base font-semibold">{item.body}</h3>
+          <ul className="mt-3 space-y-2" role="radiogroup" aria-label={item.body ?? "Poll"}>
+            {poll.options.map((option) => {
+              const share = poll.total ? Math.round((option.votes / poll.total) * 100) : 0;
+              const chosen = poll.myVote === option.id;
+              const top = poll.total > 0 && option.votes === leading;
+              return (
+                <li key={option.id}>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={chosen}
+                    disabled={poll.closed || busy}
+                    onClick={() => void answer(option.id)}
+                    className={cn(
+                      "relative w-full overflow-hidden rounded-xl border px-3.5 py-2.5 text-left text-sm transition-all disabled:cursor-default",
+                      chosen ? "border-info ring-2 ring-info/20" : "border-border hover:border-info/50 hover:bg-surface-2/50",
+                    )}
+                  >
+                    <span className={cn("absolute inset-y-0 left-0 transition-all duration-500", top ? "bg-info/15" : "bg-surface-2")} style={{ width: `${share}%` }} aria-hidden />
+                    <span className="relative flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        <span className={cn("flex size-4 items-center justify-center rounded-full border", chosen ? "border-info bg-info text-white" : "border-muted-foreground/40")}>
+                          {chosen ? <Check className="size-3" /> : null}
+                        </span>
+                        <span className={cn(chosen && "font-semibold")}>{option.text}</span>
+                      </span>
+                      <span className="text-xs font-medium tabular-nums text-muted-foreground">{option.votes} · {share}%</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Face name={item.author.name} />
+            {item.mine ? "You" : item.author.name} · {poll.total} {poll.total === 1 ? "vote" : "votes"}
+            {poll.closesAt ? ` · ${poll.closed ? "closed" : "closes"} ${when(poll.closesAt)}` : ""}
+          </p>
+        </div>
       </article>
     );
   }
 
   if (item.kind === "event" && item.event) {
     const event = item.event;
-    const answers: Array<[string, string, number]> = [["going", "Going", event.going], ["maybe", "Maybe", event.maybe], ["no", "Can't go", event.declined]];
+    const start = new Date(event.startsAt);
+    const answers: Array<[string, string, number, string]> = [
+      ["going", "Going", event.going, "bg-success text-white border-success"],
+      ["maybe", "Maybe", event.maybe, "bg-warning text-white border-warning"],
+      ["no", "Can't go", event.declined, "bg-surface-3 text-foreground border-border"],
+    ];
     return (
-      <article aria-label="Event" className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-        <div className="flex gap-3 p-4">
-          <div className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-accent-muted py-1.5 text-accent">
-            <span className="text-[10px] font-semibold uppercase">{new Intl.DateTimeFormat("en-IN", { month: "short" }).format(new Date(event.startsAt))}</span>
-            <span className="text-xl font-bold leading-none">{new Date(event.startsAt).getDate()}</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold">{item.title || "Event"}</h3>
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><CalendarDays className="size-3" /> {when(event.startsAt)}</p>
-            {event.place ? <p className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="size-3" /> {event.place}</p> : null}
-            <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.body}</p>
-          </div>
+      <article aria-label="Event" className="flex w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-md">
+        <div className="flex w-20 shrink-0 flex-col items-center justify-center bg-gradient-to-b from-accent to-[#7c3aed] py-4 text-white">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-white/85">{new Intl.DateTimeFormat("en-IN", { month: "short" }).format(start)}</span>
+          <span className="text-3xl font-bold leading-none">{start.getDate()}</span>
+          <span className="mt-1 text-[10px] text-white/80">{new Intl.DateTimeFormat("en-IN", { weekday: "short" }).format(start)}</span>
         </div>
-        <div className="flex border-t border-border" role="radiogroup" aria-label="Are you going">
-          {answers.map(([value, label, count]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={event.mine === value}
-              disabled={busy}
-              onClick={() => void answer(value)}
-              className={cn(
-                "flex-1 border-r border-border px-2 py-2 text-xs font-medium last:border-r-0 transition-colors",
-                event.mine === value ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-2",
-              )}
-            >
-              {label} · {count}
-            </button>
-          ))}
+        <div className="min-w-0 flex-1 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent">Event</p>
+          <h3 className="mt-0.5 text-base font-semibold">{item.title || "Event"}</h3>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarDays className="size-3.5" /> {when(event.startsAt)}</p>
+          {event.place ? <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin className="size-3.5" /> {event.place}</p> : null}
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground/90">{item.body}</p>
+          <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Are you going">
+            {answers.map(([value, label, count, picked]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={event.mine === value}
+                disabled={busy}
+                onClick={() => void answer(value)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                  event.mine === value ? picked : "border-border text-muted-foreground hover:bg-surface-2",
+                )}
+              >
+                {label} · {count}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground"><Face name={item.author.name} /> Planned by {item.mine ? "you" : item.author.name}</p>
         </div>
       </article>
     );
@@ -366,6 +437,31 @@ export function PostDialog({
   );
 }
 
+/**
+ * Push for this browser: the service worker, subscribed with the server's key and saved, so
+ * announcements and kudos arrive even with Janus closed. Quietly does nothing where the browser
+ * or the server has no push. Returns whether this browser is now subscribed.
+ */
+export async function enablePush(): Promise<boolean> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  if (Notification.permission !== "granted") return false;
+  const { publicKey } = await api<{ publicKey: string | null }>("/push/key");
+  if (!publicKey) return false;
+  const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  await navigator.serviceWorker.ready;
+  const key = Uint8Array.from(atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0));
+  let subscription = await registration.pushManager.getSubscription();
+  // A subscription made with an older server key cannot be used; start again with the current one.
+  const current = subscription?.options.applicationServerKey;
+  if (subscription && current && new Uint8Array(current).toString() !== key.toString()) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  await api("/push/subscriptions", { method: "POST", body: JSON.stringify(subscription.toJSON()) });
+  return true;
+}
+
 const SEEN_KEY = "janus.team.announcement-seen";
 const WATCH_MS = 30_000;
 
@@ -403,6 +499,8 @@ export function AnnouncementWatcher() {
       }
     }
     void check();
+    // Someone who already allowed notifications keeps this browser's push up to date.
+    if ("Notification" in window && Notification.permission === "granted") void enablePush().catch(() => undefined);
     const timer = setInterval(() => void check(), WATCH_MS);
     return () => { stopped = true; clearInterval(timer); };
   }, [session.tenant.id, session.user.id, router]);
@@ -418,7 +516,14 @@ export function NotificationsToggle() {
   return (
     <DropdownMenuItem
       disabled={state === "denied"}
-      onSelect={() => void Notification.requestPermission().then(setState)}
+      onSelect={() =>
+        void Notification.requestPermission().then(async (answer) => {
+          setState(answer);
+          if (answer !== "granted") return;
+          const pushed = await enablePush().catch(() => false);
+          toast.success(pushed ? "Notifications on. They arrive even when Janus is closed." : "Notifications on while Janus is open.");
+        })
+      }
     >
       <Bell className="size-3.5" /> {state === "denied" ? "Notifications blocked in the browser" : "Turn on desktop notifications"}
     </DropdownMenuItem>

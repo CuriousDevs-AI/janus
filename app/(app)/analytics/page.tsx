@@ -51,18 +51,20 @@ export default function AnalyticsPage() {
   const businessReports = workspaceId === "business";
   // AI and automation figures cover the whole company, so only people with company-wide access see them.
   const companyWide = useSession().permissions.includes("*");
+  // Panels stay mounted but hidden, and a hidden chart measures 0×0; draw only the open tab's charts.
+  const [tab, setTab] = React.useState("acquisition");
   if (businessReports) return <BusinessReports />;
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader title="Analytics" description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days." />
-      <Tabs defaultValue="acquisition" className="px-6 pb-8">
+      <Tabs value={tab} onValueChange={setTab} className="px-6 pb-8">
         <TabsList><TabsTrigger value="acquisition">Acquisition</TabsTrigger><TabsTrigger value="sales">Sales</TabsTrigger>{companyWide && <TabsTrigger value="ai">AI</TabsTrigger>}<TabsTrigger value="support">Support</TabsTrigger><TabsTrigger value="customer">Customer</TabsTrigger>{companyWide && <TabsTrigger value="automation">Automation</TabsTrigger>}</TabsList>
-        <TabsContent value="acquisition" className="pt-5"><AcquisitionSection /></TabsContent>
-        <TabsContent value="sales" className="pt-5"><SalesSection /></TabsContent>
-        {companyWide && <TabsContent value="ai" className="pt-5"><AiSection /></TabsContent>}
-        <TabsContent value="support" className="pt-5"><SupportSection /></TabsContent>
-        <TabsContent value="customer" className="pt-5"><CustomerSection /></TabsContent>
-        {companyWide && <TabsContent value="automation" className="pt-5"><AutomationSection /></TabsContent>}
+        <TabsContent value="acquisition" className="pt-5">{tab === "acquisition" && <AcquisitionSection />}</TabsContent>
+        <TabsContent value="sales" className="pt-5">{tab === "sales" && <SalesSection />}</TabsContent>
+        {companyWide && <TabsContent value="ai" className="pt-5">{tab === "ai" && <AiSection />}</TabsContent>}
+        <TabsContent value="support" className="pt-5">{tab === "support" && <SupportSection />}</TabsContent>
+        <TabsContent value="customer" className="pt-5">{tab === "customer" && <CustomerSection />}</TabsContent>
+        {companyWide && <TabsContent value="automation" className="pt-5">{tab === "automation" && <AutomationSection />}</TabsContent>}
       </Tabs>
     </div>
   );

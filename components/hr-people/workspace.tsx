@@ -60,6 +60,7 @@ import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salary
 import { useSession } from "@/components/auth/session-provider";
 import { hasPermission } from "@/lib/demo-persona";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+import { useHrServerSync } from "@/lib/stores/hr-server-sync";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 
@@ -78,6 +79,8 @@ function statusVariant(status: string): "success" | "warning" | "danger" | "info
 const selfServiceViews = new Set(["my-home", "engage", "leave-apply", "leave-balances", "holiday-calendar", "attendance-info", "my-regularization", "document-center", "my-documents", "my-payslips", "my-requests", "my-onboarding", "my-profile", "policy-qa"]);
 
 export function HrPeopleWorkspace() {
+  // Employees, leave and attendance come from the server, which decides what this person may see.
+  const synced = useHrServerSync();
   const params = useSearchParams();
   const router = useRouter();
   const view = params.get("view") ?? "overview";
@@ -123,7 +126,7 @@ export function HrPeopleWorkspace() {
       />
       <div className="px-6 pb-10">
         {demoMode && viewingOther && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />You are viewing as {viewer?.name}. Everything on screen is what they can see. Pick Myself in the top bar to go back.</div>}
-        {blocked ? <AccessNotice role={role} /> : (
+        {!synced ? <p className="py-10 text-center text-sm text-muted-foreground" role="status">Loading HR records…</p> : blocked ? <AccessNotice role={role} /> : (
           <>
             {shown === "my-home" && <HrHomeView role={role} actorId={demoActorId(role)} />}
             {shown === "engage" && <HrEngageView role={role} actorId={demoActorId(role)} />}

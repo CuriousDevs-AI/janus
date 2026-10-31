@@ -13,6 +13,15 @@ from email.utils import parseaddr
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# The order of the P-256 curve: a push (VAPID) private key is a number from 1 below it.
+P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+
+def vapid_key() -> str:
+    while True:
+        raw = secrets.token_bytes(32)
+        if 0 < int.from_bytes(raw, "big") < P256_ORDER:
+            return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
 def init(path: Path) -> None:
@@ -25,6 +34,7 @@ def init(path: Path) -> None:
         "JANUS_TURN_SECRET",
     ):
         contents = contents.replace(f"GENERATE_{key}", secrets.token_hex(32))
+    contents = contents.replace("GENERATE_JANUS_VAPID_PRIVATE_KEY", vapid_key())
     contents = contents.replace(
         "GENERATE_JANUS_ENCRYPTION_KEY",
         base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(),
@@ -53,6 +63,14 @@ def validate(config: dict) -> list[str]:
         errors.append("JANUS_JWT_SECRET: use the generated secret.")
     if not re.fullmatch(r"[a-f0-9]{64}", api.get("JANUS_TURN_SECRET", "")):
         errors.append("JANUS_TURN_SECRET: use a generated 64-character hexadecimal secret.")
+    vapid = api.get("JANUS_VAPID_PRIVATE_KEY", "")
+    if vapid:
+        try:
+            raw = base64.urlsafe_b64decode(vapid + "=" * (-len(vapid) % 4))
+        except ValueError:
+            raw = b""
+        if len(raw) != 32 or not 0 < int.from_bytes(raw, "big") < P256_ORDER:
+            errors.append("JANUS_VAPID_PRIVATE_KEY: use a generated push key (configure.py init).")
     if api.get("JANUS_TURN_SECRET") == api["JANUS_JWT_SECRET"]:
         errors.append("JANUS_TURN_SECRET must differ from JANUS_JWT_SECRET.")
     try:
