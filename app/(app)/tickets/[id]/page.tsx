@@ -45,8 +45,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TicketsNotAvailable, useCanWorkTickets } from "@/components/support/tickets-access";
 
-export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
+function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const access = useCrmAccess();
   const found = useAppStore((s) => s.tickets.find((t) => t.id === id));
@@ -321,4 +322,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
       </div>
     </div>
   );
+}
+
+export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // Only people who can work tickets open them; others get a plain message, not a refused request.
+  const allowed = useCanWorkTickets();
+  return allowed ? <TicketDetailPageContent params={params} /> : <TicketsNotAvailable />;
 }

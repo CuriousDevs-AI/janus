@@ -124,3 +124,21 @@ async def test_another_company_cannot_see_or_change_the_ticket(
     assert moved.status_code == 404
     listed = (await client.get("/v1/support/tickets", headers=owner.headers)).json()
     assert listed[0]["status"] == "open"
+
+
+async def test_managers_work_tickets_in_their_support_workspace(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    manager = await accept_new(
+        client, await invite(client, mailbox, owner, "lead@example.com", role="manager")
+    )
+    booked = await client.post(
+        "/v1/support/tickets",
+        headers=manager,
+        json={**TICKET, "external_key": "tck-mgr"},
+    )
+    assert booked.status_code in (200, 201), booked.text
+    listed = await client.get("/v1/support/tickets", headers=manager)
+    assert listed.status_code == 200
+    assert [item["external_key"] for item in listed.json()] == ["tck-mgr"]

@@ -59,7 +59,7 @@ export const crmNavSections: NavSection[] = [
       { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write" },
       { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write" },
       { label: "Customers", href: "/customers", icon: Building2 },
-      { label: "Tickets", href: "/tickets", icon: LifeBuoy },
+      { label: "Tickets", href: "/tickets", icon: LifeBuoy, requiredPermission: "leads:read_team" },
       { label: "Automations", href: "/automations", icon: Workflow, requiredPermission: "automations:manage" },
       { label: "Knowledge", href: "/knowledge", icon: Database, requiredPermission: "agents:manage" },
       { label: "Analytics", href: "/analytics", icon: BarChart3, requiredPermission: "reports:read" },

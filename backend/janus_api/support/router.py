@@ -1,7 +1,9 @@
 """Support tickets on the server: number, status, assignee and resolution.
 
-Each step needs agents:manage. Creating a ticket is idempotent on its external key, so a retry
-after a dropped response books it once. Every change writes an audit row in the same transaction.
+Each step needs leads:read_team, the permission of the Customer Support workspace, so the people
+who can open Support (owners, admins, managers) can work its tickets. Creating a ticket is
+idempotent on its external key, so a retry after a dropped response books it once. Every change
+writes an audit row in the same transaction.
 """
 
 from datetime import date
@@ -18,7 +20,7 @@ from janus_api.core.errors import ApiError
 from janus_api.support.models import SupportTicket
 
 router = APIRouter(prefix="/v1/support", tags=["Support"])
-Work = Annotated[Actor, Depends(require("agents:manage"))]
+Work = Annotated[Actor, Depends(require("leads:read_team"))]
 
 Status = Literal["open", "ai_handling", "waiting_customer", "escalated", "in_progress", "closed"]
 AnyStatus = Literal[
