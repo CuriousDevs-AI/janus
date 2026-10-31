@@ -9,6 +9,7 @@ import { activeCompany, activeCompanyId, readCompanies } from "@/lib/company";
 import { personaPermissions, signOut as demoSignOut, useDemoAccount } from "@/lib/demo-persona";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { setStorePermissions } from "@/lib/stores/workspace-storage";
 
 const SessionContext = createContext<Me | null>(null);
 const demoSession = (): Me => ({
@@ -76,6 +77,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       .then((value) => {
         if (active) {
           setSession(value);
+          // Shared workspace stores load only what this person's role may see.
+          setStorePermissions(value.permissions);
           setError("");
         }
       })

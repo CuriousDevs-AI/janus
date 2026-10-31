@@ -1,8 +1,10 @@
 """Workspace state: the operational stores saved per company.
 
-Reads need an active membership. Writes need the permission for the module that owns the
-store, so the server refuses a write the screens would also refuse. Each write must name the
-version it was based on; a stale write is refused, never applied over newer data.
+Reads need one of the permissions whose screens use the store (READ_PERMISSIONS): a store holds a
+whole workspace's records, so membership alone is not enough. Writes need the permission for the
+module that owns the store, so the server refuses a write the screens would also refuse. Each
+write must name the version it was based on; a stale write is refused, never applied over newer
+data.
 """
 
 from typing import Any
@@ -33,6 +35,23 @@ STORE_PERMISSIONS: dict[str, str] = {
     "janus.record-documents.v1": "settings:manage",
     "janus.crm-records.v1": "leads:write",
 }
+# Who may read each store: its owners, and the workspaces whose screens read it (budget lines for
+# projects and stock, invoices for support). An empty tuple means every member, for stores that
+# hold no workspace's records (company locations, documents attached to records).
+READ_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "janus.finance.v1": ("billing:manage", "projects:manage", "stock:adjust", "leads:read_team"),
+    "janus.period-lock.v1": ("billing:manage", "projects:manage", "stock:adjust"),
+    "janus.vendors.v1": ("billing:manage", "stock:adjust"),
+    "janus.operations.v1": ("stock:adjust", "billing:manage"),
+    "janus.projects.v1": ("projects:manage", "billing:manage"),
+    "janus.renewals.v1": ("leads:read_team",),
+    "janus.feedback.v1": ("leads:read_team",),
+    "janus.locations.v1": (),
+    "janus.workflow-rules.v1": ("settings:manage", "billing:manage", "stock:adjust"),
+    "janus.it.v1": ("settings:manage",),
+    "janus.record-documents.v1": (),
+    "janus.crm-records.v1": ("leads:read_own",),
+}
 MAX_DOCUMENT_BYTES = 4_000_000
 
 
@@ -57,6 +76,9 @@ def _store(store_key: str) -> str:
 @router.get("/workspace-state/{store_key}", response_model=StateOut)
 async def read_state(store_key: str, actor: CurrentActor, db: Db) -> StateOut:
     key = _store(store_key)
+    allowed = READ_PERMISSIONS[key]
+    if allowed and not any(permission in actor.permissions for permission in allowed):
+        raise ApiError("forbidden", "You do not have permission to see this workspace.", 403)
     row = await db.scalar(
         select(WorkspaceState).where(
             WorkspaceState.tenant_id == actor.session.tenant_id,
@@ -69,9 +91,7 @@ async def read_state(store_key: str, actor: CurrentActor, db: Db) -> StateOut:
 
 
 @router.put("/workspace-state/{store_key}", response_model=StateOut)
-async def write_state(
-    store_key: str, data: StateWrite, actor: CurrentActor, db: Db
-) -> StateOut:
+async def write_state(store_key: str, data: StateWrite, actor: CurrentActor, db: Db) -> StateOut:
     key = _store(store_key)
     if STORE_PERMISSIONS[key] not in actor.permissions:
         raise ApiError("forbidden", "You do not have permission to change this workspace.", 403)
