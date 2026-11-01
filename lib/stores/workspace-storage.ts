@@ -239,6 +239,27 @@ async function load(name: string): Promise<string | null> {
   return fresh;
 }
 
+/** True while any synced store holds edits the server has not taken yet. */
+export function hasUnsavedStores() {
+  return [...SYNCED_STORES].some((name) => isDirty(name) || queued.has(name));
+}
+
+/**
+ * Forgets this browser's copies of the synced stores. The copies are not keyed by company, so they
+ * must go when the session moves to another company, or the next load would send one company's copy
+ * to the other.
+ */
+export function forgetStoreCopies() {
+  for (const name of SYNCED_STORES) {
+    try {
+      local()?.removeItem(name);
+      local()?.removeItem(dirtyKey(name));
+    } catch {
+      /* private mode: nothing was kept */
+    }
+  }
+}
+
 export const workspaceStorage: StateStorage = {
   getItem: (name) => {
     // On the server there is no browser copy and no session, so the store starts empty and loads in the browser.

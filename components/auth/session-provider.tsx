@@ -10,6 +10,7 @@ import { personaPermissions, signOut as demoSignOut, useDemoAccount } from "@/li
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { setStorePermissions } from "@/lib/stores/workspace-storage";
+import { rememberTenant, watchTenant } from "@/lib/live-company";
 
 const SessionContext = createContext<Me | null>(null);
 const demoSession = (): Me => ({
@@ -77,6 +78,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       .then((value) => {
         if (active) {
           setSession(value);
+          // Before any store loads: a session in another company than last time drops the old company's copies.
+          rememberTenant(value.tenant.id);
           // Shared workspace stores load only what this person's role may see.
           setStorePermissions(value.permissions);
           setError("");
@@ -92,6 +95,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [attempt]);
+  const tenantId = demoMode ? null : session?.tenant.id ?? null;
+  useEffect(() => (tenantId ? watchTenant(tenantId) : undefined), [tenantId]);
   if (!session || !shown)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 text-sm">
