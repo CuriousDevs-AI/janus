@@ -51,9 +51,10 @@ export function LivePortfolio() {
         : summary.error ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{summary.error}<Button size="sm" variant="secondary" onClick={summary.reload}>Try again</Button></div>
         : list.length === 0 ? <p className="text-sm text-muted-foreground" role="status">The Portfolio shows the companies you own. You are not the Owner of any company yet.</p>
         : view === "analytics" ? <Analytics list={list} />
+        : view === "finance" ? <Finance list={list} />
         : view === "companies" ? <Companies list={list} onAdd={() => setAdding(true)} />
         : view === "overview" ? <Overview list={list} />
-        : <SectionCard title={title} description="Not on real accounts yet."><p className="text-sm text-muted-foreground">This view works in the preview only for now. Overview, Analytics and Companies show your real companies.</p></SectionCard>}
+        : <SectionCard title={title} description="Not on real accounts yet."><p className="text-sm text-muted-foreground">This view works in the preview only for now. Overview, Analytics, Finance and Companies show your real companies.</p></SectionCard>}
     </div>
     {adding && <AddCompany onClose={() => setAdding(false)} />}
   </div>;
@@ -101,6 +102,35 @@ function Analytics({ list }: { list: PortfolioCompany[] }) {
     </div>
     <SectionCard title="By company" description="Counted from each company's own records.">
       <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th>{list.map((item) => <th key={item.id} className="px-3 py-2">{item.name}</th>)}</tr></thead><tbody>{measures.map(([label, value]) => <tr key={label} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{label}</td>{list.map((item) => <td key={item.id} className="px-3 py-2.5 tabular-nums">{value(item)}</td>)}</tr>)}</tbody></table></div>
+    </SectionCard>
+  </>;
+}
+
+function Finance({ list }: { list: PortfolioCompany[] }) {
+  const sum = (pick: (item: PortfolioCompany) => string) => list.reduce((total, item) => total + Number(pick(item)), 0);
+  const thisMonth = sum((item) => item.money.collectedThisMonth);
+  const lastMonth = sum((item) => item.money.collectedLastMonth);
+  const rows: [string, (item: PortfolioCompany) => string][] = [
+    ["Customers owe", (item) => inr(Number(item.money.receivable))],
+    ["Overdue", (item) => item.money.overdueInvoices ? `${inr(Number(item.money.overdue))} · ${item.money.overdueInvoices} invoice${item.money.overdueInvoices === 1 ? "" : "s"}` : "None"],
+    ["Late 1–30 days", (item) => inr(Number(item.money.ageing.days0to30))],
+    ["Late 31–60 days", (item) => inr(Number(item.money.ageing.days31to60))],
+    ["Late over 60 days", (item) => inr(Number(item.money.ageing.over60))],
+    ["You owe suppliers", (item) => inr(Number(item.money.payable))],
+    ["Bills due in 7 days", (item) => inr(Number(item.money.payableDueThisWeek))],
+    ["Collected this month", (item) => inr(Number(item.money.collectedThisMonth))],
+    ["Collected last month", (item) => inr(Number(item.money.collectedLastMonth))],
+  ];
+  return <>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Kpi label="Customers owe" value={inr(sum((item) => item.money.receivable))} detail="Unpaid invoices, all companies" />
+      <Kpi label="Overdue" value={inr(sum((item) => item.money.overdue))} detail={`${list.reduce((total, item) => total + item.money.overdueInvoices, 0)} invoices past due`} />
+      <Kpi label="Bills due in 7 days" value={inr(sum((item) => item.money.payableDueThisWeek))} detail={`${inr(sum((item) => item.money.payable))} owed to suppliers in all`} />
+      <Kpi label="Collected this month" value={inr(thisMonth)} detail={`${inr(lastMonth)} last month`} />
+    </div>
+    <SectionCard title="By company" description="From each company's invoices, payments, approved credit notes and bills. Bank balances are not connected, so Janus does not show cash.">
+      <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th>{list.map((item) => <th key={item.id} className="px-3 py-2">{item.name}</th>)}</tr></thead><tbody>{rows.map(([label, value]) => <tr key={label} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{label}</td>{list.map((item) => <td key={item.id} className="px-3 py-2.5 tabular-nums">{value(item)}</td>)}</tr>)}</tbody></table></div>
+      <div className="mt-3 flex flex-wrap gap-2">{list.map((item) => <Button key={item.id} size="sm" variant="outline" onClick={() => open(item, "/workspace/finance-accounting?workspace=finance-accounting")}>Open {item.name.split(" ")[0]} Finance</Button>)}</div>
     </SectionCard>
   </>;
 }

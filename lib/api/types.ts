@@ -33,6 +33,19 @@ export interface PortfolioCompany {
   members: number;
   openTickets: number;
   crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string };
+  /** From the company's invoices, payments, approved credit notes and bills. */
+  money: {
+    receivable: string;
+    overdue: string;
+    overdueInvoices: number;
+    /** Overdue amounts by days past the due date. */
+    ageing: { days0to30: string; days31to60: string; over60: string };
+    payable: string;
+    /** Bills due within seven days, including those already late. */
+    payableDueThisWeek: string;
+    collectedThisMonth: string;
+    collectedLastMonth: string;
+  };
 }
 export interface PortfolioSummary {
   companies: PortfolioCompany[];
