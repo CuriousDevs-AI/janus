@@ -15,6 +15,27 @@ class CrmSummary(BaseModel):
     wonValue: str
 
 
+class Ageing(BaseModel):
+    """What customers owe past the due date, by how many days late."""
+
+    days0to30: str
+    days31to60: str
+    over60: str
+
+
+class MoneySummary(BaseModel):
+    """Rupees as decimal strings, from the company's invoices, payments, credit notes and bills."""
+
+    receivable: str
+    overdue: str
+    overdueInvoices: int
+    ageing: Ageing
+    payable: str
+    payableDueThisWeek: str
+    collectedThisMonth: str
+    collectedLastMonth: str
+
+
 class CompanySummary(BaseModel):
     id: str
     name: str
@@ -24,6 +45,7 @@ class CompanySummary(BaseModel):
     members: int
     openTickets: int
     crm: CrmSummary
+    money: MoneySummary
 
 
 class PortfolioSummary(BaseModel):

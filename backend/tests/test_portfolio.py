@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from janus_api.portfolio.service import today_ist
 from tests.conftest import Mailbox
 from tests.helpers import Account, accept_new, invite, signup
 
@@ -150,3 +153,64 @@ async def test_only_an_owner_adds_a_company(client: httpx.AsyncClient, mailbox: 
         item["type"] == "crm_sales"
         for item in (await client.get("/v1/workspaces", headers=headers)).json()
     )
+
+
+async def test_money_shows_what_is_owed_and_how_late(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+
+    def day(offset: int) -> str:
+        return (today + timedelta(days=offset)).isoformat()
+
+    line = {"item": "Staples", "hsn": "1904", "qty": 1, "rate_paise": 100000, "gst_rate": 0}
+    invoices = []
+    for key, due in (("late-10", -10), ("late-45", -45), ("not-due", 10)):
+        created = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "customer": "Kavita Rao",
+                "invoice_date": day(-70),
+                "due_date": day(due),
+                "same_state": True,
+                "lines": [line],
+            },
+        )
+        assert created.status_code == 201, created.text
+        invoices.append(created.json())
+    paid = await client.post(
+        f"/v1/finance/invoices/{invoices[0]['id']}/payments",
+        headers={**owner.headers, "Idempotency-Key": "pay-1"},
+        json={"amount_paise": 40000, "method": "UPI", "reference": "UPI-1", "paid_on": day(0)},
+    )
+    assert paid.status_code == 201, paid.text
+    for key, due in (("bill-soon", 3), ("bill-later", 20)):
+        bill = await client.post(
+            "/v1/finance/bills",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "vendor": "Packaging Co",
+                "vendor_bill_no": key,
+                "bill_date": day(-5),
+                "due_date": day(due),
+                "amount_paise": 50000,
+            },
+        )
+        assert bill.status_code == 201, bill.text
+    await _second_company(client, owner, "Pune Retail")
+
+    companies = {
+        item["name"]: item["money"]
+        for item in (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+            "companies"
+        ]
+    }
+    money = companies["Mumbai Traders"]
+    assert money["receivable"] == "2600.00" and money["overdue"] == "1600.00"
+    assert money["overdueInvoices"] == 2
+    assert money["ageing"] == {"days0to30": "600.00", "days31to60": "1000.00", "over60": "0.00"}
+    assert money["payable"] == "1000.00" and money["payableDueThisWeek"] == "500.00"
+    assert money["collectedThisMonth"] == "400.00" and money["collectedLastMonth"] == "0.00"
+    assert companies["Pune Retail"]["receivable"] == "0.00"
