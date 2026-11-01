@@ -4,7 +4,7 @@ import * as React from "react";
 import { activeCompany, activeCompanyId, portfolioHome, scoped } from "@/lib/company";
 import { CompanyLogo } from "@/components/shared/company-logo";
 import { hrNavVisible } from "@/lib/hr-nav";
-import { CompanySwitcher } from "@/components/layout/company-switcher";
+import { CompanySwitcher, LiveCompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -275,6 +275,8 @@ export function SidebarNav({
       </nav>}
 
       {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
+      {/* A real account sees the switcher once it can go somewhere: a second company, or the Portfolio it owns. */}
+      {!demoMode && (session.tenants.length > 1 || session.tenants.some((item) => item.role === "owner")) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
       {/* Footer */}
       <div
