@@ -8,6 +8,7 @@ from sqlalchemy import text
 from janus_api.auth import models as auth_models
 from janus_api.business.engine import run_once as run_workflow_once
 from janus_api.core.db import check_database_role, session_factory
+from janus_api.portfolio.digest import run_once as digest_once
 from janus_api.whatsapp.worker import run_once as send_once
 from janus_api.worker.service import run_once
 
@@ -40,7 +41,8 @@ async def main() -> None:
                 ingested = await run_once(factory)
                 sent = await send_once(factory)
                 ran = await run_workflow_once(factory)
-                if ingested or sent or ran:
+                mailed = await digest_once(factory)
+                if ingested or sent or ran or mailed:
                     continue
             except Exception as error:
                 logging.getLogger("janus").error(

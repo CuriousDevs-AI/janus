@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, EmailStr, StringConstraints
@@ -34,7 +35,7 @@ class MoneySummary(BaseModel):
     payableDueThisWeek: str
 
 
-PeriodKey = Literal["month", "quarter", "fy"]
+PeriodKey = Literal["week", "month", "quarter", "fy"]
 
 
 class Period(BaseModel):
@@ -133,3 +134,20 @@ class AccessSkipped(BaseModel):
 class AccessResult(BaseModel):
     done: list[str]
     skipped: list[AccessSkipped]
+
+
+class DigestOut(BaseModel):
+    enabled: bool
+    # Whether this person sees any Portfolio, so a digest would have something to say.
+    eligible: bool
+    nextDueAt: datetime | None
+    lastSentAt: datetime | None
+
+
+class DigestUpdate(BaseModel):
+    enabled: bool
+
+
+class DigestPreview(BaseModel):
+    subject: str
+    body: str

@@ -1,9 +1,13 @@
-from datetime import date, timedelta
+import os
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from janus_api.portfolio.digest import day, inr, next_due
+from janus_api.portfolio.digest import run_once as digest_once
 from janus_api.portfolio.service import period_for, today_ist
 from tests.conftest import Mailbox
 from tests.helpers import PASSWORD, Account, accept_new, invite, signup
@@ -404,7 +408,7 @@ async def test_the_period_counts_what_happened_in_it(
             "collected": "250.00",
         }
         assert figures["previous"]["leads"] == 0
-    bad = await client.get("/v1/portfolio/summary?period=week", headers=owner.headers)
+    bad = await client.get("/v1/portfolio/summary?period=day", headers=owner.headers)
     assert bad.status_code == 422
 
     await client.post(
@@ -416,3 +420,99 @@ async def test_the_period_counts_what_happened_in_it(
     figures = (await client.get("/v1/portfolio/summary", headers=analyst)).json()["companies"][0]
     assert figures["period"]["current"]["invoiced"] is None
     assert figures["period"]["current"]["leads"] == 1
+
+
+def test_the_digest_goes_out_on_monday_morning_in_india() -> None:
+    ist = ZoneInfo("Asia/Kolkata")
+    monday_early = datetime(2026, 11, 2, 8, 0, tzinfo=ist)
+    assert next_due(monday_early) == datetime(2026, 11, 2, 9, 0, tzinfo=ist)
+    assert next_due(datetime(2026, 11, 2, 9, 0, tzinfo=ist)) == datetime(2026, 11, 9, 9, tzinfo=ist)
+    sunday_night_utc = datetime(2026, 11, 8, 20, 0, tzinfo=UTC)  # Monday 01:30 in India
+    assert next_due(sunday_night_utc) == datetime(2026, 11, 9, 9, 0, tzinfo=ist)
+    assert [inr(v) for v in ("0", "950.5", "12500", "123456", "25000000")] == [
+        "₹0",
+        "₹951",
+        "₹12,500",
+        "₹1.2L",
+        "₹2.5Cr",
+    ]
+    assert inr("1234567.00") == "₹12.3L" and inr("99999") == "₹99,999"
+    assert day("2026-10-26") == "26 Oct 2026"
+
+
+async def test_the_digest_setting_and_what_it_says(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    owner = await signup(client, mailbox)
+    agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    assert (await client.get("/v1/portfolio/digest", headers=agent)).json()["eligible"] is False
+    refused = await client.put("/v1/portfolio/digest", headers=agent, json={"enabled": True})
+    assert refused.status_code == 403
+
+    off = (await client.get("/v1/portfolio/digest", headers=owner.headers)).json()
+    assert off == {"enabled": False, "eligible": True, "nextDueAt": None, "lastSentAt": None}
+    on = await client.put("/v1/portfolio/digest", headers=owner.headers, json={"enabled": True})
+    assert on.status_code == 200, on.text
+    due = datetime.fromisoformat(on.json()["nextDueAt"]).astimezone(ZoneInfo("Asia/Kolkata"))
+    assert on.json()["enabled"] and due.weekday() == 0 and (due.hour, due.minute) == (9, 0)
+
+    await _lead_with_deal(client, owner.headers, "d-1", "120000", "won")
+    # The digest reports the week ending yesterday, so the records move into it.
+    async with admin_engine.begin() as connection:
+        await connection.execute(text("UPDATE leads SET created_at = now() - interval '1 day'"))
+        await connection.execute(text("UPDATE deals SET updated_at = now() - interval '1 day'"))
+    preview = (await client.get("/v1/portfolio/digest/preview", headers=owner.headers)).json()
+    assert preview["subject"] == "Your week across 1 company"
+    assert "Mumbai Traders" in preview["body"]
+    assert "Deals won: 1, worth ₹1.2L" in preview["body"]
+    assert "Customers owe: ₹0" in preview["body"]
+
+    await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "analyst@example.com", "role": "group_analyst"},
+    )
+    analyst = await _join(client, mailbox, "analyst@example.com")
+    body = (await client.get("/v1/portfolio/digest/preview", headers=analyst)).json()["body"]
+    assert "Leads in: 1" in body and "Customers owe" not in body
+    assert (await client.get("/v1/portfolio/digest/preview", headers=agent)).status_code == 404
+
+
+async def test_the_worker_sends_a_due_digest_once(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    owner = await signup(client, mailbox)
+    other = await signup(client, mailbox, "quiet@example.com")
+    for account, enabled in ((owner, True), (other, False)):
+        await client.put("/v1/portfolio/digest", headers=account.headers, json={"enabled": True})
+        if not enabled:
+            await client.put(
+                "/v1/portfolio/digest", headers=account.headers, json={"enabled": False}
+            )
+    async with admin_engine.begin() as connection:
+        await connection.execute(
+            text("UPDATE portfolio_digests SET next_due_at = now() - interval '1 minute'")
+        )
+    engine = create_async_engine(os.environ["JANUS_TEST_WORKER_URL"])
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        assert await digest_once(factory)
+        assert not await digest_once(factory)
+    finally:
+        await engine.dispose()
+    sent = [(to, subject) for to, subject, _ in mailbox.messages if "week across" in subject]
+    assert sent == [("owner@example.com", "Your week across 1 company")]
+    async with admin_engine.connect() as connection:
+        row = (
+            await connection.execute(
+                text(
+                    "SELECT d.last_sent_at, d.next_due_at FROM portfolio_digests d"
+                    " JOIN users u ON u.id = d.user_id WHERE u.email = 'owner@example.com'"
+                )
+            )
+        ).one()
+        reads = await connection.scalar(
+            text("SELECT count(*) FROM audit_log WHERE action = 'portfolio.digest_sent'")
+        )
+    assert row.last_sent_at is not None and row.next_due_at > row.last_sent_at
+    assert reads == 1

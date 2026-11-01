@@ -42,7 +42,12 @@ def period_for(key: str, today: date) -> schemas.Period:
     Quarters and years follow the Indian financial year, which starts on 1 April. Comparing to date
     against the same days before keeps a half-finished month from looking like a fall.
     """
-    if key == "fy":
+    if key == "week":
+        # The seven days ending today, against the seven before: what the weekly digest reports.
+        start = today - timedelta(days=6)
+        before = start - timedelta(days=7)
+        label = "Last 7 days"
+    elif key == "fy":
         start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
         before = date(start.year - 1, 4, 1)
         label = f"FY {start.year}-{str(start.year + 1)[2:]}"
@@ -314,7 +319,12 @@ async def company_summary(
 
 
 async def summary(
-    db: AsyncSession, user_id: int, current_tenant: int, ip: str, period_key: str = "month"
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    ip: str | None,
+    period_key: str = "month",
+    today: date | None = None,
 ) -> schemas.PortfolioSummary:
     """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
@@ -322,7 +332,8 @@ async def summary(
     where the person's role there holds portfolio:finance.
     """
     companies = []
-    today = today_ist()
+    # The digest reads as of the end of the week it reports; the page reads as of today.
+    today = today or today_ist()
     period = period_for(period_key, today)
     try:
         for tenant_id in await member_tenants(db, user_id, "portfolio:read"):
