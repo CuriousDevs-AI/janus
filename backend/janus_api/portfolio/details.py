@@ -36,6 +36,19 @@ OPEN_TICKETS = ("resolved", "closed")
 PENDING_LEAVE = ("pending", "needs_clarification")
 PENDING_CLAIMS = ("submitted", "manager_review", "hr_review")
 HR = "/workspace/hr-people"
+# Each kind of approval named for one.
+ONE = {
+    "leave": "Leave request",
+    "claims": "Expense claim",
+    "funds": "Fund request",
+    "credit_notes": "Credit note",
+    "vendor_banks": "Supplier bank detail",
+    "stock_adjustments": "Stock adjustment",
+    "requisitions": "Purchase requisition",
+    "project_changes": "Project change",
+    "it_changes": "IT change",
+    "workflow_runs": "Workflow run",
+}
 FINANCE = "/workspace/finance-accounting"
 
 
@@ -289,7 +302,7 @@ async def approvals(
         ),
     ]
     return [
-        schemas.Approval(kind=kind, label=label, count=number, to=to)
+        schemas.Approval(kind=kind, label=label, one=ONE[kind], count=number, to=to)
         for kind, label, number, to in found
         if number
     ]
@@ -329,8 +342,10 @@ def attention(
     if waiting:
         add(
             "high" if waiting > 5 else "medium",
-            f"{waiting} approval{'' if waiting == 1 else 's'} waiting: "
-            + ", ".join(f"{item.count} {item.label.lower()}" for item in approvals_),
+            f"{_count(waiting, 'approval')} waiting: "
+            + ", ".join(
+                _count(item.count, item.one.lower(), item.label.lower()) for item in approvals_
+            ),
             approvals_[0].to,
         )
     if delivery_.lateProjects:
@@ -375,13 +390,36 @@ def attention(
             " with stock expiring within 30 days",
             "/workspace/operations-inventory?workspace=operations-inventory",
         )
-    for due in dues:
-        if due.status == "overdue":
-            add("high", f"{due.label} for {due.period} was due {due.dueOn}", due.to)
-        elif due.status == "due_soon":
-            add("medium", f"{due.label} for {due.period} is due {due.dueOn}", due.to)
+    # One line each for overdue and due this week, so a company that has just set up its
+    # calendar is not flooded with every filing of the last 90 days.
+    unfiled = [due for due in dues if due.status == "overdue"]
+    if unfiled:
+        oldest = unfiled[0]
+        add(
+            "high",
+            f"{_count(len(unfiled), 'filing')} overdue, the oldest {oldest.label} for"
+            f" {oldest.period} (due {_day(oldest.dueOn)})",
+            oldest.to,
+        )
+    soon = [due for due in dues if due.status == "due_soon"]
+    if soon:
+        add(
+            "medium",
+            f"{_count(len(soon), 'filing')} due this week: "
+            + ", ".join(f"{due.label} for {due.period} on {_day(due.dueOn)}" for due in soon),
+            soon[0].to,
+        )
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted(items, key=lambda item: order[item.severity])
+
+
+def _count(number: int, one: str, many: str | None = None) -> str:
+    return f"{number} {one if number == 1 else many or one + 's'}"
+
+
+def _day(iso: str) -> str:
+    value = date.fromisoformat(iso)
+    return f"{value.day} {value:%b}"
 
 
 def health(items: list[schemas.AttentionItem]) -> schemas.Health:

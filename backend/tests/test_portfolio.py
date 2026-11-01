@@ -714,6 +714,10 @@ async def test_the_operating_view_attention_and_health(
     assert any("past the end date" in text for text in texts)
     assert any("urgent" in text for text in texts)
     assert company["attention"][0]["severity"] == "high"
+    assert "1 approval waiting: 1 leave request" in texts
+    # Every overdue filing is one line, not one line each.
+    filing_lines = [text for text in texts if "overdue, the oldest" in text]
+    assert len(filing_lines) == 1 and filing_lines[0].startswith(f"{len(overdue)} filing")
 
     first = overdue[0]
     marked = await client.put(

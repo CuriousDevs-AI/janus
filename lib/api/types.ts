@@ -52,7 +52,7 @@ export interface PortfolioCompany {
   delivery: { activeProjects: number; lateProjects: number; overdueMilestones: number; overdueTasks: number; awaitingAcceptance: number; awaitingAcceptanceValue: string } | null;
   support: { open: number; urgent: number; escalated: number; olderThanWeek: number } | null;
   /** Decisions waiting in the company, by kind, with the screen where each is made. */
-  approvals: { kind: string; label: string; count: number; to: string }[];
+  approvals: { kind: string; label: string; one: string; count: number; to: string }[];
   compliance: PortfolioComplianceDue[];
   compliancePlan: PortfolioCompliancePlan | null;
   /** Monthly targets, as decimal strings; null where none is set (collected is null without money). */

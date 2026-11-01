@@ -101,6 +101,8 @@ class Support(BaseModel):
 class Approval(BaseModel):
     kind: str
     label: str
+    # The label for a single one: "Leave request" beside "Leave requests".
+    one: str
     count: int
     to: str
 
