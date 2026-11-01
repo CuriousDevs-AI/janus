@@ -12,12 +12,13 @@ const TENANT_KEY = "janus.live-tenant";
 
 /** Records the company this browser's session is in. A different one than last time means the
  * session moved elsewhere (another tab, a new sign-in), so the copies kept for the old one are dropped
- * before any store loads. */
+ * before any store loads. With none recorded, whose copies they are is unknown, so they go too. */
 export function rememberTenant(id: string) {
   try {
     const before = window.localStorage.getItem(TENANT_KEY);
-    if (before !== null && before !== id) forgetStoreCopies();
-    if (before !== id) window.localStorage.setItem(TENANT_KEY, id);
+    if (before === id) return;
+    forgetStoreCopies();
+    window.localStorage.setItem(TENANT_KEY, id);
   } catch {
     /* private mode: nothing is kept between loads, so there is nothing to drop */
   }
