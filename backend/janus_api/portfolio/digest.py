@@ -103,7 +103,10 @@ async def build(
 
     Sent on Monday morning, the week is the seven days ending yesterday.
     """
-    week = await summary(db, user_id, current_tenant, ip, "week", today_ist() - timedelta(days=1))
+    # The headline only: the worker is not granted the tables behind the operating view.
+    week = await summary(
+        db, user_id, current_tenant, ip, "week", today_ist() - timedelta(days=1), detail=False
+    )
     if not week.companies:
         return None
     period = week.period

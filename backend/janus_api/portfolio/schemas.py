@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, EmailStr, StringConstraints
+from pydantic import BaseModel, BeforeValidator, EmailStr, Field, StringConstraints
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
 Industry = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
@@ -63,6 +64,106 @@ class PeriodCompare(BaseModel):
     previous: PeriodFigures
 
 
+class People(BaseModel):
+    headcount: int
+    onLeaveToday: int
+    pendingLeave: int
+    pendingClaims: int
+    # None where the person's role does not include money.
+    monthlyPayroll: str | None
+    claimsValue: str | None
+
+
+class Stock(BaseModel):
+    items: int
+    belowReorder: int
+    expiringBatches: int
+    dispatchesInTransit: int
+    stockValue: str | None
+
+
+class Delivery(BaseModel):
+    activeProjects: int
+    lateProjects: int
+    overdueMilestones: int
+    overdueTasks: int
+    awaitingAcceptance: int
+    awaitingAcceptanceValue: str
+
+
+class Support(BaseModel):
+    open: int
+    urgent: int
+    escalated: int
+    olderThanWeek: int
+
+
+class Approval(BaseModel):
+    kind: str
+    label: str
+    count: int
+    to: str
+
+
+class AttentionItem(BaseModel):
+    severity: Literal["high", "medium", "low"]
+    text: str
+    to: str
+
+
+class Health(BaseModel):
+    status: Literal["red", "amber", "green"]
+    reasons: list[str]
+
+
+class ComplianceDue(BaseModel):
+    key: str
+    label: str
+    period: str
+    area: str
+    dueOn: str
+    status: Literal["filed", "overdue", "due_soon", "upcoming"]
+    filedOn: str | None
+    to: str
+
+
+class Targets(BaseModel):
+    """Monthly targets; None where none is set. Collected is None where money is not shared."""
+
+    leads: str | None
+    wonValue: str | None
+    collected: str | None
+
+
+GstFiling = Literal["none", "monthly", "quarterly"]
+# Upper-cased before the format check, so a GSTIN typed in lower case is accepted.
+Gstin = Annotated[
+    str,
+    BeforeValidator(lambda value: value.strip().upper() if isinstance(value, str) else value),
+    StringConstraints(pattern=r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$"),
+]
+
+
+class CompliancePlan(BaseModel):
+    """Which filings apply to the company."""
+
+    gstin: Gstin | None = None
+    gstFiling: GstFiling = "none"
+    tds: bool = False
+    pfEsi: bool = False
+    company: bool = False
+
+
+class TargetsUpdate(BaseModel):
+    leads: Annotated[Decimal, Field(ge=0, le=10**12)] | None = None
+    wonValue: Annotated[Decimal, Field(ge=0, le=10**12)] | None = None
+    collected: Annotated[Decimal, Field(ge=0, le=10**12)] | None = None
+
+
+class FilingMark(BaseModel):
+    filedOn: date
+
+
 class CompanySummary(BaseModel):
     id: str
     name: str
@@ -75,6 +176,17 @@ class CompanySummary(BaseModel):
     # None where the person's role does not include money (Group analyst).
     money: MoneySummary | None
     period: PeriodCompare
+    # The operating view. Left out (None) where only the headline is needed, as in the digest.
+    people: People | None = None
+    stock: Stock | None = None
+    delivery: Delivery | None = None
+    support: Support | None = None
+    approvals: list[Approval] = []
+    compliance: list[ComplianceDue] = []
+    compliancePlan: CompliancePlan | None = None
+    targets: Targets | None = None
+    attention: list[AttentionItem] = []
+    health: Health | None = None
 
 
 class PortfolioSummary(BaseModel):

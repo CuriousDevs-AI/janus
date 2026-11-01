@@ -20,7 +20,8 @@ from janus_api.finance.models import (
 )
 from janus_api.org import service as org
 from janus_api.org.models import Invitation, Membership, Role, Tenant
-from janus_api.portfolio import schemas
+from janus_api.portfolio import compliance, details, schemas
+from janus_api.portfolio.models import ComplianceFiling, ComplianceProfile, PortfolioTarget
 from janus_api.support.models import SupportTicket
 
 # A login may own this many companies, so a runaway script cannot create tenants without end.
@@ -260,6 +261,7 @@ async def company_summary(
     period: schemas.Period,
     *,
     money: bool,
+    detail: bool = True,
 ) -> schemas.CompanySummary:
     """One company's headline numbers.
 
@@ -286,7 +288,7 @@ async def company_summary(
             SupportTicket.tenant_id == tenant.id, SupportTicket.status.not_in(CLOSED_TICKETS)
         )
     )
-    return schemas.CompanySummary(
+    out = schemas.CompanySummary(
         id=str(tenant.id),
         name=tenant.name,
         industry=tenant.industry,
@@ -316,6 +318,85 @@ async def company_summary(
             ),
         ),
     )
+    if not detail:
+        return out
+    staff = await details.people(db, tenant.id, today, money=money)
+    stock = await details.stock(db, tenant.id, today, money=money)
+    delivery = await details.delivery(db, tenant.id, today)
+    support = await details.support(db, tenant.id, today)
+    waiting = await details.approvals(db, tenant.id, staff)
+    plan, dues = await compliance_view(db, tenant.id, today)
+    out.people, out.stock, out.delivery, out.support = staff, stock, delivery, support
+    out.approvals, out.compliancePlan, out.compliance = waiting, plan, dues
+    out.targets = await targets_view(db, tenant.id, money=money)
+    out.attention = details.attention(out.money, waiting, delivery, support, stock, dues)
+    out.health = details.health(out.attention)
+    return out
+
+
+async def compliance_view(
+    db: AsyncSession, tenant_id: int, today: date
+) -> tuple[schemas.CompliancePlan, list[schemas.ComplianceDue]]:
+    """The filing plan, and its dues from 90 days back to 30 ahead, marked filed or not."""
+    profile = await db.scalar(
+        select(ComplianceProfile).where(ComplianceProfile.tenant_id == tenant_id)
+    )
+    if profile is None:
+        return schemas.CompliancePlan(), []
+    plan = schemas.CompliancePlan(
+        gstin=profile.gstin,
+        gstFiling=profile.gst_filing,
+        tds=profile.tds,
+        pfEsi=profile.pf_esi,
+        company=profile.company,
+    )
+    filed: dict[str, date] = {
+        key: day
+        for key, day in (
+            await db.execute(
+                select(ComplianceFiling.item_key, ComplianceFiling.filed_on).where(
+                    ComplianceFiling.tenant_id == tenant_id
+                )
+            )
+        ).all()
+    }
+    first, last = compliance.window(today)
+    rules = compliance.Profile(profile.gst_filing, profile.tds, profile.pf_esi, profile.company)
+    return plan, [
+        schemas.ComplianceDue(
+            key=due.key,
+            label=due.label,
+            period=due.period,
+            area=due.area,
+            dueOn=due.due_on.isoformat(),
+            status=compliance.status(due.due_on, due.key in filed, today),
+            filedOn=filed[due.key].isoformat() if due.key in filed else None,
+            to="/portfolio?view=compliance",
+        )
+        for due in compliance.dues(rules, first, last)
+    ]
+
+
+async def targets_view(db: AsyncSession, tenant_id: int, *, money: bool) -> schemas.Targets:
+    rows: dict[str, Decimal] = {
+        metric: monthly
+        for metric, monthly in (
+            await db.execute(
+                select(PortfolioTarget.metric, PortfolioTarget.monthly).where(
+                    PortfolioTarget.tenant_id == tenant_id
+                )
+            )
+        ).all()
+    }
+
+    def value(metric: str) -> str | None:
+        return str(rows[metric]) if metric in rows else None
+
+    return schemas.Targets(
+        leads=value("leads"),
+        wonValue=value("won_value"),
+        collected=value("collected") if money else None,
+    )
 
 
 async def summary(
@@ -325,6 +406,8 @@ async def summary(
     ip: str | None,
     period_key: str = "month",
     today: date | None = None,
+    *,
+    detail: bool = True,
 ) -> schemas.PortfolioSummary:
     """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
@@ -351,6 +434,7 @@ async def summary(
                     today,
                     period,
                     money="portfolio:finance" in role.permissions,
+                    detail=detail,
                 )
             )
             record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)
@@ -571,3 +655,153 @@ async def remove_access(
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return schemas.AccessResult(done=done, skipped=skipped)
+
+
+async def _enter(db: AsyncSession, user_id: int, company_id: str, need: str) -> int:
+    """Moves the session's context into one company and checks the person's role there.
+
+    `need` is "owner" or a permission. The caller returns the context to its own company.
+    """
+    if not company_id.isdigit():
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant_id = int(company_id)
+    if tenant_id not in await member_tenants(db, user_id, "portfolio:read"):
+        raise ApiError("not_found", "Company not found.", 404)
+    await set_context(db, user_id=user_id, tenant_id=tenant_id)
+    _, role = await org.membership(db, user_id, tenant_id)
+    allowed = role.name == "owner" if need == "owner" else need in role.permissions
+    if not allowed:
+        raise ApiError("forbidden", "Your role in this company cannot change this.", 403)
+    return tenant_id
+
+
+async def set_targets(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int,
+    company_id: str,
+    data: schemas.TargetsUpdate,
+    ip: str,
+) -> schemas.Targets:
+    """Sets or clears the company's monthly targets. Only its Owner sets them."""
+    try:
+        tenant_id = await _enter(db, user_id, company_id, "owner")
+        for metric, value in (
+            ("leads", data.leads),
+            ("won_value", data.wonValue),
+            ("collected", data.collected),
+        ):
+            row = await db.scalar(
+                select(PortfolioTarget).where(
+                    PortfolioTarget.tenant_id == tenant_id, PortfolioTarget.metric == metric
+                )
+            )
+            if value is None:
+                if row is not None:
+                    await db.delete(row)
+            elif row is None:
+                db.add(
+                    PortfolioTarget(
+                        tenant_id=tenant_id, metric=metric, monthly=value, updated_by=user_id
+                    )
+                )
+            else:
+                row.monthly, row.updated_by, row.updated_at = value, user_id, now()
+        record(db, "portfolio.targets_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
+        await db.flush()
+        result = await targets_view(db, tenant_id, money=True)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return result
+
+
+async def set_compliance_plan(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int,
+    company_id: str,
+    plan: schemas.CompliancePlan,
+    ip: str,
+) -> schemas.CompliancePlan:
+    """Says which filings apply. The Owner or someone with money (Group finance) sets it."""
+    try:
+        tenant_id = await _enter(db, user_id, company_id, "portfolio:finance")
+        row = await db.scalar(
+            select(ComplianceProfile).where(ComplianceProfile.tenant_id == tenant_id)
+        )
+        if row is None:
+            row = ComplianceProfile(tenant_id=tenant_id, updated_by=user_id)
+            db.add(row)
+        row.gstin, row.gst_filing, row.tds = plan.gstin, plan.gstFiling, plan.tds
+        row.pf_esi, row.company, row.updated_by, row.updated_at = (
+            plan.pfEsi,
+            plan.company,
+            user_id,
+            now(),
+        )
+        record(db, "portfolio.compliance_plan_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
+        await db.flush()
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return plan
+
+
+async def mark_filing(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int,
+    company_id: str,
+    key: str,
+    filed_on: date | None,
+    ip: str,
+) -> None:
+    """Marks a filing done on a day, or (with no day) takes the mark back. The key must be one of
+    the company's own dues, so nothing else can be recorded."""
+    try:
+        tenant_id = await _enter(db, user_id, company_id, "portfolio:finance")
+        today = today_ist()
+        if filed_on is not None and filed_on > today:
+            raise ApiError("invalid_date", "A filing cannot be marked done in the future.", 422)
+        profile = await db.scalar(
+            select(ComplianceProfile).where(ComplianceProfile.tenant_id == tenant_id)
+        )
+        rules = (
+            compliance.Profile(profile.gst_filing, profile.tds, profile.pf_esi, profile.company)
+            if profile
+            else None
+        )
+        known = rules and any(
+            due.key == key
+            for due in compliance.dues(
+                rules, today - timedelta(days=400), today + timedelta(days=60)
+            )
+        )
+        if not known:
+            raise ApiError("not_found", "That filing is not in this company's calendar.", 404)
+        row = await db.scalar(
+            select(ComplianceFiling).where(
+                ComplianceFiling.tenant_id == tenant_id, ComplianceFiling.item_key == key
+            )
+        )
+        if filed_on is None:
+            if row is not None:
+                await db.delete(row)
+        elif row is None:
+            db.add(
+                ComplianceFiling(
+                    tenant_id=tenant_id, item_key=key, filed_on=filed_on, filed_by=user_id
+                )
+            )
+        else:
+            row.filed_on, row.filed_by = filed_on, user_id
+        record(
+            db,
+            "portfolio.filing_marked" if filed_on else "portfolio.filing_unmarked",
+            user_id=user_id,
+            tenant_id=tenant_id,
+            ip=ip,
+            details={"item": key},
+        )
+        await db.flush()
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)

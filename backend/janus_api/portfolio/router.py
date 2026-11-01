@@ -68,3 +68,50 @@ async def digest_preview(actor: CurrentActor, db: Db) -> schemas.DigestPreview:
     if message is None:
         raise ApiError("not_found", "There is no company in your Portfolio yet.", 404)
     return message
+
+
+@router.put("/companies/{company_id}/targets", response_model=schemas.Targets)
+async def set_targets(
+    company_id: str, data: schemas.TargetsUpdate, actor: CurrentActor, db: Db, request: Request
+) -> schemas.Targets:
+    return await service.set_targets(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
+    )
+
+
+@router.put("/companies/{company_id}/compliance", response_model=schemas.CompliancePlan)
+async def set_compliance(
+    company_id: str, plan: schemas.CompliancePlan, actor: CurrentActor, db: Db, request: Request
+) -> schemas.CompliancePlan:
+    return await service.set_compliance_plan(
+        db, actor.user.id, actor.session.tenant_id, company_id, plan, request_ip(request)
+    )
+
+
+@router.put("/companies/{company_id}/filings/{key}", status_code=204)
+async def mark_filed(
+    company_id: str,
+    key: str,
+    data: schemas.FilingMark,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> None:
+    await service.mark_filing(
+        db,
+        actor.user.id,
+        actor.session.tenant_id,
+        company_id,
+        key,
+        data.filedOn,
+        request_ip(request),
+    )
+
+
+@router.delete("/companies/{company_id}/filings/{key}", status_code=204)
+async def unmark_filed(
+    company_id: str, key: str, actor: CurrentActor, db: Db, request: Request
+) -> None:
+    await service.mark_filing(
+        db, actor.user.id, actor.session.tenant_id, company_id, key, None, request_ip(request)
+    )

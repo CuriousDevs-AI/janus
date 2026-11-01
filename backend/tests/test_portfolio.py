@@ -6,6 +6,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from janus_api.portfolio.compliance import Profile, dues, status
 from janus_api.portfolio.digest import day, inr, next_due
 from janus_api.portfolio.digest import run_once as digest_once
 from janus_api.portfolio.service import period_for, today_ist
@@ -516,3 +517,254 @@ async def test_the_worker_sends_a_due_digest_once(
         )
     assert row.last_sent_at is not None and row.next_due_at > row.last_sent_at
     assert reads == 1
+
+
+def test_the_compliance_calendar_follows_the_statutory_dates() -> None:
+    everything = Profile("monthly", tds=True, pf_esi=True, company=True)
+    october = [
+        (due.key, due.due_on.isoformat())
+        for due in dues(everything, date(2026, 10, 1), date(2026, 10, 31))
+    ]
+    assert october == [
+        ("tds_2026-09", "2026-10-07"),
+        ("gstr1_2026-09", "2026-10-11"),
+        ("pf_2026-09", "2026-10-15"),
+        ("esi_2026-09", "2026-10-15"),
+        ("gstr3b_2026-09", "2026-10-20"),
+        ("aoc4_2025", "2026-10-30"),
+        ("tdsr_2026q2", "2026-10-31"),
+        ("itr_2025", "2026-10-31"),
+    ]
+    quarterly = Profile("quarterly", tds=True, pf_esi=False, company=False)
+    keys = {due.key: due.due_on for due in dues(quarterly, date(2026, 4, 1), date(2026, 10, 31))}
+    assert keys["gstr1q_2026q2"] == date(2026, 10, 13)
+    assert keys["gstr3bq_2026q2"] == date(2026, 10, 22)
+    # TDS deducted in March is paid by 30 April, not 7 April.
+    assert keys["tds_2026-03"] == date(2026, 4, 30)
+    assert status(date(2026, 10, 20), False, date(2026, 11, 2)) == "overdue"
+    assert status(date(2026, 11, 7), False, date(2026, 11, 2)) == "due_soon"
+    assert status(date(2026, 11, 20), False, date(2026, 11, 2)) == "upcoming"
+    assert status(date(2026, 10, 20), True, date(2026, 11, 2)) == "filed"
+
+
+async def test_the_operating_view_attention_and_health(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    employee = {"title": "Staff", "department": "Sales", "managerId": None, "status": "active"}
+    seeded = await client.post(
+        "/v1/hr/records/seed",
+        headers=owner.headers,
+        json={
+            "records": {
+                "employee": [
+                    {
+                        **employee,
+                        "id": "emp-001",
+                        "name": "Owner",
+                        "email": "owner@example.com",
+                        "salaryMonthly": 50000,
+                    },
+                    {
+                        **employee,
+                        "id": "emp-002",
+                        "name": "Asha",
+                        "email": "asha@example.com",
+                        "salaryMonthly": 30000,
+                        "managerId": "emp-001",
+                    },
+                    {
+                        **employee,
+                        "id": "emp-003",
+                        "name": "Left",
+                        "email": "left@example.com",
+                        "salaryMonthly": 99000,
+                        "status": "archived",
+                    },
+                ],
+                "leave": [
+                    {
+                        "id": "leave-1",
+                        "employeeId": "emp-002",
+                        "managerId": "emp-001",
+                        "from": "2026-12-10",
+                        "to": "2026-12-11",
+                        "status": "pending",
+                    }
+                ],
+            }
+        },
+    )
+    assert seeded.status_code in (200, 201), seeded.text
+    item = {
+        "name": "Flour 5 kg",
+        "unit": "bag",
+        "hsn": "1101",
+        "rate_paise": 45000,
+        "gst_rate": 5,
+        "reorder_level": 500,
+    }
+    opening = await client.post(
+        "/v1/operations/import",
+        headers=owner.headers,
+        json={
+            "items": [
+                {**item, "key": "itm-1", "sku": "FL-1", "track_batch": False},
+                {**item, "key": "itm-2", "sku": "FL-2", "track_batch": True},
+            ],
+            "batches": [
+                {
+                    "key": "bat-1",
+                    "item_key": "itm-2",
+                    "batch_no": "B-1",
+                    "expiry": (today + timedelta(days=10)).isoformat(),
+                }
+            ],
+            "movements": [
+                {
+                    "key": "mv-1",
+                    "item_key": "itm-1",
+                    "location_id": 1,
+                    "qty": 100,
+                    "reason": "Opening stock",
+                    "booked_on": today.isoformat(),
+                },
+                {
+                    "key": "mv-2",
+                    "item_key": "itm-2",
+                    "location_id": 1,
+                    "batch_no": "B-1",
+                    "qty": 900,
+                    "reason": "Opening stock",
+                    "booked_on": today.isoformat(),
+                },
+            ],
+        },
+    )
+    assert opening.status_code in (200, 201), opening.text
+    project = await client.post(
+        "/v1/project-records",
+        headers=owner.headers,
+        json={
+            "external_key": "prj-1",
+            "name": "Dock layout",
+            "client": "Internal",
+            "status": "active",
+            "budget": "1000.00",
+            "start_on": (today - timedelta(days=30)).isoformat(),
+            "end_on": (today - timedelta(days=1)).isoformat(),
+        },
+    )
+    assert project.status_code == 201, project.text
+    ticket = await client.post(
+        "/v1/support/tickets",
+        headers=owner.headers,
+        json={
+            "external_key": "tck-1",
+            "number": "#1",
+            "subject": "Wrong total",
+            "priority": "urgent",
+        },
+    )
+    assert ticket.status_code == 201, ticket.text
+
+    company_id = str(owner.tenant_id)
+    plan = await client.put(
+        f"/v1/portfolio/companies/{company_id}/compliance",
+        headers=owner.headers,
+        json={"gstin": "27aapfu0939f1zv", "gstFiling": "monthly"},
+    )
+    assert plan.status_code == 200, plan.text
+    assert plan.json()["gstin"] == "27AAPFU0939F1ZV"
+    bad = await client.put(
+        f"/v1/portfolio/companies/{company_id}/compliance",
+        headers=owner.headers,
+        json={"gstin": "NOT-A-GSTIN", "gstFiling": "monthly"},
+    )
+    assert bad.status_code == 422
+    targets = await client.put(
+        f"/v1/portfolio/companies/{company_id}/targets",
+        headers=owner.headers,
+        json={"leads": "40", "wonValue": "500000", "collected": "300000"},
+    )
+    assert targets.json() == {"leads": "40.00", "wonValue": "500000.00", "collected": "300000.00"}
+
+    company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+        "companies"
+    ][0]
+    assert company["people"] == {
+        "headcount": 2,
+        "onLeaveToday": 0,
+        "pendingLeave": 1,
+        "pendingClaims": 0,
+        "monthlyPayroll": "80000.00",
+        "claimsValue": "0.00",
+    }
+    assert company["stock"]["items"] == 2 and company["stock"]["belowReorder"] == 1
+    assert company["stock"]["expiringBatches"] == 1
+    assert company["stock"]["stockValue"] == "450000.00"
+    assert company["delivery"]["lateProjects"] == 1
+    assert company["support"]["urgent"] == 1
+    assert [(a["kind"], a["count"]) for a in company["approvals"]] == [("leave", 1)]
+    overdue = [due for due in company["compliance"] if due["status"] == "overdue"]
+    assert overdue and all(due["dueOn"] < today.isoformat() for due in overdue)
+    assert company["health"]["status"] == "red"
+    texts = [item["text"] for item in company["attention"]]
+    assert any("past the end date" in text for text in texts)
+    assert any("urgent" in text for text in texts)
+    assert company["attention"][0]["severity"] == "high"
+
+    first = overdue[0]
+    marked = await client.put(
+        f"/v1/portfolio/companies/{company_id}/filings/{first['key']}",
+        headers=owner.headers,
+        json={"filedOn": today.isoformat()},
+    )
+    assert marked.status_code == 204, marked.text
+    future = await client.put(
+        f"/v1/portfolio/companies/{company_id}/filings/{first['key']}",
+        headers=owner.headers,
+        json={"filedOn": (today + timedelta(days=1)).isoformat()},
+    )
+    assert future.status_code == 422
+    unknown = await client.put(
+        f"/v1/portfolio/companies/{company_id}/filings/made-up_2026-01",
+        headers=owner.headers,
+        json={"filedOn": today.isoformat()},
+    )
+    assert unknown.status_code == 404
+    again = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"][
+        0
+    ]
+    status_of = {due["key"]: due for due in again["compliance"]}
+    assert status_of[first["key"]]["status"] == "filed"
+    assert status_of[first["key"]]["filedOn"] == today.isoformat()
+    assert all(
+        first["label"] + " for " + first["period"] not in item["text"]
+        for item in again["attention"]
+    )
+
+    await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "analyst@example.com", "role": "group_analyst"},
+    )
+    analyst = await _join(client, mailbox, "analyst@example.com")
+    seen = (await client.get("/v1/portfolio/summary", headers=analyst)).json()["companies"][0]
+    assert seen["people"]["monthlyPayroll"] is None and seen["stock"]["stockValue"] is None
+    assert seen["targets"]["collected"] is None and seen["targets"]["leads"] == "40.00"
+    assert seen["health"]["status"] == "red"
+    for url, body in (
+        (f"/v1/portfolio/companies/{company_id}/compliance", {"gstFiling": "none"}),
+        (f"/v1/portfolio/companies/{company_id}/targets", {"leads": "1"}),
+    ):
+        assert (await client.put(url, headers=analyst, json=body)).status_code == 403
+    stranger = await signup(client, mailbox, "stranger@example.com")
+    assert (
+        await client.put(
+            f"/v1/portfolio/companies/{company_id}/targets",
+            headers=stranger.headers,
+            json={"leads": "1"},
+        )
+    ).status_code == 404
