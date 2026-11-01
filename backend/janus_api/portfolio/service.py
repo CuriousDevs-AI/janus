@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.core.errors import ApiError
+from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
 from janus_api.crm.models import Deal, Lead
 from janus_api.finance.models import (
@@ -17,7 +18,7 @@ from janus_api.finance.models import (
     FinancePayment,
 )
 from janus_api.org import service as org
-from janus_api.org.models import Membership, Role, Tenant
+from janus_api.org.models import Invitation, Membership, Role, Tenant
 from janus_api.portfolio import schemas
 from janus_api.support.models import SupportTicket
 
@@ -125,11 +126,29 @@ async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schema
     )
 
 
-async def owned_tenants(db: AsyncSession, user_id: int) -> list[int]:
-    """The companies where this person is an active Owner.
+async def member_tenants(db: AsyncSession, user_id: int, permission: str) -> list[int]:
+    """The companies where this person's active role holds the permission.
 
     Memberships are read under the person's own context, which RLS allows for their own rows.
     """
+    return list(
+        (
+            await db.scalars(
+                select(Membership.tenant_id)
+                .join(Role, Role.id == Membership.role_id)
+                .where(
+                    Membership.user_id == user_id,
+                    Membership.status == "active",
+                    Role.permissions.contains([permission]),
+                )
+                .order_by(Membership.tenant_id)
+            )
+        ).all()
+    )
+
+
+async def owned_tenants(db: AsyncSession, user_id: int) -> list[int]:
+    """The companies where this person is an active Owner."""
     return list(
         (
             await db.scalars(
@@ -148,7 +167,7 @@ async def owned_tenants(db: AsyncSession, user_id: int) -> list[int]:
 
 
 async def company_summary(
-    db: AsyncSession, tenant: Tenant, current: bool, today: date
+    db: AsyncSession, tenant: Tenant, current: bool, today: date, *, money: bool
 ) -> schemas.CompanySummary:
     """One company's headline numbers.
 
@@ -191,28 +210,37 @@ async def company_summary(
             pipelineValue=str(sum((values[stage] for stage in open_stages), Decimal(0))),
             wonValue=str(values.get("won", Decimal("0.00"))),
         ),
-        money=await money_summary(db, tenant.id, today),
+        money=await money_summary(db, tenant.id, today) if money else None,
     )
 
 
 async def summary(
     db: AsyncSession, user_id: int, current_tenant: int, ip: str
 ) -> schemas.PortfolioSummary:
-    """Every company the person owns.
+    """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
-    Each is read on its own, under its own context, never across companies.
+    Each is read on its own, under its own context, never across companies. Money is included only
+    where the person's role there holds portfolio:finance.
     """
     companies = []
     today = today_ist()
     try:
-        for tenant_id in await owned_tenants(db, user_id):
+        for tenant_id in await member_tenants(db, user_id, "portfolio:read"):
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
-            # Re-check the Owner membership under this company's context before reading anything.
+            # Re-check the role under this company's context before reading anything.
             _, role = await org.membership(db, user_id, tenant_id)
             tenant = await db.get(Tenant, tenant_id)
-            if role.name != "owner" or tenant is None:
+            if "portfolio:read" not in role.permissions or tenant is None:
                 continue
-            companies.append(await company_summary(db, tenant, tenant_id == current_tenant, today))
+            companies.append(
+                await company_summary(
+                    db,
+                    tenant,
+                    tenant_id == current_tenant,
+                    today,
+                    money="portfolio:finance" in role.permissions,
+                )
+            )
             record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)
     finally:
         # Flushes the audit rows under the last company, then returns to the session's own company.
@@ -249,3 +277,185 @@ async def create_company(
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return out
+
+
+ACCESS_ROLES = ("owner", "group_finance", "group_analyst")
+
+
+async def _owned_targets(db: AsyncSession, user_id: int, wanted: list[str]) -> list[int]:
+    owned = await owned_tenants(db, user_id)
+    if not owned:
+        raise ApiError("forbidden", "Only an Owner can share the Portfolio.", 403)
+    if not wanted:
+        return owned
+    ids = {int(item) for item in wanted if item.isdigit()}
+    if len(ids) != len(set(wanted)) or not ids <= set(owned):
+        raise ApiError("forbidden", "You can share only companies you own.", 403)
+    return sorted(ids)
+
+
+async def list_access(db: AsyncSession, user_id: int, current_tenant: int) -> schemas.AccessList:
+    """Everyone who holds, or is invited to, a Portfolio role in a company this Owner owns."""
+    from janus_api.auth.service import user_directory
+
+    people: dict[str, schemas.AccessPerson] = {}
+    try:
+        for tenant_id in await owned_tenants(db, user_id):
+            await set_context(db, user_id=user_id, tenant_id=tenant_id)
+            tenant = await db.get(Tenant, tenant_id)
+            if tenant is None:
+                continue
+            members = (
+                await db.execute(
+                    select(Membership, Role.name)
+                    .join(Role, Role.id == Membership.role_id)
+                    .where(
+                        Membership.tenant_id == tenant_id,
+                        Membership.user_id != user_id,
+                        Membership.status == "active",
+                        Role.tenant_id.is_(None),
+                        Role.name.in_(ACCESS_ROLES),
+                    )
+                )
+            ).all()
+            profiles = await user_directory(db, [member.user_id for member, _ in members])
+            for member, role in members:
+                profile = profiles[member.user_id]
+                person = people.setdefault(
+                    profile.email,
+                    schemas.AccessPerson(email=profile.email, name=profile.name, companies=[]),
+                )
+                person.companies.append(
+                    schemas.AccessCompany(
+                        id=str(tenant_id), name=tenant.name, role=role, status="active"
+                    )
+                )
+            invites = (
+                await db.execute(
+                    select(Invitation.email, Role.name)
+                    .join(Role, Role.id == Invitation.role_id)
+                    .where(
+                        Invitation.tenant_id == tenant_id,
+                        Invitation.used_at.is_(None),
+                        Invitation.revoked_at.is_(None),
+                        Invitation.expires_at > now(),
+                        Role.tenant_id.is_(None),
+                        Role.name.in_(ACCESS_ROLES),
+                    )
+                )
+            ).all()
+            for email, role in invites:
+                person = people.setdefault(
+                    email, schemas.AccessPerson(email=email, name=None, companies=[])
+                )
+                person.companies.append(
+                    schemas.AccessCompany(
+                        id=str(tenant_id), name=tenant.name, role=role, status="invited"
+                    )
+                )
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return schemas.AccessList(people=sorted(people.values(), key=lambda person: person.email))
+
+
+async def grant_access(
+    db: AsyncSession, user_id: int, current_tenant: int, data: schemas.AccessGrant, ip: str
+) -> schemas.AccessResult:
+    """Invites the person into each chosen company with the role. A company where they are already a
+    member, or already invited, is skipped with the reason; the others still go out."""
+    done: list[str] = []
+    skipped: list[schemas.AccessSkipped] = []
+    try:
+        for tenant_id in await _owned_targets(db, user_id, data.companies):
+            await set_context(db, user_id=user_id, tenant_id=tenant_id)
+            tenant = await db.get(Tenant, tenant_id)
+            name = tenant.name if tenant else str(tenant_id)
+            try:
+                await org.create_invitation(db, tenant_id, user_id, str(data.email), data.role, ip)
+            except ApiError as error:
+                skipped.append(schemas.AccessSkipped(company=name, reason=error.message))
+                continue
+            done.append(name)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return schemas.AccessResult(done=done, skipped=skipped)
+
+
+async def remove_access(
+    db: AsyncSession, user_id: int, current_tenant: int, data: schemas.AccessRemove, ip: str
+) -> schemas.AccessResult:
+    """Takes the person's group role away in every company this Owner owns, and withdraws open
+    Portfolio invitations. A co-owner stays: ownership is changed company by company."""
+    from janus_api.auth.service import user_id_for_email
+
+    address = str(data.email).casefold()
+    done: list[str] = []
+    skipped: list[schemas.AccessSkipped] = []
+    try:
+        for tenant_id in await _owned_targets(db, user_id, []):
+            await set_context(db, user_id=user_id, tenant_id=tenant_id)
+            tenant = await org.lock_workspace(db, tenant_id, user_id, "members:manage")
+            changed = False
+            person = await user_id_for_email(db, address)
+            row = (
+                (
+                    await db.execute(
+                        select(Membership, Role.name)
+                        .join(Role, Role.id == Membership.role_id)
+                        .where(
+                            Membership.tenant_id == tenant_id,
+                            Membership.user_id == person,
+                            Membership.status == "active",
+                        )
+                    )
+                ).first()
+                if person is not None and person != user_id
+                else None
+            )
+            if row is not None and row[1] in ("group_finance", "group_analyst"):
+                row[0].status = "disabled"
+                changed = True
+                record(
+                    db,
+                    "portfolio.access_removed",
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    ip=ip,
+                    details={"membership_id": row[0].id},
+                )
+            elif row is not None and row[1] == "owner":
+                skipped.append(
+                    schemas.AccessSkipped(
+                        company=tenant.name, reason="Co-owner: change ownership in the company."
+                    )
+                )
+            invites = (
+                await db.scalars(
+                    select(Invitation)
+                    .join(Role, Role.id == Invitation.role_id)
+                    .where(
+                        Invitation.tenant_id == tenant_id,
+                        Invitation.email == address,
+                        Invitation.used_at.is_(None),
+                        Invitation.revoked_at.is_(None),
+                        Role.tenant_id.is_(None),
+                        Role.name.in_(ACCESS_ROLES),
+                    )
+                )
+            ).all()
+            for invite in invites:
+                invite.revoked_at = now()
+                changed = True
+                record(
+                    db,
+                    "invitation.revoked",
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    ip=ip,
+                    details={"invitation_id": invite.id},
+                )
+            if changed:
+                done.append(tenant.name)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return schemas.AccessResult(done=done, skipped=skipped)

@@ -37,6 +37,8 @@ PERMISSIONS = {
     "hr:approve",
     "hr:manage",
     "announcements:post",
+    "portfolio:read",
+    "portfolio:finance",
 }
 
 # What every member holds whatever their role: their own HR (profile, leave, attendance, pay).
@@ -44,7 +46,7 @@ PERMISSIONS = {
 MEMBER_PERMISSIONS = frozenset({"hr:self"})
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
-    "admin": sorted(PERMISSIONS - {"billing:manage"}),
+    "admin": sorted(PERMISSIONS - {"billing:manage", "portfolio:read", "portfolio:finance"}),
     "manager": [
         "leads:read_own",
         "leads:read_team",
@@ -56,6 +58,9 @@ SYSTEM_ROLES = {
         "hr:approve",
     ],
     "agent": ["leads:read_own", "leads:write"],
+    # Portfolio access an Owner shares across their companies (migration 0048).
+    "group_finance": ["portfolio:finance", "portfolio:read", "reports:read"],
+    "group_analyst": ["portfolio:read", "reports:read"],
 }
 
 

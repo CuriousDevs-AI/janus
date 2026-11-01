@@ -18,3 +18,26 @@ async def create_company(
     return await service.create_company(
         db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
     )
+
+
+@router.get("/access", response_model=schemas.AccessList)
+async def access(actor: CurrentActor, db: Db) -> schemas.AccessList:
+    return await service.list_access(db, actor.user.id, actor.session.tenant_id)
+
+
+@router.post("/access", response_model=schemas.AccessResult)
+async def grant_access(
+    data: schemas.AccessGrant, actor: CurrentActor, db: Db, request: Request
+) -> schemas.AccessResult:
+    return await service.grant_access(
+        db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
+    )
+
+
+@router.post("/access/remove", response_model=schemas.AccessResult)
+async def remove_access(
+    data: schemas.AccessRemove, actor: CurrentActor, db: Db, request: Request
+) -> schemas.AccessResult:
+    return await service.remove_access(
+        db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
+    )

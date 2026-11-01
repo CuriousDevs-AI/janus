@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from janus_api.portfolio.service import today_ist
 from tests.conftest import Mailbox
-from tests.helpers import Account, accept_new, invite, signup
+from tests.helpers import PASSWORD, Account, accept_new, invite, signup
 
 
 def _bearer(pair: dict[str, str]) -> dict[str, str]:
@@ -214,3 +214,113 @@ async def test_money_shows_what_is_owed_and_how_late(
     assert money["payable"] == "1000.00" and money["payableDueThisWeek"] == "500.00"
     assert money["collectedThisMonth"] == "400.00" and money["collectedLastMonth"] == "0.00"
     assert companies["Pune Retail"]["receivable"] == "0.00"
+
+
+async def _join(client: httpx.AsyncClient, mailbox: Mailbox, address: str) -> dict[str, str]:
+    """Accepts the newest invitation for the address, as a new account or an existing one."""
+    token = mailbox.token(address, "invite")
+    accepted = await client.post(
+        f"/v1/invitations/{token}/accept", json={"name": "Group CFO", "password": PASSWORD}
+    )
+    assert accepted.status_code == 200, accepted.text
+    return _bearer(accepted.json())
+
+
+async def test_an_owner_shares_the_portfolio_with_a_group_role(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    second = await _second_company(client, owner, "Pune Retail")
+    await _second_company(client, owner, "Nagpur Hardware")
+
+    # Only companies the caller owns can be shared.
+    stranger = await signup(client, mailbox, "stranger@example.com")
+    refused = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={
+            "email": "cfo@example.com",
+            "role": "group_finance",
+            "companies": [str(stranger.tenant_id)],
+        },
+    )
+    assert refused.status_code == 403
+
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={
+            "email": "cfo@example.com",
+            "role": "group_analyst",
+            "companies": [str(owner.tenant_id), second["id"]],
+        },
+    )
+    assert shared.status_code == 200, shared.text
+    assert shared.json() == {"done": ["Mumbai Traders", "Pune Retail"], "skipped": []}
+    again = (
+        await client.post(
+            "/v1/portfolio/access",
+            headers=owner.headers,
+            json={"email": "cfo@example.com", "role": "group_analyst", "companies": [second["id"]]},
+        )
+    ).json()
+    assert again["done"] == [] and again["skipped"][0]["company"] == "Pune Retail"
+
+    listed = (await client.get("/v1/portfolio/access", headers=owner.headers)).json()["people"]
+    assert [(c["name"], c["status"]) for c in listed[0]["companies"]] == [
+        ("Mumbai Traders", "invited"),
+        ("Pune Retail", "invited"),
+    ]
+
+    analyst = await _join(client, mailbox, "cfo@example.com")
+    view = (await client.get("/v1/portfolio/summary", headers=analyst)).json()["companies"]
+    # The analyst sees only what was shared, and no money.
+    assert len(view) == 1 and view[0]["money"] is None
+    me = (await client.get("/v1/me", headers=analyst)).json()
+    assert "portfolio:read" in me["permissions"] and "leads:read_own" not in me["permissions"]
+    assert (await client.get("/v1/leads", headers=analyst)).status_code == 403
+    # An analyst cannot share the Portfolio or add a company.
+    assert (await client.get("/v1/portfolio/access", headers=analyst)).json() == {"people": []}
+    assert (
+        await client.post("/v1/portfolio/companies", headers=analyst, json={"name": "Side shop"})
+    ).status_code == 403
+
+    removed = await client.post(
+        "/v1/portfolio/access/remove", headers=owner.headers, json={"email": "cfo@example.com"}
+    )
+    assert removed.status_code == 200, removed.text
+    assert set(removed.json()["done"]) == {"Mumbai Traders", "Pune Retail"}
+    assert (await client.get("/v1/portfolio/access", headers=owner.headers)).json() == {
+        "people": []
+    }
+    assert (await client.get("/v1/me", headers=analyst)).status_code == 403
+
+
+async def test_group_finance_sees_money_and_a_co_owner_stays_on_removal(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "cfo@example.com", "role": "group_finance"},
+    )
+    assert shared.json()["done"] == ["Mumbai Traders"]
+    finance = await _join(client, mailbox, "cfo@example.com")
+    view = (await client.get("/v1/portfolio/summary", headers=finance)).json()["companies"]
+    assert view[0]["money"]["receivable"] == "0.00"
+
+    await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "partner@example.com", "role": "owner"},
+    )
+    await _join(client, mailbox, "partner@example.com")
+    removed = (
+        await client.post(
+            "/v1/portfolio/access/remove",
+            headers=owner.headers,
+            json={"email": "partner@example.com"},
+        )
+    ).json()
+    assert removed["done"] == [] and "Co-owner" in removed["skipped"][0]["reason"]

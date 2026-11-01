@@ -57,7 +57,14 @@ async def test_members_roles_live_permissions_and_last_owner(
     token = await invite(client, mailbox, owner, "agent@example.com")
     agent = await accept_new(client, token)
     roles = (await client.get("/v1/roles", headers=agent)).json()
-    assert {r["name"] for r in roles} == {"owner", "admin", "manager", "agent"}
+    assert {r["name"] for r in roles} == {
+        "owner",
+        "admin",
+        "manager",
+        "agent",
+        "group_finance",
+        "group_analyst",
+    }
     members = (await client.get("/v1/members", headers=owner.headers)).json()
     owner_id = next(m["id"] for m in members if m["email"] == owner.email)
     agent_id = next(m["id"] for m in members if m["email"] == "agent@example.com")

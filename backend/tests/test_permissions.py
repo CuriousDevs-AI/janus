@@ -102,7 +102,7 @@ async def test_rls_denies_cross_tenant_reads_and_writes(
         assert not (await db.execute(text("SELECT id FROM tenants"))).all()
     async with session_factory()() as db:
         # System roles are readable but cannot be changed by the application.
-        assert await db.scalar(text("SELECT count(*) FROM roles WHERE tenant_id IS NULL")) == 4
+        assert await db.scalar(text("SELECT count(*) FROM roles WHERE tenant_id IS NULL")) == 6
         assert not (
             await db.execute(
                 text("UPDATE roles SET permissions = '{}' WHERE tenant_id IS NULL RETURNING id")
