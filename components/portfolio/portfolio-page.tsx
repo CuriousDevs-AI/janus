@@ -15,6 +15,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
+import { LivePortfolio } from "@/components/portfolio/live-portfolio";
 import { activeCompanyId, readCompanies, removeCompany, seedCompanies, subscribeCompanies, switchCompany, updateCompany, type CompanyRecord } from "@/lib/company";
 import { summarise, type CompanySummary } from "@/lib/group-summary";
 import { answerFor, insightsFor, type Answer } from "@/lib/portfolio-insights";
@@ -51,8 +52,8 @@ export function PortfolioPage() {
   const login = useLoginAccount();
   const { summaries, hydrated } = usePortfolio();
   const [title, description] = titles[view] ?? titles.overview;
-  // The Portfolio runs on the preview's company records. A live account has none yet.
-  if (!demoMode) return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio, for owners of several companies, is not available yet for live accounts. <Link className="text-accent underline" href="/settings?tab=workspace&view=overview&workspace=business">Go to the Business overview</Link></div>;
+  // A real account reads its companies from the server; the rest of this page is the preview's.
+  if (!demoMode) return <LivePortfolio />;
   if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under Portfolio access.</div>;
   return <div className="mx-auto flex max-w-[1240px] flex-col">
     <PageHeader title={title} description={description} actions={<Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button>} />

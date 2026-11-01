@@ -22,6 +22,21 @@ export interface Me {
   permissions: string[];
   tenants: Me["tenant"][];
 }
+/** One company in GET /portfolio/summary. Money is a decimal string in rupees. */
+export interface PortfolioCompany {
+  id: string;
+  name: string;
+  industry: string;
+  createdAt: string;
+  /** The company this session is in. */
+  current: boolean;
+  members: number;
+  openTickets: number;
+  crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string };
+}
+export interface PortfolioSummary {
+  companies: PortfolioCompany[];
+}
 export type SourceKind = "embed" | "webhook" | "api_key" | "csv" | "oauth";
 export type MappingTarget =
   | "name"
