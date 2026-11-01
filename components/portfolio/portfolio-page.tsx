@@ -136,7 +136,7 @@ function Analytics({ list }: { list: CompanySummary[] }) {
         <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars format={lakh} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.pipeline, color: colors.get(item.company.id)! }))} /></SectionCard>
         <SectionCard title="Won so far" description="Closed deals by company."><Bars format={lakh} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.wonValue, color: colors.get(item.company.id)! }))} /></SectionCard>
       </div>
-      <SectionCard title="Leads captured by month" description="October is the real count so far; earlier months are history.">
+      <SectionCard title="Leads captured by month" description="Counted from each company's leads, by the month they came in.">
         <svg viewBox="0 0 560 200" role="img" aria-label="Leads captured per month for each company" className="h-auto w-full">
           <g stroke="var(--border)" strokeWidth="1"><line x1="40" y1="170" x2="520" y2="170" /><line x1="40" y1="100" x2="520" y2="100" /><line x1="40" y1="30" x2="520" y2="30" /></g>
           {months.map((month, index) => <text key={month} x={x(index)} y="190" textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">{month}</text>)}
