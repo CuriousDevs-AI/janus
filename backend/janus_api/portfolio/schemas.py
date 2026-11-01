@@ -32,8 +32,34 @@ class MoneySummary(BaseModel):
     ageing: Ageing
     payable: str
     payableDueThisWeek: str
-    collectedThisMonth: str
-    collectedLastMonth: str
+
+
+PeriodKey = Literal["month", "quarter", "fy"]
+
+
+class Period(BaseModel):
+    """The period to date and the same days of the period before. Days are inclusive, in India."""
+
+    key: PeriodKey
+    label: str
+    start: str
+    end: str
+    previousStart: str
+    previousEnd: str
+
+
+class PeriodFigures(BaseModel):
+    leads: int
+    wonDeals: int
+    wonValue: str
+    # None where the person's role does not include money.
+    invoiced: str | None
+    collected: str | None
+
+
+class PeriodCompare(BaseModel):
+    current: PeriodFigures
+    previous: PeriodFigures
 
 
 class CompanySummary(BaseModel):
@@ -47,9 +73,11 @@ class CompanySummary(BaseModel):
     crm: CrmSummary
     # None where the person's role does not include money (Group analyst).
     money: MoneySummary | None
+    period: PeriodCompare
 
 
 class PortfolioSummary(BaseModel):
+    period: Period
     companies: list[CompanySummary]
 
 

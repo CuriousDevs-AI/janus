@@ -7,8 +7,12 @@ router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
 
 
 @router.get("/summary", response_model=schemas.PortfolioSummary)
-async def summary(actor: CurrentActor, db: Db, request: Request) -> schemas.PortfolioSummary:
-    return await service.summary(db, actor.user.id, actor.session.tenant_id, request_ip(request))
+async def summary(
+    actor: CurrentActor, db: Db, request: Request, period: schemas.PeriodKey = "month"
+) -> schemas.PortfolioSummary:
+    return await service.summary(
+        db, actor.user.id, actor.session.tenant_id, request_ip(request), period
+    )
 
 
 @router.post("/companies", response_model=schemas.CompanyOut, status_code=201)

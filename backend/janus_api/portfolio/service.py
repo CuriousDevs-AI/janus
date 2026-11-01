@@ -1,8 +1,9 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
@@ -25,6 +26,103 @@ from janus_api.support.models import SupportTicket
 # A login may own this many companies, so a runaway script cannot create tenants without end.
 MAX_COMPANIES = 20
 CLOSED_TICKETS = ("resolved", "closed")
+
+
+MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
+def _months_back(day: date, months: int) -> date:
+    index = day.year * 12 + day.month - 1 - months
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def period_for(key: str, today: date) -> schemas.Period:
+    """The period to date, and the same number of days at the start of the period before it.
+
+    Quarters and years follow the Indian financial year, which starts on 1 April. Comparing to date
+    against the same days before keeps a half-finished month from looking like a fall.
+    """
+    if key == "fy":
+        start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+        before = date(start.year - 1, 4, 1)
+        label = f"FY {start.year}-{str(start.year + 1)[2:]}"
+    elif key == "quarter":
+        start = date(today.year, (today.month - 1) // 3 * 3 + 1, 1)
+        before = _months_back(start, 3)
+        quarter = (start.month - 4) % 12 // 3 + 1
+        label = f"Q{quarter} ({MONTHS[start.month - 1]}-{MONTHS[(start.month + 1) % 12]})"
+    else:
+        start = today.replace(day=1)
+        before = _months_back(start, 1)
+        label = f"{MONTHS[start.month - 1]} {start.year}"
+    elapsed = (today - start).days + 1
+    return schemas.Period(
+        key=key,
+        label=label,
+        start=start.isoformat(),
+        end=today.isoformat(),
+        previousStart=before.isoformat(),
+        # Inclusive, like end: the same count of days into the period before, never past its end.
+        previousEnd=(min(before + timedelta(days=elapsed), start) - timedelta(days=1)).isoformat(),
+    )
+
+
+def _ist_day(column: Any) -> Any:
+    """The India date of a timestamp column."""
+    return cast(func.timezone("Asia/Kolkata", column), Date)
+
+
+async def period_figures(
+    db: AsyncSession, tenant_id: int, start: date, end: date, *, money: bool
+) -> schemas.PeriodFigures:
+    """What happened between two days, both included, in India time."""
+    leads = await db.scalar(
+        select(func.count(Lead.id)).where(
+            Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end)
+        )
+    )
+    # Deals keep no date of winning. A won deal is rarely edited again,
+    # so its last change stands in.
+    won_count, won_value = (
+        await db.execute(
+            select(func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0)).where(
+                Deal.tenant_id == tenant_id,
+                Deal.stage == "won",
+                _ist_day(Deal.updated_at).between(start, end),
+            )
+        )
+    ).one()
+    invoiced = collected = None
+    if money:
+        invoiced = rupees(
+            int(
+                await db.scalar(
+                    select(func.coalesce(func.sum(FinanceInvoice.total_paise), 0)).where(
+                        FinanceInvoice.tenant_id == tenant_id,
+                        FinanceInvoice.invoice_date.between(start, end),
+                    )
+                )
+                or 0
+            )
+        )
+        collected = rupees(
+            int(
+                await db.scalar(
+                    select(func.coalesce(func.sum(FinancePayment.amount_paise), 0)).where(
+                        FinancePayment.tenant_id == tenant_id,
+                        FinancePayment.paid_on.between(start, end),
+                    )
+                )
+                or 0
+            )
+        )
+    return schemas.PeriodFigures(
+        leads=int(leads or 0),
+        wonDeals=int(won_count),
+        wonValue=str(Decimal(won_value).quantize(Decimal("0.01"))),
+        invoiced=invoiced,
+        collected=collected,
+    )
 
 
 def today_ist() -> date:
@@ -97,21 +195,6 @@ async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schema
     payable = sum(max(0, int(balance)) for _, balance in bills)
     week = today + timedelta(days=7)
     due_soon = sum(max(0, int(balance)) for due, balance in bills if due <= week)
-    month = today.replace(day=1)
-    last_month = (month - timedelta(days=1)).replace(day=1)
-
-    async def collected(start: date, end: date) -> int:
-        return int(
-            await db.scalar(
-                select(func.coalesce(func.sum(FinancePayment.amount_paise), 0)).where(
-                    FinancePayment.tenant_id == tenant_id,
-                    FinancePayment.paid_on >= start,
-                    FinancePayment.paid_on < end,
-                )
-            )
-            or 0
-        )
-
     return schemas.MoneySummary(
         receivable=rupees(receivable),
         overdue=rupees(overdue),
@@ -121,8 +204,6 @@ async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schema
         ),
         payable=rupees(payable),
         payableDueThisWeek=rupees(due_soon),
-        collectedThisMonth=rupees(await collected(month, today + timedelta(days=1))),
-        collectedLastMonth=rupees(await collected(last_month, month)),
     )
 
 
@@ -167,7 +248,13 @@ async def owned_tenants(db: AsyncSession, user_id: int) -> list[int]:
 
 
 async def company_summary(
-    db: AsyncSession, tenant: Tenant, current: bool, today: date, *, money: bool
+    db: AsyncSession,
+    tenant: Tenant,
+    current: bool,
+    today: date,
+    period: schemas.Period,
+    *,
+    money: bool,
 ) -> schemas.CompanySummary:
     """One company's headline numbers.
 
@@ -211,11 +298,23 @@ async def company_summary(
             wonValue=str(values.get("won", Decimal("0.00"))),
         ),
         money=await money_summary(db, tenant.id, today) if money else None,
+        period=schemas.PeriodCompare(
+            current=await period_figures(
+                db, tenant.id, date.fromisoformat(period.start), today, money=money
+            ),
+            previous=await period_figures(
+                db,
+                tenant.id,
+                date.fromisoformat(period.previousStart),
+                date.fromisoformat(period.previousEnd),
+                money=money,
+            ),
+        ),
     )
 
 
 async def summary(
-    db: AsyncSession, user_id: int, current_tenant: int, ip: str
+    db: AsyncSession, user_id: int, current_tenant: int, ip: str, period_key: str = "month"
 ) -> schemas.PortfolioSummary:
     """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
@@ -224,6 +323,7 @@ async def summary(
     """
     companies = []
     today = today_ist()
+    period = period_for(period_key, today)
     try:
         for tenant_id in await member_tenants(db, user_id, "portfolio:read"):
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
@@ -238,6 +338,7 @@ async def summary(
                     tenant,
                     tenant_id == current_tenant,
                     today,
+                    period,
                     money="portfolio:finance" in role.permissions,
                 )
             )
@@ -245,7 +346,7 @@ async def summary(
     finally:
         # Flushes the audit rows under the last company, then returns to the session's own company.
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
-    return schemas.PortfolioSummary(companies=companies)
+    return schemas.PortfolioSummary(period=period, companies=companies)
 
 
 async def create_company(

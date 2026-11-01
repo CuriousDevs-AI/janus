@@ -1,10 +1,10 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from janus_api.portfolio.service import today_ist
+from janus_api.portfolio.service import period_for, today_ist
 from tests.conftest import Mailbox
 from tests.helpers import PASSWORD, Account, accept_new, invite, signup
 
@@ -130,7 +130,7 @@ async def test_only_an_owner_adds_a_company(client: httpx.AsyncClient, mailbox: 
         "/v1/portfolio/companies", headers=agent, json={"name": "Side shop"}
     )
     assert refused.status_code == 403
-    assert (await client.get("/v1/portfolio/summary", headers=agent)).json() == {"companies": []}
+    assert (await client.get("/v1/portfolio/summary", headers=agent)).json()["companies"] == []
     short = await client.post(
         "/v1/portfolio/companies", headers=owner.headers, json={"name": " a "}
     )
@@ -212,7 +212,7 @@ async def test_money_shows_what_is_owed_and_how_late(
     assert money["overdueInvoices"] == 2
     assert money["ageing"] == {"days0to30": "600.00", "days31to60": "1000.00", "over60": "0.00"}
     assert money["payable"] == "1000.00" and money["payableDueThisWeek"] == "500.00"
-    assert money["collectedThisMonth"] == "400.00" and money["collectedLastMonth"] == "0.00"
+    assert "collectedThisMonth" not in money
     assert companies["Pune Retail"]["receivable"] == "0.00"
 
 
@@ -324,3 +324,95 @@ async def test_group_finance_sees_money_and_a_co_owner_stays_on_removal(
         )
     ).json()
     assert removed["done"] == [] and "Co-owner" in removed["skipped"][0]["reason"]
+
+
+def test_periods_compare_to_date_with_the_same_days_before() -> None:
+    def bounds(key: str, day: str) -> tuple[str, str, str, str, str]:
+        period = period_for(key, date.fromisoformat(day))
+        return (period.label, period.start, period.end, period.previousStart, period.previousEnd)
+
+    assert bounds("month", "2026-11-02") == (
+        "Nov 2026",
+        "2026-11-01",
+        "2026-11-02",
+        "2026-10-01",
+        "2026-10-02",
+    )
+    # A longer month than the one before stops at that month's end.
+    assert bounds("month", "2026-03-31")[3:] == ("2026-02-01", "2026-02-28")
+    assert bounds("quarter", "2026-11-02") == (
+        "Q3 (Oct-Dec)",
+        "2026-10-01",
+        "2026-11-02",
+        "2026-07-01",
+        "2026-08-02",
+    )
+    assert bounds("quarter", "2027-01-15")[:2] == ("Q4 (Jan-Mar)", "2027-01-01")
+    assert bounds("quarter", "2027-01-15")[3] == "2026-10-01"
+    assert bounds("fy", "2026-11-02") == (
+        "FY 2026-27",
+        "2026-04-01",
+        "2026-11-02",
+        "2025-04-01",
+        "2025-11-02",
+    )
+    assert bounds("fy", "2027-02-10")[:2] == ("FY 2026-27", "2026-04-01")
+
+
+async def test_the_period_counts_what_happened_in_it(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    await _lead_with_deal(client, owner.headers, "p-1", "750", "won")
+    line = {"item": "Staples", "hsn": "1904", "qty": 1, "rate_paise": 100000, "gst_rate": 0}
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "p-inv"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": today.isoformat(),
+            "due_date": (today + timedelta(days=15)).isoformat(),
+            "same_state": True,
+            "lines": [line],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+    paid = await client.post(
+        f"/v1/finance/invoices/{invoice.json()['id']}/payments",
+        headers={**owner.headers, "Idempotency-Key": "p-pay"},
+        json={
+            "amount_paise": 25000,
+            "method": "UPI",
+            "reference": "UPI-2",
+            "paid_on": today.isoformat(),
+        },
+    )
+    assert paid.status_code == 201, paid.text
+
+    for key in ("month", "quarter", "fy"):
+        body = (
+            await client.get(f"/v1/portfolio/summary?period={key}", headers=owner.headers)
+        ).json()
+        assert body["period"]["key"] == key and body["period"]["end"] == today.isoformat()
+        figures = body["companies"][0]["period"]
+        assert figures["current"] == {
+            "leads": 1,
+            "wonDeals": 1,
+            "wonValue": "750.00",
+            "invoiced": "1000.00",
+            "collected": "250.00",
+        }
+        assert figures["previous"]["leads"] == 0
+    bad = await client.get("/v1/portfolio/summary?period=week", headers=owner.headers)
+    assert bad.status_code == 422
+
+    await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "analyst@example.com", "role": "group_analyst"},
+    )
+    analyst = await _join(client, mailbox, "analyst@example.com")
+    figures = (await client.get("/v1/portfolio/summary", headers=analyst)).json()["companies"][0]
+    assert figures["period"]["current"]["invoiced"] is None
+    assert figures["period"]["current"]["leads"] == 1
