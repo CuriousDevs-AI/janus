@@ -154,13 +154,22 @@ function AddCompany({ onClose }: { onClose: () => void }) {
     setTouched(true);
     if (error) return;
     setSaving(true);
+    let created: { id: string; name: string };
     try {
-      const created = await api<{ id: string; name: string }>("/portfolio/companies", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: industry.trim() }) });
-      toast.success(`${created.name} added. Opening it to finish setup.`);
-      await switchTenant(created.id, "/setup");
+      created = await api("/portfolio/companies", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: industry.trim() }) });
     } catch (failure) {
       toast.error(message(failure));
       setSaving(false);
+      return;
+    }
+    toast.success(`${created.name} added. Opening it to finish setup.`);
+    try {
+      await switchTenant(created.id, "/setup");
+    } catch (failure) {
+      // The company exists, so the form must not offer to add it again. A full load lists it everywhere,
+      // the switcher included, since the session's companies are read once per load.
+      toast.error(`${created.name} was added, but could not be opened yet. ${message(failure)}`);
+      window.location.assign("/portfolio?view=companies"); // eslint-disable-line @next/next/no-location-assign-relative-destination
     }
   }
   return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Add a company</DialogTitle><DialogDescription>You become its Owner. It starts empty, with its own people, records and settings, and you set it up next.</DialogDescription></DialogHeader>
