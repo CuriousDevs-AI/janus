@@ -20,6 +20,7 @@ import { summarise, type CompanySummary } from "@/lib/group-summary";
 import { answerFor, insightsFor, type Answer } from "@/lib/portfolio-insights";
 import { lakh } from "@/lib/demo-universe";
 import { useLoginAccount } from "@/lib/demo-persona";
+import { useSession } from "@/components/auth/session-provider";
 import { memoryItems } from "@/lib/mock-data/memory";
 import { getCustomerById } from "@/lib/mock-data/customers";
 
@@ -241,6 +242,7 @@ type Person = { id: string; name: string; email: string; role: string; companies
 const accessKey = "janus.portfolio-access";
 const roles: [string, string][] = [["Co-owner", "Sees everything in the Portfolio and can add companies."], ["Group finance", "Sees Analytics and Finance, not people or notifications."], ["Group analyst", "Sees Overview and Analytics, read only."]];
 function People({ list }: { list: CompanySummary[] }) {
+  const { user } = useSession();
   const [people, setPeople] = React.useState<Person[]>(() => { try { return JSON.parse(window.localStorage.getItem(accessKey) ?? "[]"); } catch { return []; } });
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState({ name: "", email: "", role: roles[1][0], companies: [] as string[] });
@@ -248,7 +250,7 @@ function People({ list }: { list: CompanySummary[] }) {
   const error = !form.name.trim() ? "Enter their name." : !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim()) ? "Enter a valid email." : people.some((item) => item.email.toLowerCase() === form.email.trim().toLowerCase()) ? "That person already has access." : "";
   return <>
     <SectionCard title="Who can see the Portfolio" description="You always can. Add people who need the view across companies." action={<Button size="sm" onClick={() => setAdding(true)}><Plus className="mr-1 size-4" />Add person</Button>}>
-      <ul className="divide-y divide-border"><li className="flex items-center justify-between gap-3 py-3 first:pt-0"><div><p className="text-sm font-medium">Pankaj Neema</p><p className="text-xs text-muted-foreground">Owner · every company</p></div><Badge variant="success">Owner</Badge></li>
+      <ul className="divide-y divide-border"><li className="flex items-center justify-between gap-3 py-3 first:pt-0"><div><p className="text-sm font-medium">{user.name}</p><p className="text-xs text-muted-foreground">{user.email} · Owner · every company</p></div><Badge variant="success">Owner</Badge></li>
         {people.map((person) => <li key={person.id} className="flex items-center justify-between gap-3 py-3 last:pb-0"><div className="min-w-0"><p className="truncate text-sm font-medium">{person.name} <span className="font-normal text-muted-foreground">· {person.email}</span></p><p className="text-xs text-muted-foreground">{person.role} · {person.companies.length ? person.companies.map((id) => list.find((item) => item.company.id === id)?.company.name ?? id).join(", ") : "every company"}</p></div><Button size="sm" variant="ghost" aria-label={`Remove ${person.name}`} onClick={() => { save(people.filter((item) => item.id !== person.id)); toast.success(`${person.name} no longer has access.`); }}><Trash2 className="size-4" /></Button></li>)}
       </ul>
     </SectionCard>
