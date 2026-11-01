@@ -25,6 +25,7 @@ from janus_api.hr.router import router as hr_router
 from janus_api.it.router import router as it_router
 from janus_api.operations.router import router as operations_router
 from janus_api.org.router import router as org_router
+from janus_api.portfolio.router import router as portfolio_router
 from janus_api.projects.effort import router as effort_router
 from janus_api.projects.planning import router as planning_router
 from janus_api.projects.router import router as project_records_router
@@ -58,6 +59,7 @@ app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(business_router)
 app.include_router(org_router)
+app.include_router(portfolio_router)
 app.include_router(sources_router)
 app.include_router(crm_router)
 app.include_router(whatsapp_router)
