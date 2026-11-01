@@ -179,7 +179,7 @@ async def company_summary(
         id=str(tenant.id),
         name=tenant.name,
         industry=tenant.industry,
-        createdAt=tenant.created_at.date().isoformat(),
+        createdAt=tenant.created_at.astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat(),
         current=current,
         members=int(members or 0),
         openTickets=int(tickets or 0),
