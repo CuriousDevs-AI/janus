@@ -17,6 +17,7 @@ import { switchTenant } from "@/lib/live-company";
 import type { PortfolioAccessResult, PortfolioCompany, PortfolioDigest, PortfolioPeriod, PortfolioPeriodFigures, PortfolioPeriodKey, PortfolioPerson, PortfolioRole, PortfolioSummary } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
 import { roleLabel } from "@/lib/access";
+import { ApprovalsCard, AttentionList, ComplianceView, ExportButtons, healthName, healthTone, inr, LiveIntelligence, LiveNotifications, TargetsCard, TargetsForm } from "@/components/portfolio/live-operations";
 
 const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you own, at a glance."],
@@ -25,16 +26,11 @@ const titles: Record<string, [string, string]> = {
   companies: ["Companies", "Add a company or open one."],
   intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
   notifications: ["Notifications", "What needs you, from every company."],
+  compliance: ["Compliance", "GST, TDS, PF and ESI and company filings, by company."],
   people: ["Portfolio access", "Who else sees these companies together, and how much."],
 };
 const palette = ["#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626"];
 
-/** Rupees the way an Indian owner reads them: ₹12,500 below a lakh, then ₹4.2L and ₹1.3Cr. */
-export function inr(value: number) {
-  if (Math.abs(value) >= 1e7) return `₹${(value / 1e7).toFixed(1).replace(/\.0$/, "")}Cr`;
-  if (Math.abs(value) >= 1e5) return `₹${(value / 1e5).toFixed(1).replace(/\.0$/, "")}L`;
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
-}
 const winRate = (item: PortfolioCompany) => { const closed = item.crm.wonDeals + item.crm.lostDeals; return closed ? Math.round((item.crm.wonDeals / closed) * 100) : null; };
 /** Opening a company is for its Owner; a group role reads the Portfolio and has no workspace inside. */
 const useOwns = () => { const session = useSession(); return (item: PortfolioCompany) => session.tenants.some((tenant) => tenant.id === item.id && tenant.role === "owner"); };
@@ -55,17 +51,19 @@ export function LivePortfolio() {
   const list = summary.data?.companies ?? [];
   const withMoney = list.filter((item): item is WithMoney => item.money !== null);
   return <div className="mx-auto flex max-w-[1240px] flex-col">
-    <PageHeader title={title} description={description} actions={owner && list.length > 0 && <Button size="sm" onClick={() => setAdding(true)}><Plus className="mr-1 size-4" />Add company</Button>} />
+    <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && ["overview", "analytics", "finance"].includes(view) && <ExportButtons list={list} period={summary.data.period} />}{owner && <Button size="sm" className="print:hidden" onClick={() => setAdding(true)}><Plus className="mr-1 size-4" />Add company</Button>}</div>} />
     <div className="flex flex-col gap-6 px-6 pb-10">
       {summary.loading ? <p className="text-sm text-muted-foreground" role="status">Loading your companies…</p>
         : summary.error ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{summary.error}<Button size="sm" variant="secondary" onClick={summary.reload}>Try again</Button></div>
         : list.length === 0 ? <p className="text-sm text-muted-foreground" role="status">The Portfolio shows the companies you own, and those an Owner shared with you. There are none yet.</p>
         : <>{["overview", "analytics", "finance"].includes(view) && summary.data && <PeriodBar period={summary.data.period} />}{view === "analytics" ? <Analytics list={list} />
         : view === "finance" ? withMoney.length === 0 ? <SectionCard title="Money is not shared with you" description="Your role covers sales and people, not money."><p className="text-sm text-muted-foreground">Ask the Owner for Group finance if you need what customers owe and what is due to suppliers.</p></SectionCard> : <Finance list={withMoney} hidden={list.length - withMoney.length} />
-        : view === "companies" ? <Companies list={list} onAdd={owner ? () => setAdding(true) : undefined} />
+        : view === "companies" ? <Companies list={list} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />
         : view === "people" ? owner ? <Access list={list} /> : <SectionCard title="Portfolio access" description="Only an Owner shares the Portfolio."><p className="text-sm text-muted-foreground">The Owner decides who else sees these companies.</p></SectionCard>
-        : view === "overview" ? <Overview list={list} owner={owner} />
-        : <SectionCard title={title} description="Not on real accounts yet."><p className="text-sm text-muted-foreground">This view works in the preview only for now. Overview, Analytics, Finance, Companies and Portfolio access show your real companies.</p></SectionCard>}</>}
+        : view === "notifications" ? <LiveNotifications list={list} />
+        : view === "intelligence" ? <LiveIntelligence list={list} />
+        : view === "compliance" ? <ComplianceView list={list} onChanged={summary.reload} />
+        : <Overview list={list} owner={owner} period={summary.data!.period} />}</>}
     </div>
     {adding && <AddCompany onClose={() => setAdding(false)} />}
   </div>;
@@ -96,7 +94,7 @@ const total = (list: PortfolioCompany[], side: "current" | "previous", pick: (fi
 
 const Kpi = ({ label, value, detail }: { label: string; value: string; detail: string }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 
-function Overview({ list, owner }: { list: PortfolioCompany[]; owner: boolean }) {
+function Overview({ list, owner, period }: { list: PortfolioCompany[]; owner: boolean; period: PortfolioPeriod }) {
   const owns = useOwns();
   const sum = (pick: (item: PortfolioCompany) => number) => list.reduce((total, item) => total + pick(item), 0);
   return <>
@@ -108,17 +106,28 @@ function Overview({ list, owner }: { list: PortfolioCompany[]; owner: boolean })
       <Kpi label="Open tickets" value={String(sum((item) => item.openTickets))} detail="Support, all companies" />
     </div>
     <PeriodKpis list={list} />
+    <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+      <SectionCard title="Needs your attention" description="From every company, most urgent first. Open one to deal with it.">
+        <AttentionList list={list} limit={6} />
+        {list.reduce((sum, item) => sum + item.attention.length, 0) > 6 && <a className="mt-3 inline-block text-sm text-accent hover:underline" href="/portfolio?view=notifications">See all in Notifications</a>}
+      </SectionCard>
+      <ApprovalsCard list={list} />
+    </div>
+    <TargetsCard list={list} period={period} />
     <WeeklyEmail />
     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
       {list.map((item) => { const rate = winRate(item); return <section key={item.id} aria-label={item.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.name}</h3><p className="truncate text-xs text-muted-foreground">{item.industry || "Industry not set"} · since {item.createdAt}</p></div>{item.current && <Badge variant="neutral">Open now</Badge>}</div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.name}</h3><p className="truncate text-xs text-muted-foreground">{item.industry || "Industry not set"} · since {item.createdAt}</p></div><div className="flex shrink-0 gap-1">{item.current && <Badge variant="neutral">Open now</Badge>}{item.health && <Badge variant={healthTone[item.health.status]} title={item.health.reasons.join("\n") || "Nothing needs attention"}>{healthName[item.health.status]}</Badge>}</div></div>
+        {item.health && item.health.reasons.length > 0 && <p className="text-xs text-muted-foreground">{item.health.reasons[0]}{item.health.reasons.length > 1 ? `, and ${item.health.reasons.length - 1} more` : ""}</p>}
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div><dt className="text-[11px] text-muted-foreground">Leads</dt><dd className="font-semibold tabular-nums">{item.crm.leads}</dd></div>
           <div><dt className="text-[11px] text-muted-foreground">Open pipeline</dt><dd className="font-semibold tabular-nums">{inr(Number(item.crm.pipelineValue))}</dd></div>
           <div><dt className="text-[11px] text-muted-foreground">Win rate</dt><dd className="font-semibold tabular-nums">{rate === null ? "—" : `${rate}%`}</dd></div>
           <div><dt className="text-[11px] text-muted-foreground">Open tickets</dt><dd className="font-semibold tabular-nums">{item.openTickets}</dd></div>
+          <div><dt className="text-[11px] text-muted-foreground">People</dt><dd className="font-semibold tabular-nums">{item.people?.headcount ?? 0}</dd></div>
+          <div><dt className="text-[11px] text-muted-foreground">Late projects</dt><dd className="font-semibold tabular-nums">{item.delivery?.lateProjects ?? 0}</dd></div>
         </dl>
-        {owns(item) && <Button variant="secondary" size="sm" className="self-start" onClick={() => open(item)}>Open {item.name.split(" ")[0]}<ArrowRight className="ml-1 size-4" /></Button>}
+        {owns(item) && <Button variant="secondary" size="sm" className="self-start print:hidden" onClick={() => open(item)}>Open {item.name.split(" ")[0]}<ArrowRight className="ml-1 size-4" /></Button>}
       </section>; })}
     </div>
   </>;
@@ -176,7 +185,19 @@ function Bars({ rows }: { rows: { id: string; label: string; value: number; colo
 
 function Analytics({ list }: { list: PortfolioCompany[] }) {
   const color = (index: number) => palette[index % palette.length];
-  const measures: [string, (item: PortfolioCompany) => string][] = [["Leads in this period", (item) => `${item.period.current.leads} (${item.period.previous.leads} before)`], ["Won in this period", (item) => `${inr(Number(item.period.current.wonValue))} (${inr(Number(item.period.previous.wonValue))} before)`], ["Leads, all time", (item) => String(item.crm.leads)], ["Open deals", (item) => String(item.crm.openDeals)], ["Won deals", (item) => String(item.crm.wonDeals)], ["Lost deals", (item) => String(item.crm.lostDeals)], ["Win rate", (item) => { const rate = winRate(item); return rate === null ? "—" : `${rate}%`; }], ["Members", (item) => String(item.members)], ["Open tickets", (item) => String(item.openTickets)]];
+  const measures: [string, (item: PortfolioCompany) => string][] = [["Leads in this period", (item) => `${item.period.current.leads} (${item.period.previous.leads} before)`], ["Won in this period", (item) => `${inr(Number(item.period.current.wonValue))} (${inr(Number(item.period.previous.wonValue))} before)`], ["Leads, all time", (item) => String(item.crm.leads)], ["Open deals", (item) => String(item.crm.openDeals)], ["Won deals", (item) => String(item.crm.wonDeals)], ["Lost deals", (item) => String(item.crm.lostDeals)], ["Win rate", (item) => { const rate = winRate(item); return rate === null ? "—" : `${rate}%`; }], ["Members", (item) => String(item.members)], ["Open tickets", (item) => String(item.openTickets)],
+    ["Health", (item) => item.health ? healthName[item.health.status] : "—"],
+    ["People (on leave today)", (item) => item.people ? `${item.people.headcount} (${item.people.onLeaveToday})` : "—"],
+    ["Monthly payroll", (item) => item.people?.monthlyPayroll ? inr(Number(item.people.monthlyPayroll)) : "Not shared"],
+    ["Items at or under reorder", (item) => item.stock ? `${item.stock.belowReorder} of ${item.stock.items}` : "—"],
+    ["Batches expiring in 30 days", (item) => String(item.stock?.expiringBatches ?? "—")],
+    ["Dispatches in transit", (item) => String(item.stock?.dispatchesInTransit ?? "—")],
+    ["Projects active (late)", (item) => item.delivery ? `${item.delivery.activeProjects} (${item.delivery.lateProjects})` : "—"],
+    ["Milestones past due", (item) => String(item.delivery?.overdueMilestones ?? "—")],
+    ["Done, awaiting acceptance", (item) => item.delivery ? `${item.delivery.awaitingAcceptance} · ${inr(Number(item.delivery.awaitingAcceptanceValue))}` : "—"],
+    ["Urgent or escalated tickets", (item) => item.support ? `${item.support.urgent} · ${item.support.escalated}` : "—"],
+    ["Approvals waiting", (item) => String(item.approvals.reduce((sum, entry) => sum + entry.count, 0))],
+    ["Filings overdue", (item) => String(item.compliance.filter((due) => due.status === "overdue").length)]];
   return <>
     <div className="grid gap-4 lg:grid-cols-2">
       <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars rows={list.map((item, index) => ({ id: item.id, label: item.name, value: Number(item.crm.pipelineValue), color: color(index) }))} /></SectionCard>
@@ -220,12 +241,13 @@ function Finance({ list, hidden }: { list: WithMoney[]; hidden: number }) {
   </>;
 }
 
-function Companies({ list, onAdd }: { list: PortfolioCompany[]; onAdd?: () => void }) {
+function Companies({ list, onAdd, onSaved }: { list: PortfolioCompany[]; onAdd?: () => void; onSaved: () => void }) {
   const owns = useOwns();
   return <SectionCard title={`${list.length} ${list.length === 1 ? "company" : "companies"}`} description="Each company keeps its own people, records and settings." action={onAdd && <Button size="sm" variant="secondary" onClick={onAdd}><Plus className="mr-1 size-4" />Add company</Button>}>
     <ul className="divide-y divide-border">{list.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
       <div className="min-w-0"><p className="truncate text-sm font-medium">{item.name}{item.current && <Badge variant="neutral" className="ml-2">Open now</Badge>}</p><p className="text-xs text-muted-foreground">{item.industry || "Industry not set"} · since {item.createdAt} · {item.members} member{item.members === 1 ? "" : "s"}</p></div>
       {owns(item) && <Button size="sm" onClick={() => open(item)}>Open<ArrowRight className="ml-1 size-4" /></Button>}
+      {owns(item) && <div className="w-full"><p className="mb-2 text-xs font-medium text-muted-foreground">Monthly targets</p><TargetsForm item={item} onSaved={onSaved} /></div>}
     </li>)}</ul>
   </SectionCard>;
 }

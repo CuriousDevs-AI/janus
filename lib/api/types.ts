@@ -46,6 +46,38 @@ export interface PortfolioCompany {
   };
   /** What happened in the chosen period to date, and in the same days of the period before. */
   period: { current: PortfolioPeriodFigures; previous: PortfolioPeriodFigures };
+  /** The operating view, from each company's own records. Money fields are null where the role does not include money. */
+  people: { headcount: number; onLeaveToday: number; pendingLeave: number; pendingClaims: number; monthlyPayroll: string | null; claimsValue: string | null } | null;
+  stock: { items: number; belowReorder: number; expiringBatches: number; dispatchesInTransit: number; stockValue: string | null } | null;
+  delivery: { activeProjects: number; lateProjects: number; overdueMilestones: number; overdueTasks: number; awaitingAcceptance: number; awaitingAcceptanceValue: string } | null;
+  support: { open: number; urgent: number; escalated: number; olderThanWeek: number } | null;
+  /** Decisions waiting in the company, by kind, with the screen where each is made. */
+  approvals: { kind: string; label: string; count: number; to: string }[];
+  compliance: PortfolioComplianceDue[];
+  compliancePlan: PortfolioCompliancePlan | null;
+  /** Monthly targets, as decimal strings; null where none is set (collected is null without money). */
+  targets: { leads: string | null; wonValue: string | null; collected: string | null } | null;
+  /** What needs attention, most urgent first; each line opens the screen where it is dealt with. */
+  attention: { severity: "high" | "medium" | "low"; text: string; to: string }[];
+  health: { status: "red" | "amber" | "green"; reasons: string[] } | null;
+}
+export interface PortfolioComplianceDue {
+  /** The filing's code and period, e.g. gstr3b_2026-10, used to mark it filed. */
+  key: string;
+  label: string;
+  period: string;
+  area: string;
+  dueOn: string;
+  status: "filed" | "overdue" | "due_soon" | "upcoming";
+  filedOn: string | null;
+  to: string;
+}
+export interface PortfolioCompliancePlan {
+  gstin: string | null;
+  gstFiling: "none" | "monthly" | "quarterly";
+  tds: boolean;
+  pfEsi: boolean;
+  company: boolean;
 }
 /** Leads in, deals won and money in a span of days. Money is null where the role does not include it. */
 export interface PortfolioPeriodFigures {

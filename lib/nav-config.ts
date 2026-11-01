@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Bell,
+  CalendarCheck,
   Bot,
   BrainCircuit,
   Building2,
@@ -144,6 +145,7 @@ export const portfolioNavSections: NavSection[] = [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
     { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
+    { label: "Compliance", href: "/portfolio?view=compliance", icon: CalendarCheck },
   ] },
   { title: "Access", items: [
     { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
