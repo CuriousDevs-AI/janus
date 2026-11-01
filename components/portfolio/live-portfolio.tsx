@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import { businessHome } from "@/lib/company";
 import { switchTenant } from "@/lib/live-company";
-import type { PortfolioAccessResult, PortfolioCompany, PortfolioPerson, PortfolioRole, PortfolioSummary } from "@/lib/api/types";
+import type { PortfolioAccessResult, PortfolioCompany, PortfolioPeriod, PortfolioPeriodFigures, PortfolioPeriodKey, PortfolioPerson, PortfolioRole, PortfolioSummary } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
 import { roleLabel } from "@/lib/access";
 
@@ -45,7 +45,8 @@ export function LivePortfolio() {
   const params = useSearchParams();
   const view = params.get("view") ?? "overview";
   const [adding, setAdding] = React.useState(params.get("add") === "1");
-  const summary = useApi<PortfolioSummary>("/portfolio/summary");
+  const period: PortfolioPeriodKey = (["month", "quarter", "fy"] as const).find((key) => key === params.get("period")) ?? "month";
+  const summary = useApi<PortfolioSummary>(`/portfolio/summary?period=${period}`);
   const session = useSession();
   // Only an Owner adds companies and shares the Portfolio; a group role only reads it.
   const owner = session.tenants.some((item) => item.role === "owner" && item.status === "active");
@@ -59,16 +60,39 @@ export function LivePortfolio() {
       {summary.loading ? <p className="text-sm text-muted-foreground" role="status">Loading your companies…</p>
         : summary.error ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{summary.error}<Button size="sm" variant="secondary" onClick={summary.reload}>Try again</Button></div>
         : list.length === 0 ? <p className="text-sm text-muted-foreground" role="status">The Portfolio shows the companies you own, and those an Owner shared with you. There are none yet.</p>
-        : view === "analytics" ? <Analytics list={list} />
+        : <>{["overview", "analytics", "finance"].includes(view) && summary.data && <PeriodBar period={summary.data.period} />}{view === "analytics" ? <Analytics list={list} />
         : view === "finance" ? withMoney.length === 0 ? <SectionCard title="Money is not shared with you" description="Your role covers sales and people, not money."><p className="text-sm text-muted-foreground">Ask the Owner for Group finance if you need what customers owe and what is due to suppliers.</p></SectionCard> : <Finance list={withMoney} hidden={list.length - withMoney.length} />
         : view === "companies" ? <Companies list={list} onAdd={owner ? () => setAdding(true) : undefined} />
         : view === "people" ? owner ? <Access list={list} /> : <SectionCard title="Portfolio access" description="Only an Owner shares the Portfolio."><p className="text-sm text-muted-foreground">The Owner decides who else sees these companies.</p></SectionCard>
         : view === "overview" ? <Overview list={list} owner={owner} />
-        : <SectionCard title={title} description="Not on real accounts yet."><p className="text-sm text-muted-foreground">This view works in the preview only for now. Overview, Analytics, Finance, Companies and Portfolio access show your real companies.</p></SectionCard>}
+        : <SectionCard title={title} description="Not on real accounts yet."><p className="text-sm text-muted-foreground">This view works in the preview only for now. Overview, Analytics, Finance, Companies and Portfolio access show your real companies.</p></SectionCard>}</>}
     </div>
     {adding && <AddCompany onClose={() => setAdding(false)} />}
   </div>;
 }
+
+const periodNames: [PortfolioPeriodKey, string][] = [["month", "This month"], ["quarter", "This quarter"], ["fy", "This financial year"]];
+const day = (iso: string) => new Date(`${iso}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+/** Chooses the period the figures cover, kept in the address so a link opens the same view. */
+function PeriodBar({ period }: { period: PortfolioPeriod }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const choose = (key: PortfolioPeriodKey) => { const next = new URLSearchParams(params.toString()); next.set("period", key); router.replace(`${pathname}?${next.toString()}`); };
+  return <div className="flex flex-wrap items-center justify-between gap-3">
+    <div role="group" aria-label="Period" className="flex flex-wrap gap-2">{periodNames.map(([key, label]) => <Button key={key} size="sm" variant={period.key === key ? "default" : "outline"} aria-pressed={period.key === key} onClick={() => choose(key)}>{label}</Button>)}</div>
+    <p className="text-xs text-muted-foreground">{period.label}: {day(period.start)} to {day(period.end)}, compared with {day(period.previousStart)} to {day(period.previousEnd)}</p>
+  </div>;
+}
+
+/** The change against the same days before, in words a reader can check against the two figures. */
+function change(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? "Same as before" : "None in the same days before";
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return percent === 0 ? "Same as before" : `${percent > 0 ? "+" : ""}${percent}% on the same days before`;
+}
+const total = (list: PortfolioCompany[], side: "current" | "previous", pick: (figures: PortfolioPeriodFigures) => number | string | null) => list.reduce((sum, item) => sum + Number(pick(item.period[side]) ?? 0), 0);
 
 const Kpi = ({ label, value, detail }: { label: string; value: string; detail: string }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 
@@ -83,6 +107,7 @@ function Overview({ list, owner }: { list: PortfolioCompany[]; owner: boolean })
       <Kpi label="Won so far" value={inr(sum((item) => Number(item.crm.wonValue)))} detail={`${sum((item) => item.crm.wonDeals)} deals won`} />
       <Kpi label="Open tickets" value={String(sum((item) => item.openTickets))} detail="Support, all companies" />
     </div>
+    <PeriodKpis list={list} />
     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
       {list.map((item) => { const rate = winRate(item); return <section key={item.id} aria-label={item.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.name}</h3><p className="truncate text-xs text-muted-foreground">{item.industry || "Industry not set"} · since {item.createdAt}</p></div>{item.current && <Badge variant="neutral">Open now</Badge>}</div>
@@ -98,6 +123,22 @@ function Overview({ list, owner }: { list: PortfolioCompany[]; owner: boolean })
   </>;
 }
 
+/** What came in during the period, with the change on the same days of the period before. */
+function PeriodKpis({ list }: { list: PortfolioCompany[] }) {
+  const money = list.some((item) => item.period.current.invoiced !== null);
+  const kpi = (label: string, pick: (figures: PortfolioPeriodFigures) => number | string | null, format: (value: number) => string) => {
+    const current = total(list, "current", pick);
+    const previous = total(list, "previous", pick);
+    return <Kpi key={label} label={label} value={format(current)} detail={`${change(current, previous)} (${format(previous)})`} />;
+  };
+  return <div className={`grid grid-cols-2 gap-3 ${money ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+    {kpi("Leads in", (figures) => figures.leads, String)}
+    {kpi("Deals won", (figures) => figures.wonDeals, String)}
+    {kpi("Won value", (figures) => figures.wonValue, inr)}
+    {money && kpi("Collected", (figures) => figures.collected, inr)}
+  </div>;
+}
+
 function Bars({ rows }: { rows: { id: string; label: string; value: number; color: string }[] }) {
   const max = Math.max(1, ...rows.map((row) => row.value));
   return <ul className="flex flex-col gap-3">{rows.map((row) => <li key={row.id}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.label}</span><span className="tabular-nums text-muted-foreground">{inr(row.value)}</span></div><div className="h-2.5 bg-surface-2"><div className="h-2.5" style={{ width: `${Math.max(2, (row.value / max) * 100)}%`, background: row.color }} /></div></li>)}</ul>;
@@ -105,7 +146,7 @@ function Bars({ rows }: { rows: { id: string; label: string; value: number; colo
 
 function Analytics({ list }: { list: PortfolioCompany[] }) {
   const color = (index: number) => palette[index % palette.length];
-  const measures: [string, (item: PortfolioCompany) => string][] = [["Leads", (item) => String(item.crm.leads)], ["Open deals", (item) => String(item.crm.openDeals)], ["Won deals", (item) => String(item.crm.wonDeals)], ["Lost deals", (item) => String(item.crm.lostDeals)], ["Win rate", (item) => { const rate = winRate(item); return rate === null ? "—" : `${rate}%`; }], ["Members", (item) => String(item.members)], ["Open tickets", (item) => String(item.openTickets)]];
+  const measures: [string, (item: PortfolioCompany) => string][] = [["Leads in this period", (item) => `${item.period.current.leads} (${item.period.previous.leads} before)`], ["Won in this period", (item) => `${inr(Number(item.period.current.wonValue))} (${inr(Number(item.period.previous.wonValue))} before)`], ["Leads, all time", (item) => String(item.crm.leads)], ["Open deals", (item) => String(item.crm.openDeals)], ["Won deals", (item) => String(item.crm.wonDeals)], ["Lost deals", (item) => String(item.crm.lostDeals)], ["Win rate", (item) => { const rate = winRate(item); return rate === null ? "—" : `${rate}%`; }], ["Members", (item) => String(item.members)], ["Open tickets", (item) => String(item.openTickets)]];
   return <>
     <div className="grid gap-4 lg:grid-cols-2">
       <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars rows={list.map((item, index) => ({ id: item.id, label: item.name, value: Number(item.crm.pipelineValue), color: color(index) }))} /></SectionCard>
@@ -122,8 +163,8 @@ type WithMoney = PortfolioCompany & { money: NonNullable<PortfolioCompany["money
 function Finance({ list, hidden }: { list: WithMoney[]; hidden: number }) {
   const owns = useOwns();
   const sum = (pick: (item: WithMoney) => string) => list.reduce((total, item) => total + Number(pick(item)), 0);
-  const thisMonth = sum((item) => item.money.collectedThisMonth);
-  const lastMonth = sum((item) => item.money.collectedLastMonth);
+  const collected = total(list, "current", (figures) => figures.collected);
+  const before = total(list, "previous", (figures) => figures.collected);
   const rows: [string, (item: WithMoney) => string][] = [
     ["Customers owe", (item) => inr(Number(item.money.receivable))],
     ["Overdue", (item) => item.money.overdueInvoices ? `${inr(Number(item.money.overdue))} · ${item.money.overdueInvoices} invoice${item.money.overdueInvoices === 1 ? "" : "s"}` : "None"],
@@ -132,15 +173,15 @@ function Finance({ list, hidden }: { list: WithMoney[]; hidden: number }) {
     ["Late over 60 days", (item) => inr(Number(item.money.ageing.over60))],
     ["You owe suppliers", (item) => inr(Number(item.money.payable))],
     ["Bills due in 7 days", (item) => inr(Number(item.money.payableDueThisWeek))],
-    ["Collected this month", (item) => inr(Number(item.money.collectedThisMonth))],
-    ["Collected last month", (item) => inr(Number(item.money.collectedLastMonth))],
+    ["Invoiced in this period", (item) => `${inr(Number(item.period.current.invoiced))} (${inr(Number(item.period.previous.invoiced))} before)`],
+    ["Collected in this period", (item) => `${inr(Number(item.period.current.collected))} (${inr(Number(item.period.previous.collected))} before)`],
   ];
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <Kpi label="Customers owe" value={inr(sum((item) => item.money.receivable))} detail="Unpaid invoices, all companies" />
       <Kpi label="Overdue" value={inr(sum((item) => item.money.overdue))} detail={`${list.reduce((total, item) => total + item.money.overdueInvoices, 0)} invoices past due`} />
       <Kpi label="Bills due in 7 days" value={inr(sum((item) => item.money.payableDueThisWeek))} detail={`${inr(sum((item) => item.money.payable))} owed to suppliers in all`} />
-      <Kpi label="Collected this month" value={inr(thisMonth)} detail={`${inr(lastMonth)} last month`} />
+      <Kpi label="Collected in this period" value={inr(collected)} detail={`${change(collected, before)} (${inr(before)})`} />
     </div>
     <SectionCard title="By company" description={`From each company's invoices, payments, approved credit notes and bills. Bank balances are not connected, so Janus does not show cash.${hidden ? ` ${hidden} more ${hidden === 1 ? "company does" : "companies do"} not share money with your role.` : ""}`}>
       <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th>{list.map((item) => <th key={item.id} className="px-3 py-2">{item.name}</th>)}</tr></thead><tbody>{rows.map(([label, value]) => <tr key={label} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{label}</td>{list.map((item) => <td key={item.id} className="px-3 py-2.5 tabular-nums">{value(item)}</td>)}</tr>)}</tbody></table></div>

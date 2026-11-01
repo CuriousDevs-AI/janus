@@ -43,11 +43,30 @@ export interface PortfolioCompany {
     payable: string;
     /** Bills due within seven days, including those already late. */
     payableDueThisWeek: string;
-    collectedThisMonth: string;
-    collectedLastMonth: string;
   };
+  /** What happened in the chosen period to date, and in the same days of the period before. */
+  period: { current: PortfolioPeriodFigures; previous: PortfolioPeriodFigures };
+}
+/** Leads in, deals won and money in a span of days. Money is null where the role does not include it. */
+export interface PortfolioPeriodFigures {
+  leads: number;
+  wonDeals: number;
+  wonValue: string;
+  invoiced: string | null;
+  collected: string | null;
+}
+export type PortfolioPeriodKey = "month" | "quarter" | "fy";
+/** Days are inclusive, in India time. Quarters and years follow the financial year from 1 April. */
+export interface PortfolioPeriod {
+  key: PortfolioPeriodKey;
+  label: string;
+  start: string;
+  end: string;
+  previousStart: string;
+  previousEnd: string;
 }
 export interface PortfolioSummary {
+  period: PortfolioPeriod;
   companies: PortfolioCompany[];
 }
 /** Roles an Owner shares the Portfolio with: a co-owner, or one of the two group roles. */
