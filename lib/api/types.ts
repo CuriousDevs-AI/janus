@@ -69,6 +69,14 @@ export interface PortfolioSummary {
   period: PortfolioPeriod;
   companies: PortfolioCompany[];
 }
+/** The weekly Portfolio email for the signed-in person (GET/PUT /portfolio/digest). */
+export interface PortfolioDigest {
+  enabled: boolean;
+  /** Whether the person sees any Portfolio, so a digest would have something to say. */
+  eligible: boolean;
+  nextDueAt: string | null;
+  lastSentAt: string | null;
+}
 /** Roles an Owner shares the Portfolio with: a co-owner, or one of the two group roles. */
 export type PortfolioRole = "owner" | "group_finance" | "group_analyst";
 /** One person in GET /portfolio/access, with each company they hold or are invited to. */
