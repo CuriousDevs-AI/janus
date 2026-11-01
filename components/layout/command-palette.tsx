@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { message } from "@/lib/api/client";
 import { switchTenant } from "@/lib/live-company";
+import { PORTFOLIO_ROLES } from "@/lib/access";
 import {
   Command,
   CommandInput,
@@ -67,7 +68,7 @@ export function CommandPalette() {
               {(JSON.parse(companies) as CompanyRecord[]).filter((item) => workspaceId === "portfolio" || item.id !== activeCompanyId()).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchCompany(item.id); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
             </CommandGroup>}
             {!demoMode && session.tenants.length > 0 && <CommandGroup heading="Switch company">
-              {workspaceId !== "portfolio" && session.tenants.some((item) => item.role === "owner") && <CommandItem onSelect={() => { setOpen(false); router.push(portfolioHome); }}><LayoutGrid className="size-4" />Portfolio · all companies</CommandItem>}
+              {workspaceId !== "portfolio" && session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role)) && <CommandItem onSelect={() => { setOpen(false); router.push(portfolioHome); }}><LayoutGrid className="size-4" />Portfolio · all companies</CommandItem>}
               {session.tenants.filter((item) => item.status === "active" && item.id !== session.tenant.id).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchTenant(item.id, businessHome).catch((error) => toast.error(message(error))); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
             </CommandGroup>}
             {navSections.map((section) => (

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { message } from "@/lib/api/client";
 import { switchTenant } from "@/lib/live-company";
+import { PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
 
 
 /**
@@ -76,6 +77,7 @@ export function LiveCompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: b
   const session = useSession();
   const [busy, setBusy] = React.useState(false);
   const owner = session.tenants.some((item) => item.role === "owner" && item.status === "active");
+  const portfolio = session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
   const companies = session.tenants.filter((item) => item.status === "active");
   const open = async (id: string) => {
     setBusy(true);
@@ -94,9 +96,9 @@ export function LiveCompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: b
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="w-64">
           <DropdownMenuLabel>Switch company</DropdownMenuLabel>
-          {owner && <><DropdownMenuItem onSelect={() => router.push(portfolioHome)} className={cn(inPortfolio && "bg-accent-muted")}>
+          {portfolio && <><DropdownMenuItem onSelect={() => router.push(portfolioHome)} className={cn(inPortfolio && "bg-accent-muted")}>
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white"><LayoutGrid className="size-3.5" aria-hidden /></span>
-            <span className="flex min-w-0 flex-1 flex-col"><span className="font-medium">Portfolio</span><span className="text-[11px] text-muted-foreground">All companies you own</span></span>
+            <span className="flex min-w-0 flex-1 flex-col"><span className="font-medium">Portfolio</span><span className="text-[11px] text-muted-foreground">{owner ? "All companies you own" : "Companies shared with you"}</span></span>
             {inPortfolio && <Check className="size-3.5 text-accent" aria-hidden />}
           </DropdownMenuItem>
           <DropdownMenuSeparator /></>}
@@ -105,7 +107,7 @@ export function LiveCompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: b
             return (
               <DropdownMenuItem key={item.id} disabled={busy} onSelect={() => { if (item.id === session.tenant.id) router.push(businessHome); else void open(item.id); }} className={cn(here && "bg-accent-muted")}>
                 {initialsBadge(item.name)}
-                <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-medium">{item.name}</span><span className="truncate text-[11px] capitalize text-muted-foreground">{item.role}</span></span>
+                <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{roleLabel(item.role)}</span></span>
                 {here && <Check className="size-3.5 text-accent" aria-hidden />}
               </DropdownMenuItem>
             );

@@ -27,7 +27,7 @@ import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import type { HrDemoRole } from "@/lib/types";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
-import { managesBusiness, mayOpenWorkspace } from "@/lib/access";
+import { managesBusiness, mayOpenWorkspace, PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
 import { TeamChatSidebarList } from "@/components/team/chat-list";
 import {
   DropdownMenu,
@@ -275,8 +275,8 @@ export function SidebarNav({
       </nav>}
 
       {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
-      {/* A real account sees the switcher once it can go somewhere: a second company, or the Portfolio it owns. */}
-      {!demoMode && (session.tenants.length > 1 || session.tenants.some((item) => item.role === "owner")) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
+      {/* A real account sees the switcher once it can go somewhere: a second company, or a Portfolio. */}
+      {!demoMode && (session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
       {/* Footer */}
       <div
@@ -304,7 +304,7 @@ export function SidebarNav({
                     {currentUser.name}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
-                    {session.role}
+                    {roleLabel(session.role)}
                   </span>
                 </span>
               )}
