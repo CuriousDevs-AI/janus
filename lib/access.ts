@@ -31,9 +31,15 @@ export function mayOpenWorkspace(id: string, permissions: string[]) {
   return required ? has(permissions, required) : false;
 }
 
+/** Roles that see the Portfolio: the Owner, and the group roles an Owner shares it with. */
+export const PORTFOLIO_ROLES = ["owner", "group_finance", "group_analyst"];
+export const roleLabel = (role: string) => ({ owner: "Owner", admin: "Admin", manager: "Manager", agent: "Agent", group_finance: "Group finance", group_analyst: "Group analyst" })[role] ?? role;
+
 /** Where a person starts after signing in: the first workspace they can work in. */
 export function homeForPermissions(permissions: string[]) {
   if (managesBusiness(permissions)) return "/settings?tab=workspace&view=overview&workspace=business";
+  // A group role works across companies, so it starts on the Portfolio.
+  if (has(permissions, "portfolio:read")) return "/portfolio?view=overview";
   if (has(permissions, "leads:write")) return "/dashboard?workspace=crm-sales";
   if (has(permissions, "leads:read_own")) return "/leads?workspace=crm-sales";
   return "/team?workspace=team-chat";

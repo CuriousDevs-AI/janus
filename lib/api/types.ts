@@ -33,8 +33,8 @@ export interface PortfolioCompany {
   members: number;
   openTickets: number;
   crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string };
-  /** From the company's invoices, payments, approved credit notes and bills. */
-  money: {
+  /** From the company's invoices, payments, approved credit notes and bills. Null where the person's role there does not include money (Group analyst). */
+  money: null | {
     receivable: string;
     overdue: string;
     overdueInvoices: number;
@@ -49,6 +49,19 @@ export interface PortfolioCompany {
 }
 export interface PortfolioSummary {
   companies: PortfolioCompany[];
+}
+/** Roles an Owner shares the Portfolio with: a co-owner, or one of the two group roles. */
+export type PortfolioRole = "owner" | "group_finance" | "group_analyst";
+/** One person in GET /portfolio/access, with each company they hold or are invited to. */
+export interface PortfolioPerson {
+  email: string;
+  name: string | null;
+  companies: { id: string; name: string; role: PortfolioRole; status: "active" | "invited" }[];
+}
+/** What POST /portfolio/access and /portfolio/access/remove did, company by company. */
+export interface PortfolioAccessResult {
+  done: string[];
+  skipped: { company: string; reason: string }[];
 }
 export type SourceKind = "embed" | "webhook" | "api_key" | "csv" | "oauth";
 export type MappingTarget =
