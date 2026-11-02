@@ -975,3 +975,116 @@ async def test_activity_across_companies_leaves_money_out_for_an_analyst(
     areas = {item["area"] for item in view["items"]}
     assert "Sales" in areas and "Finance" not in areas
     assert {item["company"] for item in view["items"]} == {"Mumbai Traders"}
+
+
+def test_month_spans_end_today_and_cross_the_year() -> None:
+    from janus_api.portfolio.trends import month_spans
+
+    spans = month_spans(date(2026, 2, 10), 3)
+    assert spans == [
+        (date(2025, 12, 1), date(2025, 12, 31)),
+        (date(2026, 1, 1), date(2026, 1, 31)),
+        (date(2026, 2, 1), date(2026, 2, 10)),
+    ]
+
+
+async def test_trends_by_month_with_money_only_for_money_roles(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    await _lead_with_deal(client, owner.headers, "t-1", "2500", "won")
+    today = today_ist().isoformat()
+    created = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "t-inv"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": today,
+            "due_date": today,
+            "same_state": True,
+            "lines": [{"item": "Tea", "hsn": "0902", "qty": 2, "rate_paise": 50000, "gst_rate": 5}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    trend = (await client.get("/v1/portfolio/trends?months=3", headers=owner.headers)).json()
+    assert len(trend["months"]) == 3 and trend["months"][-1] == today[:7]
+    [company] = trend["companies"]
+    now = company["points"][-1]
+    assert now["leads"] == 1 and now["wonDeals"] == 1 and now["wonValue"] == "2500.00"
+    assert now["netSales"] == "1000.00" and now["collected"] == "0.00"
+    assert company["points"][0]["leads"] == 0
+
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={
+            "email": "trend@example.com",
+            "role": "group_analyst",
+            "companies": [str(owner.tenant_id)],
+        },
+    )
+    assert shared.status_code == 200, shared.text
+    analyst = await _join(client, mailbox, "trend@example.com")
+    view = (await client.get("/v1/portfolio/trends", headers=analyst)).json()
+    point = view["companies"][0]["points"][-1]
+    assert point["leads"] == 1 and point["netSales"] is None and point["collected"] is None
+
+
+async def test_company_details_people_roles_and_contact(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    url = f"/v1/portfolio/companies/{owner.tenant_id}"
+    renamed = await client.put(
+        f"{url}/details",
+        headers=owner.headers,
+        json={"name": "  Mumbai Traders Pvt Ltd ", "industry": "Trading", "companySize": "11–50"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    saved = await client.put(
+        f"{url}/registration",
+        headers=owner.headers,
+        json={
+            "entityType": "pvt_ltd",
+            "website": "https://mumbaitraders.in",
+            "email": "hello@mumbaitraders.in",
+            "phone": "+91 22 4000 1234",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "directors": [
+                {"name": "Asha Rao", "roles": ["founder", "director"], "title": "CEO"},
+                {"name": "Ravi Iyer", "roles": ["cofounder"]},
+                {"name": "Old Record", "din": "01234567"},
+            ],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    bad = await client.put(f"{url}/registration", headers=owner.headers, json={"email": "nope"})
+    assert bad.status_code == 422
+    company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+        "companies"
+    ][0]
+    assert company["name"] == "Mumbai Traders Pvt Ltd" and company["industry"] == "Trading"
+    assert company["companySize"] == "11–50"
+    reg = company["registration"]
+    assert reg["city"] == "Mumbai" and reg["email"] == "hello@mumbaitraders.in"
+    people = {person["name"]: person for person in reg["directors"]}
+    assert people["Asha Rao"]["roles"] == ["founder", "director"]
+    assert people["Asha Rao"]["title"] == "CEO"
+    # A person saved without roles is a director, as everyone was before roles existed.
+    assert people["Old Record"]["roles"] == ["director"]
+    assert not any(gap["text"].startswith("Directors") for gap in company["complianceGaps"])
+
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={
+            "email": "cfo@example.com",
+            "role": "group_finance",
+            "companies": [str(owner.tenant_id)],
+        },
+    )
+    assert shared.status_code == 200, shared.text
+    cfo = await _join(client, mailbox, "cfo@example.com")
+    refused = await client.put(f"{url}/details", headers=cfo, json={"name": "Taken Over"})
+    assert refused.status_code == 403

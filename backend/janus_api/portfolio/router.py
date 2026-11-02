@@ -2,7 +2,16 @@ from fastapi import APIRouter, Request
 
 from janus_api.core.deps import CurrentActor, Db, request_ip
 from janus_api.core.errors import ApiError
-from janus_api.portfolio import access, activity, companies, digest, schemas, summary, targets
+from janus_api.portfolio import (
+    access,
+    activity,
+    companies,
+    digest,
+    schemas,
+    summary,
+    targets,
+    trends,
+)
 from janus_api.portfolio.compliance import plan as compliance
 
 router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
@@ -133,4 +142,19 @@ async def read_activity(actor: CurrentActor, db: Db, days: int = 30) -> schemas.
     """What happened lately in every company the person sees, newest first."""
     return await activity.activity(
         db, actor.user.id, actor.session.tenant_id, max(1, min(days, 90))
+    )
+
+
+@router.get("/trends", response_model=schemas.Trends)
+async def read_trends(actor: CurrentActor, db: Db, months: int = 6) -> schemas.Trends:
+    """Month by month figures for every company the person sees, oldest month first."""
+    return await trends.trends(db, actor.user.id, actor.session.tenant_id, max(2, min(months, 12)))
+
+
+@router.put("/companies/{company_id}/details", response_model=schemas.CompanyDetails)
+async def update_details(
+    company_id: str, data: schemas.CompanyDetails, actor: CurrentActor, db: Db, request: Request
+) -> schemas.CompanyDetails:
+    return await companies.update_details(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )

@@ -76,7 +76,12 @@ class CompanyRegistration(Base):
     udyam: Mapped[str | None] = mapped_column(String(30))
     incorporated_on: Mapped[date | None] = mapped_column(Date)
     registered_address: Mapped[str | None] = mapped_column(String(400))
-    # [{"name": ..., "din": ...}]
+    website: Mapped[str | None] = mapped_column(String(200))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(32))
+    city: Mapped[str | None] = mapped_column(String(80))
+    state: Mapped[str | None] = mapped_column(String(40))
+    # The company's people: [{"name", "din", "roles": [director, founder, cofounder], "title"}]
     directors: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -836,3 +836,13 @@ async def set_industry(db: AsyncSession, tenant_id: int, industry: str) -> None:
     if tenant is None:
         raise ApiError("not_found", "Company not found.", 404)
     tenant.industry = industry
+
+
+async def update_profile(
+    db: AsyncSession, tenant_id: int, name: str, industry: str, company_size: str
+) -> None:
+    """Renames the company and sets its industry and size."""
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant.name, tenant.industry, tenant.company_size = name, industry, company_size

@@ -28,7 +28,7 @@ const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you own, at a glance."],
   analytics: ["Analytics", "The same measures for every company, side by side."],
   finance: ["Finance", "Money in and out, by company."],
-  companies: ["Companies", "Add a company or open one."],
+  companies: ["Companies", "Every company: its details, people and standing. Add, edit or open one."],
   intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
   notifications: ["Notifications", "What needs you, from every company."],
   compliance: ["Compliance", "What each company must file, what is missing, and recording filings."],
@@ -63,7 +63,7 @@ export function LivePortfolio() {
     if (summary.error) return <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{summary.error}<Button size="sm" variant="secondary" onClick={summary.reload}>Try again</Button></div>;
     if (!summary.data || list.length === 0) return <p className="text-sm text-muted-foreground" role="status">The Portfolio shows the companies you own, and those an Owner shared with you. There are none yet.</p>;
     switch (view) {
-      case "analytics": return <Analytics list={list} />;
+      case "analytics": return <Analytics list={list} period={summary.data.period} />;
       case "finance": return withMoney.length === 0
         ? <SectionCard title="Money is not shared with you" description="Your role covers sales and people, not money."><p className="text-sm text-muted-foreground">Ask the Owner for Group finance if you need what customers owe and what is due to suppliers.</p></SectionCard>
         : <Finance list={withMoney} hidden={list.length - withMoney.length} period={summary.data.period} />;

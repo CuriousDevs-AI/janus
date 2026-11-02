@@ -144,6 +144,7 @@ async def company_summary(
         id=str(tenant_id),
         name=company.name,
         industry=company.industry,
+        companySize=company.company_size,
         createdAt=company.created_on.isoformat(),
         current=current,
         members=await org.active_member_count(db, tenant_id),

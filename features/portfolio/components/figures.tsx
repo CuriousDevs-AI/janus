@@ -2,7 +2,10 @@
 
 export const Kpi = ({ label, value, detail }: { label: string; value: string; detail: string }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 
-export const palette = ["#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626"];
+/** Categorical colours in a fixed order, checked for colour-blind separation. A company keeps its
+ * colour by its place in the Portfolio, never by its rank in a chart. Past eight, colours repeat
+ * and the legend and table carry the names. */
+export const palette = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
 
 export function Bars({ rows, format }: { rows: { id: string; label: string; value: number; color: string }[]; format: (value: number) => string }) {
   const max = Math.max(1, ...rows.map((row) => row.value));

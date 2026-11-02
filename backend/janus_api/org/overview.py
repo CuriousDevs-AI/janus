@@ -22,6 +22,7 @@ class Company:
     id: int
     name: str
     industry: str
+    company_size: str
     # The day it was created, in India.
     created_on: date
 
@@ -34,6 +35,7 @@ async def company(db: AsyncSession, tenant_id: int) -> Company | None:
         id=tenant.id,
         name=tenant.name,
         industry=tenant.industry,
+        company_size=tenant.company_size,
         created_on=tenant.created_at.astimezone(ZoneInfo("Asia/Kolkata")).date(),
     )
 

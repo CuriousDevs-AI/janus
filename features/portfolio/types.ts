@@ -5,6 +5,7 @@ export interface PortfolioCompany {
   id: string;
   name: string;
   industry: string;
+  companySize: string;
   createdAt: string;
   /** The company this session is in. */
   current: boolean;
@@ -64,8 +65,16 @@ export interface PortfolioRegistration {
   udyam: string | null;
   incorporatedOn: string | null;
   registeredAddress: string | null;
-  directors: { name: string; din: string | null }[];
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  /** The company's people, each a director, founder or co-founder, or more than one. */
+  directors: PortfolioPersonRecord[];
 }
+export type LeaderRole = "director" | "founder" | "cofounder";
+export interface PortfolioPersonRecord { name: string; din: string | null; roles: LeaderRole[]; title: string | null }
 /** Rupees: sales before GST less credit notes, supplier bills as recorded plus write-offs, money in and out. */
 export interface PortfolioBooks {
   netSales: string;
@@ -141,4 +150,10 @@ export interface PortfolioAccessResult {
 export interface PortfolioActivity {
   days: number;
   items: { companyId: string; company: string; at: string; area: string; who: string; text: string }[];
+}
+/** GET /portfolio/trends: month by month per company, oldest first. Money is null without money. */
+export interface PortfolioTrends {
+  months: string[];
+  labels: string[];
+  companies: { id: string; name: string; points: { month: string; leads: number; wonDeals: number; wonValue: string; netSales: string | null; costs: string | null; collected: string | null }[] }[];
 }

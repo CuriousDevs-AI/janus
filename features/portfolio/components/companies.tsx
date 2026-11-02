@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Plus, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Globe, Mail, MapPin, Pencil, Phone, Plus, Search, Settings2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { api, message } from "@/lib/api/client";
 import { switchTenant } from "@/lib/live-company";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { RegistrationCard } from "@/features/portfolio/components/compliance";
+import { CompanyEditor, entityNames, PeopleList } from "@/features/portfolio/components/company-editor";
 import { TargetsForm } from "@/features/portfolio/components/targets";
 import { openIn, payrollFor, useRoles, winRate } from "@/features/portfolio/lib/companies";
 import { healthName, healthTone, inr } from "@/features/portfolio/lib/format";
@@ -30,13 +31,20 @@ export function Companies({ list, period, onAdd, onSaved }: { list: PortfolioCom
   const router = useRouter();
   const pathname = usePathname();
   const chosen = params.get("company");
+  const [editing, setEditing] = React.useState<PortfolioCompany | null>(null);
+  const { owns, handlesMoney } = useRoles();
   const go = (company: string | null) => { const next = new URLSearchParams(params.toString()); if (company) next.set("company", company); else next.delete("company"); router.push(`${pathname}?${next.toString()}`); };
   const profile = list.find((item) => item.id === chosen);
-  if (profile) return <CompanyProfile item={profile} period={period} onBack={() => go(null)} onSaved={onSaved} />;
-  return <CompanyTable list={list} onAdd={onAdd} onOpen={go} />;
+  const editor = editing && <CompanyEditor item={editing} basics={owns(editing)} onClose={() => setEditing(null)} onSaved={onSaved} />;
+  const canEdit = (item: PortfolioCompany) => handlesMoney(item);
+  if (profile) return <><CompanyProfile item={profile} period={period} onBack={() => go(null)} onSaved={onSaved} onEdit={canEdit(profile) ? () => setEditing(profile) : undefined} />{editor}</>;
+  return <><CompanyTable list={list} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} />{editor}</>;
 }
 
-function CompanyTable({ list, onAdd, onOpen }: { list: PortfolioCompany[]; onAdd?: () => void; onOpen: (id: string) => void }) {
+/** The company's own settings, in its Business Management. */
+const settingsOf = (item: PortfolioCompany) => openIn(item, "/settings?tab=workspace&view=settings&workspace=business");
+
+function CompanyTable({ list, onAdd, onOpen, onEdit, canEdit }: { list: PortfolioCompany[]; onAdd?: () => void; onOpen: (id: string) => void; onEdit: (item: PortfolioCompany) => void; canEdit: (item: PortfolioCompany) => boolean }) {
   const { owns } = useRoles();
   const [query, setQuery] = React.useState("");
   const [health, setHealth] = React.useState("all");
@@ -69,7 +77,11 @@ function CompanyTable({ list, onAdd, onOpen }: { list: PortfolioCompany[]; onAdd
           <td className="px-3 tabular-nums">{inr(n(item.crm.pipelineValue))}</td>
           <td className="px-3 tabular-nums">{item.people?.headcount ?? 0}</td>
           <td className={`px-3 tabular-nums ${pastDue(item) ? "text-danger" : ""}`}>{pastDue(item)}</td>
-          <td className="py-2.5 pl-3 text-right">{owns(item) && <Button size="sm" variant="ghost" onClick={() => openIn(item)}>Open<ArrowRight className="ml-1 size-3.5" /></Button>}</td>
+          <td className="py-2.5 pl-3"><div className="flex justify-end gap-1">
+            {canEdit(item) && <Button size="sm" variant="ghost" aria-label={`Edit ${item.name}`} title="Edit details" onClick={() => onEdit(item)}><Pencil className="size-3.5" /></Button>}
+            {owns(item) && <Button size="sm" variant="ghost" aria-label={`${item.name} settings`} title="Company settings" onClick={() => settingsOf(item)}><Settings2 className="size-3.5" /></Button>}
+            {owns(item) && <Button size="sm" variant="outline" onClick={() => openIn(item)}>Open<ArrowRight className="ml-1 size-3.5" /></Button>}
+          </div></td>
         </tr>)}</tbody>
       </table></div>}
     </SectionCard>
@@ -98,32 +110,71 @@ function Compare({ list, onClear }: { list: PortfolioCompany[]; onClear: () => v
   </SectionCard>;
 }
 
-/** One company's page: who it is, how it is doing, what it must file, its targets, and ways in. */
-function CompanyProfile({ item, period, onBack, onSaved }: { item: PortfolioCompany; period: PortfolioPeriod; onBack: () => void; onSaved: () => void }) {
+/** One company's page: everything about it in one place, with its health, money, people and filings. */
+function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: PortfolioCompany; period: PortfolioPeriod; onBack: () => void; onSaved: () => void; onEdit?: () => void }) {
   const { owns, handlesMoney } = useRoles();
   const payroll = payrollFor(item, period);
   const rate = winRate(item);
-  const links: [string, string][] = [["Business overview", "/settings?tab=workspace&view=overview&workspace=business"], ["Finance", "/workspace/finance-accounting?workspace=finance-accounting"], ["Leads", "/leads?workspace=crm-sales"], ["People", "/workspace/hr-people?workspace=hr-people"], ["Tickets", "/tickets?workspace=customer-support"]];
+  const reg = item.registration;
+  const contact: [React.ReactNode, string | null | undefined, string?][] = [
+    [<Globe key="w" className="size-3.5" />, reg?.website, reg?.website ? (reg.website.startsWith("http") ? reg.website : `https://${reg.website}`) : undefined],
+    [<Mail key="e" className="size-3.5" />, reg?.email, reg?.email ? `mailto:${reg.email}` : undefined],
+    [<Phone key="p" className="size-3.5" />, reg?.phone, reg?.phone ? `tel:${reg.phone.replace(/\s/g, "")}` : undefined],
+    [<MapPin key="m" className="size-3.5" />, [reg?.city, reg?.state].filter(Boolean).join(", ") || null],
+  ];
+  const headcount = item.people?.headcount ?? 0;
   return <>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <Button size="sm" variant="ghost" onClick={onBack}><ArrowLeft className="size-3.5" />All companies</Button>
-      {owns(item) && <div className="flex flex-wrap gap-2">{links.map(([label, to]) => <Button key={label} size="sm" variant="outline" onClick={() => openIn(item, to)}>{label}</Button>)}</div>}
+      <div className="flex flex-wrap gap-2">
+        {onEdit && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="size-3.5" />Edit details</Button>}
+        {owns(item) && <Button size="sm" variant="outline" onClick={() => settingsOf(item)}><Settings2 className="size-3.5" />Settings</Button>}
+        {owns(item) && <Button size="sm" onClick={() => openIn(item)}>Open company<ArrowRight className="ml-1 size-3.5" /></Button>}
+      </div>
     </div>
-    <SectionCard title={item.name} description={`${item.registration?.legalName && item.registration.legalName !== item.name ? `${item.registration.legalName} · ` : ""}${item.industry || "Industry not set"} · on Janus since ${item.createdAt} · ${item.members} member${item.members === 1 ? "" : "s"}`} action={item.health && <Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>}>
-      {item.health && item.health.reasons.length > 0 ? <ul className="grid gap-1 text-sm">{item.health.reasons.map((reason) => <li key={reason}>• {reason}</li>)}</ul> : <p className="text-sm text-muted-foreground">Nothing needs attention here.</p>}
-    </SectionCard>
+
+    <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 md:flex-row md:items-start">
+      <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-foreground text-lg font-semibold text-background" aria-hidden>{item.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold">{item.name}</h2>{item.health && <Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>}{item.current && <Badge variant="neutral">Open now</Badge>}</div>
+        <p className="mt-0.5 text-sm text-muted-foreground">{[reg?.legalName && reg.legalName !== item.name ? reg.legalName : null, reg?.entityType ? entityNames[reg.entityType] : null, item.industry || "Industry not set", item.companySize || null, reg?.incorporatedOn ? `founded ${reg.incorporatedOn.slice(0, 4)}` : null].filter(Boolean).join(" · ")}</p>
+        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm">{contact.map(([icon, text, href], index) => <li key={index} className={`flex items-center gap-1.5 ${text ? "" : "text-muted-foreground/70"}`}>{icon}{text ? href ? <a className="text-accent hover:underline" href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">{text}</a> : text : "Not recorded"}</li>)}</ul>
+        {reg?.registeredAddress && <p className="mt-2 text-xs text-muted-foreground">Registered office: {reg.registeredAddress}</p>}
+      </div>
+    </section>
+
+    {item.health && item.health.reasons.length > 0 && <SectionCard title="Needs attention" description="From this company's own records."><ul className="grid gap-1 text-sm">{item.health.reasons.map((reason) => <li key={reason}>• {reason}</li>)}</ul></SectionCard>}
+
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      {item.books ? <Kpi label={`Sales, ${period.label}`} value={inr(n(item.books.current.netSales))} detail={`${inr(n(item.books.previous.netSales))} in the same days before`} /> : <Kpi label="Sales" value="—" detail="Money is not shared with your role" />}
-      {item.books ? <Kpi label="Profit before salaries" value={inr(n(item.books.current.profitBeforePayroll))} detail={payroll !== null ? `About ${inr(n(item.books.current.profitBeforePayroll) - payroll)} after salaries (estimate)` : "Salaries not on record"} /> : <Kpi label="Leads this period" value={String(item.period.current.leads)} detail={`${item.period.previous.leads} in the same days before`} />}
+      {item.books ? <Kpi label={`Sales, ${period.label}`} value={inr(n(item.books.current.netSales))} detail={`${inr(n(item.books.previous.netSales))} in the same days before`} /> : <Kpi label="Leads this period" value={String(item.period.current.leads)} detail={`${item.period.previous.leads} in the same days before`} />}
+      {item.books ? <Kpi label="Profit before salaries" value={inr(n(item.books.current.profitBeforePayroll))} detail={payroll !== null ? `About ${inr(n(item.books.current.profitBeforePayroll) - payroll)} after salaries (estimate)` : "Salaries not on record"} /> : <Kpi label="Deals won this period" value={String(item.period.current.wonDeals)} detail={`Worth ${inr(n(item.period.current.wonValue))}`} />}
       <Kpi label="Open pipeline" value={inr(n(item.crm.pipelineValue))} detail={`${item.crm.openDeals} open deals · win rate ${rate === null ? "—" : `${rate}%`}`} />
-      <Kpi label="People" value={String(item.people?.headcount ?? 0)} detail={`${item.people?.onLeaveToday ?? 0} on leave today · ${item.people?.pendingLeave ?? 0} leave requests waiting`} />
+      {item.money ? <Kpi label="Customers owe" value={inr(n(item.money.receivable))} detail={n(item.money.overdue) ? `${inr(n(item.money.overdue))} past due` : "Nothing past due"} /> : <Kpi label="Open tickets" value={String(item.openTickets)} detail="Customer support" />}
     </div>
+
+    <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+      <SectionCard title="Founders and directors" description="Who started and runs the company." action={onEdit && <Button size="sm" variant="ghost" onClick={onEdit}><Pencil className="size-3.5" />Edit</Button>}>
+        <PeopleList people={reg?.directors ?? []} />
+      </SectionCard>
+      <SectionCard title="Team" description="Everyone in the company.">
+        <dl className="grid grid-cols-2 gap-3 text-sm">
+          <div><dt className="flex items-center gap-1.5 text-xs text-muted-foreground"><Users className="size-3.5" />Total people</dt><dd className="text-2xl font-semibold tabular-nums">{headcount}</dd><dd className="text-xs text-muted-foreground">Employee records in HR</dd></div>
+          <div><dt className="flex items-center gap-1.5 text-xs text-muted-foreground"><Building2 className="size-3.5" />Using Janus</dt><dd className="text-2xl font-semibold tabular-nums">{item.members}</dd><dd className="text-xs text-muted-foreground">Active logins</dd></div>
+          <div><dt className="text-xs text-muted-foreground">On leave today</dt><dd className="font-semibold tabular-nums">{item.people?.onLeaveToday ?? 0}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Waiting on a decision</dt><dd className="font-semibold tabular-nums">{(item.people?.pendingLeave ?? 0) + (item.people?.pendingClaims ?? 0)} leave and claims</dd></div>
+          {handlesMoney(item) && n(item.people?.monthlyPayroll) > 0 && <div className="col-span-2"><dt className="text-xs text-muted-foreground">Monthly salaries on record</dt><dd className="font-semibold tabular-nums">{inr(n(item.people?.monthlyPayroll))}</dd></div>}
+        </dl>
+      </SectionCard>
+    </div>
+
     {item.customers.length > 0 && <SectionCard title="Biggest customers" description="Sales before GST in the period, and in the same days before.">
       <ul className="divide-y divide-border">{item.customers.map((customer) => <li key={customer.name} className="flex justify-between gap-3 py-2 text-sm"><span>{customer.name}</span><span className="tabular-nums text-muted-foreground">{inr(n(customer.current))} <span className="text-xs">({inr(n(customer.previous))} before)</span></span></li>)}</ul>
     </SectionCard>}
-    <SectionCard title="Registration and filings" description="What the company is, and what it must file.">
+
+    <SectionCard title="Registration and filings" description="Its legal identity, and what it must file.">
       <div className="grid gap-3">
         <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onSaved} />
+        {item.complianceGaps.length > 0 && <ul className="grid gap-1 text-xs">{item.complianceGaps.map((gap) => <li key={gap.text} className={gap.kind === "missing" ? "text-warning" : "text-muted-foreground"}>{gap.kind === "missing" ? "Missing: " : "Suggested: "}{gap.text}</li>)}</ul>}
         <p className="text-sm">{pastDue(item) ? <span className="text-danger">{pastDue(item)} filing{pastDue(item) === 1 ? "" : "s"} past due and not recorded.</span> : "No filing past due."} <a className="text-accent hover:underline" href="/portfolio?view=compliance">Open Compliance</a></p>
       </div>
     </SectionCard>

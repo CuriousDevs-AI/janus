@@ -57,6 +57,11 @@ def registration_out(row: CompanyRegistration | None) -> schemas.Registration | 
         udyam=row.udyam,
         incorporatedOn=row.incorporated_on,
         registeredAddress=row.registered_address,
+        website=row.website,
+        email=row.email,
+        phone=row.phone,
+        city=row.city,
+        state=row.state,
         directors=[schemas.Director(**item) for item in row.directors],
     )
 
@@ -89,7 +94,9 @@ def gaps(
             missing("CIN")
         if reg.entityType == "llp" and reg.cin is None:
             missing("LLPIN")
-        if reg.entityType in (*COMPANIES, "llp") and not reg.directors:
+        if reg.entityType in (*COMPANIES, "llp") and not any(
+            "director" in person.roles for person in reg.directors
+        ):
             missing("Directors or designated partners")
     if plan.tds and reg.tan is None:
         missing("TAN: needed to deduct and deposit TDS")
@@ -279,6 +286,8 @@ async def set_registration(
         )
         row.pt_state, row.udyam, row.incorporated_on = data.ptState, data.udyam, data.incorporatedOn
         row.registered_address = data.registeredAddress
+        row.website, row.email, row.phone = data.website, data.email, data.phone
+        row.city, row.state = data.city, data.state
         row.directors = [item.model_dump() for item in data.directors]
         row.updated_by, row.updated_at = user_id, now()
         record(db, "portfolio.registration_set", user_id=user_id, tenant_id=tenant_id, ip=ip)

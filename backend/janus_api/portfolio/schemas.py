@@ -190,11 +190,23 @@ Text = Annotated[str | None, BeforeValidator(_blank_to_none)]
 Code = Annotated[str | None, BeforeValidator(_upper)]
 
 
+LeaderRole = Literal["director", "founder", "cofounder"]
+
+
+def _director_only() -> list[LeaderRole]:
+    return ["director"]
+
+
 class Director(BaseModel):
+    """One of the company's people: a director, a founder, a co-founder, or more than one."""
+
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
     din: Annotated[str | None, BeforeValidator(_blank_to_none)] = Field(
         default=None, pattern=r"^[0-9]{8}$"
     )
+    # Recorded before roles existed, everyone was a director.
+    roles: list[LeaderRole] = Field(default_factory=_director_only, max_length=3)
+    title: Text = Field(default=None, max_length=80)
 
 
 class Registration(BaseModel):
@@ -211,7 +223,14 @@ class Registration(BaseModel):
     udyam: Code = Field(default=None, max_length=30)
     incorporatedOn: date | None = None
     registeredAddress: Text = Field(default=None, max_length=400)
-    directors: list[Director] = Field(default_factory=list, max_length=20)
+    website: Text = Field(default=None, max_length=200)
+    email: Annotated[str | None, BeforeValidator(_blank_to_none)] = Field(
+        default=None, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"
+    )
+    phone: Text = Field(default=None, max_length=32)
+    city: Text = Field(default=None, max_length=80)
+    state: Text = Field(default=None, max_length=40)
+    directors: list[Director] = Field(default_factory=list, max_length=30)
 
 
 class ComplianceGap(BaseModel):
@@ -266,6 +285,7 @@ class CompanySummary(BaseModel):
     id: str
     name: str
     industry: str
+    companySize: str = ""
     createdAt: str
     current: bool
     members: int
@@ -302,6 +322,12 @@ class PortfolioSummary(BaseModel):
 class CompanyCreate(BaseModel):
     name: Name
     industry: Industry = ""
+
+
+class CompanyDetails(BaseModel):
+    name: Name
+    industry: Industry = ""
+    companySize: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] = ""
 
 
 class CompanyOut(BaseModel):
@@ -382,3 +408,27 @@ class ActivityItem(BaseModel):
 class ActivityList(BaseModel):
     days: int
     items: list[ActivityItem]
+
+
+class TrendPoint(BaseModel):
+    """One month. Money is a rupee string, or None where the role does not include money."""
+
+    month: str
+    leads: int
+    wonDeals: int
+    wonValue: str
+    netSales: str | None
+    costs: str | None
+    collected: str | None
+
+
+class CompanyTrend(BaseModel):
+    id: str
+    name: str
+    points: list[TrendPoint]
+
+
+class Trends(BaseModel):
+    months: list[str]
+    labels: list[str]
+    companies: list[CompanyTrend]

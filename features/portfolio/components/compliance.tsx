@@ -1,23 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Lightbulb, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import { day, todayIst } from "@/features/portfolio/lib/format";
-import type { EntityType, PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan, PortfolioRegistration } from "@/features/portfolio/types";
+import { CompanyEditor, entityNames, roleNames } from "@/features/portfolio/components/company-editor";
+import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan } from "@/features/portfolio/types";
 
 const dueTone = { overdue: "danger", due_soon: "warning", upcoming: "neutral", filed: "success" } as const;
 // Janus cannot see the government portals, so a past date with no record is "not confirmed", not "late".
 const dueName = { overdue: "Past due · not confirmed", due_soon: "Due this week", upcoming: "Upcoming", filed: "Filed" } as const;
-export const entityNames: Record<EntityType, string> = { pvt_ltd: "Private limited", public_ltd: "Public limited", opc: "One person company", llp: "LLP", partnership: "Partnership", proprietorship: "Proprietorship", other: "Other" };
-const emptyRegistration: PortfolioRegistration = { entityType: null, legalName: null, cin: null, pan: null, tan: null, epfCode: null, esiCode: null, ptState: null, udyam: null, incorporatedOn: null, registeredAddress: null, directors: [] };
 
 /** The statutory calendar for each company: what applies, what is due, what is missing, and recording a filing. */
 export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; onChanged: () => void }) {
@@ -86,60 +84,15 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
 }
 
 export function RegistrationCard({ item, canEdit, onSaved }: { item: PortfolioCompany; canEdit: boolean; onSaved: () => void }) {
+  const { owns } = useRoles();
   const [editing, setEditing] = React.useState(false);
   const reg = item.registration;
-  const facts: [string, string | null | undefined][] = [["Entity", reg?.entityType ? entityNames[reg.entityType] : null], ["PAN", reg?.pan], ["TAN", reg?.tan], [reg?.entityType === "llp" ? "LLPIN" : "CIN", reg?.cin], ["EPF code", reg?.epfCode], ["ESI code", reg?.esiCode], ["Professional tax state", reg?.ptState], ["Udyam", reg?.udyam], ["Incorporated", reg?.incorporatedOn ? day(reg.incorporatedOn) : null], [reg?.entityType === "llp" ? "Designated partners" : "Directors", reg?.directors.length ? reg.directors.map((person) => person.din ? `${person.name} (DIN ${person.din})` : person.name).join(", ") : null]];
+  const facts: [string, string | null | undefined][] = [["Entity", reg?.entityType ? entityNames[reg.entityType] : null], ["PAN", reg?.pan], ["TAN", reg?.tan], [reg?.entityType === "llp" ? "LLPIN" : "CIN", reg?.cin], ["EPF code", reg?.epfCode], ["ESI code", reg?.esiCode], ["Professional tax state", reg?.ptState], ["Udyam", reg?.udyam], ["Incorporated", reg?.incorporatedOn ? day(reg.incorporatedOn) : null], ["People", reg?.directors.length ? reg.directors.map((person) => `${person.name} (${(person.roles?.length ? person.roles : ["director" as const]).map((role) => roleNames[role]).join(", ")})`).join("; ") : null]];
   return <div className="rounded-md border border-border p-3">
     <div className="mb-2 flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registration</p>{canEdit && <Button size="sm" variant="ghost" onClick={() => setEditing(true)}><Pencil className="size-3.5" />{reg ? "Edit" : "Add details"}</Button>}</div>
     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3 lg:grid-cols-5">{facts.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className={`truncate ${value ? "font-medium" : "text-muted-foreground/70"}`}>{value || "Not recorded"}</dd></div>)}</dl>
-    {editing && <RegistrationForm item={item} onClose={() => setEditing(false)} onSaved={onSaved} />}
+    {editing && <CompanyEditor item={item} basics={owns(item)} onClose={() => setEditing(false)} onSaved={onSaved} />}
   </div>;
-}
-
-export function RegistrationForm({ item, onClose, onSaved }: { item: PortfolioCompany; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = React.useState<PortfolioRegistration>(item.registration ?? emptyRegistration);
-  const [saving, setSaving] = React.useState(false);
-  const set = (key: keyof PortfolioRegistration, value: string) => setForm({ ...form, [key]: value === "" ? null : value });
-  const upper = (value: string | null) => (value ?? "").trim().toUpperCase();
-  const errors = [
-    upper(form.pan) && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(upper(form.pan)) ? "PAN is 5 letters, 4 digits and a letter, like AAPFU0939F." : "",
-    upper(form.tan) && !/^[A-Z]{4}[0-9]{5}[A-Z]$/.test(upper(form.tan)) ? "TAN is 4 letters, 5 digits and a letter, like BLRA12345B." : "",
-    upper(form.ptState) && !/^[A-Z]{2}$/.test(upper(form.ptState)) ? "State is two letters, like KA or MH." : "",
-    form.directors.some((person) => person.din && !/^[0-9]{8}$/.test(person.din.trim())) ? "A DIN is 8 digits." : "",
-  ].filter(Boolean);
-  async function save() {
-    setSaving(true);
-    try {
-      await api(`/portfolio/companies/${item.id}/registration`, { method: "PUT", body: JSON.stringify({ ...form, directors: form.directors.filter((person) => person.name.trim()).map((person) => ({ name: person.name.trim(), din: person.din?.trim() || null })) }) });
-      toast.success(`Registration details saved for ${item.name}.`);
-      onSaved();
-      onClose();
-    } catch (failure) { toast.error(message(failure)); setSaving(false); }
-  }
-  const field = (key: keyof PortfolioRegistration, label: string, placeholder = "", type = "text") => <label className="grid gap-1 text-xs text-muted-foreground">{label}<Input type={type} value={(form[key] as string | null) ?? ""} placeholder={placeholder} onChange={(event) => set(key, event.target.value)} /></label>;
-  return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Registration details · {item.name}</DialogTitle><DialogDescription>These decide which filings apply and what is missing. Leave anything you do not have blank.</DialogDescription></DialogHeader>
-    <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); if (!errors.length) void save(); }}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1 text-xs text-muted-foreground">Entity type<select className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px] text-foreground" value={form.entityType ?? ""} onChange={(event) => setForm({ ...form, entityType: (event.target.value || null) as EntityType | null })}><option value="">Not chosen</option>{(Object.keys(entityNames) as EntityType[]).map((kind) => <option key={kind} value={kind}>{entityNames[kind]}</option>)}</select></label>
-        {field("legalName", "Legal name", item.name)}
-        {field("pan", "PAN", "AAPFU0939F")}
-        {field("tan", "TAN", "BLRA12345B")}
-        {field("cin", form.entityType === "llp" ? "LLPIN" : "CIN", form.entityType === "llp" ? "AAB-1234" : "U51909KA2020PTC123456")}
-        {field("udyam", "Udyam (MSME) number", "UDYAM-KR-03-0012345")}
-        {field("epfCode", "EPF establishment code")}
-        {field("esiCode", "ESI code")}
-        {field("ptState", "Professional tax state", "KA")}
-        {field("incorporatedOn", "Date of incorporation", "", "date")}
-      </div>
-      {field("registeredAddress", "Registered address")}
-      <fieldset className="grid gap-2"><legend className="mb-1 text-xs text-muted-foreground">{form.entityType === "llp" ? "Designated partners" : "Directors"}</legend>
-        {form.directors.map((person, index) => <div key={index} className="flex gap-2"><Input aria-label="Name" placeholder="Name" value={person.name} onChange={(event) => setForm({ ...form, directors: form.directors.map((entry, at) => at === index ? { ...entry, name: event.target.value } : entry) })} /><Input aria-label="DIN" placeholder="DIN (8 digits)" className="w-40" value={person.din ?? ""} onChange={(event) => setForm({ ...form, directors: form.directors.map((entry, at) => at === index ? { ...entry, din: event.target.value } : entry) })} /><Button type="button" size="sm" variant="ghost" aria-label={`Remove ${person.name || "this person"}`} onClick={() => setForm({ ...form, directors: form.directors.filter((_, at) => at !== index) })}><Trash2 className="size-3.5" /></Button></div>)}
-        <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setForm({ ...form, directors: [...form.directors, { name: "", din: null }] })}><Plus className="size-3.5" />Add a person</Button>
-      </fieldset>
-      {errors.length > 0 && <ul role="alert" className="grid gap-1 text-xs text-danger">{errors.map((text) => <li key={text}>{text}</li>)}</ul>}
-      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving || errors.length > 0}>{saving ? "Saving…" : "Save details"}</Button></DialogFooter>
-    </form>
-  </DialogContent></Dialog>;
 }
 
 function PlanForm({ item, onSaved }: { item: PortfolioCompany; onSaved: () => void }) {

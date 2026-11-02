@@ -71,6 +71,7 @@ EVENTS: dict[str, tuple[str, str]] = {
     "business.automation_published": ("Setup", "published a workflow"),
     "company.rules_changed": ("Setup", "changed the company's rules"),
     "portfolio.company_created": ("Portfolio", "added this company"),
+    "portfolio.company_updated": ("Portfolio", "changed the company's name or details"),
     "portfolio.targets_set": ("Portfolio", "set monthly targets"),
     "portfolio.compliance_plan_set": ("Compliance", "changed which filings apply"),
     "portfolio.registration_set": ("Compliance", "updated the registration details"),
