@@ -11,13 +11,15 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const schema = z.object({
-  name: z.string().min(2, "Enter your full name"),
-  email: z.string().email("Enter a valid work email"),
+  name: z.string().trim().min(2, "Enter your full name"),
+  username: z.string().trim().toLowerCase().regex(/^[a-z0-9._]{3,30}$/, "3 to 30 letters, numbers, dots or underscores"),
+  email: z.string().trim().email("Enter a valid email"),
   password: z.string().min(8, "At least 8 characters"),
-  company: z.string().min(2, "Enter your company name"),
-});
+  confirm: z.string(),
+}).refine((values) => values.password === values.confirm, { path: ["confirm"], message: "The passwords do not match" });
 type FormValues = z.infer<typeof schema>;
 
 export default function SignupPage() {
@@ -34,13 +36,13 @@ export default function SignupPage() {
         method: "POST",
         body: JSON.stringify({
           name: values.name,
+          username: values.username,
           email: values.email,
           password: values.password,
-          business_name: values.company,
         }),
       });
       toast.success(
-        "Workspace created. Check your email to verify your account, then sign in.",
+        "Account created. Check your email to verify it, then sign in and set up your company.",
       );
       router.replace("/login");
     } catch (error) {
@@ -52,7 +54,7 @@ export default function SignupPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-[24px] font-semibold tracking-tight text-foreground">
-          Create your workspace
+          Create your account
         </h1>
         <p className="text-[13px] text-muted-foreground">
           Set up Janus for your team in a few minutes.
@@ -68,7 +70,14 @@ export default function SignupPage() {
           )}
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Work email</Label>
+          <Label htmlFor="username">Username</Label>
+          <Input id="username" autoComplete="username" placeholder="pankaj.n" {...register("username")} />
+          {errors.username && (
+            <p className="text-[11px] text-danger">{errors.username.message}</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="email">Email</Label>
           <Input
             id="email"
             type="email"
@@ -80,21 +89,10 @@ export default function SignupPage() {
           )}
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="company">Company</Label>
-          <Input
-            id="company"
-            placeholder="Acme Technologies"
-            {...register("company")}
-          />
-          {errors.company && (
-            <p className="text-[11px] text-danger">{errors.company.message}</p>
-          )}
-        </div>
-        <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
+            autoComplete="new-password"
             placeholder="At least 8 characters"
             {...register("password")}
           />
@@ -102,15 +100,27 @@ export default function SignupPage() {
             <p className="text-[11px] text-danger">{errors.password.message}</p>
           )}
         </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="confirm">Confirm password</Label>
+          <PasswordInput
+            id="confirm"
+            autoComplete="new-password"
+            placeholder="Type it again"
+            {...register("confirm")}
+          />
+          {errors.confirm && (
+            <p className="text-[11px] text-danger">{errors.confirm.message}</p>
+          )}
+        </div>
 
         <Button type="submit" className="mt-1 w-full" disabled={isSubmitting}>
-          Create workspace
+          Create account
           <ArrowRight className="size-3.5" />
         </Button>
       </form>
 
       <p className="text-center text-[12px] text-muted-foreground">
-        Already have a workspace?{" "}
+        Already have an account?{" "}
         <Link href="/login" className="text-accent hover:underline">
           Sign in
         </Link>

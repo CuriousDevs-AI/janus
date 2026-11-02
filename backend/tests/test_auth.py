@@ -229,3 +229,37 @@ async def test_bad_and_expired_access_tokens(client: httpx.AsyncClient, mailbox:
     response = await client.get("/v1/me", headers=account.headers)
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-request-id"]
+
+
+async def test_signup_with_username_and_no_company_then_sign_in_by_username(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    body = {"name": "Pankaj", "email": "p@example.com", "password": PASSWORD}
+    created = await client.post("/v1/auth/signup", json={**body, "username": "Pankaj.N"})
+    assert created.status_code == 201, created.text
+    token = mailbox.token("p@example.com", "verify-email")
+    assert (await client.post("/v1/auth/verify-email", json={"token": token})).status_code == 200
+    # The username is kept in lower case and signs in like the email does, in any case.
+    signed_in = await client.post(
+        "/v1/auth/login", json={"email": "PANKAJ.N", "password": PASSWORD}
+    )
+    assert signed_in.status_code == 200, signed_in.text
+    me = (
+        await client.get(
+            "/v1/me", headers={"Authorization": f"Bearer {signed_in.json()['access_token']}"}
+        )
+    ).json()
+    assert me["user"]["username"] == "pankaj.n"
+    # With no company given, the first one is named after the person until setup renames it.
+    assert me["tenant"]["name"] == "Pankaj's company"
+    wrong = await client.post("/v1/auth/login", json={"email": "pankaj.n", "password": "nope-nope"})
+    assert wrong.status_code == 401
+    # A username belongs to one account, whatever its case.
+    taken = await client.post(
+        "/v1/auth/signup", json={**body, "email": "q@example.com", "username": "PANKAJ.n"}
+    )
+    assert taken.status_code == 409 and taken.json()["error"]["code"] == "username_taken"
+    bad = await client.post(
+        "/v1/auth/signup", json={**body, "email": "r@example.com", "username": "no spaces"}
+    )
+    assert bad.status_code == 422

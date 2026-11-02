@@ -44,6 +44,7 @@ def user_out(user: User) -> schemas.UserOut:
         id=str(user.id),
         name=user.name,
         email=user.email,
+        username=user.username,
         phone=user.phone,
         avatar_url=user.avatar_url,
         timezone=user.timezone,
@@ -71,14 +72,28 @@ async def active_user(db: AsyncSession, user_id: int, *, lock: bool = False) -> 
 
 
 async def create_user(
-    db: AsyncSession, name: str, address: str, password: str, *, verified: bool = False
+    db: AsyncSession,
+    name: str,
+    address: str,
+    password: str,
+    *,
+    verified: bool = False,
+    username: str | None = None,
 ) -> User:
     await email_lock(db, address)
     if await db.scalar(select(User.id).where(User.email == address)):
         raise ApiError("account_unavailable", "Unable to create this account. Try signing in.", 409)
+    if username is not None:
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"username:{username}"},
+        )
+        if await db.scalar(select(User.id).where(User.username == username)):
+            raise ApiError("username_taken", "That username is taken. Try another.", 409)
     user = User(
         name=name.strip(),
         email=address,
+        username=username,
         password_hash=await hash_password(password),
         email_verified_at=now() if verified else None,
     )
@@ -103,8 +118,12 @@ async def verification_email(db: AsyncSession, user: User, *, resend: bool = Fal
 
 
 async def signup(db: AsyncSession, data: schemas.Signup, ip: str) -> schemas.Message:
-    user = await create_user(db, data.name, str(data.email).casefold(), data.password)
-    tenant_id = await org.create_workspace(db, user.id, data.business_name.strip())
+    user = await create_user(
+        db, data.name, str(data.email).casefold(), data.password, username=data.username
+    )
+    # The first company is named after the person until setup gives it its real name.
+    company = (data.business_name or "").strip() or f"{user.name}'s company"[:160]
+    tenant_id = await org.create_workspace(db, user.id, company)
     await verification_email(db, user)
     record(db, "auth.signup", user_id=user.id, tenant_id=tenant_id, ip=ip)
     return schemas.Message(message="Account created. Check your email to verify it.")
@@ -132,7 +151,12 @@ async def issue_session(
 
 
 async def login(db: AsyncSession, data: schemas.Login, ip: str, device: str) -> schemas.TokenPair:
-    address = str(data.email).casefold()
+    address = data.email.casefold()
+    if "@" not in address:
+        # A username: sign in as the account that chose it. Attempts are still counted per
+        # username, so guessing passwords for it is limited the same way.
+        found = await db.scalar(select(User.email).where(User.username == address))
+        address = found or address
     await db.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
         {"key": f"login:{address}:{ip}"},
@@ -169,7 +193,9 @@ async def login(db: AsyncSession, data: schemas.Login, ip: str, device: str) -> 
             ip=ip,
             details={"email_hash": digest(address)},
         )
-        raise ApiError("invalid_credentials", "Invalid email or password.", 401, commit=True)
+        raise ApiError(
+            "invalid_credentials", "Invalid email, username or password.", 401, commit=True
+        )
     attempt.failed_count, attempt.locked_until = 0, None
     user.failed_login_count, user.locked_until = 0, None
     try:

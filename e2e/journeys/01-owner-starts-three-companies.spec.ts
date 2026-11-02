@@ -9,9 +9,10 @@ test.describe("Vikram starts his three companies on Janus", () => {
     await page.goto(`${BASE}/signup`, { waitUntil: "load" });
     await page.waitForTimeout(1500);
     await page.fill("#name", OWNER.name);
+    await page.fill("#username", `vikram.${run().stamp}`.toLowerCase().replace(/[^a-z0-9._]/g, "").slice(0, 30));
     await page.fill("#email", emailOf("vikram"));
     await page.fill("#password", run().password);
-    await page.fill("#company", COMPANIES[0].name);
+    await page.fill("#confirm", run().password);
     await page.locator("button[type=submit]").click();
     const token = await emailToken(emailOf("vikram"), "verify-email");
     await page.goto(`${BASE}/verify-email?token=${encodeURIComponent(token)}`, { waitUntil: "load" });

@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import (
     AfterValidator,
     BaseModel,
+    BeforeValidator,
     EmailStr,
     Field,
     HttpUrl,
@@ -21,6 +22,12 @@ BusinessName = Annotated[
 ]
 
 Password = Annotated[str, AfterValidator(validate_password)]
+# Stored in lower case: "Pankaj.N" signs up as "pankaj.n".
+Username = Annotated[
+    str,
+    BeforeValidator(lambda value: value.strip().lower() if isinstance(value, str) else value),
+    StringConstraints(pattern=r"^[a-z0-9._]{3,30}$"),
+]
 Token = Annotated[str, Field(min_length=20, max_length=512)]
 Identifier = Annotated[int, Field(gt=0, le=2**63 - 1)]
 
@@ -29,11 +36,14 @@ class Signup(BaseModel):
     name: Name
     email: EmailStr
     password: Password
-    business_name: BusinessName
+    username: Username | None = None
+    # Optional: without it the first company is named after the person, and setup renames it.
+    business_name: BusinessName | None = None
 
 
 class Login(BaseModel):
-    email: EmailStr
+    # The email, or the username chosen at signup.
+    email: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=320)]
     password: str = Field(min_length=1, max_length=128)
 
 
@@ -98,6 +108,7 @@ class UserOut(BaseModel):
     id: str
     name: str
     email: str
+    username: str | None = None
     phone: str | None
     avatar_url: str | None
     timezone: str
