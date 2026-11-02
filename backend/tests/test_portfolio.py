@@ -716,7 +716,7 @@ async def test_the_operating_view_attention_and_health(
     assert company["attention"][0]["severity"] == "high"
     assert "1 approval waiting: 1 leave request" in texts
     # Every overdue filing is one line, not one line each.
-    filing_lines = [text for text in texts if "overdue, the oldest" in text]
+    filing_lines = [text for text in texts if "not recorded as filed, the oldest" in text]
     assert len(filing_lines) == 1 and filing_lines[0].startswith(f"{len(overdue)} filing")
 
     first = overdue[0]
@@ -855,3 +855,77 @@ async def test_books_profit_and_sales_between_own_companies(
     ]
     assert sum(item["current"] for item in mumbai["leadSources"]) == 1
     assert companies["Pune Retail"]["intercompany"]["sales"] == "0.00"
+
+
+def test_llp_professional_tax_and_annual_gst_dues() -> None:
+    llp = Profile("monthly", False, False, False, llp=True, pt_state="KA")
+    found = {due.key: due.due_on for due in dues(llp, date(2026, 1, 1), date(2026, 12, 31))}
+    assert found["llp11_2025"] == date(2026, 5, 30) and found["llp8_2025"] == date(2026, 10, 30)
+    assert found["ptka_2026-10"] == date(2026, 11, 20)
+    assert found["gstr9_2025"] == date(2026, 12, 31)
+    assert "aoc4_2025" not in found
+    mh = Profile("none", False, False, False, pt_state="MH")
+    found = {due.key: due.due_on for due in dues(mh, date(2026, 1, 1), date(2026, 12, 31))}
+    assert found["ptmh_2026-02"] == date(2026, 2, 28) and "gstr9_2025" not in found
+
+
+async def test_registration_details_gaps_and_acknowledgement(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company_id = str(owner.tenant_id)
+    url = f"/v1/portfolio/companies/{company_id}"
+
+    async def company() -> httpx.Response:
+        return await client.get("/v1/portfolio/summary", headers=owner.headers)
+
+    plan = await client.put(
+        f"{url}/compliance", headers=owner.headers, json={"gstFiling": "monthly", "tds": True}
+    )
+    assert plan.status_code == 200, plan.text
+    first = (await company()).json()["companies"][0]
+    assert first["registration"] is None
+    gaps = [gap["text"] for gap in first["complianceGaps"]]
+    assert any(text.startswith("No registration details") for text in gaps)
+    assert any(text.startswith("TAN") for text in gaps)
+    assert any(text.startswith("GSTIN") for text in gaps)
+
+    bad = await client.put(f"{url}/registration", headers=owner.headers, json={"pan": "12345"})
+    assert bad.status_code == 422
+    saved = await client.put(
+        f"{url}/registration",
+        headers=owner.headers,
+        json={
+            "entityType": "pvt_ltd",
+            "pan": "aapfu0939f",
+            "tan": "BLRA12345B",
+            "cin": "U51909KA2020PTC123456",
+            "ptState": "ka",
+            "directors": [{"name": "Vikram Malhotra", "din": "01234567"}],
+            "registeredAddress": "  ",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["pan"] == "AAPFU0939F" and saved.json()["registeredAddress"] is None
+    after = (await company()).json()["companies"][0]
+    assert after["registration"]["ptState"] == "KA"
+    texts: dict[str, list[str]] = {}
+    for gap in after["complianceGaps"]:
+        texts.setdefault(gap["kind"], [])
+        texts[gap["kind"]].append(gap["text"])
+    assert not any(text.startswith("TAN") for text in texts.get("missing", []))
+    assert any("Switch on company filings" in text for text in texts.get("suggestion", []))
+    # Karnataka professional tax now shows in the calendar.
+    keys = [due["key"] for due in after["compliance"]]
+    assert any(key.startswith("ptka_") for key in keys)
+
+    past = next(due for due in after["compliance"] if due["status"] == "overdue")
+    marked = await client.put(
+        f"{url}/filings/{past['key']}",
+        headers=owner.headers,
+        json={"filedOn": today_ist().isoformat(), "acknowledgement": " AA2910260012345 "},
+    )
+    assert marked.status_code == 204, marked.text
+    filed = (await company()).json()["companies"][0]
+    entry = next(due for due in filed["compliance"] if due["key"] == past["key"])
+    assert entry["status"] == "filed" and entry["acknowledgement"] == "AA2910260012345"

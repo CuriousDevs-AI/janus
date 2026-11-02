@@ -20,6 +20,7 @@ from janus_api.org import overview as org
 from janus_api.org import service as org_service
 from janus_api.portfolio import attention, schemas
 from janus_api.portfolio.access import readable_companies
+from janus_api.portfolio.compliance import plan as compliance_plan
 from janus_api.portfolio.compliance.plan import compliance_view
 from janus_api.portfolio.periods import period_for, rupees, today_ist
 from janus_api.portfolio.targets import targets_view
@@ -207,6 +208,10 @@ async def company_summary(
     )
     out.approvals = await approvals(db, tenant_id, staff)
     out.compliancePlan, out.compliance = await compliance_view(db, tenant_id, today)
+    out.registration = await compliance_plan.registration(db, tenant_id)
+    out.complianceGaps = compliance_plan.gaps(
+        out.compliancePlan, out.registration, staff.headcount, staff.monthly_payroll > 0
+    )
     out.targets = await targets_view(db, tenant_id, money=money)
     out.attention = attention.attention(
         out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance

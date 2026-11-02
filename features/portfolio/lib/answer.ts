@@ -31,8 +31,8 @@ export function answerLive(question: string, list: PortfolioCompany[]): Answer {
   if (/stock|inventory|reorder|expir/.test(q)) return { text: "Stock that needs a look.", rows: scope.map((item) => [item.name, `${item.stock?.belowReorder ?? 0} at or under reorder · ${item.stock?.expiringBatches ?? 0} batches expiring in 30 days`]) };
   if (/project|delivery|milestone|late/.test(q)) return { text: "Delivery across the companies.", rows: scope.map((item) => [item.name, `${item.delivery?.activeProjects ?? 0} active · ${item.delivery?.lateProjects ?? 0} late · ${item.delivery?.overdueMilestones ?? 0} milestones past due`]) };
   if (/gst|tds|compliance|filing|due/.test(q)) {
-    const rows = scope.flatMap((item) => item.compliance.filter((due) => due.status === "overdue" || due.status === "due_soon").map((due): [string, string] => [item.name, `${due.label} for ${due.period}, due ${day(due.dueOn)}${due.status === "overdue" ? " (overdue)" : ""}`]));
-    return { text: rows.length ? "Filings overdue or due this week." : "No filing is overdue or due this week.", rows };
+    const rows = scope.flatMap((item) => item.compliance.filter((due) => due.status === "overdue" || due.status === "due_soon").map((due): [string, string] => [item.name, `${due.label} for ${due.period}, due ${day(due.dueOn)}${due.status === "overdue" ? " (past due, not recorded as filed)" : ""}`]));
+    return { text: rows.length ? "Filings past due or due this week." : "No filing is past due or due this week.", rows };
   }
   if (/lead|pipeline|deal|won|sales|revenue|win rate|best|compare/.test(q)) {
     const best = top((item) => item.crm, (item) => Number(item.crm.pipelineValue));

@@ -106,6 +106,7 @@ async def mark_filed(
         key,
         data.filedOn,
         request_ip(request),
+        data.acknowledgement,
     )
 
 
@@ -115,4 +116,13 @@ async def unmark_filed(
 ) -> None:
     await compliance.mark_filing(
         db, actor.user.id, actor.session.tenant_id, company_id, key, None, request_ip(request)
+    )
+
+
+@router.put("/companies/{company_id}/registration", response_model=schemas.Registration)
+async def set_registration(
+    company_id: str, data: schemas.Registration, actor: CurrentActor, db: Db, request: Request
+) -> schemas.Registration:
+    return await compliance.set_registration(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )

@@ -22,6 +22,10 @@ class Profile:
     tds: bool
     pf_esi: bool
     company: bool
+    # From the registration details: an LLP files Forms 11 and 8 instead of AOC-4 and MGT-7, and
+    # professional tax follows the state's own calendar (Karnataka and Maharashtra so far).
+    llp: bool = False
+    pt_state: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,27 @@ def dues(profile: Profile, first: date, last: date) -> list[Due]:
             found.append(
                 Due(f"esi_{key}", "ESI payment", name, date(next_year, next_month, 15), "Payroll")
             )
+        if profile.pt_state == "KA":
+            found.append(
+                Due(
+                    f"ptka_{key}",
+                    "Professional tax (Karnataka)",
+                    name,
+                    date(next_year, next_month, 20),
+                    "Payroll",
+                )
+            )
+        if profile.pt_state == "MH":
+            # Maharashtra: by the last day of the month the salary is for.
+            found.append(
+                Due(
+                    f"ptmh_{key}",
+                    "Professional tax (Maharashtra)",
+                    name,
+                    date(next_year, next_month, 1) - timedelta(days=1),
+                    "Payroll",
+                )
+            )
     for start in range(first.year - 1, last.year + 1):
         fy = _fy(start)
         # The financial year's quarters, with the month each ends in.
@@ -113,6 +138,23 @@ def dues(profile: Profile, first: date, last: date) -> list[Due]:
                 found.append(
                     Due(f"tdsr_{start}q{number}", "TDS return (24Q/26Q)", label, return_due, "TDS")
                 )
+        if profile.gst_filing != "none":
+            found.append(
+                Due(
+                    f"gstr9_{start - 1}",
+                    "GSTR-9 (annual GST return)",
+                    _fy(start - 1),
+                    date(start, 12, 31),
+                    "GST",
+                )
+            )
+        if profile.llp:
+            for code, label, due in (
+                ("llp11", "LLP Form 11 (annual return)", date(start, 5, 30)),
+                ("llp8", "LLP Form 8 (accounts and solvency)", date(start, 10, 30)),
+                ("itr", "Income tax return", date(start, 10, 31)),
+            ):
+                found.append(Due(f"{code}_{start - 1}", label, _fy(start - 1), due, "LLP"))
         if profile.company:
             for number, due in (
                 (1, date(start, 6, 15)),
@@ -139,7 +181,9 @@ def dues(profile: Profile, first: date, last: date) -> list[Due]:
                 ("mgt7", "MGT-7 (annual return)", date(start, 11, 29)),
             ):
                 found.append(Due(f"{code}_{start - 1}", label, closed, due, "Company"))
-    return sorted((due for due in found if first <= due.due_on <= last), key=lambda due: due.due_on)
+    # One of each: an LLP marked as a company too would otherwise list its tax return twice.
+    unique = {due.key: due for due in found if first <= due.due_on <= last}
+    return sorted(unique.values(), key=lambda due: due.due_on)
 
 
 def window(today: date) -> tuple[date, date]:

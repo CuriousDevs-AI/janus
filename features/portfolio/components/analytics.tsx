@@ -25,7 +25,7 @@ const measures: [string, (item: PortfolioCompany) => string][] = [
   ["Done, awaiting acceptance", (item) => item.delivery ? `${item.delivery.awaitingAcceptance} · ${inr(Number(item.delivery.awaitingAcceptanceValue))}` : "—"],
   ["Urgent or escalated tickets", (item) => item.support ? `${item.support.urgent} · ${item.support.escalated}` : "—"],
   ["Approvals waiting", (item) => String(item.approvals.reduce((sum, entry) => sum + entry.count, 0))],
-  ["Filings overdue", (item) => String(item.compliance.filter((due) => due.status === "overdue").length)],
+  ["Filings past due, not confirmed", (item) => String(item.compliance.filter((due) => due.status === "overdue").length)],
 ];
 
 export function Analytics({ list }: { list: PortfolioCompany[] }) {

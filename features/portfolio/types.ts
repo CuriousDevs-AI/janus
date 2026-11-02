@@ -46,6 +46,25 @@ export interface PortfolioCompany {
   intercompany: { sales: string; purchases: string; partners: string[] } | null;
   /** Leads by channel, this period and the same days before. */
   leadSources: { source: string; current: number; previous: number }[];
+  /** Registration details, or null where none are recorded. */
+  registration: PortfolioRegistration | null;
+  /** Missing registration details, and filings the company's own records suggest. */
+  complianceGaps: { kind: "missing" | "suggestion"; text: string }[];
+}
+export type EntityType = "pvt_ltd" | "public_ltd" | "opc" | "llp" | "partnership" | "proprietorship" | "other";
+export interface PortfolioRegistration {
+  entityType: EntityType | null;
+  legalName: string | null;
+  cin: string | null;
+  pan: string | null;
+  tan: string | null;
+  epfCode: string | null;
+  esiCode: string | null;
+  ptState: string | null;
+  udyam: string | null;
+  incorporatedOn: string | null;
+  registeredAddress: string | null;
+  directors: { name: string; din: string | null }[];
 }
 /** Rupees: sales before GST less credit notes, supplier bills as recorded plus write-offs, money in and out. */
 export interface PortfolioBooks {
@@ -65,6 +84,8 @@ export interface PortfolioComplianceDue {
   status: "filed" | "overdue" | "due_soon" | "upcoming";
   filedOn: string | null;
   to: string;
+  /** The portal's acknowledgement number, when it was recorded. */
+  acknowledgement: string | null;
 }
 export interface PortfolioCompliancePlan {
   gstin: string | null;

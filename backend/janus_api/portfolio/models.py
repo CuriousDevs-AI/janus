@@ -1,7 +1,9 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from janus_api.core.db import Base
@@ -51,4 +53,30 @@ class ComplianceFiling(Base):
     item_key: Mapped[str] = mapped_column(String(40))
     filed_on: Mapped[date] = mapped_column(Date)
     filed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    # The acknowledgement number the portal gave, when someone recorded it.
+    acknowledgement: Mapped[str | None] = mapped_column(String(60))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CompanyRegistration(Base):
+    """A company's registration details: they decide which filings apply and what is missing."""
+
+    __tablename__ = "company_registrations"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), unique=True)
+    entity_type: Mapped[str | None] = mapped_column(String(20))
+    legal_name: Mapped[str | None] = mapped_column(String(160))
+    # CIN for a company, LLPIN for an LLP.
+    cin: Mapped[str | None] = mapped_column(String(21))
+    pan: Mapped[str | None] = mapped_column(String(10))
+    tan: Mapped[str | None] = mapped_column(String(10))
+    epf_code: Mapped[str | None] = mapped_column(String(30))
+    esi_code: Mapped[str | None] = mapped_column(String(30))
+    # Two-letter state code where professional tax is paid, such as KA or MH.
+    pt_state: Mapped[str | None] = mapped_column(String(2))
+    udyam: Mapped[str | None] = mapped_column(String(30))
+    incorporated_on: Mapped[date | None] = mapped_column(Date)
+    registered_address: Mapped[str | None] = mapped_column(String(400))
+    # [{"name": ..., "din": ...}]
+    directors: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

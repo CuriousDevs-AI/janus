@@ -127,6 +127,7 @@ class ComplianceDue(BaseModel):
     status: Literal["filed", "overdue", "due_soon", "upcoming"]
     filedOn: str | None
     to: str
+    acknowledgement: str | None = None
 
 
 class Targets(BaseModel):
@@ -164,6 +165,60 @@ class TargetsUpdate(BaseModel):
 
 class FilingMark(BaseModel):
     filedOn: date
+    # The acknowledgement number from the portal (ARN, challan or SRN), when there is one.
+    acknowledgement: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)] | None
+    ) = None
+
+
+def _blank_to_none(value: object) -> object:
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+def _upper(value: object) -> object:
+    value = _blank_to_none(value)
+    return value.upper() if isinstance(value, str) else value
+
+
+EntityType = Literal[
+    "pvt_ltd", "public_ltd", "opc", "llp", "partnership", "proprietorship", "other"
+]
+Text = Annotated[str | None, BeforeValidator(_blank_to_none)]
+Code = Annotated[str | None, BeforeValidator(_upper)]
+
+
+class Director(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+    din: Annotated[str | None, BeforeValidator(_blank_to_none)] = Field(
+        default=None, pattern=r"^[0-9]{8}$"
+    )
+
+
+class Registration(BaseModel):
+    """A company's registration details. Every field is optional; what is missing is listed."""
+
+    entityType: EntityType | None = None
+    legalName: Text = Field(default=None, max_length=160)
+    cin: Code = Field(default=None, pattern=r"^[A-Z0-9-]{7,21}$")
+    pan: Code = Field(default=None, pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+    tan: Code = Field(default=None, pattern=r"^[A-Z]{4}[0-9]{5}[A-Z]$")
+    epfCode: Code = Field(default=None, max_length=30)
+    esiCode: Code = Field(default=None, max_length=30)
+    ptState: Code = Field(default=None, pattern=r"^[A-Z]{2}$")
+    udyam: Code = Field(default=None, max_length=30)
+    incorporatedOn: date | None = None
+    registeredAddress: Text = Field(default=None, max_length=400)
+    directors: list[Director] = Field(default_factory=list, max_length=20)
+
+
+class ComplianceGap(BaseModel):
+    """A registration detail that is missing, or a filing the company's own records suggest."""
+
+    kind: Literal["missing", "suggestion"]
+    text: str
 
 
 class Books(BaseModel):
@@ -235,6 +290,8 @@ class CompanySummary(BaseModel):
     customers: list[CustomerMove] = []
     intercompany: Intercompany | None = None
     leadSources: list[SourceMove] = []
+    registration: Registration | None = None
+    complianceGaps: list[ComplianceGap] = []
 
 
 class PortfolioSummary(BaseModel):

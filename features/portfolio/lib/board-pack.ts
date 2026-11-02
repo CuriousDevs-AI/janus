@@ -23,7 +23,7 @@ export function boardPack(list: PortfolioCompany[], period: PortfolioPeriod) {
     ["Late projects", (item) => item.delivery?.lateProjects ?? ""],
     ["Open tickets", (item) => item.support?.open ?? ""],
     ["Approvals waiting", (item) => item.approvals.reduce((sum, entry) => sum + entry.count, 0)],
-    ["Filings overdue", (item) => item.compliance.filter((due) => due.status === "overdue").length],
+    ["Filings past due, not confirmed", (item) => item.compliance.filter((due) => due.status === "overdue").length],
   ];
   const cell = (value: string | number) => { const text = String(value); return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
   const lines = [["Measure", ...list.map((item) => item.name)], ...rows.map(([label, pick]) => [label, ...list.map(pick)])].map((line) => line.map(cell).join(","));

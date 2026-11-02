@@ -110,8 +110,8 @@ def attention(
         oldest = unfiled[0]
         add(
             "high",
-            f"{_count(len(unfiled), 'filing')} overdue, the oldest {oldest.label} for"
-            f" {oldest.period} (due {_day(oldest.dueOn)})",
+            f"{_count(len(unfiled), 'filing')} past due and not recorded as filed, the oldest"
+            f" {oldest.label} for {oldest.period} (due {_day(oldest.dueOn)})",
             oldest.to,
         )
     soon = [due for due in dues if due.status == "due_soon"]

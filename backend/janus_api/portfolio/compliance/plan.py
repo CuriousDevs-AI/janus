@@ -12,12 +12,105 @@ from janus_api.core.tenancy import set_context
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import enter_company
 from janus_api.portfolio.compliance import due_dates
-from janus_api.portfolio.models import ComplianceFiling, ComplianceProfile
+from janus_api.portfolio.models import CompanyRegistration, ComplianceFiling, ComplianceProfile
 from janus_api.portfolio.periods import today_ist
 
+COMPANIES = ("pvt_ltd", "public_ltd", "opc")
 
-def _rules(profile: ComplianceProfile) -> due_dates.Profile:
-    return due_dates.Profile(profile.gst_filing, profile.tds, profile.pf_esi, profile.company)
+
+def _rules(
+    profile: ComplianceProfile, registration: CompanyRegistration | None = None
+) -> due_dates.Profile:
+    return due_dates.Profile(
+        profile.gst_filing,
+        profile.tds,
+        profile.pf_esi,
+        profile.company,
+        llp=bool(registration and registration.entity_type == "llp"),
+        pt_state=registration.pt_state if registration else None,
+    )
+
+
+async def _registration(db: AsyncSession, tenant_id: int) -> CompanyRegistration | None:
+    row: CompanyRegistration | None = await db.scalar(
+        select(CompanyRegistration).where(CompanyRegistration.tenant_id == tenant_id)
+    )
+    return row
+
+
+async def registration(db: AsyncSession, tenant_id: int) -> schemas.Registration | None:
+    return registration_out(await _registration(db, tenant_id))
+
+
+def registration_out(row: CompanyRegistration | None) -> schemas.Registration | None:
+    if row is None:
+        return None
+    return schemas.Registration(
+        entityType=row.entity_type,
+        legalName=row.legal_name,
+        cin=row.cin,
+        pan=row.pan,
+        tan=row.tan,
+        epfCode=row.epf_code,
+        esiCode=row.esi_code,
+        ptState=row.pt_state,
+        udyam=row.udyam,
+        incorporatedOn=row.incorporated_on,
+        registeredAddress=row.registered_address,
+        directors=[schemas.Director(**item) for item in row.directors],
+    )
+
+
+def gaps(
+    plan: schemas.CompliancePlan,
+    registration: schemas.Registration | None,
+    headcount: int,
+    payroll: bool,
+) -> list[schemas.ComplianceGap]:
+    """What is missing from the registration details, and what the company's own records
+    suggest applies. Suggestions are never switched on by themselves: a person decides."""
+    out: list[schemas.ComplianceGap] = []
+
+    def missing(text: str) -> None:
+        out.append(schemas.ComplianceGap(kind="missing", text=text))
+
+    def suggest(text: str) -> None:
+        out.append(schemas.ComplianceGap(kind="suggestion", text=text))
+
+    reg = registration or schemas.Registration()
+    if registration is None:
+        missing("No registration details yet: add the entity type, PAN and the rest.")
+    else:
+        if reg.entityType is None:
+            missing("Entity type (private limited, LLP, partnership…)")
+        if reg.pan is None:
+            missing("PAN")
+        if reg.entityType in COMPANIES and reg.cin is None:
+            missing("CIN")
+        if reg.entityType == "llp" and reg.cin is None:
+            missing("LLPIN")
+        if reg.entityType in (*COMPANIES, "llp") and not reg.directors:
+            missing("Directors or designated partners")
+    if plan.tds and reg.tan is None:
+        missing("TAN: needed to deduct and deposit TDS")
+    if plan.gstFiling != "none" and plan.gstin is None:
+        missing("GSTIN: GST returns are set but no GSTIN is recorded")
+    if plan.pfEsi and (reg.epfCode is None or reg.esiCode is None):
+        missing("EPF and ESI codes: PF and ESI payments are set")
+    if plan.gstin and plan.gstFiling == "none":
+        suggest("A GSTIN is recorded but no GST returns are set. Choose monthly or quarterly.")
+    if payroll and not plan.tds:
+        suggest("Salaries are on record: TDS on salaries usually applies.")
+    if headcount >= 20 and not plan.pfEsi:
+        suggest(f"{headcount} people on record: EPF applies from 20 employees.")
+    elif headcount >= 10 and not plan.pfEsi:
+        suggest(f"{headcount} people on record: ESI applies from 10 employees in most states.")
+    if reg.entityType in COMPANIES and not plan.company:
+        suggest(
+            "A limited company files AOC-4, MGT-7, the tax return and advance tax."
+            " Switch on company filings."
+        )
+    return out
 
 
 async def _profile(db: AsyncSession, tenant_id: int) -> ComplianceProfile | None:
@@ -34,6 +127,7 @@ async def compliance_view(
     profile = await _profile(db, tenant_id)
     if profile is None:
         return schemas.CompliancePlan(), []
+    registration = await _registration(db, tenant_id)
     plan = schemas.CompliancePlan(
         gstin=profile.gstin,
         gstFiling=profile.gst_filing,
@@ -41,13 +135,15 @@ async def compliance_view(
         pfEsi=profile.pf_esi,
         company=profile.company,
     )
-    filed: dict[str, date] = {
-        key: day
-        for key, day in (
+    filed: dict[str, tuple[date, str | None]] = {
+        key: (day, acknowledgement)
+        for key, day, acknowledgement in (
             await db.execute(
-                select(ComplianceFiling.item_key, ComplianceFiling.filed_on).where(
-                    ComplianceFiling.tenant_id == tenant_id
-                )
+                select(
+                    ComplianceFiling.item_key,
+                    ComplianceFiling.filed_on,
+                    ComplianceFiling.acknowledgement,
+                ).where(ComplianceFiling.tenant_id == tenant_id)
             )
         ).all()
     }
@@ -60,10 +156,11 @@ async def compliance_view(
             area=due.area,
             dueOn=due.due_on.isoformat(),
             status=due_dates.status(due.due_on, due.key in filed, today),
-            filedOn=filed[due.key].isoformat() if due.key in filed else None,
+            filedOn=filed[due.key][0].isoformat() if due.key in filed else None,
+            acknowledgement=filed[due.key][1] if due.key in filed else None,
             to="/portfolio?view=compliance",
         )
-        for due in due_dates.dues(_rules(profile), first, last)
+        for due in due_dates.dues(_rules(profile, registration), first, last)
     ]
 
 
@@ -104,6 +201,7 @@ async def mark_filing(
     key: str,
     filed_on: date | None,
     ip: str,
+    acknowledgement: str | None = None,
 ) -> None:
     """Marks a filing done on a day, or (with no day) takes the mark back. The key must be one of
     the company's own dues, so nothing else can be recorded."""
@@ -113,10 +211,13 @@ async def mark_filing(
         if filed_on is not None and filed_on > today:
             raise ApiError("invalid_date", "A filing cannot be marked done in the future.", 422)
         profile = await _profile(db, tenant_id)
+        registration = await _registration(db, tenant_id)
         known = profile is not None and any(
             due.key == key
             for due in due_dates.dues(
-                _rules(profile), today - timedelta(days=400), today + timedelta(days=60)
+                _rules(profile, registration),
+                today - timedelta(days=400),
+                today + timedelta(days=60),
             )
         )
         if not known:
@@ -132,11 +233,15 @@ async def mark_filing(
         elif row is None:
             db.add(
                 ComplianceFiling(
-                    tenant_id=tenant_id, item_key=key, filed_on=filed_on, filed_by=user_id
+                    tenant_id=tenant_id,
+                    item_key=key,
+                    filed_on=filed_on,
+                    filed_by=user_id,
+                    acknowledgement=acknowledgement,
                 )
             )
         else:
-            row.filed_on, row.filed_by = filed_on, user_id
+            row.filed_on, row.filed_by, row.acknowledgement = filed_on, user_id, acknowledgement
         record(
             db,
             "portfolio.filing_marked" if filed_on else "portfolio.filing_unmarked",
@@ -148,3 +253,36 @@ async def mark_filing(
         await db.flush()
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
+async def set_registration(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int,
+    company_id: str,
+    data: schemas.Registration,
+    ip: str,
+) -> schemas.Registration:
+    """Saves the company's registration details. The Owner or Group finance sets them."""
+    try:
+        tenant_id = await enter_company(db, user_id, company_id, "portfolio:finance")
+        row = await _registration(db, tenant_id)
+        if row is None:
+            row = CompanyRegistration(tenant_id=tenant_id, updated_by=user_id)
+            db.add(row)
+        row.entity_type, row.legal_name, row.cin = data.entityType, data.legalName, data.cin
+        row.pan, row.tan, row.epf_code, row.esi_code = (
+            data.pan,
+            data.tan,
+            data.epfCode,
+            data.esiCode,
+        )
+        row.pt_state, row.udyam, row.incorporated_on = data.ptState, data.udyam, data.incorporatedOn
+        row.registered_address = data.registeredAddress
+        row.directors = [item.model_dump() for item in data.directors]
+        row.updated_by, row.updated_at = user_id, now()
+        record(db, "portfolio.registration_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
+        await db.flush()
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return data
