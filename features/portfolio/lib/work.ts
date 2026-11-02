@@ -51,11 +51,17 @@ export function workFor(list: PortfolioCompany[]): WorkItem[] {
     if (money && Number(money.payableDueThisWeek) > 0) {
       add({ kind: "pay", priority: "medium", title: `Pay ${inr(Number(money.payableDueThisWeek))} of supplier bills`, detail: "Due within 7 days, including any already late.", due: null, to: `${FINANCE}?view=payables&workspace=finance-accounting` });
     }
-    for (const due of company.compliance.filter((entry) => entry.status === "overdue" || entry.status === "due_soon")) {
-      add({ kind: "file", priority: due.status === "overdue" ? "high" : "medium", title: `${due.label} for ${due.period}`, detail: due.status === "overdue" ? "Past its due date and not recorded as filed. File it, or record it if it is done." : "Due within 7 days.", due: due.dueOn, to: "/portfolio?view=compliance" });
+    // Past due filings are one item per company, so a company that has just set up its calendar
+    // does not bury everything else; each due this week is its own item.
+    const late = company.compliance.filter((entry) => entry.status === "overdue");
+    if (late.length) add({ kind: "file", priority: "high", title: late.length === 1 ? `${late[0].label} for ${late[0].period}` : `${late.length} filings past due`, detail: `Not recorded as filed${late.length > 1 ? `, the oldest ${late[0].label} for ${late[0].period}` : ""}. File them, or record the ones already done.`, due: late[0].dueOn, to: "/portfolio?view=compliance" });
+    for (const due of company.compliance.filter((entry) => entry.status === "due_soon")) {
+      add({ kind: "file", priority: "medium", title: `${due.label} for ${due.period}`, detail: "Due within 7 days.", due: due.dueOn, to: "/portfolio?view=compliance" });
     }
     for (const gap of company.complianceGaps.filter((entry) => entry.kind === "missing")) {
-      add({ kind: "fix", priority: "low", title: gap.text.split(":")[0], detail: gap.text.includes(":") ? gap.text.slice(gap.text.indexOf(":") + 1).trim() : "Needed for the compliance calendar.", due: null, to: "/portfolio?view=compliance" });
+      const head = gap.text.split(":")[0];
+      const rest = gap.text.includes(":") ? gap.text.slice(gap.text.indexOf(":") + 1).trim() : "Needed for the compliance calendar.";
+      add({ kind: "fix", priority: "low", title: head.startsWith("No ") ? head : `Missing ${head}`, detail: `${rest.charAt(0).toUpperCase()}${rest.slice(1)}${/[.!?]$/.test(rest) ? "" : "."}`, due: null, to: "/portfolio?view=compliance" });
     }
     const work = company.delivery;
     if (work?.lateProjects) add({ kind: "deliver", priority: "high", title: `${work.lateProjects} project${work.lateProjects === 1 ? "" : "s"} past the end date`, detail: "Move the date or close the work.", due: null, to: PROJECTS });

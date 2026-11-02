@@ -21,8 +21,6 @@ import { Bars, Kpi, palette } from "@/features/portfolio/components/figures";
 import { lakh } from "@/lib/demo-universe";
 import { useLoginAccount } from "@/lib/demo-persona";
 import { useSession } from "@/components/auth/session-provider";
-import { memoryItems } from "@/lib/mock-data/memory";
-import { getCustomerById } from "@/lib/mock-data/customers";
 
 const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you run, at a glance."],
@@ -73,8 +71,6 @@ function Overview({ list }: { list: CompanySummary[] }) {
   const total = { people: list.reduce((s, i) => s + i.hr.people, 0), pipeline: list.reduce((s, i) => s + (i.crm?.pipeline ?? 0), 0), won: list.reduce((s, i) => s + (i.crm?.wonValue ?? 0), 0), waiting: list.reduce((s, i) => s + i.hr.pendingLeave, 0), pay: list.reduce((s, i) => s + i.hr.monthlyPay, 0) };
   const attention = list.flatMap((item) => item.attention.map((entry) => ({ ...entry, company: item.company }))).sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.severity] - ({ high: 0, medium: 1, low: 2 })[b.severity]);
   const insights = insightsFor(list);
-  const remembered = memoryItems.filter((item) => item.status === "approved" && item.kind !== "stable_fact").slice(0, 5);
-  const acme = list.find((item) => item.company.id === "acme");
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Kpi label="Companies" value={String(list.length)} detail="Under your login" />
@@ -93,9 +89,6 @@ function Overview({ list }: { list: CompanySummary[] }) {
       </SectionCard>
     </div>
     <CompanyCards list={list} />
-    {acme && remembered.length > 0 && <SectionCard title="What Janus remembers" description={`Approved notes from ${acme.company.name}. Other companies add theirs as they work.`}>
-      <ul className="grid gap-3 md:grid-cols-2">{remembered.map((item) => <li key={item.id} className="border border-border bg-surface-2 p-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.label}{getCustomerById(item.customerId) ? ` · ${getCustomerById(item.customerId)!.name}` : ""}</p><p className="mt-1">{item.value}</p></li>)}</ul>
-    </SectionCard>}
   </>;
 }
 

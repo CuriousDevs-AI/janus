@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Eye, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ const outcome = (result: PortfolioAccessResult, verb: string) => [result.done.le
 
 /** Who else sees the Portfolio. Only an Owner opens this view. */
 export function Access({ list }: { list: PortfolioCompany[] }) {
+  const router = useRouter();
   const people = useApi<{ people: PortfolioPerson[] }>("/portfolio/access");
   const [adding, setAdding] = React.useState(false);
   const [removing, setRemoving] = React.useState<PortfolioPerson | null>(null);
@@ -33,7 +35,7 @@ export function Access({ list }: { list: PortfolioCompany[] }) {
           <Button size="sm" variant="ghost" aria-label={`Remove ${person.name ?? person.email}`} onClick={() => setRemoving(person)}><Trash2 className="size-4" /></Button>
         </li>)}</ul>}
     </SectionCard>
-    <SectionCard title="What each role sees" description="Everyone sees only the companies shared with them."><dl className="grid gap-3 md:grid-cols-3">{accessRoles.map(([role, detail]) => <div key={role} className="border border-border bg-surface-2 p-3"><dt className="text-sm font-medium">{roleLabel(role)}</dt><dd className="mt-1 text-xs text-muted-foreground">{detail}</dd></div>)}</dl></SectionCard>
+    <SectionCard title="What each role sees" description="Everyone sees only the companies shared with them. Preview a role to check before you share."><dl className="grid gap-3 md:grid-cols-3">{accessRoles.map(([role, detail]) => <div key={role} className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3"><dt className="text-sm font-medium">{roleLabel(role)}</dt><dd className="text-xs text-muted-foreground">{detail}</dd>{role !== "owner" && <Button size="sm" variant="outline" className="mt-auto w-fit" onClick={() => router.push(`/portfolio?view=overview&preview=${role}`)}><Eye className="size-3.5" />Preview as {roleLabel(role)}</Button>}</div>)}</dl></SectionCard>
     {adding && <AddPerson list={list} onClose={() => setAdding(false)} onDone={people.reload} />}
     {removing && <RemovePerson person={removing} onClose={() => setRemoving(null)} onDone={people.reload} />}
   </>;

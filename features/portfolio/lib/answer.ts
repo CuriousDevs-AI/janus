@@ -1,5 +1,7 @@
 import { attentionOf } from "@/features/portfolio/lib/companies";
 import { day, inr } from "@/features/portfolio/lib/format";
+
+const healthWord = { red: "Needs you", amber: "Watch", green: "On track" } as const;
 import type { PortfolioCompany } from "@/features/portfolio/types";
 
 export type Answer = { text: string; rows?: [string, string][] };
@@ -10,6 +12,37 @@ export function answerLive(question: string, list: PortfolioCompany[]): Answer {
   const named = list.find((item) => q.includes(item.name.toLowerCase()) || q.includes(item.name.split(" ")[0].toLowerCase()));
   const scope = named ? [named] : list;
   const top = <T,>(pick: (item: PortfolioCompany) => T | null | undefined, value: (item: PortfolioCompany) => number) => [...scope].filter((item) => pick(item) !== null && pick(item) !== undefined).sort((a, b) => value(b) - value(a))[0];
+  const why = /why|reason|explain|what changed|drop|fall|fell|rise|rose|grew|declin/.test(q);
+  if (why && /sale|revenue|income|turnover/.test(q)) {
+    const withBooks = scope.filter((item) => item.books);
+    if (!withBooks.length) return { text: "Sales come from the books, and money is not shared with your role." };
+    const selling = withBooks.filter((item) => Number(item.books!.current.netSales) || Number(item.books!.previous.netSales));
+    if (!selling.length) return { text: "No company has sales in the books for this period or the same days before." };
+    const rows = selling.flatMap((item): [string, string][] => {
+      const now = Number(item.books!.current.netSales), before = Number(item.books!.previous.netSales);
+      const movers = [...item.customers].map((customer) => ({ name: customer.name, diff: Number(customer.current) - Number(customer.previous) })).filter((mover) => mover.diff !== 0).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
+      return [[item.name, `${inr(now)} against ${inr(before)} in the same days before (${now >= before ? "+" : "−"}${inr(Math.abs(now - before))})`], ...movers.map((mover): [string, string] => [`↳ customer ${mover.name}`, `${mover.diff > 0 ? "+" : "−"}${inr(Math.abs(mover.diff))}`])];
+    });
+    return { text: "Sales against the same days before, with the customers who moved most. Sales are invoices before GST.", rows };
+  }
+  if (why && /lead|enquir|inquir/.test(q)) {
+    const rows = scope.flatMap((item): [string, string][] => {
+      const movers = item.leadSources.filter((source) => source.current !== source.previous).sort((a, b) => Math.abs(b.current - b.previous) - Math.abs(a.current - a.previous)).slice(0, 3);
+      return [[item.name, `${item.period.current.leads} leads against ${item.period.previous.leads} in the same days before`], ...movers.map((source): [string, string] => [`↳ from ${source.source.replace(/_/g, " ")}`, `${source.current} against ${source.previous}`])];
+    });
+    return { text: "Leads against the same days before, by the channel they came from.", rows };
+  }
+  if (/worst|weakest|struggl|behind|needs? (me|you|us) most|most attention|which company.*(attention|first|help)/.test(q)) {
+    const order = { red: 0, amber: 1, green: 2 };
+    const ranked = [...scope].sort((a, b) => order[a.health?.status ?? "green"] - order[b.health?.status ?? "green"] || (b.health?.reasons.length ?? 0) - (a.health?.reasons.length ?? 0));
+    const first = ranked[0];
+    return { text: first?.health && first.health.status !== "green" ? `${first.name} needs you most: ${first.health.reasons[0]}.` : "Every company is on track right now.", rows: ranked.map((item) => [item.name, item.health ? `${healthWord[item.health.status]}${item.health.reasons.length ? ` · ${item.health.reasons.join("; ")}` : ""}` : "—"]) };
+  }
+  if (/profit|margin|profitab/.test(q)) {
+    const withBooks = scope.filter((item) => item.books);
+    if (!withBooks.length) return { text: "Profit comes from the books, and money is not shared with your role." };
+    return { text: "Profit before salaries this period: sales before GST less supplier bills. Salaries are not booked yet.", rows: withBooks.map((item) => { const sales = Number(item.books!.current.netSales), profit = Number(item.books!.current.profitBeforePayroll); return [item.name, `${inr(profit)} on ${inr(sales)} of sales${sales > 0 ? ` · ${Math.round((profit / sales) * 100)}% margin` : ""}`]; }) };
+  }
   if (/attention|urgent|need|worry|problem|health|red/.test(q)) {
     const items = attentionOf(scope);
     return { text: items.length ? `${items.length} thing${items.length === 1 ? "" : "s"} need you${named ? ` at ${named.name}` : ""}, most urgent first.` : "Nothing needs you right now.", rows: items.slice(0, 8).map((item) => [item.company.name, item.text]) };
@@ -38,5 +71,5 @@ export function answerLive(question: string, list: PortfolioCompany[]): Answer {
     const best = top((item) => item.crm, (item) => Number(item.crm.pipelineValue));
     return { text: named ? `${named.name} has ${inr(Number(named.crm.pipelineValue))} open in ${named.crm.openDeals} deals and has won ${inr(Number(named.crm.wonValue))}.` : `${best?.name} holds the largest open pipeline, ${inr(Number(best?.crm.pipelineValue ?? 0))}.`, rows: scope.map((item) => [item.name, `${item.period.current.leads} leads this period · ${inr(Number(item.crm.pipelineValue))} open · ${inr(Number(item.crm.wonValue))} won`]) };
   }
-  return { text: "I answer from the figures on this page: what needs you, approvals, sales, people and payroll, money owed, stock, delivery and filings. Try one of those, or name a company." };
+  return { text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company needs you most, profit, what needs you, approvals, money owed, people and payroll, stock, delivery and filings. Name a company to narrow it." };
 }

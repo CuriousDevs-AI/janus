@@ -1,5 +1,6 @@
 /** Reading the companies in a summary: who may do what in each, and adding up across them. */
 
+import * as React from "react";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { message } from "@/lib/api/client";
@@ -7,11 +8,39 @@ import { businessHome } from "@/lib/company";
 import { switchTenant } from "@/lib/live-company";
 import type { PortfolioCompany, PortfolioPeriodFigures } from "@/features/portfolio/types";
 
+/** While an Owner previews the Portfolio as a group role, the role being previewed. */
+export const PreviewRole = React.createContext<string | null>(null);
+export const previewRoles = ["group_finance", "group_analyst"] as const;
+
+/** What a role without money would receive from the server: every money figure left out. */
+export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
+  return {
+    ...item,
+    money: null,
+    books: null,
+    customers: [],
+    intercompany: null,
+    period: { current: { ...item.period.current, invoiced: null, collected: null }, previous: { ...item.period.previous, invoiced: null, collected: null } },
+    people: item.people && { ...item.people, monthlyPayroll: null, claimsValue: null },
+    stock: item.stock && { ...item.stock, stockValue: null },
+    targets: item.targets && { ...item.targets, collected: null },
+    // The server builds these without money for such a role: drop the money lines, then health
+    // follows the same rule (red with anything high, amber with anything medium).
+    ...(() => {
+      const attention = item.attention.filter((entry) => !/view=(receivables|payables)/.test(entry.to));
+      const high = attention.filter((entry) => entry.severity === "high").map((entry) => entry.text);
+      const medium = attention.filter((entry) => entry.severity === "medium").map((entry) => entry.text);
+      return { attention, health: item.health && (high.length ? { status: "red" as const, reasons: high } : medium.length ? { status: "amber" as const, reasons: medium } : { status: "green" as const, reasons: [] }) };
+    })(),
+  };
+}
+
 /** The person's role in a company decides what they may do there from the Portfolio. A group role
  * reads the Portfolio and has no workspace inside; only an Owner opens the company. */
 export function useRoles() {
   const session = useSession();
-  const role = (item: PortfolioCompany) => session.tenants.find((tenant) => tenant.id === item.id)?.role;
+  const preview = React.useContext(PreviewRole);
+  const role = (item: PortfolioCompany) => preview ?? session.tenants.find((tenant) => tenant.id === item.id)?.role;
   return { owns: (item: PortfolioCompany) => role(item) === "owner", handlesMoney: (item: PortfolioCompany) => role(item) === "owner" || role(item) === "group_finance" };
 }
 

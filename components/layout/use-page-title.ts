@@ -20,8 +20,9 @@ export function usePageTitle() {
         for (const [key, value] of itemParams.entries()) {
           if (searchParams.get(key) !== value) return false;
         }
+        // Filters on a page (its period, a chosen company, a preview) keep the page's title.
         for (const [key] of searchParams.entries()) {
-          if (key !== "workspace" && !itemParams.has(key)) return false;
+          if (!["workspace", "period", "company", "preview"].includes(key) && !itemParams.has(key)) return false;
         }
         return true;
       })?.label || byPath?.label || "Janus"

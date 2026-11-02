@@ -109,7 +109,7 @@ export function SidebarNav({
     if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
     const params = new URLSearchParams(itemQuery ?? "");
     // Filters on a page (its period, a chosen company) keep the page's link highlighted.
-    const ignored = new Set(["workspace", "period", "company"]);
+    const ignored = new Set(["workspace", "period", "company", "preview"]);
     for (const [key, value] of params.entries()) {
       if (ignored.has(key)) continue;
       if (searchParams.get(key) !== value) return false;
