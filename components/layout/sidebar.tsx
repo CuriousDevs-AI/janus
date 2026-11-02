@@ -157,21 +157,14 @@ export function SidebarNav({
 
   return (
     <>
-      {/* Top of the sidebar. In a company it is the company itself; in the Portfolio it is the Janus brand. */}
-      {workspaceId === "portfolio" && <div className="flex h-14 items-center border-b border-border px-4">
-        <Link href={portfolioHome} className="flex items-center gap-2 overflow-hidden">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">C</span>
-          <span className="flex flex-col leading-none"><span className="text-[13px] font-semibold text-foreground">Curious<span className="text-accent">Devs</span></span><span className="text-[10px] text-muted-foreground">Janus</span></span>
-        </Link>
-      </div>}
+      {/* Top of the sidebar: the company in a company, the Portfolio in the Portfolio, laid out the same. */}
       <div
         className={cn(
-          "border-b border-border",
-          workspaceId === "portfolio" ? "py-2" : "flex h-14 items-center",
+          "flex h-14 items-center border-b border-border",
           collapsed ? "px-2" : "px-3",
         )}
       >
-        {workspaceId === "portfolio" ? <div className={cn("flex items-center gap-2 px-2 py-1.5", collapsed && "justify-center px-0")}><span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-col leading-tight"><span className="truncate text-[12px] font-medium text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</div> : <DropdownMenu>
+        {workspaceId === "portfolio" ? <Link href={portfolioHome} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2", collapsed && "justify-center px-0")}><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-foreground text-[13px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-1 flex-col items-start leading-tight"><span className="max-w-full truncate text-[13px] font-semibold text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</Link> : <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
