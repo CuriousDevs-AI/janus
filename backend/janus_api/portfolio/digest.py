@@ -19,8 +19,10 @@ from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
 from janus_api.portfolio import schemas
+from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.models import PortfolioDigest
-from janus_api.portfolio.service import member_tenants, summary, today_ist
+from janus_api.portfolio.periods import today_ist
+from janus_api.portfolio.summary import summary
 
 IST = ZoneInfo("Asia/Kolkata")
 # Monday, 9 in the morning in India.
@@ -44,7 +46,7 @@ async def _row(db: AsyncSession, user_id: int) -> PortfolioDigest | None:
 
 async def get_setting(db: AsyncSession, user_id: int) -> schemas.DigestOut:
     row = await _row(db, user_id)
-    eligible = bool(await member_tenants(db, user_id, "portfolio:read"))
+    eligible = bool(await readable_companies(db, user_id))
     return schemas.DigestOut(
         enabled=bool(row and row.enabled and eligible),
         eligible=eligible,
@@ -56,7 +58,7 @@ async def get_setting(db: AsyncSession, user_id: int) -> schemas.DigestOut:
 async def set_setting(
     db: AsyncSession, user_id: int, tenant_id: int, enabled: bool, ip: str
 ) -> schemas.DigestOut:
-    if enabled and not await member_tenants(db, user_id, "portfolio:read"):
+    if enabled and not await readable_companies(db, user_id):
         raise ApiError("forbidden", "The digest is for people who see a Portfolio.", 403)
     row = await _row(db, user_id)
     if row is None:

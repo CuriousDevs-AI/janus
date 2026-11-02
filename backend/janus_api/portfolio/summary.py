@@ -1,0 +1,259 @@
+"""The Portfolio itself: every company a person may see, each read on its own under its own context.
+
+Portfolio owns no business records. It asks each module for its figures through that module's
+`overview` functions and puts them side by side; it never reads another module's tables.
+"""
+
+from datetime import date
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from janus_api.audit.service import record
+from janus_api.business import overview as business
+from janus_api.core.tenancy import set_context
+from janus_api.crm import overview as crm
+from janus_api.finance import overview as finance
+from janus_api.hr import overview as hr
+from janus_api.it import overview as it
+from janus_api.operations import overview as operations
+from janus_api.org import overview as org
+from janus_api.org import service as org_service
+from janus_api.portfolio import attention, schemas
+from janus_api.portfolio.access import readable_companies
+from janus_api.portfolio.compliance.plan import compliance_view
+from janus_api.portfolio.periods import period_for, rupees, today_ist
+from janus_api.portfolio.targets import targets_view
+from janus_api.projects import overview as projects
+from janus_api.support import overview as support
+from janus_api.vault import overview as vault
+
+HR = "/workspace/hr-people"
+FINANCE = "/workspace/finance-accounting"
+# Each kind of approval: its name for many and for one, and where it is decided.
+APPROVALS: dict[str, tuple[str, str, str]] = {
+    "leave": ("Leave requests", "Leave request", f"{HR}?view=approvals&workspace=hr-people"),
+    "claims": ("Expense claims", "Expense claim", f"{HR}?view=expenses&workspace=hr-people"),
+    "funds": (
+        "Fund requests",
+        "Fund request",
+        f"{FINANCE}?view=funds&workspace=finance-accounting",
+    ),
+    "credit_notes": (
+        "Credit notes",
+        "Credit note",
+        f"{FINANCE}?view=credit-notes&workspace=finance-accounting",
+    ),
+    "vendor_banks": (
+        "Supplier bank details",
+        "Supplier bank detail",
+        f"{FINANCE}?view=approvals&workspace=finance-accounting",
+    ),
+    "stock_adjustments": (
+        "Stock adjustments",
+        "Stock adjustment",
+        "/workspace/operations-inventory?workspace=operations-inventory",
+    ),
+    "requisitions": (
+        "Purchase requisitions",
+        "Purchase requisition",
+        "/workspace/operations-inventory?workspace=operations-inventory",
+    ),
+    "project_changes": (
+        "Project changes",
+        "Project change",
+        "/workspace/projects-delivery?workspace=projects-delivery",
+    ),
+    "it_changes": (
+        "IT changes",
+        "IT change",
+        "/workspace/it-infrastructure?workspace=it-infrastructure",
+    ),
+    "workflow_runs": ("Workflow runs", "Workflow run", "/approvals"),
+}
+
+
+async def period_figures(
+    db: AsyncSession, tenant_id: int, start: date, end: date, *, money: bool
+) -> schemas.PeriodFigures:
+    """What happened between two days, both included, in India time."""
+    sales = await crm.activity(db, tenant_id, start, end)
+    flow = await finance.flow(db, tenant_id, start, end) if money else None
+    return schemas.PeriodFigures(
+        leads=sales.leads,
+        wonDeals=sales.won_deals,
+        wonValue=rupees(sales.won_value),
+        invoiced=rupees(flow.invoiced, paise=True) if flow else None,
+        collected=rupees(flow.collected, paise=True) if flow else None,
+    )
+
+
+async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schemas.MoneySummary:
+    owed = await finance.money(db, tenant_id, today)
+    return schemas.MoneySummary(
+        receivable=rupees(owed.receivable, paise=True),
+        overdue=rupees(owed.overdue, paise=True),
+        overdueInvoices=owed.overdue_invoices,
+        ageing=schemas.Ageing(
+            days0to30=rupees(owed.late_0_30, paise=True),
+            days31to60=rupees(owed.late_31_60, paise=True),
+            over60=rupees(owed.late_over_60, paise=True),
+        ),
+        payable=rupees(owed.payable, paise=True),
+        payableDueThisWeek=rupees(owed.payable_due_this_week, paise=True),
+    )
+
+
+async def approvals(db: AsyncSession, tenant_id: int, staff: hr.People) -> list[schemas.Approval]:
+    """Everything in the company waiting on a decision, by kind, with where to decide it."""
+    counts = {
+        "leave": staff.pending_leave,
+        "claims": staff.pending_claims,
+        **await finance.pending_approvals(db, tenant_id),
+        "vendor_banks": await vault.pending_bank_details(db, tenant_id),
+        **await operations.pending_approvals(db, tenant_id),
+        "project_changes": await projects.pending_changes(db, tenant_id),
+        "it_changes": await it.pending_changes(db, tenant_id),
+        "workflow_runs": await business.pending_workflow_runs(db, tenant_id),
+    }
+    return [
+        schemas.Approval(kind=kind, label=label, one=one, count=counts[kind], to=to)
+        for kind, (label, one, to) in APPROVALS.items()
+        if counts[kind]
+    ]
+
+
+async def company_summary(
+    db: AsyncSession,
+    company: org.Company,
+    current: bool,
+    today: date,
+    period: schemas.Period,
+    *,
+    money: bool,
+    detail: bool = True,
+) -> schemas.CompanySummary:
+    """One company's headline numbers, and with `detail` its operating view.
+
+    The caller has set this company's context, so row-level security applies to every query.
+    """
+    tenant_id = company.id
+    sales = await crm.pipeline(db, tenant_id)
+    out = schemas.CompanySummary(
+        id=str(tenant_id),
+        name=company.name,
+        industry=company.industry,
+        createdAt=company.created_on.isoformat(),
+        current=current,
+        members=await org.active_member_count(db, tenant_id),
+        openTickets=await support.open_count(db, tenant_id),
+        crm=schemas.CrmSummary(
+            leads=sales.leads,
+            openDeals=sales.open_deals,
+            wonDeals=sales.won_deals,
+            lostDeals=sales.lost_deals,
+            pipelineValue=str(sales.pipeline_value),
+            wonValue=str(sales.won_value),
+        ),
+        money=await money_summary(db, tenant_id, today) if money else None,
+        period=schemas.PeriodCompare(
+            current=await period_figures(
+                db, tenant_id, date.fromisoformat(period.start), today, money=money
+            ),
+            previous=await period_figures(
+                db,
+                tenant_id,
+                date.fromisoformat(period.previousStart),
+                date.fromisoformat(period.previousEnd),
+                money=money,
+            ),
+        ),
+    )
+    if not detail:
+        return out
+    # Payroll, claim amounts and stock value are money: shown only where the role includes it.
+    staff = await hr.people(db, tenant_id, today)
+    goods = await operations.stock(db, tenant_id, today)
+    work = await projects.delivery(db, tenant_id, today)
+    tickets = await support.tickets(db, tenant_id, today)
+    out.people = schemas.People(
+        headcount=staff.headcount,
+        onLeaveToday=staff.on_leave_today,
+        pendingLeave=staff.pending_leave,
+        pendingClaims=staff.pending_claims,
+        monthlyPayroll=rupees(staff.monthly_payroll) if money else None,
+        claimsValue=rupees(staff.claims_value) if money else None,
+    )
+    out.stock = schemas.Stock(
+        items=goods.items,
+        belowReorder=goods.below_reorder,
+        expiringBatches=goods.expiring_batches,
+        dispatchesInTransit=goods.dispatches_in_transit,
+        stockValue=rupees(goods.stock_value, paise=True) if money else None,
+    )
+    out.delivery = schemas.Delivery(
+        activeProjects=work.active_projects,
+        lateProjects=work.late_projects,
+        overdueMilestones=work.overdue_milestones,
+        overdueTasks=work.overdue_tasks,
+        awaitingAcceptance=work.awaiting_acceptance,
+        awaitingAcceptanceValue=rupees(work.awaiting_acceptance_value),
+    )
+    out.support = schemas.Support(
+        open=tickets.open,
+        urgent=tickets.urgent,
+        escalated=tickets.escalated,
+        olderThanWeek=tickets.older_than_week,
+    )
+    out.approvals = await approvals(db, tenant_id, staff)
+    out.compliancePlan, out.compliance = await compliance_view(db, tenant_id, today)
+    out.targets = await targets_view(db, tenant_id, money=money)
+    out.attention = attention.attention(
+        out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance
+    )
+    out.health = attention.health(out.attention)
+    return out
+
+
+async def summary(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    ip: str | None,
+    period_key: str = "month",
+    today: date | None = None,
+    *,
+    detail: bool = True,
+) -> schemas.PortfolioSummary:
+    """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
+
+    Each is read on its own, under its own context, never across companies. Money is included only
+    where the person's role there holds portfolio:finance.
+    """
+    companies = []
+    # The digest reads as of the end of the week it reports; the page reads as of today.
+    today = today or today_ist()
+    period = period_for(period_key, today)
+    try:
+        for tenant_id in await readable_companies(db, user_id):
+            await set_context(db, user_id=user_id, tenant_id=tenant_id)
+            # Re-check the role under this company's context before reading anything.
+            _, role = await org_service.membership(db, user_id, tenant_id)
+            company = await org.company(db, tenant_id)
+            if "portfolio:read" not in role.permissions or company is None:
+                continue
+            companies.append(
+                await company_summary(
+                    db,
+                    company,
+                    tenant_id == current_tenant,
+                    today,
+                    period,
+                    money="portfolio:finance" in role.permissions,
+                    detail=detail,
+                )
+            )
+            record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)
+    finally:
+        # Flushes the audit rows under the last company, then returns to the session's own company.
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return schemas.PortfolioSummary(period=period, companies=companies)

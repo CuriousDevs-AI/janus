@@ -2,16 +2,17 @@ from fastapi import APIRouter, Request
 
 from janus_api.core.deps import CurrentActor, Db, request_ip
 from janus_api.core.errors import ApiError
-from janus_api.portfolio import digest, schemas, service
+from janus_api.portfolio import access, companies, digest, schemas, summary, targets
+from janus_api.portfolio.compliance import plan as compliance
 
 router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
 
 
 @router.get("/summary", response_model=schemas.PortfolioSummary)
-async def summary(
+async def read_summary(
     actor: CurrentActor, db: Db, request: Request, period: schemas.PeriodKey = "month"
 ) -> schemas.PortfolioSummary:
-    return await service.summary(
+    return await summary.summary(
         db, actor.user.id, actor.session.tenant_id, request_ip(request), period
     )
 
@@ -20,21 +21,21 @@ async def summary(
 async def create_company(
     data: schemas.CompanyCreate, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.CompanyOut:
-    return await service.create_company(
+    return await companies.create_company(
         db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
     )
 
 
 @router.get("/access", response_model=schemas.AccessList)
-async def access(actor: CurrentActor, db: Db) -> schemas.AccessList:
-    return await service.list_access(db, actor.user.id, actor.session.tenant_id)
+async def read_access(actor: CurrentActor, db: Db) -> schemas.AccessList:
+    return await access.list_access(db, actor.user.id, actor.session.tenant_id)
 
 
 @router.post("/access", response_model=schemas.AccessResult)
 async def grant_access(
     data: schemas.AccessGrant, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.AccessResult:
-    return await service.grant_access(
+    return await access.grant_access(
         db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
     )
 
@@ -43,7 +44,7 @@ async def grant_access(
 async def remove_access(
     data: schemas.AccessRemove, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.AccessResult:
-    return await service.remove_access(
+    return await access.remove_access(
         db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
     )
 
@@ -71,10 +72,10 @@ async def digest_preview(actor: CurrentActor, db: Db) -> schemas.DigestPreview:
 
 
 @router.put("/companies/{company_id}/targets", response_model=schemas.Targets)
-async def set_targets(
+async def save_targets(
     company_id: str, data: schemas.TargetsUpdate, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.Targets:
-    return await service.set_targets(
+    return await targets.set_targets(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )
 
@@ -83,7 +84,7 @@ async def set_targets(
 async def set_compliance(
     company_id: str, plan: schemas.CompliancePlan, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.CompliancePlan:
-    return await service.set_compliance_plan(
+    return await compliance.set_compliance_plan(
         db, actor.user.id, actor.session.tenant_id, company_id, plan, request_ip(request)
     )
 
@@ -97,7 +98,7 @@ async def mark_filed(
     db: Db,
     request: Request,
 ) -> None:
-    await service.mark_filing(
+    await compliance.mark_filing(
         db,
         actor.user.id,
         actor.session.tenant_id,
@@ -112,6 +113,6 @@ async def mark_filed(
 async def unmark_filed(
     company_id: str, key: str, actor: CurrentActor, db: Db, request: Request
 ) -> None:
-    await service.mark_filing(
+    await compliance.mark_filing(
         db, actor.user.id, actor.session.tenant_id, company_id, key, None, request_ip(request)
     )

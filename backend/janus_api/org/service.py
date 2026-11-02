@@ -784,3 +784,55 @@ async def teammate_user_ids(db: AsyncSession, tenant_id: int, user_id: int) -> l
             )
         ).all()
     )
+
+
+async def disable_role_membership(
+    db: AsyncSession, tenant_id: int, user_id: int, roles: tuple[str, ...]
+) -> int | None:
+    """Ends the person's active membership when it holds one of these roles. Returns its id, or
+    None when they hold no such role here."""
+    member = await db.scalar(
+        select(Membership)
+        .join(Role, Role.id == Membership.role_id)
+        .where(
+            Membership.tenant_id == tenant_id,
+            Membership.user_id == user_id,
+            Membership.status == "active",
+            Role.name.in_(roles),
+        )
+    )
+    if member is None:
+        return None
+    member.status = "disabled"
+    return int(member.id)
+
+
+async def revoke_open_invitations(
+    db: AsyncSession, tenant_id: int, email: str, roles: tuple[str, ...]
+) -> list[int]:
+    """Withdraws the unused invitations sent to this address for one of the system roles, and
+    returns their ids."""
+    invites = (
+        await db.scalars(
+            select(Invitation)
+            .join(Role, Role.id == Invitation.role_id)
+            .where(
+                Invitation.tenant_id == tenant_id,
+                Invitation.email == email,
+                Invitation.used_at.is_(None),
+                Invitation.revoked_at.is_(None),
+                Role.tenant_id.is_(None),
+                Role.name.in_(roles),
+            )
+        )
+    ).all()
+    for invite in invites:
+        invite.revoked_at = now()
+    return [int(invite.id) for invite in invites]
+
+
+async def set_industry(db: AsyncSession, tenant_id: int, industry: str) -> None:
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant.industry = industry

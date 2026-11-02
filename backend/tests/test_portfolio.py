@@ -6,10 +6,10 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from janus_api.portfolio.compliance import Profile, dues, status
+from janus_api.portfolio.compliance.due_dates import Profile, dues, status
 from janus_api.portfolio.digest import day, inr, next_due
 from janus_api.portfolio.digest import run_once as digest_once
-from janus_api.portfolio.service import period_for, today_ist
+from janus_api.portfolio.periods import period_for, today_ist
 from tests.conftest import Mailbox
 from tests.helpers import PASSWORD, Account, accept_new, invite, signup
 
