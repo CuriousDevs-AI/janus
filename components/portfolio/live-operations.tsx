@@ -20,8 +20,10 @@ import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan,
 
 /** Rupees the way an Indian owner reads them: ₹12,500 below a lakh, then ₹4.2L and ₹1.3Cr. */
 export function inr(value: number) {
-  if (Math.abs(value) >= 1e7) return `₹${(value / 1e7).toFixed(1).replace(/\.0$/, "")}Cr`;
-  if (Math.abs(value) >= 1e5) return `₹${(value / 1e5).toFixed(1).replace(/\.0$/, "")}L`;
+  // Rounded half up on whole tenths, like the weekly email: ₹1.65L reads ₹1.7L, not toFixed's ₹1.6L.
+  const tenths = (unit: number) => String(Math.round(value / (unit / 10)) / 10);
+  if (Math.abs(value) >= 1e7) return `₹${tenths(1e7)}Cr`;
+  if (Math.abs(value) >= 1e5) return `₹${tenths(1e5)}L`;
   return `₹${Math.round(value).toLocaleString("en-IN")}`;
 }
 const severityTone = { high: "danger", medium: "warning", low: "neutral" } as const;
@@ -44,11 +46,11 @@ export function attentionOf(list: PortfolioCompany[]) {
   return list.flatMap((company) => company.attention.map((entry, index) => ({ ...entry, company, key: `${company.id}:${index}:${entry.text}` }))).sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
-export function AttentionList({ list, limit, onOpen }: { list: PortfolioCompany[]; limit?: number; onOpen?: (key: string) => void }) {
+export function AttentionList({ list, limit, onOpen, read = [] }: { list: PortfolioCompany[]; limit?: number; onOpen?: (key: string) => void; read?: string[] }) {
   const { owns } = useRoles();
   const items = attentionOf(list);
   if (items.length === 0) return <p className="text-sm text-muted-foreground">Nothing needs you in any company.</p>;
-  return <ul className="flex flex-col divide-y divide-border">{items.slice(0, limit ?? items.length).map((item) => <li key={item.key} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+  return <ul className="flex flex-col divide-y divide-border">{items.slice(0, limit ?? items.length).map((item) => <li key={item.key} className={`flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0 ${read.includes(item.key) ? "opacity-60" : ""}`}>
     <Badge variant={severityTone[item.severity]}>{severityName[item.severity]}</Badge>
     <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{item.company.name}</span> · {item.text}</span>
     {(owns(item.company) || item.to.startsWith("/portfolio")) && <Button size="sm" variant="secondary" onClick={() => { onOpen?.(item.key); if (item.to.startsWith("/portfolio")) window.location.assign(item.to); else openIn(item.company, item.to); }}>Open</Button>}
@@ -66,7 +68,7 @@ export function LiveNotifications({ list }: { list: PortfolioCompany[] }) {
   const unread = items.filter((item) => !read.includes(item.key));
   return <SectionCard title={`${unread.length} unread`} description="From every company, most urgent first. Each opens where it is dealt with." action={<Button size="sm" variant="secondary" disabled={unread.length === 0} onClick={() => mark(items.map((item) => item.key))}><Check className="mr-1 size-4" />Mark all read</Button>}>
     <div role="group" aria-label="Filter by company" className="mb-4 flex flex-wrap gap-2"><Button size="sm" variant={filter === "all" ? "default" : "outline"} onClick={() => setFilter("all")}>All companies</Button>{list.map((item) => <Button key={item.id} size="sm" variant={filter === item.id ? "default" : "outline"} onClick={() => setFilter(item.id)}>{item.name}</Button>)}</div>
-    <div className={unread.length < items.length ? "[&_li]:transition-opacity" : ""}><AttentionList list={shown} onOpen={(key) => mark([key])} /></div>
+    <AttentionList list={shown} read={read} onOpen={(key) => mark([key])} />
     {items.length > 0 && <p className="mt-3 text-xs text-muted-foreground">{items.length - unread.length} of {items.length} marked read in this browser.</p>}
   </SectionCard>;
 }
@@ -94,7 +96,9 @@ export function TargetsCard({ list, period }: { list: PortfolioCompany[]; period
     const target = Number(monthly) * months[period.key];
     const pace = target * elapsed;
     const share = target ? Math.min(100, (actual / target) * 100) : 0;
-    return <div key={label}><div className="mb-1 flex flex-wrap justify-between gap-2 text-xs"><span className="font-medium">{label}</span><span className="tabular-nums text-muted-foreground">{format(actual)} of {format(target)} · {actual >= pace ? "on pace" : `${format(pace - actual)} behind pace`}</span></div><div className="h-2 bg-surface-2"><div className={`h-2 ${actual >= pace ? "bg-success" : "bg-warning"}`} style={{ width: `${Math.max(2, share)}%` }} /></div></div>;
+    // A gap that rounds to nothing in the figure's own format counts as on pace.
+    const onPace = actual >= pace || format(pace - actual) === format(0);
+    return <div key={label}><div className="mb-1 flex flex-wrap justify-between gap-2 text-xs"><span className="font-medium">{label}</span><span className="tabular-nums text-muted-foreground">{format(actual)} of {format(target)} · {onPace ? "on pace" : `${format(pace - actual)} behind pace`}</span></div><div className="h-2 bg-surface-2"><div className={`h-2 ${onPace ? "bg-success" : "bg-warning"}`} style={{ width: `${Math.max(2, share)}%` }} /></div></div>;
   };
   return <SectionCard title="Targets" description={`Monthly targets scaled to ${period.label}, against where the pace says each should be today.`}>
     <div className="grid gap-5 md:grid-cols-2">{withTargets.map((item) => <div key={item.id} className="flex flex-col gap-3"><p className="text-sm font-medium">{item.name}</p>
