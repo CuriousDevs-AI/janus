@@ -368,3 +368,17 @@ class DigestUpdate(BaseModel):
 class DigestPreview(BaseModel):
     subject: str
     body: str
+
+
+class ActivityItem(BaseModel):
+    companyId: str
+    company: str
+    at: datetime
+    area: str
+    who: str
+    text: str
+
+
+class ActivityList(BaseModel):
+    days: int
+    items: list[ActivityItem]

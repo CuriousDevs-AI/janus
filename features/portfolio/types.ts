@@ -137,3 +137,8 @@ export interface PortfolioAccessResult {
   done: string[];
   skipped: { company: string; reason: string }[];
 }
+/** GET /portfolio/activity: what happened across the companies, newest first, without amounts. */
+export interface PortfolioActivity {
+  days: number;
+  items: { companyId: string; company: string; at: string; area: string; who: string; text: string }[];
+}

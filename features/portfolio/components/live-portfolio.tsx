@@ -9,6 +9,8 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import { Access } from "@/features/portfolio/components/access";
+import { Activity } from "@/features/portfolio/components/activity";
+import { WorkInbox } from "@/features/portfolio/components/work-inbox";
 import { Analytics } from "@/features/portfolio/components/analytics";
 import { Notifications } from "@/features/portfolio/components/attention";
 import { AddCompany, Companies } from "@/features/portfolio/components/companies";
@@ -28,7 +30,9 @@ const titles: Record<string, [string, string]> = {
   companies: ["Companies", "Add a company or open one."],
   intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
   notifications: ["Notifications", "What needs you, from every company."],
-  compliance: ["Compliance", "GST, TDS, PF and ESI and company filings, by company."],
+  compliance: ["Compliance", "What each company must file, what is missing, and recording filings."],
+  work: ["Work inbox", "Everything that needs someone to act, across your companies."],
+  activity: ["Activity", "What happened lately, in every company."],
   people: ["Portfolio access", "Who else sees these companies together, and how much."],
 };
 // The views that report on a period, and so show the period bar and the board pack.
@@ -65,6 +69,8 @@ export function LivePortfolio() {
       case "notifications": return <Notifications list={list} />;
       case "intelligence": return <Intelligence list={list} />;
       case "compliance": return <ComplianceView list={list} onChanged={summary.reload} />;
+      case "work": return <WorkInbox list={list} />;
+      case "activity": return <Activity list={list} />;
       default: return <Overview list={list} owner={owner} period={summary.data.period} />;
     }
   }

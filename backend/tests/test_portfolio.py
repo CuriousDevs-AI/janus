@@ -929,3 +929,49 @@ async def test_registration_details_gaps_and_acknowledgement(
     filed = (await company()).json()["companies"][0]
     entry = next(due for due in filed["compliance"] if due["key"] == past["key"])
     assert entry["status"] == "filed" and entry["acknowledgement"] == "AA2910260012345"
+
+
+async def test_activity_across_companies_leaves_money_out_for_an_analyst(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    await _second_company(client, owner, "Pune Retail")
+    await _lead_with_deal(client, owner.headers, "act-1", "100", "new")
+    today = today_ist().isoformat()
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "act-inv"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": today,
+            "due_date": today,
+            "same_state": True,
+            "lines": [{"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 1000, "gst_rate": 0}],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+
+    seen = (await client.get("/v1/portfolio/activity", headers=owner.headers)).json()
+    texts = {(item["company"], item["area"], item["text"]) for item in seen["items"]}
+    assert ("Mumbai Traders", "Finance", "raised an invoice") in texts
+    assert ("Mumbai Traders", "Sales", "opened a deal") in texts
+    assert ("Pune Retail", "Portfolio", "added this company") in texts
+    assert all(item["who"] == "Owner" for item in seen["items"])
+    # Reading the Portfolio is not itself something that happened in a company.
+    assert all("read" not in item["text"] for item in seen["items"])
+
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={
+            "email": "analyst@example.com",
+            "role": "group_analyst",
+            "companies": [str(owner.tenant_id)],
+        },
+    )
+    assert shared.status_code == 200, shared.text
+    analyst = await _join(client, mailbox, "analyst@example.com")
+    view = (await client.get("/v1/portfolio/activity", headers=analyst)).json()
+    areas = {item["area"] for item in view["items"]}
+    assert "Sales" in areas and "Finance" not in areas
+    assert {item["company"] for item in view["items"]} == {"Mumbai Traders"}

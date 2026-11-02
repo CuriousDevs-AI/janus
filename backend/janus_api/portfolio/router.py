@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 
 from janus_api.core.deps import CurrentActor, Db, request_ip
 from janus_api.core.errors import ApiError
-from janus_api.portfolio import access, companies, digest, schemas, summary, targets
+from janus_api.portfolio import access, activity, companies, digest, schemas, summary, targets
 from janus_api.portfolio.compliance import plan as compliance
 
 router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
@@ -125,4 +125,12 @@ async def set_registration(
 ) -> schemas.Registration:
     return await compliance.set_registration(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
+    )
+
+
+@router.get("/activity", response_model=schemas.ActivityList)
+async def read_activity(actor: CurrentActor, db: Db, days: int = 30) -> schemas.ActivityList:
+    """What happened lately in every company the person sees, newest first."""
+    return await activity.activity(
+        db, actor.user.id, actor.session.tenant_id, max(1, min(days, 90))
     )

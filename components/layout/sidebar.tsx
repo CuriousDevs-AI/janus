@@ -108,12 +108,14 @@ export function SidebarNav({
     const [itemPath, itemQuery] = item.href.split("?");
     if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
     const params = new URLSearchParams(itemQuery ?? "");
+    // Filters on a page (its period, a chosen company) keep the page's link highlighted.
+    const ignored = new Set(["workspace", "period", "company"]);
     for (const [key, value] of params.entries()) {
-      if (key === "workspace") continue;
+      if (ignored.has(key)) continue;
       if (searchParams.get(key) !== value) return false;
     }
     for (const [key] of searchParams.entries()) {
-      if (key !== "workspace" && !params.has(key)) return false;
+      if (!ignored.has(key) && !params.has(key)) return false;
     }
     return true;
   }
