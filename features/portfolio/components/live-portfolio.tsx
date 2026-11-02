@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/settings/section-ui";
@@ -62,7 +62,7 @@ export function LivePortfolio() {
       case "finance": return withMoney.length === 0
         ? <SectionCard title="Money is not shared with you" description="Your role covers sales and people, not money."><p className="text-sm text-muted-foreground">Ask the Owner for Group finance if you need what customers owe and what is due to suppliers.</p></SectionCard>
         : <Finance list={withMoney} hidden={list.length - withMoney.length} period={summary.data.period} />;
-      case "companies": return <Companies list={list} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />;
+      case "companies": return <Companies list={list} period={summary.data.period} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />;
       case "people": return owner
         ? <Access list={list} />
         : <SectionCard title="Portfolio access" description="Only an Owner shares the Portfolio."><p className="text-sm text-muted-foreground">The Owner decides who else sees these companies.</p></SectionCard>;
@@ -76,7 +76,7 @@ export function LivePortfolio() {
   }
 
   return <div className="mx-auto flex max-w-[1240px] flex-col">
-    <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && periodViews.includes(view) && <ExportButtons list={list} period={summary.data.period} />}{owner && <Button size="sm" className="print:hidden" onClick={() => setAdding(true)}><Plus className="mr-1 size-4" />Add company</Button>}</div>} />
+    <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && periodViews.includes(view) && <ExportButtons list={list} period={summary.data.period} />}</div>} />
     <div className="flex flex-col gap-6 px-6 pb-10">
       {!summary.loading && !summary.error && summary.data && list.length > 0 && periodViews.includes(view) && <PeriodBar period={summary.data.period} />}
       {body()}

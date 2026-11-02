@@ -85,7 +85,7 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
   </li>;
 }
 
-function RegistrationCard({ item, canEdit, onSaved }: { item: PortfolioCompany; canEdit: boolean; onSaved: () => void }) {
+export function RegistrationCard({ item, canEdit, onSaved }: { item: PortfolioCompany; canEdit: boolean; onSaved: () => void }) {
   const [editing, setEditing] = React.useState(false);
   const reg = item.registration;
   const facts: [string, string | null | undefined][] = [["Entity", reg?.entityType ? entityNames[reg.entityType] : null], ["PAN", reg?.pan], ["TAN", reg?.tan], [reg?.entityType === "llp" ? "LLPIN" : "CIN", reg?.cin], ["EPF code", reg?.epfCode], ["ESI code", reg?.esiCode], ["Professional tax state", reg?.ptState], ["Udyam", reg?.udyam], ["Incorporated", reg?.incorporatedOn ? day(reg.incorporatedOn) : null], [reg?.entityType === "llp" ? "Designated partners" : "Directors", reg?.directors.length ? reg.directors.map((person) => person.din ? `${person.name} (DIN ${person.din})` : person.name).join(", ") : null]];
