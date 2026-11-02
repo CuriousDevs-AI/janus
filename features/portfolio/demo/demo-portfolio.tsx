@@ -13,12 +13,11 @@ import { CompanyLogo } from "@/components/shared/company-logo";
 import { LogoPicker } from "@/components/shared/logo-picker";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
-import { LivePortfolio } from "@/components/portfolio/live-portfolio";
 import { activeCompanyId, readCompanies, removeCompany, seedCompanies, subscribeCompanies, switchCompany, updateCompany, type CompanyRecord } from "@/lib/company";
-import { summarise, type CompanySummary } from "@/lib/group-summary";
-import { answerFor, insightsFor, type Answer } from "@/lib/portfolio-insights";
+import { summarise, type CompanySummary } from "@/features/portfolio/demo/group-summary";
+import { answerFor, insightsFor, type Answer } from "@/features/portfolio/demo/insights";
+import { Bars, Kpi, palette } from "@/features/portfolio/components/figures";
 import { lakh } from "@/lib/demo-universe";
 import { useLoginAccount } from "@/lib/demo-persona";
 import { useSession } from "@/components/auth/session-provider";
@@ -34,7 +33,6 @@ const titles: Record<string, [string, string]> = {
   notifications: ["Notifications", "What needs you, from every company."],
   people: ["Portfolio access", "Who else can see the Portfolio. Each company's own people and roles are in its Business Management."],
 };
-const palette = ["#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626"];
 const tone = { high: "danger", medium: "warning", low: "neutral" } as const;
 const workspaceName = (id: string) => getWorkspaceDefinition(id as WorkspaceId).name;
 const stageLabel: Record<string, string> = { new: "New", qualified: "Qualified", proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost" };
@@ -47,13 +45,12 @@ function usePortfolio() {
 }
 const open = (id: string, to?: string) => id === activeCompanyId() && to ? window.location.assign(to) : switchCompany(id, to);
 
-export function PortfolioPage() {
+/** The preview's Portfolio: the demo companies kept in this browser. A real account never sees it. */
+export function DemoPortfolio() {
   const view = useSearchParams().get("view") ?? "overview";
   const login = useLoginAccount();
   const { summaries, hydrated } = usePortfolio();
   const [title, description] = titles[view] ?? titles.overview;
-  // A real account reads its companies from the server; the rest of this page is the preview's.
-  if (!demoMode) return <LivePortfolio />;
   if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under Portfolio access.</div>;
   return <div className="mx-auto flex max-w-[1240px] flex-col">
     <PageHeader title={title} description={description} actions={<Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button>} />
@@ -71,7 +68,6 @@ function FirstCompany() {
   </section>;
 }
 
-const Kpi = ({ label, value, detail }: { label: string; value: string; detail: string }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 
 function Overview({ list }: { list: CompanySummary[] }) {
   const total = { people: list.reduce((s, i) => s + i.hr.people, 0), pipeline: list.reduce((s, i) => s + (i.crm?.pipeline ?? 0), 0), won: list.reduce((s, i) => s + (i.crm?.wonValue ?? 0), 0), waiting: list.reduce((s, i) => s + i.hr.pendingLeave, 0), pay: list.reduce((s, i) => s + i.hr.monthlyPay, 0) };
@@ -120,10 +116,6 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
   </div>;
 }
 
-function Bars({ rows, format }: { rows: { id: string; label: string; value: number; color: string }[]; format: (value: number) => string }) {
-  const max = Math.max(1, ...rows.map((row) => row.value));
-  return <ul className="flex flex-col gap-3">{rows.map((row) => <li key={row.id}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.label}</span><span className="tabular-nums text-muted-foreground">{format(row.value)}</span></div><div className="h-2.5 bg-surface-2"><div className="h-2.5" style={{ width: `${Math.max(2, (row.value / max) * 100)}%`, background: row.color }} /></div></li>)}</ul>;
-}
 
 function Analytics({ list }: { list: CompanySummary[] }) {
   const crm = list.filter((item) => item.crm);
