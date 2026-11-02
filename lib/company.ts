@@ -20,6 +20,13 @@ export interface CompanyRecord {
   /** People added while setting the company up. They become its first employees. */
   team?: { name: string; email: string; title: string; department: string }[];
   createdAt: string;
+  /** Operating status the owner sets. Without one, a company is "active" once set up and "setup" before. */
+  status?: "active" | "setup" | "dormant" | "divested";
+  /** How the company makes money, in the owner's words (for example "B2B distribution, credit terms"). */
+  businessModel?: string;
+  /** Registration details the owner has recorded. Read through legalFor() in lib/portfolio/books. */
+  legal?: Partial<import("@/lib/portfolio/books").LegalProfile>;
+  leadership?: { name: string; role: string; email: string }[];
 }
 
 const REGISTRY_KEY = "janus.companies";

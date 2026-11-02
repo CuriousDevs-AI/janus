@@ -127,9 +127,17 @@ interface FinanceState {
 }
 
 const today = todayIso();
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps"> => {
+type FinanceSeed = Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps">;
+const seedFinance = (): FinanceSeed => {
   // Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
   if (!isFirstCompany || !demoMode) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [] };
+  return firstCompanyFinanceSeed();
+};
+/**
+ * The first demo company's starting books. Exported so the Portfolio can read them for that company
+ * before anyone has opened its Finance workspace (the store only saves once something changes).
+ */
+export function firstCompanyFinanceSeed(): FinanceSeed {
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
