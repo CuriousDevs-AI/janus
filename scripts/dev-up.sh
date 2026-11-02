@@ -8,7 +8,8 @@
 #   WEB_PORT=3011 scripts/dev-up.sh
 #
 # Needs Docker, uv and Node. Uses backend/.env (copied from backend/.env.example the first time).
-# Emails (verification, invitations) are printed in this terminal, prefixed [api].
+# Emails (verification, invitations) print in this terminal, prefixed [api], unless backend/.env
+# sets JANUS_EMAIL_BACKEND=smtp and the JANUS_SMTP_* settings, in which case they are really sent.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,14 +30,19 @@ if ! grep -q '^JANUS_ENCRYPTION_KEY=.\+' "$BACKEND/.env"; then
   sed -i.bak "s#^JANUS_ENCRYPTION_KEY=.*#JANUS_ENCRYPTION_KEY=$key#" "$BACKEND/.env" && rm -f "$BACKEND/.env.bak"
 fi
 
-# This run's settings, without touching backend/.env: console email, links to this web port.
+# Email: real email when backend/.env sets JANUS_EMAIL_BACKEND=smtp with an SMTP server,
+# otherwise each email is printed in this terminal as an [api] dev_email line.
+EMAIL_BACKEND="$(grep '^JANUS_EMAIL_BACKEND=' "$BACKEND/.env" | cut -d= -f2- | tr -d '"' || true)"
+[ "$EMAIL_BACKEND" = "smtp" ] || EMAIL_BACKEND=console
+
+# This run's settings, without touching backend/.env: the email backend, links to this web port.
 RUN_ENV="$(mktemp -t janus-env.XXXXXX)"
 WORKER_ENV="$(mktemp -t janus-worker-env.XXXXXX)"
 # uv cannot read an unquoted value with spaces, such as the example's JANUS_EMAIL_FROM.
 grep -v -e '^JANUS_EMAIL_BACKEND=' -e '^JANUS_FRONTEND_URL=' -e '^JANUS_ENVIRONMENT=' "$BACKEND/.env" \
   | sed -E 's#^(JANUS_EMAIL_FROM)=([^"].* .*)$#\1="\2"#' > "$RUN_ENV"
 {
-  echo "JANUS_EMAIL_BACKEND=console"
+  echo "JANUS_EMAIL_BACKEND=$EMAIL_BACKEND"
   echo "JANUS_FRONTEND_URL=http://localhost:$WEB_PORT"
   echo "JANUS_ENVIRONMENT=development"
 } >> "$RUN_ENV"
@@ -89,5 +95,9 @@ pids+=($!)
   npx next dev -p "$WEB_PORT" 2>&1 | prefix web) &
 pids+=($!)
 
-say "Open http://localhost:$WEB_PORT/signup — verification and invite links appear below as [api] dev_email lines. Ctrl+C stops."
+if [ "$EMAIL_BACKEND" = "smtp" ]; then
+  say "Open http://localhost:$WEB_PORT/signup — emails go out through $(grep '^JANUS_SMTP_HOST=' "$BACKEND/.env" | cut -d= -f2-). Ctrl+C stops."
+else
+  say "Open http://localhost:$WEB_PORT/signup — no email is sent: each one prints below as an [api] dev_email line; open the link in it. Ctrl+C stops."
+fi
 wait
