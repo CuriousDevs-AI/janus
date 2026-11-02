@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
+import { rememberVerificationSent } from "@/components/auth/verify-waiting";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter your full name"),
@@ -41,6 +42,8 @@ export default function SignupPage() {
           password: values.password,
         }),
       });
+      // The signup email just went out, so the verify screen waits 30 seconds before offering another.
+      rememberVerificationSent(values.email);
       toast.success(
         "Account created. Check your email to verify it, then sign in and set up your company.",
       );

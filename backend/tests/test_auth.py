@@ -166,13 +166,26 @@ async def test_resend_limit_and_expired_tokens(
     client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
 ) -> None:
     account = await signup(client, mailbox, verify=False)
-    for _ in range(3):
-        assert (
-            await client.post("/v1/auth/resend-verification", json={"email": account.email})
-        ).status_code == 200
-    assert (
-        await client.post("/v1/auth/resend-verification", json={"email": account.email})
-    ).status_code == 429
+
+    async def resend() -> httpx.Response:
+        return await client.post("/v1/auth/resend-verification", json={"email": account.email})
+
+    async def thirty_seconds_pass() -> None:
+        async with admin_engine.begin() as db:
+            await db.execute(
+                text("UPDATE email_verifications SET created_at = created_at - interval '31 s'")
+            )
+
+    # Straight after the signup email, another has to wait 30 seconds.
+    early = await resend()
+    assert early.status_code == 429 and early.json()["error"]["code"] == "resend_too_soon"
+    for _ in range(5):
+        await thirty_seconds_pass()
+        assert (await resend()).status_code == 200
+        assert (await resend()).json()["error"]["code"] == "resend_too_soon"
+    await thirty_seconds_pass()
+    limited = await resend()
+    assert limited.status_code == 429 and limited.json()["error"]["code"] == "rate_limited"
     token = mailbox.token(account.email, "verify-email")
     async with admin_engine.begin() as db:
         await db.execute(

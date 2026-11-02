@@ -398,6 +398,11 @@ async def reset_password(db: AsyncSession, data: schemas.ResetPassword, ip: str)
     return schemas.Message(message="Password reset. Sign in again.")
 
 
+# A verification email can be asked for again 30 seconds after the last one, five times an hour.
+RESEND_GAP_SECONDS = 30
+RESENDS_PER_HOUR = 5
+
+
 async def resend_verification(db: AsyncSession, address: str, ip: str) -> schemas.Message:
     # Unknown addresses get the same receipt; only actual sends consume quota.
     user = await db.scalar(
@@ -407,6 +412,18 @@ async def resend_verification(db: AsyncSession, address: str, ip: str) -> schema
     )
     if user and not user.email_verified_at:
         await set_context(db, user_id=user.id)
+        last = await db.scalar(
+            select(func.max(EmailVerification.created_at)).where(
+                EmailVerification.user_id == user.id
+            )
+        )
+        wait = RESEND_GAP_SECONDS - int((now() - last).total_seconds()) if last is not None else 0
+        if wait > 0:
+            raise ApiError(
+                "resend_too_soon",
+                f"An email went out moments ago. You can ask for another in {wait} seconds.",
+                429,
+            )
         count = await db.scalar(
             select(func.count())
             .select_from(EmailVerification)
@@ -416,8 +433,13 @@ async def resend_verification(db: AsyncSession, address: str, ip: str) -> schema
                 EmailVerification.created_at > now() - timedelta(hours=1),
             )
         )
-        if (count or 0) >= 3:
-            raise ApiError("rate_limited", "Try again after one hour.", 429)
+        if (count or 0) >= RESENDS_PER_HOUR:
+            raise ApiError(
+                "rate_limited",
+                f"That is {RESENDS_PER_HOUR} emails in the last hour. Check your spam folder,"
+                " or try again in an hour.",
+                429,
+            )
         await verification_email(db, user, resend=True)
         record(db, "auth.verification_resent", user_id=user.id, ip=ip)
     return schemas.Message(message="If verification is needed, an email will be sent.")

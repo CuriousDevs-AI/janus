@@ -42,9 +42,23 @@ class SMTPEmailSender:
         try:
             await run_in_threadpool(deliver)
         except (smtplib.SMTPException, OSError) as error:
+            # Printed so whoever runs the server sees why mail did not go (a wrong app password
+            # reads SMTPAuthenticationError). The recipient and the body are left out.
+            print(
+                json.dumps(
+                    {
+                        "event": "email_failed",
+                        "subject": subject,
+                        "error": type(error).__name__,
+                        "detail": str(error)[:300],
+                    }
+                ),
+                flush=True,
+            )
             raise ApiError(
                 "email_unavailable", "Email delivery is temporarily unavailable.", 503
             ) from error
+        print(json.dumps({"event": "email_sent", "subject": subject}), flush=True)
 
 
 def get_sender() -> EmailSender:
