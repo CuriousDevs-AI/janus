@@ -54,12 +54,20 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-say "Postgres"
-(cd "$BACKEND" && docker compose up -d postgres)
-for _ in $(seq 1 30); do
-  (cd "$BACKEND" && docker compose exec -T postgres pg_isready -q) && break
-  sleep 1
-done
+# The port the API's database URL points at (55433 in the example).
+DB_PORT="$(grep '^JANUS_DATABASE_URL=' "$BACKEND/.env" | sed -E 's#.*@[^:/]+:([0-9]+)/.*#\1#')"
+DB_PORT="${DB_PORT:-55433}"
+port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$DB_PORT") 2>/dev/null; }
+
+if port_open; then
+  say "Postgres is already running on port $DB_PORT; using it"
+else
+  say "Postgres"
+  (cd "$BACKEND" && docker compose up -d postgres)
+  for _ in $(seq 1 30); do port_open && break; sleep 1; done
+  port_open || { echo "Postgres did not start on port $DB_PORT." >&2; exit 1; }
+  sleep 2  # the port opens a moment before Postgres accepts logins
+fi
 
 say "Python packages and migrations"
 (cd "$BACKEND" && uv sync --frozen && uv run --env-file "$RUN_ENV" alembic upgrade head)
