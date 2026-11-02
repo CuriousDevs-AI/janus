@@ -38,6 +38,22 @@ export interface PortfolioCompany {
   /** What needs attention, most urgent first; each line opens the screen where it is dealt with. */
   attention: { severity: "high" | "medium" | "low"; text: string; to: string }[];
   health: { status: "red" | "amber" | "green"; reasons: string[] } | null;
+  /** From the books, this period and the same days before. Null where the role does not include money. */
+  books: { current: PortfolioBooks; previous: PortfolioBooks } | null;
+  /** The customers whose sales moved most, before GST, in rupees. Empty without money. */
+  customers: { name: string; current: string; previous: string }[];
+  /** Sales to, and bills from, the other companies shown, matched by name. Null without money. */
+  intercompany: { sales: string; purchases: string; partners: string[] } | null;
+  /** Leads by channel, this period and the same days before. */
+  leadSources: { source: string; current: number; previous: number }[];
+}
+/** Rupees: sales before GST less credit notes, supplier bills as recorded plus write-offs, money in and out. */
+export interface PortfolioBooks {
+  netSales: string;
+  costs: string;
+  profitBeforePayroll: string;
+  moneyIn: string;
+  moneyOut: string;
 }
 export interface PortfolioComplianceDue {
   /** The filing's code and period, e.g. gstr3b_2026-10, used to mark it filed. */

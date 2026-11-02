@@ -772,3 +772,86 @@ async def test_the_operating_view_attention_and_health(
             json={"leads": "1"},
         )
     ).status_code == 404
+
+
+async def test_books_profit_and_sales_between_own_companies(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist().isoformat()
+    await _second_company(client, owner, "Pune Retail")
+    await _lead_with_deal(client, owner.headers, "b-lead", "100", "new")
+
+    async def invoice(key: str, company: str, rate_paise: int) -> str:
+        created = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "customer": "Accounts desk",
+                "customer_company": company,
+                "invoice_date": today,
+                "due_date": today,
+                "same_state": True,
+                "lines": [
+                    {
+                        "item": "Cloth",
+                        "hsn": "5208",
+                        "qty": 1,
+                        "rate_paise": rate_paise,
+                        "gst_rate": 18,
+                    }
+                ],
+            },
+        )
+        assert created.status_code == 201, created.text
+        return str(created.json()["id"])
+
+    to_group = await invoice("ic-1", "pune retail", 100000)
+    await invoice("ext-1", "Kavita Stores", 50000)
+    paid = await client.post(
+        f"/v1/finance/invoices/{to_group}/payments",
+        headers={**owner.headers, "Idempotency-Key": "ic-pay"},
+        json={"amount_paise": 20000, "method": "UPI", "reference": "UPI-77", "paid_on": today},
+    )
+    assert paid.status_code == 201, paid.text
+    bill = await client.post(
+        "/v1/finance/bills",
+        headers={**owner.headers, "Idempotency-Key": "ic-bill"},
+        json={
+            "vendor": "Pune Retail",
+            "vendor_bill_no": "PR-1",
+            "bill_date": today,
+            "due_date": today,
+            "amount_paise": 30000,
+        },
+    )
+    assert bill.status_code == 201, bill.text
+
+    companies = {
+        item["name"]: item
+        for item in (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+            "companies"
+        ]
+    }
+    mumbai = companies["Mumbai Traders"]
+    # Sales are before GST; costs are bills as recorded.
+    assert mumbai["books"]["current"] == {
+        "netSales": "1500.00",
+        "costs": "300.00",
+        "profitBeforePayroll": "1200.00",
+        "moneyIn": "200.00",
+        "moneyOut": "0.00",
+    }
+    assert mumbai["books"]["previous"]["netSales"] == "0.00"
+    # The name on the invoice and bill matches the other company, whatever its case.
+    assert mumbai["intercompany"] == {
+        "sales": "1000.00",
+        "purchases": "300.00",
+        "partners": ["Pune Retail"],
+    }
+    assert [(item["name"], item["current"]) for item in mumbai["customers"]] == [
+        ("pune retail", "1000.00"),
+        ("Kavita Stores", "500.00"),
+    ]
+    assert sum(item["current"] for item in mumbai["leadSources"]) == 1
+    assert companies["Pune Retail"]["intercompany"]["sales"] == "0.00"

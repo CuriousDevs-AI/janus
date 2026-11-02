@@ -79,3 +79,17 @@ async def activity(db: AsyncSession, tenant_id: int, start: date, end: date) -> 
         )
     ).one()
     return Activity(leads=int(leads or 0), won_deals=int(won_count), won_value=Decimal(won_value))
+
+
+async def leads_by_source(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> dict[str, int]:
+    """Leads that came in between two days, by the channel they came from."""
+    rows = (
+        await db.execute(
+            select(Lead.source, func.count(Lead.id))
+            .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end))
+            .group_by(Lead.source)
+        )
+    ).all()
+    return {str(source): int(count) for source, count in rows}

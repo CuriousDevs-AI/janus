@@ -141,3 +141,90 @@ async def pending_approvals(db: AsyncSession, tenant_id: int) -> dict[str, int]:
         )
     )
     return {"funds": int(funds or 0), "credit_notes": int(credit_notes or 0)}
+
+
+@dataclass(frozen=True)
+class Books:
+    """What the books say about a span of days, in paise."""
+
+    # Invoiced before GST, less approved credit notes.
+    net_sales: int
+    # Supplier bills as recorded, plus approved write-offs.
+    costs: int
+    # What was paid to suppliers.
+    paid_out: int
+
+
+async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Books:
+    """Sales, costs and money paid out between two days, both included."""
+    taxable = await db.scalar(
+        select(func.coalesce(func.sum(FinanceInvoice.taxable_paise), 0)).where(
+            FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.invoice_date.between(start, end)
+        )
+    )
+    notes: dict[str, int] = {
+        str(kind): int(amount)
+        for kind, amount in (
+            await db.execute(
+                select(
+                    FinanceCreditNote.kind,
+                    func.coalesce(func.sum(FinanceCreditNote.amount_paise), 0),
+                )
+                .where(
+                    FinanceCreditNote.tenant_id == tenant_id,
+                    FinanceCreditNote.status == "approved",
+                    FinanceCreditNote.noted_on.between(start, end),
+                )
+                .group_by(FinanceCreditNote.kind)
+            )
+        ).all()
+    }
+    bills = await db.scalar(
+        select(func.coalesce(func.sum(FinanceBill.amount_paise), 0)).where(
+            FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end)
+        )
+    )
+    paid = await db.scalar(
+        select(func.coalesce(func.sum(FinanceBillPayment.amount_paise), 0)).where(
+            FinanceBillPayment.tenant_id == tenant_id,
+            FinanceBillPayment.paid_on.between(start, end),
+        )
+    )
+    return Books(
+        net_sales=int(taxable or 0) - int(notes.get("credit", 0)),
+        costs=int(bills or 0) + int(notes.get("write-off", 0)),
+        paid_out=int(paid or 0),
+    )
+
+
+async def sales_by_customer(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> dict[str, int]:
+    """Invoiced before GST between two days, by customer: the company's name where the invoice
+    has one, otherwise the person's."""
+    name = func.coalesce(func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer)
+    rows = (
+        await db.execute(
+            select(name, func.sum(FinanceInvoice.taxable_paise))
+            .where(
+                FinanceInvoice.tenant_id == tenant_id,
+                FinanceInvoice.invoice_date.between(start, end),
+            )
+            .group_by(name)
+        )
+    ).all()
+    return {str(customer): int(amount or 0) for customer, amount in rows}
+
+
+async def costs_by_vendor(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> dict[str, int]:
+    """Supplier bills between two days, by vendor."""
+    rows = (
+        await db.execute(
+            select(FinanceBill.vendor, func.sum(FinanceBill.amount_paise))
+            .where(FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end))
+            .group_by(FinanceBill.vendor)
+        )
+    ).all()
+    return {str(vendor): int(amount or 0) for vendor, amount in rows}

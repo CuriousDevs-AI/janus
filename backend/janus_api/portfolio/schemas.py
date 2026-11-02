@@ -166,6 +166,47 @@ class FilingMark(BaseModel):
     filedOn: date
 
 
+class Books(BaseModel):
+    """From the books, in rupees: sales before GST less credit notes; supplier bills as recorded
+    plus write-offs; and money in from customers and out to suppliers."""
+
+    netSales: str
+    costs: str
+    profitBeforePayroll: str
+    moneyIn: str
+    moneyOut: str
+
+
+class BooksCompare(BaseModel):
+    current: Books
+    previous: Books
+
+
+class CustomerMove(BaseModel):
+    """One customer's sales before GST in the period and in the same days before, in rupees."""
+
+    name: str
+    current: str
+    previous: str
+
+
+class SourceMove(BaseModel):
+    """Leads from one channel in the period and in the same days before."""
+
+    source: str
+    current: int
+    previous: int
+
+
+class Intercompany(BaseModel):
+    """Sales to, and bills from, the other companies in this Portfolio in the period, matched by
+    the company's name on the invoice or bill."""
+
+    sales: str
+    purchases: str
+    partners: list[str]
+
+
 class CompanySummary(BaseModel):
     id: str
     name: str
@@ -189,6 +230,11 @@ class CompanySummary(BaseModel):
     targets: Targets | None = None
     attention: list[AttentionItem] = []
     health: Health | None = None
+    # Money: None, or empty, where the role does not include it.
+    books: BooksCompare | None = None
+    customers: list[CustomerMove] = []
+    intercompany: Intercompany | None = None
+    leadSources: list[SourceMove] = []
 
 
 class PortfolioSummary(BaseModel):

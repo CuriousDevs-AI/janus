@@ -8,3 +8,8 @@ export function Bars({ rows, format }: { rows: { id: string; label: string; valu
   const max = Math.max(1, ...rows.map((row) => row.value));
   return <ul className="flex flex-col gap-3">{rows.map((row) => <li key={row.id}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.label}</span><span className="tabular-nums text-muted-foreground">{format(row.value)}</span></div><div className="h-2.5 bg-surface-2"><div className="h-2.5" style={{ width: `${Math.max(2, (row.value / max) * 100)}%`, background: row.color }} /></div></li>)}</ul>;
 }
+
+/** Says where a figure comes from: recorded in the books, or worked out with an assumption. */
+export function Basis({ estimate = false, title }: { estimate?: boolean; title?: string }) {
+  return <span title={title ?? (estimate ? "Worked out with an assumption, stated beside it" : "Counted from records in Janus")} className={`ml-1.5 inline-flex items-center rounded border px-1 py-px align-middle text-[10px] font-medium ${estimate ? "border-warning/40 text-warning" : "border-success/40 text-success"}`}>{estimate ? "Estimate" : "Recorded"}</span>;
+}

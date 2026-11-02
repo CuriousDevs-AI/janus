@@ -131,6 +131,7 @@ async def company_summary(
     *,
     money: bool,
     detail: bool = True,
+    trade: dict[int, tuple[dict[str, int], dict[str, int]]] | None = None,
 ) -> schemas.CompanySummary:
     """One company's headline numbers, and with `detail` its operating view.
 
@@ -211,7 +212,84 @@ async def company_summary(
         out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance
     )
     out.health = attention.health(out.attention)
+    span_now = date.fromisoformat(period.start), today
+    span_before = date.fromisoformat(period.previousStart), date.fromisoformat(period.previousEnd)
+    channels_now = await crm.leads_by_source(db, tenant_id, *span_now)
+    channels_before = await crm.leads_by_source(db, tenant_id, *span_before)
+    out.leadSources = sorted(
+        (
+            schemas.SourceMove(
+                source=source,
+                current=channels_now.get(source, 0),
+                previous=channels_before.get(source, 0),
+            )
+            for source in channels_now.keys() | channels_before.keys()
+        ),
+        key=lambda item: (-max(item.current, item.previous), item.source),
+    )
+    if money:
+        out.books = schemas.BooksCompare(
+            current=await books_for(db, tenant_id, *span_now),
+            previous=await books_for(db, tenant_id, *span_before),
+        )
+        sales_now = await finance.sales_by_customer(db, tenant_id, *span_now)
+        sales_before = await finance.sales_by_customer(db, tenant_id, *span_before)
+        # The customers who moved most, so a change in sales can be explained by name.
+        out.customers = [
+            schemas.CustomerMove(
+                name=name,
+                current=rupees(sales_now.get(name, 0), paise=True),
+                previous=rupees(sales_before.get(name, 0), paise=True),
+            )
+            for name in sorted(
+                sales_now.keys() | sales_before.keys(),
+                key=lambda name: -max(sales_now.get(name, 0), sales_before.get(name, 0)),
+            )[:8]
+        ]
+        if trade is not None:
+            trade[tenant_id] = (sales_now, await finance.costs_by_vendor(db, tenant_id, *span_now))
     return out
+
+
+async def books_for(db: AsyncSession, tenant_id: int, start: date, end: date) -> schemas.Books:
+    kept = await finance.books(db, tenant_id, start, end)
+    flow = await finance.flow(db, tenant_id, start, end)
+    return schemas.Books(
+        netSales=rupees(kept.net_sales, paise=True),
+        costs=rupees(kept.costs, paise=True),
+        profitBeforePayroll=rupees(kept.net_sales - kept.costs, paise=True),
+        moneyIn=rupees(flow.collected, paise=True),
+        moneyOut=rupees(kept.paid_out, paise=True),
+    )
+
+
+def intercompany(
+    companies: list[schemas.CompanySummary], trade: dict[int, tuple[dict[str, int], dict[str, int]]]
+) -> None:
+    """Marks each company's sales to, and bills from, the other companies shown together, by
+    matching the name on the invoice or bill to a company's name. Only companies whose money the
+    person sees take part, so no total reveals a company they cannot see."""
+    names = {item.name.strip().casefold(): item for item in companies if int(item.id) in trade}
+    for item in companies:
+        if int(item.id) not in trade:
+            continue
+        sales, bills = trade[int(item.id)]
+        own = item.name.strip().casefold()
+        sold = {
+            name: amount
+            for name, amount in sales.items()
+            if name.strip().casefold() in names and name.strip().casefold() != own
+        }
+        bought = {
+            name: amount
+            for name, amount in bills.items()
+            if name.strip().casefold() in names and name.strip().casefold() != own
+        }
+        item.intercompany = schemas.Intercompany(
+            sales=rupees(sum(sold.values()), paise=True),
+            purchases=rupees(sum(bought.values()), paise=True),
+            partners=sorted({names[name.strip().casefold()].name for name in [*sold, *bought]}),
+        )
 
 
 async def summary(
@@ -230,6 +308,7 @@ async def summary(
     where the person's role there holds portfolio:finance.
     """
     companies = []
+    trade: dict[int, tuple[dict[str, int], dict[str, int]]] = {}
     # The digest reads as of the end of the week it reports; the page reads as of today.
     today = today or today_ist()
     period = period_for(period_key, today)
@@ -250,10 +329,12 @@ async def summary(
                     period,
                     money="portfolio:finance" in role.permissions,
                     detail=detail,
+                    trade=trade,
                 )
             )
             record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)
     finally:
         # Flushes the audit rows under the last company, then returns to the session's own company.
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    intercompany(companies, trade)
     return schemas.PortfolioSummary(period=period, companies=companies)

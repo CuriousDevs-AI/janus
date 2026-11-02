@@ -30,3 +30,13 @@ export function attentionOf(list: PortfolioCompany[]) {
 }
 
 export type WithMoney = PortfolioCompany & { money: NonNullable<PortfolioCompany["money"]> };
+
+/** How many months the period's days come to, for scaling a monthly figure such as payroll. */
+export function monthsIn(period: { start: string; end: string }) {
+  const days = (Date.parse(`${period.end}T00:00:00Z`) - Date.parse(`${period.start}T00:00:00Z`)) / 864e5 + 1;
+  return days / 30.44;
+}
+
+/** Payroll for the period from the monthly salaries on record. An estimate: it is not booked. */
+export const payrollFor = (item: PortfolioCompany, period: { start: string; end: string }) =>
+  item.people?.monthlyPayroll ? Number(item.people.monthlyPayroll) * monthsIn(period) : null;
