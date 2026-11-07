@@ -45,10 +45,25 @@ def attention(
             + (f", ₹{Decimal(money.ageing.over60):,.0f} over 60 days" if late else ""),
             f"{FINANCE}?view=receivables&workspace=finance-accounting",
         )
-    if money and Decimal(money.payableDueThisWeek) > 0:
+    bills_late, bills_week = (
+        Decimal(money.payableLate) if money else 0,
+        Decimal(money.payableDueThisWeek) if money else 0,
+    )
+    if money and bills_late > 0:
+        add(
+            "high" if bills_late >= bills_week / 2 else "medium",
+            f"₹{bills_late:,.0f} of supplier bills already late"
+            + (
+                f", ₹{bills_week - bills_late:,.0f} more due within 7 days"
+                if bills_week > bills_late
+                else ""
+            ),
+            f"{FINANCE}?view=payables&workspace=finance-accounting",
+        )
+    elif money and bills_week > 0:
         add(
             "medium",
-            f"₹{Decimal(money.payableDueThisWeek):,.0f} of supplier bills due within 7 days",
+            f"₹{bills_week:,.0f} of supplier bills due within 7 days",
             f"{FINANCE}?view=payables&workspace=finance-accounting",
         )
     waiting = sum(item.count for item in approvals)

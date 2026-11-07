@@ -48,9 +48,11 @@ export function workFor(list: PortfolioCompany[]): WorkItem[] {
       const late = Number(money.ageing.over60) > 0;
       add({ kind: "collect", priority: late ? "high" : "medium", title: `Collect ${inr(Number(money.overdue))} past due`, detail: `${money.overdueInvoices} invoice${money.overdueInvoices === 1 ? "" : "s"}${late ? `, ${inr(Number(money.ageing.over60))} more than 60 days late` : ""}.`, due: null, to: `${FINANCE}?view=receivables&workspace=finance-accounting` });
     }
-    if (money && Number(money.payableDueThisWeek) > 0) {
-      add({ kind: "pay", priority: "medium", title: `Pay ${inr(Number(money.payableDueThisWeek))} of supplier bills`, detail: "Due within 7 days, including any already late.", due: null, to: `${FINANCE}?view=payables&workspace=finance-accounting` });
-    }
+    const billsLate = Number(money?.payableLate ?? 0);
+    const billsSoon = Math.max(0, Number(money?.payableDueThisWeek ?? 0) - billsLate);
+    if (billsLate > 0) add({ kind: "pay", priority: "high", title: `Pay ${inr(billsLate)} of supplier bills already late`, detail: billsSoon ? `${inr(billsSoon)} more falls due within 7 days.` : "Past their due dates.", due: null, to: `${FINANCE}?view=payables&workspace=finance-accounting` });
+    else if (billsSoon > 0) add({ kind: "pay", priority: "medium", title: `Pay ${inr(billsSoon)} of supplier bills`, detail: "Due within the next 7 days.", due: null, to: `${FINANCE}?view=payables&workspace=finance-accounting` });
+
     if (!company.complianceSetUp && company.attention.some((entry) => entry.text.startsWith("Compliance not set up"))) {
       const people = company.people?.headcount ?? 0;
       add({ kind: "file", priority: people ? "high" : "medium", title: "Set up which filings apply", detail: people ? `${people} people on the payroll, but no GST, TDS, PF or ESI filings are tracked.` : "No filings are tracked, so nothing can be called up to date.", due: null, to: "/portfolio?view=compliance" });

@@ -113,6 +113,7 @@ async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schema
             over60=rupees(owed.late_over_60, paise=True),
         ),
         payable=rupees(owed.payable, paise=True),
+        payableLate=rupees(owed.payable_late, paise=True),
         payableDueThisWeek=rupees(owed.payable_due_this_week, paise=True),
     )
 

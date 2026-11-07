@@ -33,6 +33,8 @@ class MoneySummary(BaseModel):
     overdueInvoices: int
     ageing: Ageing
     payable: str
+    # Bills past their due date; payableDueThisWeek includes these.
+    payableLate: str = "0.00"
     payableDueThisWeek: str
 
 

@@ -218,6 +218,8 @@ async def test_money_shows_what_is_owed_and_how_late(
     assert money["overdueInvoices"] == 2
     assert money["ageing"] == {"days0to30": "600.00", "days31to60": "1000.00", "over60": "0.00"}
     assert money["payable"] == "1000.00" and money["payableDueThisWeek"] == "500.00"
+    # Neither bill is past its due date yet.
+    assert money["payableLate"] == "0.00"
     assert "collectedThisMonth" not in money
     assert companies["Pune Retail"]["receivable"] == "0.00"
 
@@ -1127,3 +1129,31 @@ async def test_a_company_with_no_filings_set_up_is_not_up_to_date(
 
 def test_a_loss_reads_minus_rupees() -> None:
     assert inr("-300000") == "−₹3L" and inr("-1250") == "−₹1,250" and inr("-0.2") == "₹0"
+
+
+async def test_late_supplier_bills_are_told_apart_from_bills_due_soon(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    for key, issued, due, paise in (("late", -10, -2, 70000), ("soon", -1, 3, 30000)):
+        bill = await client.post(
+            "/v1/finance/bills",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "vendor": "Packaging Co",
+                "vendor_bill_no": key,
+                "bill_date": (today + timedelta(days=issued)).isoformat(),
+                "due_date": (today + timedelta(days=due)).isoformat(),
+                "amount_paise": paise,
+            },
+        )
+        assert bill.status_code == 201, bill.text
+    company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+        "companies"
+    ][0]
+    assert company["money"]["payableLate"] == "700.00"
+    assert company["money"]["payableDueThisWeek"] == "1000.00"
+    line = next(item for item in company["attention"] if "supplier bills" in item["text"])
+    assert line["text"] == "₹700 of supplier bills already late, ₹300 more due within 7 days"
+    assert line["severity"] == "high"

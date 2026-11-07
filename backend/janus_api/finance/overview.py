@@ -31,6 +31,8 @@ class Money:
     late_31_60: int
     late_over_60: int
     payable: int
+    # Unpaid bills past their due date, and those due within 7 days including the late ones.
+    payable_late: int
     payable_due_this_week: int
 
 
@@ -108,6 +110,7 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
         late_31_60=buckets[1],
         late_over_60=buckets[2],
         payable=sum(max(0, int(balance)) for _, balance in bills),
+        payable_late=sum(max(0, int(balance)) for due, balance in bills if due < today),
         payable_due_this_week=sum(max(0, int(balance)) for due, balance in bills if due <= week),
     )
 

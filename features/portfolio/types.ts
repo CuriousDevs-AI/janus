@@ -20,6 +20,8 @@ export interface PortfolioCompany {
     /** Overdue amounts by days past the due date. */
     ageing: { days0to30: string; days31to60: string; over60: string };
     payable: string;
+    /** Bills past their due date. payableDueThisWeek includes them. */
+    payableLate: string;
     /** Bills due within seven days, including those already late. */
     payableDueThisWeek: string;
   };

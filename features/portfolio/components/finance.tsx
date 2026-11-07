@@ -78,7 +78,8 @@ function ByCompany({ list, period }: { list: WithMoney[]; period: PortfolioPerio
     ["Past due", (item) => item.money.overdueInvoices ? `${inr(n(item.money.overdue))} · ${item.money.overdueInvoices} invoice${item.money.overdueInvoices === 1 ? "" : "s"}` : "None"],
     ["Late over 60 days", (item) => inr(n(item.money.ageing.over60))],
     ["You owe suppliers", (item) => inr(n(item.money.payable))],
-    ["Bills due in 7 days", (item) => inr(n(item.money.payableDueThisWeek))],
+    ["Bills already late", (item) => n(item.money.payableLate) ? inr(n(item.money.payableLate)) : "None"],
+    ["Bills due in the next 7 days", (item) => inr(Math.max(0, n(item.money.payableDueThisWeek) - n(item.money.payableLate)))],
   ];
   return <>
     <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th>{list.map((item) => <th key={item.id} className="px-3 py-2">{item.name}</th>)}</tr></thead><tbody>{rows.map(([label, value], index) => <tr key={index} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{label}</td>{list.map((item) => <td key={item.id} className="px-3 py-2.5 tabular-nums">{value(item)}</td>)}</tr>)}</tbody></table></div>
