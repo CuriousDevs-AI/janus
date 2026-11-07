@@ -51,6 +51,10 @@ export function workFor(list: PortfolioCompany[]): WorkItem[] {
     if (money && Number(money.payableDueThisWeek) > 0) {
       add({ kind: "pay", priority: "medium", title: `Pay ${inr(Number(money.payableDueThisWeek))} of supplier bills`, detail: "Due within 7 days, including any already late.", due: null, to: `${FINANCE}?view=payables&workspace=finance-accounting` });
     }
+    if (!company.complianceSetUp && company.attention.some((entry) => entry.text.startsWith("Compliance not set up"))) {
+      const people = company.people?.headcount ?? 0;
+      add({ kind: "file", priority: people ? "high" : "medium", title: "Set up which filings apply", detail: people ? `${people} people on the payroll, but no GST, TDS, PF or ESI filings are tracked.` : "No filings are tracked, so nothing can be called up to date.", due: null, to: "/portfolio?view=compliance" });
+    }
     // Past due filings are one item per company, so a company that has just set up its calendar
     // does not bury everything else; each due this week is its own item.
     const late = company.compliance.filter((entry) => entry.status === "overdue");
@@ -61,7 +65,8 @@ export function workFor(list: PortfolioCompany[]): WorkItem[] {
     for (const gap of company.complianceGaps.filter((entry) => entry.kind === "missing")) {
       const head = gap.text.split(":")[0];
       const rest = gap.text.includes(":") ? gap.text.slice(gap.text.indexOf(":") + 1).trim() : "Needed for the compliance calendar.";
-      add({ kind: "fix", priority: "low", title: head.startsWith("No ") ? head : `Missing ${head}`, detail: `${rest.charAt(0).toUpperCase()}${rest.slice(1)}${/[.!?]$/.test(rest) ? "" : "."}`, due: null, to: "/portfolio?view=compliance" });
+      // Missing details on a company with people on its payroll put its statutory filings at risk.
+      add({ kind: "fix", priority: (company.people?.headcount ?? 0) > 0 ? "medium" : "low", title: head.startsWith("No ") ? head : `Missing ${head}`, detail: `${rest.charAt(0).toUpperCase()}${rest.slice(1)}${/[.!?]$/.test(rest) ? "" : "."}`, due: null, to: "/portfolio?view=compliance" });
     }
     const work = company.delivery;
     if (work?.lateProjects) add({ kind: "deliver", priority: "high", title: `${work.lateProjects} project${work.lateProjects === 1 ? "" : "s"} past the end date`, detail: "Move the date or close the work.", due: null, to: PROJECTS });

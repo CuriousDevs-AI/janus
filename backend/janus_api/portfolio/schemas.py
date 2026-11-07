@@ -238,6 +238,8 @@ class ComplianceGap(BaseModel):
 
     kind: Literal["missing", "suggestion"]
     text: str
+    # For a suggestion that one switch answers: the part of the filing plan to switch on.
+    switch: Literal["tds", "pfEsi", "company"] | None = None
 
 
 class Books(BaseModel):
@@ -315,6 +317,8 @@ class CompanySummary(BaseModel):
     leadSources: list[SourceMove] = []
     registration: Registration | None = None
     complianceGaps: list[ComplianceGap] = []
+    # False until at least one kind of filing is switched on for the company.
+    complianceSetUp: bool = False
 
 
 class PortfolioSummary(BaseModel):

@@ -76,7 +76,7 @@ function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: 
           {money && <td className="px-3 tabular-nums">{item.books ? inr(n(item.books.current.netSales)) : "Not shared"}</td>}
           <td className="px-3 tabular-nums">{inr(n(item.crm.pipelineValue))}</td>
           <td className="px-3 tabular-nums">{item.people?.headcount ?? 0}</td>
-          <td className={`px-3 tabular-nums ${pastDue(item) ? "text-danger" : ""}`}>{pastDue(item)}</td>
+          <td className={`px-3 tabular-nums ${pastDue(item) ? "text-danger" : item.complianceSetUp ? "" : "text-warning"}`}>{pastDue(item) || (item.complianceSetUp ? 0 : "Not set up")}</td>
           <td className="py-2.5 pl-3"><div className="flex justify-end gap-1">
             {canEdit(item) && <Button size="sm" variant="ghost" aria-label={`Edit ${item.name}`} title="Edit details" onClick={() => onEdit(item)}><Pencil className="size-3.5" /></Button>}
             {owns(item) && <Button size="sm" variant="ghost" aria-label={`${item.name} settings`} title="Company settings" onClick={() => settingsOf(item)}><Settings2 className="size-3.5" /></Button>}
@@ -178,7 +178,7 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
       <div className="grid gap-3">
         <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onSaved} />
         {item.complianceGaps.length > 0 && <ul className="grid gap-1 text-xs">{item.complianceGaps.map((gap) => <li key={gap.text} className={gap.kind === "missing" ? "text-warning" : "text-muted-foreground"}>{gap.kind === "missing" ? "Missing: " : "Suggested: "}{gap.text}</li>)}</ul>}
-        <p className="text-sm">{pastDue(item) ? <span className="text-danger">{pastDue(item)} filing{pastDue(item) === 1 ? "" : "s"} past due and not recorded.</span> : "No filing past due."} <a className="text-accent hover:underline" href="/portfolio?view=compliance">Open Compliance</a></p>
+        <p className="text-sm">{pastDue(item) ? <span className="text-danger">{pastDue(item)} filing{pastDue(item) === 1 ? "" : "s"} past due and not recorded.</span> : item.complianceSetUp ? "No filing past due." : <span className="text-warning">No filings are tracked yet.</span>} <a className="text-accent hover:underline" href="/portfolio?view=compliance">Open Compliance</a></p>
       </div>
     </SectionCard>
     {owns(item) && <SectionCard title="Monthly targets" description="What you expect each month. The Overview shows progress against them."><TargetsForm item={item} onSaved={onSaved} /></SectionCard>}

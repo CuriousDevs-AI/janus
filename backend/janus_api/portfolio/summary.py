@@ -230,6 +230,17 @@ async def company_summary(
     out.attention = attention.attention(
         out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance
     )
+    # A company tracking no filings is not "up to date": it is not set up. With people on its
+    # payroll, TDS and PF or ESI usually apply, so that is urgent.
+    out.complianceSetUp = compliance_plan.set_up(out.compliancePlan, out.registration)
+    if not out.complianceSetUp and (staff.headcount or sales.leads or out.money):
+        out.attention = attention.with_line(
+            out.attention,
+            "high" if staff.headcount else "medium",
+            "Compliance not set up: no filings are tracked"
+            + (f" for {staff.headcount} people on the payroll" if staff.headcount else ""),
+            "/portfolio?view=compliance",
+        )
     out.health = attention.health(out.attention)
     span_now = date.fromisoformat(period.start), today
     span_before = date.fromisoformat(period.previousStart), date.fromisoformat(period.previousEnd)

@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -1094,3 +1095,31 @@ async def test_company_details_people_roles_and_contact(
     cfo = await _join(client, mailbox, "cfo@example.com")
     refused = await client.put(f"{url}/details", headers=cfo, json={"name": "Taken Over"})
     assert refused.status_code == 403
+
+
+async def test_a_company_with_no_filings_set_up_is_not_up_to_date(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    await _lead_with_deal(client, owner.headers, "ns-1", "100", "new")
+
+    async def company() -> dict[str, Any]:
+        response = await client.get("/v1/portfolio/summary", headers=owner.headers)
+        result: dict[str, Any] = response.json()["companies"][0]
+        return result
+
+    first = await company()
+    assert first["complianceSetUp"] is False
+    line = next(item for item in first["attention"] if item["text"].startswith("Compliance not"))
+    assert line["severity"] == "medium" and line["to"] == "/portfolio?view=compliance"
+    assert first["health"]["status"] == "amber"
+
+    plan = await client.put(
+        f"/v1/portfolio/companies/{owner.tenant_id}/compliance",
+        headers=owner.headers,
+        json={"gstFiling": "quarterly", "gstin": "27AAPFU0939F1ZV"},
+    )
+    assert plan.status_code == 200, plan.text
+    after = await company()
+    assert after["complianceSetUp"] is True
+    assert not any(item["text"].startswith("Compliance not") for item in after["attention"])

@@ -1,6 +1,7 @@
 """Which filings apply to a company, and marking them filed."""
 
 from datetime import date, timedelta
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,8 +80,8 @@ def gaps(
     def missing(text: str) -> None:
         out.append(schemas.ComplianceGap(kind="missing", text=text))
 
-    def suggest(text: str) -> None:
-        out.append(schemas.ComplianceGap(kind="suggestion", text=text))
+    def suggest(text: str, switch: Literal["tds", "pfEsi", "company"] | None = None) -> None:
+        out.append(schemas.ComplianceGap(kind="suggestion", text=text, switch=switch))
 
     reg = registration or schemas.Registration()
     if registration is None:
@@ -107,15 +108,18 @@ def gaps(
     if plan.gstin and plan.gstFiling == "none":
         suggest("A GSTIN is recorded but no GST returns are set. Choose monthly or quarterly.")
     if payroll and not plan.tds:
-        suggest("Salaries are on record: TDS on salaries usually applies.")
+        suggest("Salaries are on record: TDS on salaries usually applies.", "tds")
     if headcount >= 20 and not plan.pfEsi:
-        suggest(f"{headcount} people on record: EPF applies from 20 employees.")
+        suggest(f"{headcount} people on record: EPF applies from 20 employees.", "pfEsi")
     elif headcount >= 10 and not plan.pfEsi:
-        suggest(f"{headcount} people on record: ESI applies from 10 employees in most states.")
+        suggest(
+            f"{headcount} people on record: ESI applies from 10 employees in most states.", "pfEsi"
+        )
     if reg.entityType in COMPANIES and not plan.company:
         suggest(
             "A limited company files AOC-4, MGT-7, the tax return and advance tax."
-            " Switch on company filings."
+            " Switch on company filings.",
+            "company",
         )
     return out
 
@@ -295,3 +299,9 @@ async def set_registration(
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return data
+
+
+def set_up(plan: schemas.CompliancePlan, registration: schemas.Registration | None) -> bool:
+    """Whether any kind of filing is tracked for the company."""
+    llp = registration is not None and registration.entityType == "llp"
+    return plan.gstFiling != "none" or plan.tds or plan.pfEsi or plan.company or llp

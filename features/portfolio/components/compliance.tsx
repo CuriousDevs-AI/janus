@@ -37,8 +37,9 @@ export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; 
       const dues = item.compliance.filter((due) => filter === "all" || due.status !== "filed");
       return <SectionCard key={item.id} title={item.name} description={item.registration?.entityType ? `${entityNames[item.registration.entityType]}${item.compliancePlan?.gstin ? ` · GSTIN ${item.compliancePlan.gstin}` : ""}` : item.compliancePlan?.gstin ? `GSTIN ${item.compliancePlan.gstin}` : "No registration details yet"}>
         <div className="grid gap-4">
+          {!item.complianceSetUp && <p role="status" className="rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-sm"><span className="font-medium">Not set up.</span> No filings are tracked for {item.name}, so nothing here can be called up to date. Choose what applies below{item.complianceGaps.some((gap) => gap.switch) ? ", or switch on what its records suggest" : ""}.</p>}
           <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
-          {item.complianceGaps.length > 0 && <ul className="grid gap-1.5">{item.complianceGaps.map((gap) => <li key={gap.text} className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${gap.kind === "missing" ? "border-warning/30 bg-warning-muted" : "border-accent-border bg-accent-muted/50"}`}>{gap.kind === "missing" ? <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden /> : <Lightbulb className="mt-px size-3.5 shrink-0 text-accent" aria-hidden />}<span><span className="font-medium">{gap.kind === "missing" ? "Missing: " : "Suggested: "}</span>{gap.text}</span></li>)}</ul>}
+          {item.complianceGaps.length > 0 && <ul className="grid gap-1.5">{item.complianceGaps.map((gap) => <li key={gap.text} className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${gap.kind === "missing" ? "border-warning/30 bg-warning-muted" : "border-accent-border bg-accent-muted/50"}`}>{gap.kind === "missing" ? <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden /> : <Lightbulb className="mt-px size-3.5 shrink-0 text-accent" aria-hidden />}<span className="flex-1"><span className="font-medium">{gap.kind === "missing" ? "Missing: " : "Suggested: "}</span>{gap.text}</span>{gap.switch && handlesMoney(item) && <SwitchOn item={item} part={gap.switch} onSaved={onChanged} />}</li>)}</ul>}
           {handlesMoney(item) && <PlanForm item={item} onSaved={onChanged} />}
           {item.compliance.length === 0 ? <p className="text-sm text-muted-foreground">No filings set up for this company yet. Choose what applies above.</p>
             : dues.length === 0 ? <p className="text-sm text-muted-foreground">Nothing left to file in this window.</p>
@@ -47,6 +48,22 @@ export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; 
       </SectionCard>;
     })}
   </>;
+}
+
+/** Turns on one part of the filing plan that the company's own records suggest. */
+function SwitchOn({ item, part, onSaved }: { item: PortfolioCompany; part: "tds" | "pfEsi" | "company"; onSaved: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const names = { tds: "TDS", pfEsi: "PF and ESI", company: "company filings" };
+  async function turnOn() {
+    setBusy(true);
+    try {
+      const plan = item.compliancePlan ?? { gstin: null, gstFiling: "none", tds: false, pfEsi: false, company: false };
+      await api(`/portfolio/companies/${item.id}/compliance`, { method: "PUT", body: JSON.stringify({ ...plan, [part]: true }) });
+      toast.success(`${names[part]} switched on for ${item.name}. Its dues are now in the calendar.`);
+      onSaved();
+    } catch (failure) { toast.error(message(failure)); setBusy(false); }
+  }
+  return <Button type="button" size="sm" variant="outline" className="h-6 shrink-0 px-2 text-xs" disabled={busy} onClick={() => void turnOn()}>{busy ? "Switching on…" : "Switch on"}</Button>;
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: "danger" | "warning" | "neutral" }) {

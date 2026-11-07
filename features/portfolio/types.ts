@@ -50,7 +50,9 @@ export interface PortfolioCompany {
   /** Registration details, or null where none are recorded. */
   registration: PortfolioRegistration | null;
   /** Missing registration details, and filings the company's own records suggest. */
-  complianceGaps: { kind: "missing" | "suggestion"; text: string }[];
+  complianceGaps: { kind: "missing" | "suggestion"; text: string; switch?: "tds" | "pfEsi" | "company" | null }[];
+  /** False until at least one kind of filing is switched on for the company. */
+  complianceSetUp: boolean;
 }
 export type EntityType = "pvt_ltd" | "public_ltd" | "opc" | "llp" | "partnership" | "proprietorship" | "other";
 export interface PortfolioRegistration {

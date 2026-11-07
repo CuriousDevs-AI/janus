@@ -50,7 +50,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
         </li>)}</ul>}
       </SectionCard>
       <SectionCard title="Coming up" description="Filings due in the next 30 days." action={<a className="text-sm text-accent hover:underline" href="/portfolio?view=compliance">Compliance</a>}>
-        {upcoming.length === 0 ? <p className="text-sm text-muted-foreground">Nothing due in the next 30 days{list.some((item) => item.compliancePlan?.gstFiling !== "none" || item.compliancePlan?.tds) ? "" : ". Set what each company files in Compliance"}.</p>
+        {upcoming.length === 0 ? <p className="text-sm text-muted-foreground">Nothing due in the next 30 days{list.some((item) => !item.complianceSetUp) ? <>, but <span className="text-warning">{list.filter((item) => !item.complianceSetUp).length} of {list.length} companies track no filings</span>: set them up in Compliance</> : ""}.</p>
           : <ul className="flex flex-col gap-2">{upcoming.map((due) => <li key={`${due.company.id}:${due.key}`} className="flex items-baseline justify-between gap-3 text-sm"><span className="min-w-0"><span className="font-medium">{due.label}</span> <span className="text-muted-foreground">· {due.company.name}</span></span><span className={`shrink-0 text-xs tabular-nums ${due.status === "due_soon" ? "text-warning" : "text-muted-foreground"}`}>{day(due.dueOn)}</span></li>)}</ul>}
       </SectionCard>
     </div>
@@ -68,7 +68,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
           </> : <td className="px-3 py-2.5 tabular-nums">{item.period.current.leads} <span className="text-xs text-muted-foreground">{pct(item.period.current.leads, item.period.previous.leads)}</span></td>}
           <td className="px-3 py-2.5 tabular-nums">{inr(n(item.crm.pipelineValue))}</td>
           <td className="px-3 py-2.5 tabular-nums">{rate === null ? "—" : `${rate}%`}</td>
-          <td className={`px-3 py-2.5 ${filings ? "text-danger" : "text-muted-foreground"}`}>{filings ? `${filings} past due` : "Up to date"}</td>
+          <td className={`px-3 py-2.5 ${filings ? "text-danger" : "text-muted-foreground"}`}>{filings ? `${filings} past due` : item.complianceSetUp ? "Up to date" : <span className="text-warning">Not set up</span>}</td>
           <td className="py-2.5 pl-3 text-right">{owns(item) && <Button size="sm" variant="ghost" className="print:hidden" onClick={() => openIn(item)}>Open<ArrowRight className="ml-1 size-3.5" /></Button>}</td>
         </tr>; })}</tbody>
       </table></div>
