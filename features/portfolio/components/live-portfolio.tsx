@@ -24,6 +24,18 @@ import { PreviewRole, previewRoles, withoutMoney, type WithMoney } from "@/featu
 import { roleLabel } from "@/lib/access";
 import type { PortfolioPeriodKey, PortfolioSummary } from "@/features/portfolio/types";
 
+const previewKey = "janus.portfolio-preview";
+const previewEvent = "janus-portfolio-preview";
+function readPreview() { try { return window.sessionStorage.getItem(previewKey); } catch { return null; } }
+function writePreview(role: string | null) {
+  try { if (role) window.sessionStorage.setItem(previewKey, role); else window.sessionStorage.removeItem(previewKey); } catch { /* private mode: the address still carries it */ }
+  window.dispatchEvent(new Event(previewEvent));
+}
+function subscribePreview(onChange: () => void) {
+  window.addEventListener(previewEvent, onChange);
+  return () => window.removeEventListener(previewEvent, onChange);
+}
+
 const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you own, at a glance."],
   analytics: ["Analytics", "The same measures for every company, side by side."],
@@ -51,7 +63,12 @@ export function LivePortfolio() {
   // Only an Owner adds companies and shares the Portfolio; a group role only reads it.
   const realOwner = session.tenants.some((item) => item.role === "owner" && item.status === "active");
   // An Owner can look at the Portfolio as a group role would see it.
-  const preview = realOwner ? previewRoles.find((role) => role === params.get("preview")) ?? null : null;
+  // A preview lasts until "Exit preview", across every Portfolio page in this tab, not only the
+  // page whose address carried it.
+  const fromAddress = previewRoles.find((role) => role === params.get("preview")) ?? null;
+  const remembered = React.useSyncExternalStore(subscribePreview, readPreview, () => null);
+  React.useEffect(() => { if (fromAddress) writePreview(fromAddress); }, [fromAddress]);
+  const preview = realOwner ? fromAddress ?? previewRoles.find((role) => role === remembered) ?? null : null;
   const owner = realOwner && !preview;
   const [title, base] = titles[view] ?? titles.overview;
   const description = !owner && view === "overview" ? "Every company shared with you, at a glance." : base;
@@ -81,7 +98,7 @@ export function LivePortfolio() {
   }
 
   return <PreviewRole.Provider value={preview}><div className="mx-auto flex max-w-[1240px] flex-col">
-    {preview && <div role="status" className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-sm print:hidden"><span>You are seeing the Portfolio as a <strong>{roleLabel(preview)}</strong> would. {preview === "group_analyst" ? "Money is hidden." : "Money is shown."} They cannot open the companies or change anything.</span><Button size="sm" variant="secondary" onClick={() => router.replace("/portfolio?view=people")}>Exit preview</Button></div>}
+    {preview && <div role="status" className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-sm print:hidden"><span>You are seeing the Portfolio as a <strong>{roleLabel(preview)}</strong> would, on every page until you exit. {preview === "group_analyst" ? "Money from the books is hidden: sales, costs, profit, what customers owe, bills and salaries. Deal values from CRM stay visible, as they are for this role." : "Money is shown."} They cannot open the companies or change anything.</span><Button size="sm" variant="secondary" onClick={() => { writePreview(null); router.replace("/portfolio?view=people"); }}>Exit preview</Button></div>}
     <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && periodViews.includes(view) && <ExportButtons list={list} period={summary.data.period} />}</div>} />
     <div className="flex flex-col gap-6 px-6 pb-10">
       {!summary.loading && !summary.error && summary.data && list.length > 0 && periodViews.includes(view) && <PeriodBar period={summary.data.period} />}
