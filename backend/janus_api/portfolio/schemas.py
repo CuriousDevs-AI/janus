@@ -278,6 +278,9 @@ class Intercompany(BaseModel):
 
     sales: str
     purchases: str
+    # The same, in the same days of the period before, so the group's change is like for like.
+    salesBefore: str = "0.00"
+    purchasesBefore: str = "0.00"
     partners: list[str]
 
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
-import { total, winRate } from "@/features/portfolio/lib/companies";
+import { groupBooks, total, winRate } from "@/features/portfolio/lib/companies";
 import { change, healthName, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioPeriod, PortfolioTrends } from "@/features/portfolio/types";
 
@@ -25,9 +25,11 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
   const money = list.some((item) => item.books);
   // A company keeps its colour by its place in the Portfolio.
   const color = new Map(list.map((item, index) => [item.id, palette[index % palette.length]]));
-  const salesNow = list.reduce((sum, item) => sum + n(item.books?.current.netSales), 0);
-  const salesBefore = list.reduce((sum, item) => sum + n(item.books?.previous.netSales), 0);
-  const profit = list.reduce((sum, item) => sum + n(item.books?.current.profitBeforePayroll), 0);
+  // The group's figures, as on the Overview and Finance: sales between the companies taken out.
+  const group = groupBooks(list, "current");
+  const salesNow = group.sales;
+  const salesBefore = groupBooks(list, "previous").sales;
+  const profit = group.profit;
   const leads = total(list, "current", (figures) => figures.leads);
   const leadsBefore = total(list, "previous", (figures) => figures.leads);
   const won = total(list, "current", (figures) => figures.wonDeals);
@@ -37,7 +39,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
   const collectedBefore = total(list, "previous", (figures) => figures.collected);
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-      {money && <Kpi label="Sales" value={inr(salesNow)} detail={change(salesNow, salesBefore)} />}
+      {money && <Kpi label="Sales" value={inr(salesNow)} detail={`${change(salesNow, salesBefore)} · group, before GST`} />}
       {money && <Kpi label="Margin" value={salesNow ? `${percent(profit, salesNow)}%` : "—"} detail={`${inr(profit)} profit before salaries`} />}
       <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />
       <Kpi label="Lead to win" value={leads ? `${percent(won, leads)}%` : "—"} detail={`${won} won from ${leads} leads this period`} />

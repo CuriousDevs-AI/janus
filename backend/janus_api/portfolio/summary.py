@@ -5,6 +5,7 @@ Portfolio owns no business records. It asks each module for its figures through 
 """
 
 from datetime import date
+from typing import NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,17 @@ from janus_api.portfolio.targets import targets_view
 from janus_api.projects import overview as projects
 from janus_api.support import overview as support
 from janus_api.vault import overview as vault
+
+
+class Trade(NamedTuple):
+    """A company's sales by customer and bills by vendor, in the period and the same days before,
+    kept while the summary is built so sales between the companies can be taken out."""
+
+    sales_now: dict[str, int]
+    bills_now: dict[str, int]
+    sales_before: dict[str, int]
+    bills_before: dict[str, int]
+
 
 HR = "/workspace/hr-people"
 FINANCE = "/workspace/finance-accounting"
@@ -132,7 +144,7 @@ async def company_summary(
     *,
     money: bool,
     detail: bool = True,
-    trade: dict[int, tuple[dict[str, int], dict[str, int]]] | None = None,
+    trade: dict[int, Trade] | None = None,
 ) -> schemas.CompanySummary:
     """One company's headline numbers, and with `detail` its operating view.
 
@@ -253,7 +265,12 @@ async def company_summary(
             )[:8]
         ]
         if trade is not None:
-            trade[tenant_id] = (sales_now, await finance.costs_by_vendor(db, tenant_id, *span_now))
+            trade[tenant_id] = Trade(
+                sales_now,
+                await finance.costs_by_vendor(db, tenant_id, *span_now),
+                sales_before,
+                await finance.costs_by_vendor(db, tenant_id, *span_before),
+            )
     return out
 
 
@@ -269,31 +286,32 @@ async def books_for(db: AsyncSession, tenant_id: int, start: date, end: date) ->
     )
 
 
-def intercompany(
-    companies: list[schemas.CompanySummary], trade: dict[int, tuple[dict[str, int], dict[str, int]]]
-) -> None:
-    """Marks each company's sales to, and bills from, the other companies shown together, by
-    matching the name on the invoice or bill to a company's name. Only companies whose money the
-    person sees take part, so no total reveals a company they cannot see."""
+def intercompany(companies: list[schemas.CompanySummary], trade: dict[int, Trade]) -> None:
+    """Marks each company's sales to, and bills from, the other companies shown together, in the
+    period and in the same days before, by matching the name on the invoice or bill to a company's
+    name. Only companies whose money the person sees take part, so no total reveals a company they
+    cannot see. Both periods are matched the same way, so a group growth rate compares like with
+    like."""
     names = {item.name.strip().casefold(): item for item in companies if int(item.id) in trade}
     for item in companies:
         if int(item.id) not in trade:
             continue
-        sales, bills = trade[int(item.id)]
         own = item.name.strip().casefold()
-        sold = {
-            name: amount
-            for name, amount in sales.items()
-            if name.strip().casefold() in names and name.strip().casefold() != own
-        }
-        bought = {
-            name: amount
-            for name, amount in bills.items()
-            if name.strip().casefold() in names and name.strip().casefold() != own
-        }
+
+        def ours(amounts: dict[str, int], own: str = own) -> dict[str, int]:
+            return {
+                name: amount
+                for name, amount in amounts.items()
+                if name.strip().casefold() in names and name.strip().casefold() != own
+            }
+
+        books = trade[int(item.id)]
+        sold, bought = ours(books.sales_now), ours(books.bills_now)
         item.intercompany = schemas.Intercompany(
             sales=rupees(sum(sold.values()), paise=True),
             purchases=rupees(sum(bought.values()), paise=True),
+            salesBefore=rupees(sum(ours(books.sales_before).values()), paise=True),
+            purchasesBefore=rupees(sum(ours(books.bills_before).values()), paise=True),
             partners=sorted({names[name.strip().casefold()].name for name in [*sold, *bought]}),
         )
 
@@ -314,7 +332,7 @@ async def summary(
     where the person's role there holds portfolio:finance.
     """
     companies = []
-    trade: dict[int, tuple[dict[str, int], dict[str, int]]] = {}
+    trade: dict[int, Trade] = {}
     # The digest reads as of the end of the week it reports; the page reads as of today.
     today = today or today_ist()
     period = period_for(period_key, today)

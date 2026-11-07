@@ -69,3 +69,18 @@ export function monthsIn(period: { start: string; end: string }) {
 /** Payroll for the period from the monthly salaries on record. An estimate: it is not booked. */
 export const payrollFor = (item: PortfolioCompany, period: { start: string; end: string }) =>
   item.people?.monthlyPayroll ? Number(item.people.monthlyPayroll) * monthsIn(period) : null;
+
+
+/**
+ * The group's books for a side of the period, with sales between the companies shown taken out of
+ * both sales and costs. Every screen uses this, so a group figure and its change are the same
+ * everywhere.
+ */
+export function groupBooks(list: PortfolioCompany[], side: "current" | "previous") {
+  const sum = (pick: (item: PortfolioCompany) => string | null | undefined) => list.reduce((total, item) => total + Number(pick(item) ?? 0), 0);
+  const internalSales = sum((item) => side === "current" ? item.intercompany?.sales : item.intercompany?.salesBefore);
+  const internalBills = sum((item) => side === "current" ? item.intercompany?.purchases : item.intercompany?.purchasesBefore);
+  const sales = sum((item) => item.books?.[side].netSales) - internalSales;
+  const costs = sum((item) => item.books?.[side].costs) - internalBills;
+  return { sales, costs, profit: sales - costs, internalSales, internalBills };
+}

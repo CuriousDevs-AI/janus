@@ -7,7 +7,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { TargetsCard } from "@/features/portfolio/components/targets";
 import { WeeklyEmail } from "@/features/portfolio/components/weekly-email";
-import { openIn, total, useRoles, winRate } from "@/features/portfolio/lib/companies";
+import { groupBooks, openIn, total, useRoles, winRate } from "@/features/portfolio/lib/companies";
 import { change, day, healthName, healthTone, inr, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor } from "@/features/portfolio/lib/work";
 import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
@@ -22,9 +22,10 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
   const work = workFor(list);
   const urgent = work.filter((item) => item.priority === "high");
   const sum = (pick: (item: PortfolioCompany) => number) => list.reduce((acc, item) => acc + pick(item), 0);
-  const sales = sum((item) => n(item.books?.current.netSales)) - sum((item) => n(item.intercompany?.sales));
-  const salesBefore = sum((item) => n(item.books?.previous.netSales));
-  const profit = sales - (sum((item) => n(item.books?.current.costs)) - sum((item) => n(item.intercompany?.purchases)));
+  const group = groupBooks(list, "current");
+  const groupBefore = groupBooks(list, "previous");
+  const sales = group.sales;
+  const profit = group.profit;
   const pastDue = sum((item) => n(item.money?.overdue));
   const leads = total(list, "current", (figures) => figures.leads);
   const leadsBefore = total(list, "previous", (figures) => figures.leads);
@@ -33,7 +34,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Kpi label="Companies needing you" value={`${needYou} of ${list.length}`} detail={needYou ? "Marked red below" : "None is red"} />
-      {money ? <Kpi label="Sales" value={inr(sales)} detail={`${change(sales, salesBefore)} · before GST`} /> : <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />}
+      {money ? <Kpi label="Sales" value={inr(sales)} detail={`${change(sales, groupBefore.sales)} · group, before GST`} /> : <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />}
       {money ? <Kpi label="Profit before salaries" value={inr(profit)} detail="Sales less supplier bills" /> : <Kpi label="Deals won" value={String(total(list, "current", (figures) => figures.wonDeals))} detail={`Worth ${inr(total(list, "current", (figures) => figures.wonValue))}`} />}
       {money ? <Kpi label="Past due from customers" value={inr(pastDue)} detail={pastDue ? "Chase it from the Work inbox" : "Nothing past due"} /> : <Kpi label="Open pipeline" value={inr(sum((item) => n(item.crm.pipelineValue)))} detail={`${sum((item) => item.crm.openDeals)} open deals`} />}
       <Kpi label="To do" value={String(work.length)} detail={urgent.length ? `${urgent.length} urgent` : "Nothing urgent"} />

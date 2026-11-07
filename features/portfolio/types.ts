@@ -44,7 +44,7 @@ export interface PortfolioCompany {
   /** The customers whose sales moved most, before GST, in rupees. Empty without money. */
   customers: { name: string; current: string; previous: string }[];
   /** Sales to, and bills from, the other companies shown, matched by name. Null without money. */
-  intercompany: { sales: string; purchases: string; partners: string[] } | null;
+  intercompany: { sales: string; purchases: string; salesBefore: string; purchasesBefore: string; partners: string[] } | null;
   /** Leads by channel, this period and the same days before. */
   leadSources: { source: string; current: number; previous: number }[];
   /** Registration details, or null where none are recorded. */

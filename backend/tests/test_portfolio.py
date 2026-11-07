@@ -847,6 +847,8 @@ async def test_books_profit_and_sales_between_own_companies(
     assert mumbai["intercompany"] == {
         "sales": "1000.00",
         "purchases": "300.00",
+        "salesBefore": "0.00",
+        "purchasesBefore": "0.00",
         "partners": ["Pune Retail"],
     }
     assert [(item["name"], item["current"]) for item in mumbai["customers"]] == [

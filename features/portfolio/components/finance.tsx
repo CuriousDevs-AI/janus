@@ -4,7 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Basis, Kpi } from "@/features/portfolio/components/figures";
-import { openIn, payrollFor, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
+import { groupBooks, openIn, payrollFor, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
 import { change, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioBooks, PortfolioPeriod } from "@/features/portfolio/types";
 
@@ -16,14 +16,14 @@ const margin = (profit: number, sales: number) => sales > 0 ? `${Math.round((pro
 export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: number; period: PortfolioPeriod }) {
   const [mode, setMode] = React.useState<"group" | "companies">("group");
   const sales = sumBooks(list, "current", "netSales");
-  const salesBefore = sumBooks(list, "previous", "netSales");
   const costs = sumBooks(list, "current", "costs");
   const moneyIn = sumBooks(list, "current", "moneyIn");
   const moneyOut = sumBooks(list, "current", "moneyOut");
-  const internalSales = list.reduce((total, item) => total + n(item.intercompany?.sales), 0);
-  const internalBills = list.reduce((total, item) => total + n(item.intercompany?.purchases), 0);
-  const groupSales = sales - internalSales;
-  const groupCosts = costs - internalBills;
+  const group = groupBooks(list, "current");
+  const groupBefore = groupBooks(list, "previous");
+  const { internalSales, internalBills } = group;
+  const groupSales = group.sales;
+  const groupCosts = group.costs;
   const payroll = list.reduce((total, item) => total + (payrollFor(item, period) ?? 0), 0);
   const owed = list.reduce((total, item) => total + n(item.money.receivable), 0);
   const overdue = list.reduce((total, item) => total + n(item.money.overdue), 0);
@@ -34,7 +34,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
       <Button size="sm" variant={mode === "companies" ? "default" : "outline"} aria-pressed={mode === "companies"} onClick={() => setMode("companies")}>Company by company</Button>
     </div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Kpi label="Sales" value={inr(groupSales)} detail={`Before GST, sales between your companies taken out. ${change(sales, salesBefore)}`} />
+      <Kpi label="Sales" value={inr(groupSales)} detail={`Group, before GST, sales between your companies taken out. ${change(groupSales, groupBefore.sales)}`} />
       <Kpi label="Profit before salaries" value={inr(groupSales - groupCosts)} detail={`Margin ${margin(groupSales - groupCosts, groupSales)} · costs ${inr(groupCosts)}`} />
       <Kpi label="Money in − money out" value={inr(moneyIn - moneyOut)} detail={`${inr(moneyIn)} from customers, ${inr(moneyOut)} to suppliers`} />
       <Kpi label="Customers owe" value={inr(owed)} detail={overdue ? `${inr(overdue)} of it past due` : "Nothing past due"} />
