@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/settings/section-ui";
 import { answerLive, type Answer } from "@/features/portfolio/lib/answer";
-import type { PortfolioCompany } from "@/features/portfolio/types";
+import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
 
-const suggestions = ["Which company needs me most?", "Why did sales change?", "Why did leads change?", "Compare profit across companies", "What approvals are waiting?", "Any GST or TDS due?"];
+const suggestions = ["Which company needs me most?", "Why did sales change?", "Who is my biggest customer?", "Compare profit across companies", "What approvals are waiting?", "Any GST or TDS due?"];
 
-export function Intelligence({ list }: { list: PortfolioCompany[] }) {
+export function Intelligence({ list, period }: { list: PortfolioCompany[]; period?: PortfolioPeriod }) {
   const [turns, setTurns] = React.useState<{ q: string; a: Answer }[]>([]);
   const [q, setQ] = React.useState("");
-  const ask = (text: string) => { const clean = text.trim(); if (!clean) return; setTurns((current) => [...current, { q: clean, a: answerLive(clean, list) }]); setQ(""); };
+  const ask = (text: string) => { const clean = text.trim(); if (!clean) return; setTurns((current) => [...current, { q: clean, a: answerLive(clean, list, period) }]); setQ(""); };
   return <SectionCard title="Ask across your companies" description="Answers come from the figures on the Portfolio, with the numbers shown. Janus does not guess.">
     <div className="flex flex-col gap-4">
       {turns.length === 0 && <div className="flex flex-wrap gap-2">{suggestions.map((item) => <Button key={item} size="sm" variant="outline" onClick={() => ask(item)}>{item}</Button>)}</div>}

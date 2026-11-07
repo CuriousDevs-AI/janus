@@ -89,7 +89,7 @@ export function LivePortfolio() {
         ? <Access list={list} />
         : <SectionCard title="Portfolio access" description="Only an Owner shares the Portfolio."><p className="text-sm text-muted-foreground">The Owner decides who else sees these companies.</p></SectionCard>;
       case "notifications": return <Notifications list={list} />;
-      case "intelligence": return <Intelligence list={list} />;
+      case "intelligence": return <Intelligence list={list} period={summary.data.period} />;
       case "compliance": return <ComplianceView list={list} onChanged={summary.reload} />;
       case "work": return <WorkInbox list={list} />;
       case "activity": return <Activity list={list} />;
