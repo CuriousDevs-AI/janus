@@ -24,10 +24,11 @@ export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
     people: item.people && { ...item.people, monthlyPayroll: null, claimsValue: null },
     stock: item.stock && { ...item.stock, stockValue: null },
     targets: item.targets && { ...item.targets, collected: null },
-    // The server builds these without money for such a role: drop the money lines, then health
+    // The server builds these without money for such a role: drop the money lines (receivables,
+    // payables, a loss after salaries), then health
     // follows the same rule (red with anything high, amber with anything medium).
     ...(() => {
-      const attention = item.attention.filter((entry) => !/view=(receivables|payables)/.test(entry.to));
+      const attention = item.attention.filter((entry) => !/view=(receivables|payables|overview)&workspace=finance/.test(entry.to));
       const high = attention.filter((entry) => entry.severity === "high").map((entry) => entry.text);
       const medium = attention.filter((entry) => entry.severity === "medium").map((entry) => entry.text);
       return { attention, health: item.health && (high.length ? { status: "red" as const, reasons: high } : medium.length ? { status: "amber" as const, reasons: medium } : { status: "green" as const, reasons: [] }) };
@@ -66,9 +67,18 @@ export function monthsIn(period: { start: string; end: string }) {
   return days / 30.44;
 }
 
-/** Payroll for the period from the monthly salaries on record. An estimate: it is not booked. */
+/** Payroll for the period from the monthly salaries on record. An estimate: it is not booked.
+ * Null when the company has no employee records or no salaries on them: unknown, not zero. */
 export const payrollFor = (item: PortfolioCompany, period: { start: string; end: string }) =>
-  item.people?.monthlyPayroll ? Number(item.people.monthlyPayroll) * monthsIn(period) : null;
+  (item.people?.headcount ?? 0) > 0 && Number(item.people?.monthlyPayroll ?? 0) > 0 ? Number(item.people!.monthlyPayroll) * monthsIn(period) : null;
+
+/** The group's profit once known salaries are counted, and how many companies' salaries are unknown. */
+export function groupProfitAfterSalaries(list: PortfolioCompany[], period: { start: string; end: string }) {
+  const known = list.filter((item) => item.books && payrollFor(item, period) !== null);
+  const salaries = known.reduce((total, item) => total + (payrollFor(item, period) ?? 0), 0);
+  const unknown = list.filter((item) => item.books && payrollFor(item, period) === null).length;
+  return { salaries, unknown, profit: groupBooks(list, "current").profit - salaries };
+}
 
 
 /**

@@ -5,6 +5,7 @@ Portfolio owns no business records. It asks each module for its figures through 
 """
 
 from datetime import date
+from decimal import Decimal
 from typing import NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -250,6 +251,16 @@ async def company_summary(
             current=await books_for(db, tenant_id, *span_now),
             previous=await books_for(db, tenant_id, *span_before),
         )
+        # Salaries are not booked yet, so a company can show a profit on its bills and still lose
+        # money once its people are paid. Estimate the period's salaries from the monthly ones on
+        # record and say so when that turns the period into a loss.
+        if staff.headcount and staff.monthly_payroll > 0:
+            days = (span_now[1] - span_now[0]).days + 1
+            salaries = staff.monthly_payroll * days / Decimal("30.44")
+            after = Decimal(out.books.current.profitBeforePayroll) - salaries
+            if after < 0:
+                out.attention = attention.with_loss(out.attention, after)
+                out.health = attention.health(out.attention)
         sales_now = await finance.sales_by_customer(db, tenant_id, *span_now)
         sales_before = await finance.sales_by_customer(db, tenant_id, *span_before)
         # The customers who moved most, so a change in sales can be explained by name.

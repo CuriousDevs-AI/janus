@@ -7,7 +7,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { TargetsCard } from "@/features/portfolio/components/targets";
 import { WeeklyEmail } from "@/features/portfolio/components/weekly-email";
-import { groupBooks, openIn, total, useRoles, winRate } from "@/features/portfolio/lib/companies";
+import { groupBooks, groupProfitAfterSalaries, openIn, payrollFor, total, useRoles, winRate } from "@/features/portfolio/lib/companies";
 import { change, day, healthName, healthTone, inr, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor } from "@/features/portfolio/lib/work";
 import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
@@ -26,6 +26,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
   const groupBefore = groupBooks(list, "previous");
   const sales = group.sales;
   const profit = group.profit;
+  const after = groupProfitAfterSalaries(list, period);
   const pastDue = sum((item) => n(item.money?.overdue));
   const leads = total(list, "current", (figures) => figures.leads);
   const leadsBefore = total(list, "previous", (figures) => figures.leads);
@@ -35,7 +36,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Kpi label="Companies needing you" value={`${needYou} of ${list.length}`} detail={needYou ? "Marked red below" : "None is red"} />
       {money ? <Kpi label="Sales" value={inr(sales)} detail={`${change(sales, groupBefore.sales)} · group, before GST`} /> : <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />}
-      {money ? <Kpi label="Profit before salaries" value={inr(profit)} detail="Sales less supplier bills" /> : <Kpi label="Deals won" value={String(total(list, "current", (figures) => figures.wonDeals))} detail={`Worth ${inr(total(list, "current", (figures) => figures.wonValue))}`} />}
+      {money ? <Kpi label={after.salaries ? "Profit after salaries" : "Profit before salaries"} value={inr(after.salaries ? after.profit : profit)} detail={after.salaries ? `Estimate · ${inr(profit)} before ${inr(after.salaries)} of salaries${after.unknown ? `; salaries unknown for ${after.unknown}` : ""}` : "Salaries not on record: add employees in HR"} /> : <Kpi label="Deals won" value={String(total(list, "current", (figures) => figures.wonDeals))} detail={`Worth ${inr(total(list, "current", (figures) => figures.wonValue))}`} />}
       {money ? <Kpi label="Past due from customers" value={inr(pastDue)} detail={pastDue ? "Chase it from the Work inbox" : "Nothing past due"} /> : <Kpi label="Open pipeline" value={inr(sum((item) => n(item.crm.pipelineValue)))} detail={`${sum((item) => item.crm.openDeals)} open deals`} />}
       <Kpi label="To do" value={String(work.length)} detail={urgent.length ? `${urgent.length} urgent` : "Nothing urgent"} />
     </div>
@@ -62,7 +63,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
           <td className="px-3 py-2.5">{item.health ? <><Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>{item.health.reasons[0] && <p className="mt-1 max-w-[260px] text-xs text-muted-foreground">{item.health.reasons[0]}{item.health.reasons.length > 1 ? ` (+${item.health.reasons.length - 1})` : ""}</p>}</> : "—"}</td>
           {money ? <>
             <td className="px-3 py-2.5 tabular-nums">{item.books ? <>{inr(n(item.books.current.netSales))} <span className="text-xs text-muted-foreground">{pct(n(item.books.current.netSales), n(item.books.previous.netSales))}</span></> : "—"}</td>
-            <td className="px-3 py-2.5 tabular-nums">{item.books ? inr(n(item.books.current.profitBeforePayroll)) : "—"}</td>
+            <td className="px-3 py-2.5 tabular-nums">{item.books ? (() => { const pay = payrollFor(item, period); const before = n(item.books.current.profitBeforePayroll); return pay === null ? <>{inr(before)}<p className="text-[11px] text-muted-foreground">before salaries</p></> : <span className={before - pay < 0 ? "text-danger" : ""}>{inr(before - pay)}<p className="text-[11px] text-muted-foreground">after salaries, est.</p></span>; })() : "—"}</td>
             <td className={`px-3 py-2.5 tabular-nums ${n(item.money?.overdue) ? "text-danger" : ""}`}>{item.money ? inr(n(item.money.overdue)) : "—"}</td>
           </> : <td className="px-3 py-2.5 tabular-nums">{item.period.current.leads} <span className="text-xs text-muted-foreground">{pct(item.period.current.leads, item.period.previous.leads)}</span></td>}
           <td className="px-3 py-2.5 tabular-nums">{inr(n(item.crm.pipelineValue))}</td>

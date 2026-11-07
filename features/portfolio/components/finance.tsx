@@ -35,7 +35,8 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     </div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <Kpi label="Sales" value={inr(groupSales)} detail={`Group, before GST, sales between your companies taken out. ${change(groupSales, groupBefore.sales)}`} />
-      <Kpi label="Profit before salaries" value={inr(groupSales - groupCosts)} detail={`Margin ${margin(groupSales - groupCosts, groupSales)} · costs ${inr(groupCosts)}`} />
+      {payroll ? <Kpi label="Profit after salaries" value={inr(groupSales - groupCosts - payroll)} detail={`Estimate · ${inr(groupSales - groupCosts)} before ${inr(payroll)} of salaries (margin ${margin(groupSales - groupCosts, groupSales)} before)`} />
+        : <Kpi label="Profit before salaries" value={inr(groupSales - groupCosts)} detail={`Margin ${margin(groupSales - groupCosts, groupSales)} · salaries not on record`} />}
       <Kpi label="Money in − money out" value={inr(moneyIn - moneyOut)} detail={`${inr(moneyIn)} from customers, ${inr(moneyOut)} to suppliers`} />
       <Kpi label="Customers owe" value={inr(owed)} detail={overdue ? `${inr(overdue)} of it past due` : "Nothing past due"} />
     </div>
@@ -67,7 +68,7 @@ function ByCompany({ list, period }: { list: WithMoney[]; period: PortfolioPerio
     [<>Costs<Basis /></>, (item) => inr(n(item.books?.current.costs))],
     [<>Profit before salaries<Basis /></>, (item) => inr(n(item.books?.current.profitBeforePayroll))],
     ["Margin", (item) => margin(n(item.books?.current.profitBeforePayroll), n(item.books?.current.netSales))],
-    [<>Salaries for the period<Basis estimate /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "Not on record" : inr(pay); }],
+    [<>Salaries for the period<Basis estimate /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "Unknown: no salaries in HR" : inr(pay); }],
     [<>Profit after salaries<Basis estimate /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "—" : inr(n(item.books?.current.profitBeforePayroll) - pay); }],
     ["Money in", (item) => inr(n(item.books?.current.moneyIn))],
     ["Money out", (item) => inr(n(item.books?.current.moneyOut))],

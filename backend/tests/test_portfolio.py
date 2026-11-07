@@ -711,6 +711,10 @@ async def test_the_operating_view_attention_and_health(
     assert overdue and all(due["dueOn"] < today.isoformat() for due in overdue)
     assert company["health"]["status"] == "red"
     texts = [item["text"] for item in company["attention"]]
+    # No sales against ₹80,000 of monthly salaries: a loss once salaries are counted.
+    assert any(
+        text.startswith("Losing about ₹") and "once salaries are counted" in text for text in texts
+    )
     assert any("past the end date" in text for text in texts)
     assert any("urgent" in text for text in texts)
     assert company["attention"][0]["severity"] == "high"

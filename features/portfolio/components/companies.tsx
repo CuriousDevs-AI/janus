@@ -38,13 +38,13 @@ export function Companies({ list, period, onAdd, onSaved }: { list: PortfolioCom
   const editor = editing && <CompanyEditor item={editing} basics={owns(editing)} onClose={() => setEditing(null)} onSaved={onSaved} />;
   const canEdit = (item: PortfolioCompany) => handlesMoney(item);
   if (profile) return <><CompanyProfile item={profile} period={period} onBack={() => go(null)} onSaved={onSaved} onEdit={canEdit(profile) ? () => setEditing(profile) : undefined} />{editor}</>;
-  return <><CompanyTable list={list} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} />{editor}</>;
+  return <><CompanyTable list={list} period={period} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} />{editor}</>;
 }
 
 /** The company's own settings, in its Business Management. */
 const settingsOf = (item: PortfolioCompany) => openIn(item, "/settings?tab=workspace&view=settings&workspace=business");
 
-function CompanyTable({ list, onAdd, onOpen, onEdit, canEdit }: { list: PortfolioCompany[]; onAdd?: () => void; onOpen: (id: string) => void; onEdit: (item: PortfolioCompany) => void; canEdit: (item: PortfolioCompany) => boolean }) {
+function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: PortfolioCompany[]; period: PortfolioPeriod; onAdd?: () => void; onOpen: (id: string) => void; onEdit: (item: PortfolioCompany) => void; canEdit: (item: PortfolioCompany) => boolean }) {
   const { owns } = useRoles();
   const [query, setQuery] = React.useState("");
   const [health, setHealth] = React.useState("all");
@@ -85,16 +85,17 @@ function CompanyTable({ list, onAdd, onOpen, onEdit, canEdit }: { list: Portfoli
         </tr>)}</tbody>
       </table></div>}
     </SectionCard>
-    {compare.length >= 2 && <Compare list={list.filter((item) => compare.includes(item.id))} onClear={() => setCompare([])} />}
+    {compare.length >= 2 && <Compare list={list.filter((item) => compare.includes(item.id))} period={period} onClear={() => setCompare([])} />}
     {compare.length === 1 && <p className="text-xs text-muted-foreground">Tick one more company to compare.</p>}
   </>;
 }
 
-function Compare({ list, onClear }: { list: PortfolioCompany[]; onClear: () => void }) {
+function Compare({ list, period, onClear }: { list: PortfolioCompany[]; period: PortfolioPeriod; onClear: () => void }) {
   const rows: [string, (item: PortfolioCompany) => string][] = [
     ["Health", (item) => item.health ? healthName[item.health.status] : "—"],
     ["Sales this period", (item) => item.books ? inr(n(item.books.current.netSales)) : "Not shared"],
     ["Profit before salaries", (item) => item.books ? inr(n(item.books.current.profitBeforePayroll)) : "Not shared"],
+    ["Profit after salaries (est.)", (item) => { const pay = payrollFor(item, period); return !item.books ? "Not shared" : pay === null ? "Salaries unknown" : inr(n(item.books.current.profitBeforePayroll) - pay); }],
     ["Customers owe", (item) => item.money ? inr(n(item.money.receivable)) : "Not shared"],
     ["Leads this period", (item) => String(item.period.current.leads)],
     ["Won this period", (item) => inr(n(item.period.current.wonValue))],
@@ -147,7 +148,9 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
 
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       {item.books ? <Kpi label={`Sales, ${period.label}`} value={inr(n(item.books.current.netSales))} detail={`${inr(n(item.books.previous.netSales))} in the same days before`} /> : <Kpi label="Leads this period" value={String(item.period.current.leads)} detail={`${item.period.previous.leads} in the same days before`} />}
-      {item.books ? <Kpi label="Profit before salaries" value={inr(n(item.books.current.profitBeforePayroll))} detail={payroll !== null ? `About ${inr(n(item.books.current.profitBeforePayroll) - payroll)} after salaries (estimate)` : "Salaries not on record"} /> : <Kpi label="Deals won this period" value={String(item.period.current.wonDeals)} detail={`Worth ${inr(n(item.period.current.wonValue))}`} />}
+      {item.books ? payroll !== null
+        ? <Kpi label="Profit after salaries" value={inr(n(item.books.current.profitBeforePayroll) - payroll)} detail={`Estimate · ${inr(n(item.books.current.profitBeforePayroll))} before ${inr(payroll)} of salaries`} />
+        : <Kpi label="Profit before salaries" value={inr(n(item.books.current.profitBeforePayroll))} detail="Salaries unknown: no salaries in HR" /> : <Kpi label="Deals won this period" value={String(item.period.current.wonDeals)} detail={`Worth ${inr(n(item.period.current.wonValue))}`} />}
       <Kpi label="Open pipeline" value={inr(n(item.crm.pipelineValue))} detail={`${item.crm.openDeals} open deals · win rate ${rate === null ? "—" : `${rate}%`}`} />
       {item.money ? <Kpi label="Customers owe" value={inr(n(item.money.receivable))} detail={n(item.money.overdue) ? `${inr(n(item.money.overdue))} past due` : "Nothing past due"} /> : <Kpi label="Open tickets" value={String(item.openTickets)} detail="Customer support" />}
     </div>

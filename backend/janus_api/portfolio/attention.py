@@ -136,3 +136,17 @@ def health(items: list[schemas.AttentionItem]) -> schemas.Health:
     if medium:
         return schemas.Health(status="amber", reasons=medium)
     return schemas.Health(status="green", reasons=[])
+
+
+def with_loss(
+    items: list[schemas.AttentionItem], after_salaries: Decimal
+) -> list[schemas.AttentionItem]:
+    """Adds the line for a period that loses money once salaries are counted (an estimate)."""
+    line = schemas.AttentionItem(
+        severity="high",
+        text=f"Losing about ₹{abs(after_salaries):,.0f} this period once salaries are counted"
+        " (estimate)",
+        to=f"{FINANCE}?view=overview&workspace=finance-accounting",
+    )
+    order = {"high": 0, "medium": 1, "low": 2}
+    return sorted([*items, line], key=lambda item: order[item.severity])
