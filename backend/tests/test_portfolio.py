@@ -1123,3 +1123,7 @@ async def test_a_company_with_no_filings_set_up_is_not_up_to_date(
     after = await company()
     assert after["complianceSetUp"] is True
     assert not any(item["text"].startswith("Compliance not") for item in after["attention"])
+
+
+def test_a_loss_reads_minus_rupees() -> None:
+    assert inr("-300000") == "−₹3L" and inr("-1250") == "−₹1,250" and inr("-0.2") == "₹0"

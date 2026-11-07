@@ -105,36 +105,39 @@ function Trends({ data, money, color }: { data: PortfolioTrends; money: boolean;
   const salesPick = money ? (point: PortfolioTrends["companies"][number]["points"][number]) => point.netSales === null ? null : n(point.netSales) : (point: PortfolioTrends["companies"][number]["points"][number]) => n(point.wonValue);
   const profitPick = (point: PortfolioTrends["companies"][number]["points"][number]) => point.netSales === null ? null : n(point.netSales) - n(point.costs);
   const groupProfit = data.labels.map((label, index) => ({ label, profit: companies.reduce((sum, company) => sum + (profitPick(company.points[index]) ?? 0), 0) }));
-  const line = (pick: typeof salesPick, format: (value: number) => string) => <ResponsiveContainer width="100%" height={260}><LineChart data={series(pick)} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+  // A chart of nothing but zeros draws a meaningless ₹0–₹4 axis: say there is nothing yet instead.
+  const empty = (pick: (point: PortfolioTrends["companies"][number]["points"][number]) => number | null) => companies.every((company) => company.points.every((point) => !pick(point)));
+  const nothing = (text: string) => <p className="flex h-[200px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">{text}</p>;
+  const line = (pick: typeof salesPick, format: (value: number) => string) => empty(pick) ? nothing("Nothing recorded in these months yet.") : <ResponsiveContainer width="100%" height={260}><LineChart data={series(pick)} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
     <CartesianGrid stroke="var(--border)" vertical={false} />
     <XAxis dataKey="label" tick={axis} tickLine={false} axisLine={false} />
     <YAxis tick={axis} tickLine={false} axisLine={false} tickFormatter={format} width={56} />
     <Tooltip {...tooltipStyle} formatter={(value) => format(Number(value))} />
     <Legend wrapperStyle={{ fontSize: 12 }} iconType="plainline" />
-    {companies.map((company) => <Line key={company.id} type="monotone" dataKey={company.id} name={company.name} stroke={color.get(company.id)} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />)}
+    {companies.map((company) => <Line key={company.id} type="linear" dataKey={company.id} name={company.name} stroke={color.get(company.id)} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />)}
   </LineChart></ResponsiveContainer>;
   return <div className="grid gap-4 lg:grid-cols-2">
     <ChartCard title={money ? "Sales by month" : "Value won by month"} description={money ? "Invoiced before GST, less credit notes. This month runs to today." : "Deals won each month. Money from the books is not shared with your role."} table={<SeriesTable labels={data.labels} rows={rows(salesPick)} format={inr} />}>
       {line(salesPick, axisInr)}
     </ChartCard>
     <ChartCard title="Leads by month" description="New leads each company took in." table={<SeriesTable labels={data.labels} rows={rows((point) => point.leads)} format={String} />}>
-      <ResponsiveContainer width="100%" height={260}><BarChart data={series((point) => point.leads)} margin={{ top: 8, right: 16, bottom: 0, left: 0 }} barGap={2}>
+      {empty((point) => point.leads) ? nothing("No leads in these months yet.") : <ResponsiveContainer width="100%" height={260}><BarChart data={series((point) => point.leads)} margin={{ top: 8, right: 16, bottom: 0, left: 0 }} barGap={2}>
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis dataKey="label" tick={axis} tickLine={false} axisLine={false} />
         <YAxis tick={axis} tickLine={false} axisLine={false} allowDecimals={false} width={40} />
         <Tooltip {...tooltipStyle} cursor={{ fill: "var(--surface-2)" }} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {companies.map((company) => <Bar key={company.id} dataKey={company.id} name={company.name} fill={color.get(company.id)} radius={[4, 4, 0, 0]} maxBarSize={18} />)}
-      </BarChart></ResponsiveContainer>
+      </BarChart></ResponsiveContainer>}
     </ChartCard>
     {money && <ChartCard title="Group profit by month" description="Sales less supplier bills, all companies together, before salaries. Below the line is a loss." table={<SeriesTable labels={data.labels} rows={[{ name: "Group", values: groupProfit.map((point) => point.profit) }]} format={inr} />}>
-      <ResponsiveContainer width="100%" height={240}><BarChart data={groupProfit} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+      {groupProfit.every((point) => !point.profit) ? nothing("No sales or bills in these months yet.") : <ResponsiveContainer width="100%" height={240}><BarChart data={groupProfit} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis dataKey="label" tick={axis} tickLine={false} axisLine={false} />
         <YAxis tick={axis} tickLine={false} axisLine={false} tickFormatter={axisInr} width={56} />
         <Tooltip {...tooltipStyle} cursor={{ fill: "var(--surface-2)" }} formatter={(value) => inr(Number(value))} />
         <Bar dataKey="profit" name="Profit before salaries" fill={palette[0]} radius={[4, 4, 0, 0]} maxBarSize={28} />
-      </BarChart></ResponsiveContainer>
+      </BarChart></ResponsiveContainer>}
     </ChartCard>}
     {money && <ChartCard title="Collected by month" description="Money received from customers each month." table={<SeriesTable labels={data.labels} rows={rows((point) => point.collected === null ? null : n(point.collected))} format={inr} />}>
       {line((point) => point.collected === null ? null : n(point.collected), axisInr)}

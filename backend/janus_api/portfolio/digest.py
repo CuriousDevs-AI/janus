@@ -88,6 +88,9 @@ def day(iso: str) -> str:
 def inr(value: str | Decimal | None) -> str:
     """Rupees the way the Portfolio page writes them: ₹12,500, ₹4.2L, ₹1.3Cr."""
     amount = Decimal(value or 0)
+    # A loss reads −₹3L, never ₹-3L.
+    if amount < 0 and inr(-amount) != "₹0":
+        return f"−{inr(-amount)}"
     for size, unit in ((Decimal(10**7), "Cr"), (Decimal(10**5), "L")):
         if abs(amount) >= size:
             return f"₹{(amount / size).quantize(Decimal('0.1'), ROUND_HALF_UP).normalize():f}{unit}"

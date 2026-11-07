@@ -1,12 +1,14 @@
 /** How the Portfolio writes money, days and changes. */
 
 /** Rupees the way an Indian owner reads them: ₹12,500 below a lakh, then ₹4.2L and ₹1.3Cr. */
-export function inr(value: number) {
+export function inr(value: number): string {
+  // A loss reads −₹3L, never ₹-3L.
+  if (value < 0 && inr(-value) !== "₹0") return `−${inr(-value)}`;
   // Rounded half up on whole tenths, like the weekly email: ₹1.65L reads ₹1.7L, not toFixed's ₹1.6L.
   const tenths = (unit: number) => String(Math.round(value / (unit / 10)) / 10);
   if (Math.abs(value) >= 1e7) return `₹${tenths(1e7)}Cr`;
   if (Math.abs(value) >= 1e5) return `₹${tenths(1e5)}L`;
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+  return `₹${Math.round(Math.abs(value) < 0.5 ? 0 : value).toLocaleString("en-IN")}`;
 }
 
 /** 2026-10-26 as 26 Oct 2026, read as a day in India. */
