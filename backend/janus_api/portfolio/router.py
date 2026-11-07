@@ -146,9 +146,21 @@ async def read_activity(actor: CurrentActor, db: Db, days: int = 30) -> schemas.
 
 
 @router.get("/trends", response_model=schemas.Trends)
-async def read_trends(actor: CurrentActor, db: Db, months: int = 6) -> schemas.Trends:
-    """Month by month figures for every company the person sees, oldest month first."""
-    return await trends.trends(db, actor.user.id, actor.session.tenant_id, max(2, min(months, 12)))
+async def read_trends(
+    actor: CurrentActor,
+    db: Db,
+    unit: trends.Unit = "month",
+    count: int | None = None,
+    months: int | None = None,
+) -> schemas.Trends:
+    """Day, week or month figures for every company the person sees, oldest first. `months` is
+    the older way of asking for months."""
+    limits = {"day": (30, 366), "week": (12, 104), "month": (6, 24)}
+    default, most = limits[unit]
+    wanted = count if count is not None else months if months is not None else default
+    return await trends.trends(
+        db, actor.user.id, actor.session.tenant_id, unit, max(2, min(wanted, most))
+    )
 
 
 @router.put("/companies/{company_id}/details", response_model=schemas.CompanyDetails)

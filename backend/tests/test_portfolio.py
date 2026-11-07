@@ -1157,3 +1157,39 @@ async def test_late_supplier_bills_are_told_apart_from_bills_due_soon(
     line = next(item for item in company["attention"] if "supplier bills" in item["text"])
     assert line["text"] == "₹700 of supplier bills already late, ₹300 more due within 7 days"
     assert line["severity"] == "high"
+
+
+def test_week_and_day_spans_end_today() -> None:
+    from janus_api.portfolio.trends import spans_for
+
+    weeks = spans_for("week", date(2026, 11, 7), 2)
+    assert weeks == [
+        (date(2026, 10, 26), date(2026, 11, 1)),
+        (date(2026, 11, 2), date(2026, 11, 7)),
+    ]
+    days = spans_for("day", date(2026, 11, 7), 3)
+    assert [start for start, _ in days] == [date(2026, 11, 5), date(2026, 11, 6), date(2026, 11, 7)]
+
+
+async def test_trends_by_day(client: httpx.AsyncClient, mailbox: Mailbox) -> None:
+    owner = await signup(client, mailbox)
+    await _lead_with_deal(client, owner.headers, "d-1", "700", "won")
+    today = today_ist().isoformat()
+    created = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "d-inv"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": today,
+            "due_date": today,
+            "same_state": True,
+            "lines": [{"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 25000, "gst_rate": 5}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    trend = (await client.get("/v1/portfolio/trends?unit=day", headers=owner.headers)).json()
+    assert trend["unit"] == "day" and len(trend["months"]) == 30
+    assert trend["months"][-1] == today
+    point = trend["companies"][0]["points"][-1]
+    assert point["leads"] == 1 and point["wonValue"] == "700.00" and point["netSales"] == "250.00"
+    assert all(p["leads"] == 0 for p in trend["companies"][0]["points"][:-1])

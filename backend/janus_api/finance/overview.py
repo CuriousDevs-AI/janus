@@ -7,6 +7,7 @@ company's own context (the caller sets it), so row-level security applies.
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -231,3 +232,84 @@ async def costs_by_vendor(
         )
     ).all()
     return {str(vendor): int(amount or 0) for vendor, amount in rows}
+
+
+@dataclass(frozen=True)
+class DayMoney:
+    """One day, in paise: sales before GST less credit notes, costs before GST plus write-offs,
+    and money collected from customers."""
+
+    net_sales: int = 0
+    costs: int = 0
+    collected: int = 0
+
+
+async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dict[date, DayMoney]:
+    """The books day by day between two days, both included. Days with nothing are left out."""
+    days: dict[date, dict[str, int]] = {}
+
+    def add(rows: Any, key: str, sign: int = 1) -> None:
+        for day, amount in rows:
+            days.setdefault(day, {"net_sales": 0, "costs": 0, "collected": 0})[key] += sign * int(
+                amount or 0
+            )
+
+    add(
+        (
+            await db.execute(
+                select(FinanceInvoice.invoice_date, func.sum(FinanceInvoice.taxable_paise))
+                .where(
+                    FinanceInvoice.tenant_id == tenant_id,
+                    FinanceInvoice.invoice_date.between(start, end),
+                )
+                .group_by(FinanceInvoice.invoice_date)
+            )
+        ).all(),
+        "net_sales",
+    )
+    for kind, key, sign in (("credit", "net_sales", -1), ("write-off", "costs", 1)):
+        add(
+            (
+                await db.execute(
+                    select(FinanceCreditNote.noted_on, func.sum(FinanceCreditNote.amount_paise))
+                    .where(
+                        FinanceCreditNote.tenant_id == tenant_id,
+                        FinanceCreditNote.status == "approved",
+                        FinanceCreditNote.kind == kind,
+                        FinanceCreditNote.noted_on.between(start, end),
+                    )
+                    .group_by(FinanceCreditNote.noted_on)
+                )
+            ).all(),
+            key,
+            sign,
+        )
+    add(
+        (
+            await db.execute(
+                select(
+                    FinanceBill.bill_date,
+                    func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise),
+                )
+                .where(
+                    FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end)
+                )
+                .group_by(FinanceBill.bill_date)
+            )
+        ).all(),
+        "costs",
+    )
+    add(
+        (
+            await db.execute(
+                select(FinancePayment.paid_on, func.sum(FinancePayment.amount_paise))
+                .where(
+                    FinancePayment.tenant_id == tenant_id,
+                    FinancePayment.paid_on.between(start, end),
+                )
+                .group_by(FinancePayment.paid_on)
+            )
+        ).all(),
+        "collected",
+    )
+    return {day: DayMoney(**values) for day, values in days.items()}

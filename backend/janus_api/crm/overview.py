@@ -93,3 +93,47 @@ async def leads_by_source(
         )
     ).all()
     return {str(source): int(count) for source, count in rows}
+
+
+@dataclass(frozen=True)
+class Day:
+    leads: int
+    won_deals: int
+    won_value: Decimal
+
+
+async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dict[date, Day]:
+    """Leads in and deals won on each day between two days, both included, in India time. Days with
+    nothing are left out."""
+    lead_day = _ist_day(Lead.created_at)
+    leads: dict[date, int] = {
+        day: int(count)
+        for day, count in (
+            await db.execute(
+                select(lead_day, func.count(Lead.id))
+                .where(Lead.tenant_id == tenant_id, lead_day.between(start, end))
+                .group_by(lead_day)
+            )
+        ).all()
+    }
+    won_day = _ist_day(Deal.updated_at)
+    won = {
+        day: (int(count), Decimal(value))
+        for day, count, value in (
+            await db.execute(
+                select(won_day, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
+                .where(
+                    Deal.tenant_id == tenant_id, Deal.stage == "won", won_day.between(start, end)
+                )
+                .group_by(won_day)
+            )
+        ).all()
+    }
+    return {
+        day: Day(
+            leads=int(leads.get(day, 0)),
+            won_deals=won.get(day, (0, Decimal(0)))[0],
+            won_value=won.get(day, (0, Decimal(0)))[1],
+        )
+        for day in leads.keys() | won.keys()
+    }

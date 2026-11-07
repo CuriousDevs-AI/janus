@@ -155,8 +155,10 @@ export interface PortfolioActivity {
   days: number;
   items: { companyId: string; company: string; at: string; area: string; who: string; text: string }[];
 }
-/** GET /portfolio/trends: month by month per company, oldest first. Money is null without money. */
+/** GET /portfolio/trends: day, week or month per company, oldest first. Money is null without money. */
 export interface PortfolioTrends {
+  unit: "day" | "week" | "month";
+  /** The start of each day or week (YYYY-MM-DD), or month (YYYY-MM), oldest first. */
   months: string[];
   labels: string[];
   companies: { id: string; name: string; points: { month: string; leads: number; wonDeals: number; wonValue: string; netSales: string | null; costs: string | null; collected: string | null }[] }[];

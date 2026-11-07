@@ -1,10 +1,12 @@
-"""Month by month figures for each company, for the Portfolio's charts.
+"""Day by day, week by week or month by month figures for each company, for the Portfolio's charts.
 
 Each company is read on its own, under its own context. Money is included only where the
-person's role there holds portfolio:finance. The current month runs to today.
+person's role there holds portfolio:finance. The current day, week or month runs to today.
 """
 
 from datetime import date, timedelta
+from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,10 +32,39 @@ def month_spans(today: date, count: int) -> list[tuple[date, date]]:
     return spans[::-1]
 
 
+Unit = Literal["day", "week", "month"]
+
+
+def spans_for(unit: Unit, today: date, count: int) -> list[tuple[date, date]]:
+    """The last `count` days, weeks (Monday to Sunday) or calendar months, oldest first. The
+    current one ends today."""
+    if unit == "month":
+        return month_spans(today, count)
+    if unit == "week":
+        monday = today - timedelta(days=today.weekday())
+        return [
+            (
+                monday - timedelta(weeks=back),
+                min(monday - timedelta(weeks=back) + timedelta(days=6), today),
+            )
+            for back in range(count - 1, -1, -1)
+        ]
+    return [(today - timedelta(days=back),) * 2 for back in range(count - 1, -1, -1)]
+
+
+def label_for(unit: Unit, start: date) -> str:
+    if unit == "month":
+        return f"{MONTHS[start.month - 1]} {str(start.year)[2:]}"
+    return f"{start.day} {MONTHS[start.month - 1]}"
+
+
 async def trends(
-    db: AsyncSession, user_id: int, current_tenant: int, months: int
+    db: AsyncSession, user_id: int, current_tenant: int, unit: Unit, count: int
 ) -> schemas.Trends:
-    spans = month_spans(today_ist(), months)
+    """Each company's leads, deals won, sales, costs and collections for every day, week or month
+    in the range. Two grouped reads per module per company, whatever the range."""
+    spans = spans_for(unit, today_ist(), count)
+    first, last = spans[0][0], spans[-1][1]
     companies = []
     try:
         for tenant_id in await readable_companies(db, user_id):
@@ -43,20 +74,25 @@ async def trends(
             if company is None or "portfolio:read" not in role.permissions:
                 continue
             money = "portfolio:finance" in role.permissions
+            sales_days = await crm.daily(db, tenant_id, first, last)
+            money_days = await finance.daily(db, tenant_id, first, last) if money else {}
             points = []
             for start, end in spans:
-                sales = await crm.activity(db, tenant_id, start, end)
-                kept = await finance.books(db, tenant_id, start, end) if money else None
-                flow = await finance.flow(db, tenant_id, start, end) if money else None
+                days = [d for d in sales_days if start <= d <= end]
+                books = [v for d, v in money_days.items() if start <= d <= end]
                 points.append(
                     schemas.TrendPoint(
-                        month=f"{start:%Y-%m}",
-                        leads=sales.leads,
-                        wonDeals=sales.won_deals,
-                        wonValue=rupees(sales.won_value),
-                        netSales=rupees(kept.net_sales, paise=True) if kept else None,
-                        costs=rupees(kept.costs, paise=True) if kept else None,
-                        collected=rupees(flow.collected, paise=True) if flow else None,
+                        month=start.isoformat() if unit != "month" else f"{start:%Y-%m}",
+                        leads=sum(sales_days[d].leads for d in days),
+                        wonDeals=sum(sales_days[d].won_deals for d in days),
+                        wonValue=rupees(sum((sales_days[d].won_value for d in days), Decimal(0))),
+                        netSales=rupees(sum(v.net_sales for v in books), paise=True)
+                        if money
+                        else None,
+                        costs=rupees(sum(v.costs for v in books), paise=True) if money else None,
+                        collected=rupees(sum(v.collected for v in books), paise=True)
+                        if money
+                        else None,
                     )
                 )
             companies.append(
@@ -65,7 +101,8 @@ async def trends(
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return schemas.Trends(
-        months=[f"{start:%Y-%m}" for start, _ in spans],
-        labels=[f"{MONTHS[start.month - 1]} {str(start.year)[2:]}" for start, _ in spans],
+        unit=unit,
+        months=[start.isoformat() if unit != "month" else f"{start:%Y-%m}" for start, _ in spans],
+        labels=[label_for(unit, start) for start, _ in spans],
         companies=companies,
     )

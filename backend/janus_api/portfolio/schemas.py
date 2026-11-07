@@ -420,7 +420,7 @@ class ActivityList(BaseModel):
 
 
 class TrendPoint(BaseModel):
-    """One month. Money is a rupee string, or None where the role does not include money."""
+    """One day, week or month. Money is a rupee string, or None without money."""
 
     month: str
     leads: int
@@ -438,6 +438,8 @@ class CompanyTrend(BaseModel):
 
 
 class Trends(BaseModel):
+    unit: Literal["day", "week", "month"] = "month"
+    # The start of each day, week (YYYY-MM-DD) or month (YYYY-MM), oldest first.
     months: list[str]
     labels: list[str]
     companies: list[CompanyTrend]
