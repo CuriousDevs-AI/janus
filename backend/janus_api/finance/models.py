@@ -170,6 +170,7 @@ class FinanceBill(Base):
         UniqueConstraint("tenant_id", "idempotency_key"),
         CheckConstraint("amount_paise > 0", name="ck_finance_bills_amount"),
         CheckConstraint("due_date >= bill_date", name="ck_finance_bills_dates"),
+        CheckConstraint("gst_paise >= 0 AND gst_paise < amount_paise", name="ck_finance_bills_gst"),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
     number: Mapped[str] = mapped_column(String(20))
@@ -178,6 +179,8 @@ class FinanceBill(Base):
     bill_date: Mapped[date] = mapped_column(Date)
     due_date: Mapped[date] = mapped_column(Date)
     amount_paise: Mapped[int] = mapped_column(BigInteger)
+    # The GST inside amount_paise; 0 on bills recorded before it was asked for (not known).
+    gst_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     po_key: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_by_name: Mapped[str] = mapped_column(String(160))

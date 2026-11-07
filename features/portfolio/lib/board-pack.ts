@@ -16,7 +16,7 @@ export function boardPack(list: PortfolioCompany[], period: PortfolioPeriod) {
   const groupColumn: Record<string, string> = anyMoney ? {
     [`Sales before GST (${period.label})`]: group.sales.toFixed(2),
     "Sales before GST (same days before)": before.sales.toFixed(2),
-    "Costs (supplier bills as recorded)": group.costs.toFixed(2),
+    "Costs (supplier bills before GST)": group.costs.toFixed(2),
     "Profit before salaries": group.profit.toFixed(2),
     "Salaries for the period (estimate)": groupSalaries ? groupSalaries.toFixed(2) : "",
     "Profit after salaries (estimate)": groupSalaries ? (group.profit - groupSalaries).toFixed(2) : "",
@@ -24,7 +24,7 @@ export function boardPack(list: PortfolioCompany[], period: PortfolioPeriod) {
   const rows: [string, (item: PortfolioCompany) => string | number][] = [
     [`Sales before GST (${period.label})`, (item) => books(item, "current", "netSales")],
     ["Sales before GST (same days before)", (item) => books(item, "previous", "netSales")],
-    ["Costs (supplier bills as recorded)", (item) => books(item, "current", "costs")],
+    ["Costs (supplier bills before GST)", (item) => books(item, "current", "costs")],
     ["Profit before salaries", (item) => books(item, "current", "profitBeforePayroll")],
     ["Salaries for the period (estimate)", salaries],
     ["Profit after salaries (estimate)", after],

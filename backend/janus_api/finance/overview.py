@@ -152,7 +152,7 @@ class Books:
 
     # Invoiced before GST, less approved credit notes.
     net_sales: int
-    # Supplier bills as recorded, plus approved write-offs.
+    # Supplier bills before the GST recorded in them, plus approved write-offs.
     costs: int
     # What was paid to suppliers.
     paid_out: int
@@ -183,7 +183,7 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
         ).all()
     }
     bills = await db.scalar(
-        select(func.coalesce(func.sum(FinanceBill.amount_paise), 0)).where(
+        select(func.coalesce(func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise), 0)).where(
             FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end)
         )
     )
@@ -222,10 +222,10 @@ async def sales_by_customer(
 async def costs_by_vendor(
     db: AsyncSession, tenant_id: int, start: date, end: date
 ) -> dict[str, int]:
-    """Supplier bills between two days, by vendor."""
+    """Supplier bills before their recorded GST, between two days, by vendor."""
     rows = (
         await db.execute(
-            select(FinanceBill.vendor, func.sum(FinanceBill.amount_paise))
+            select(FinanceBill.vendor, func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise))
             .where(FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end))
             .group_by(FinanceBill.vendor)
         )

@@ -79,7 +79,7 @@ export interface PortfolioRegistration {
 }
 export type LeaderRole = "director" | "founder" | "cofounder";
 export interface PortfolioPersonRecord { name: string; din: string | null; roles: LeaderRole[]; title: string | null }
-/** Rupees: sales before GST less credit notes, supplier bills as recorded plus write-offs, money in and out. */
+/** Rupees: sales before GST less credit notes, supplier bills before their recorded GST plus write-offs, money in and out. */
 export interface PortfolioBooks {
   netSales: string;
   costs: string;

@@ -101,6 +101,7 @@ function PayablesView({ me }: { me: string }) {
   const bills = useFinanceStore((state) => state.bills);
   const [vendor, setVendor] = React.useState("");
   const [vendorBillNo, setVendorBillNo] = React.useState("");
+  const [gst, setGst] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState("2026-11-15");
   /** A vendor's payment terms set the due date: the bill date plus its days. Vendors without terms use 30 days. */
@@ -120,10 +121,10 @@ function PayablesView({ me }: { me: string }) {
   }, []);
 
   async function create() {
-    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), poId: poId || undefined }, me);
+    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), gst: Number(gst) || 0, poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
-    setVendor(""); setVendorBillNo(""); setAmount(""); setPoId("");
+    setVendor(""); setVendorBillNo(""); setAmount(""); setGst(""); setPoId("");
   }
 
   async function pay(billId: string) {
@@ -142,10 +143,11 @@ function PayablesView({ me }: { me: string }) {
           <div className="grid gap-3 sm:grid-cols-5">
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><select id="bill-vendor" className={selectClass} value={vendor} onChange={(e) => chooseVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount with GST (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-gst">GST in this bill (₹)</Label><Input id="bill-gst" type="number" min={0} placeholder="As on the bill" value={gst} onChange={(e) => setGst(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-po">Purchase order (optional)</Label><select id="bill-po" className={selectClass} value={poId} onChange={(e) => setPoId(e.target.value)}><option value="">No order</option>{purchaseOrders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.vendor}</option>)}</select></div>
-            <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0)} onClick={create}>Record bill</Button>
+            <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0) || Number(gst) >= Number(amount)} onClick={create}>Record bill</Button>
           </div>
         </CardContent>
       </Card>

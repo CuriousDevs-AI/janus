@@ -2,6 +2,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from janus_api.portfolio.periods import today_ist
 from tests.conftest import Mailbox
 from tests.helpers import Account, accept_new, invite, signup
 
@@ -201,3 +202,31 @@ async def test_another_company_cannot_see_or_pay_the_bill(
         json=PAYMENT,
     )
     assert paid.status_code == 404
+
+
+async def test_a_bill_records_its_gst_and_portfolio_costs_leave_it_out(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist().isoformat()
+    body = {
+        "vendor": "Cotton Mills",
+        "vendor_bill_no": "CM-77",
+        "bill_date": today,
+        "due_date": today,
+        "amount_paise": 118000,
+        "gst_paise": 18000,
+    }
+    created = await client.post(
+        "/v1/finance/bills", headers={**owner.headers, "Idempotency-Key": "gst-1"}, json=body
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["gst_paise"] == 18000
+    too_much = await client.post(
+        "/v1/finance/bills",
+        headers={**owner.headers, "Idempotency-Key": "gst-2"},
+        json={**body, "vendor_bill_no": "CM-78", "gst_paise": 118000},
+    )
+    assert too_much.status_code == 422
+    summary = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    assert summary["companies"][0]["books"]["current"]["costs"] == "1000.00"

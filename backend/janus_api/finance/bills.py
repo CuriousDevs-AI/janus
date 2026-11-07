@@ -11,7 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 
 from janus_api.audit import service as audit
@@ -36,7 +36,15 @@ class BillCreate(BaseModel):
     bill_date: date
     due_date: date
     amount_paise: int = Field(gt=0, le=MAX_PAISE)
+    # The GST inside the amount, when the supplier's bill shows it.
+    gst_paise: int = Field(default=0, ge=0, le=MAX_PAISE)
     po_key: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def gst_within_amount(self) -> "BillCreate":
+        if self.gst_paise >= self.amount_paise:
+            raise ValueError("The GST must be less than the bill's amount.")
+        return self
 
 
 class BillPaymentIn(BaseModel):
@@ -63,6 +71,7 @@ class BillOut(BaseModel):
     bill_date: date
     due_date: date
     amount_paise: int
+    gst_paise: int = 0
     po_key: str | None
     match: str
     paid_paise: int
@@ -129,6 +138,7 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
         bill_date=row.bill_date,
         due_date=row.due_date,
         amount_paise=row.amount_paise,
+        gst_paise=row.gst_paise,
         po_key=row.po_key,
         match=match,
         paid_paise=paid,
@@ -216,6 +226,7 @@ async def record_bill(
         bill_date=data.bill_date,
         due_date=data.due_date,
         amount_paise=data.amount_paise,
+        gst_paise=data.gst_paise,
         po_key=data.po_key,
         created_by=actor.user.id,
         created_by_name=actor.user.name,

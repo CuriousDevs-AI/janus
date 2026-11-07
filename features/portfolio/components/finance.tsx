@@ -53,7 +53,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
       </table></div>
       <p className="mt-3 text-xs text-muted-foreground">{internalSales || internalBills
         ? `Sales between your companies are matched by the company name on the invoice or bill${Math.abs(internalSales - internalBills) > 1 ? `. They do not match: ${inr(internalSales)} sold against ${inr(internalBills)} billed, so one side may be missing a record` : ""}.`
-        : "No sales between your companies in this period."} Costs are supplier bills as recorded, and may include GST.</p>
+        : "No sales between your companies in this period."} Costs are supplier bills before the GST recorded on them; a bill recorded without its GST counts in full.</p>
     </SectionCard>
     : <SectionCard title="Company by company" description={`From each company's invoices, payments, credit notes and bills, ${period.label}. ${coverage}.`}>
       <ByCompany list={list} period={period} />

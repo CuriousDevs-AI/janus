@@ -79,7 +79,7 @@ test.describe("Operations buys stock, and Finance pays the vendor", () => {
     const finance = vikram.page.locator("main");
     await choose(finance, "Vendor", /Gujarat Yarn/);
     await field(finance, "Vendor's bill no.").fill("GYM/2026/441");
-    await field(finance, "Amount (₹)").fill("30000");
+    await field(finance, "Amount with GST (₹)").fill("30000");
     await field(finance, "Due date").fill(day(30));
     await finance.getByRole("button", { name: "Record bill" }).click();
     await expectToast(vikram.page, /Bill recorded/);
