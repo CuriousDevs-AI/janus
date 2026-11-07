@@ -15,7 +15,7 @@ import { Kpi } from "@/features/portfolio/components/figures";
 import { RegistrationCard } from "@/features/portfolio/components/compliance";
 import { CompanyEditor, entityNames, PeopleList } from "@/features/portfolio/components/company-editor";
 import { TargetsForm } from "@/features/portfolio/components/targets";
-import { openIn, payrollFor, useRoles, winRate } from "@/features/portfolio/lib/companies";
+import { openIn, payrollFor, useRoles, winRateText } from "@/features/portfolio/lib/companies";
 import { healthName, healthTone, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
 
@@ -100,7 +100,7 @@ function Compare({ list, period, onClear }: { list: PortfolioCompany[]; period: 
     ["Leads this period", (item) => String(item.period.current.leads)],
     ["Won this period", (item) => inr(n(item.period.current.wonValue))],
     ["Open pipeline", (item) => inr(n(item.crm.pipelineValue))],
-    ["Win rate", (item) => { const rate = winRate(item); return rate === null ? "—" : `${rate}%`; }],
+    ["Win rate (won ÷ closed, all time)", (item) => winRateText(item)],
     ["People", (item) => String(item.people?.headcount ?? 0)],
     ["Approvals waiting", (item) => String(item.approvals.reduce((sum, entry) => sum + entry.count, 0))],
     ["Open tickets", (item) => String(item.openTickets)],
@@ -115,7 +115,6 @@ function Compare({ list, period, onClear }: { list: PortfolioCompany[]; period: 
 function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: PortfolioCompany; period: PortfolioPeriod; onBack: () => void; onSaved: () => void; onEdit?: () => void }) {
   const { owns, handlesMoney } = useRoles();
   const payroll = payrollFor(item, period);
-  const rate = winRate(item);
   const reg = item.registration;
   const contact: [React.ReactNode, string | null | undefined, string?][] = [
     [<Globe key="w" className="size-3.5" />, reg?.website, reg?.website ? (reg.website.startsWith("http") ? reg.website : `https://${reg.website}`) : undefined],
@@ -151,7 +150,7 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
       {item.books ? payroll !== null
         ? <Kpi label="Profit after salaries" value={inr(n(item.books.current.profitBeforePayroll) - payroll)} detail={`Estimate · ${inr(n(item.books.current.profitBeforePayroll))} before ${inr(payroll)} of salaries`} />
         : <Kpi label="Profit before salaries" value={inr(n(item.books.current.profitBeforePayroll))} detail="Salaries unknown: no salaries in HR" /> : <Kpi label="Deals won this period" value={String(item.period.current.wonDeals)} detail={`Worth ${inr(n(item.period.current.wonValue))}`} />}
-      <Kpi label="Open pipeline" value={inr(n(item.crm.pipelineValue))} detail={`${item.crm.openDeals} open deals · win rate ${rate === null ? "—" : `${rate}%`}`} />
+      <Kpi label="Open pipeline" value={inr(n(item.crm.pipelineValue))} detail={`${item.crm.openDeals} open deals · win rate ${winRateText(item)}`} />
       {item.money ? <Kpi label="Customers owe" value={inr(n(item.money.receivable))} detail={n(item.money.overdue) ? `${inr(n(item.money.overdue))} past due` : "Nothing past due"} /> : <Kpi label="Open tickets" value={String(item.openTickets)} detail="Customer support" />}
     </div>
 

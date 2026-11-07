@@ -48,7 +48,17 @@ export function useRoles() {
 /** Opens a screen inside a company, moving the session there first when it is another one. */
 export const openIn = (item: PortfolioCompany, to: string = businessHome) => item.current ? window.location.assign(to) : switchTenant(item.id, to).catch((error) => toast.error(message(error)));
 
+/** Won ÷ (won + lost), all time. Null with no closed deal. */
 export const winRate = (item: PortfolioCompany) => { const closed = item.crm.wonDeals + item.crm.lostDeals; return closed ? Math.round((item.crm.wonDeals / closed) * 100) : null; };
+/** Fewer closed deals than this, and a win rate says little: it is shown with its count and never ranked. */
+export const RATE_MINIMUM = 5;
+/** The win rate as text, with how many deals it rests on when they are few: "100% (1 deal)". */
+export function winRateText(item: PortfolioCompany) {
+  const rate = winRate(item);
+  const closed = item.crm.wonDeals + item.crm.lostDeals;
+  if (rate === null) return "—";
+  return closed < RATE_MINIMUM ? `${rate}% (${closed} deal${closed === 1 ? "" : "s"})` : `${rate}%`;
+}
 
 /** One period figure added up across the companies. */
 export const total = (list: PortfolioCompany[], side: "current" | "previous", pick: (figures: PortfolioPeriodFigures) => number | string | null) => list.reduce((sum, item) => sum + Number(pick(item.period[side]) ?? 0), 0);

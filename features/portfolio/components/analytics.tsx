@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
-import { groupBooks, total, winRate } from "@/features/portfolio/lib/companies";
+import { groupBooks, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { change, healthName, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioPeriod, PortfolioTrends } from "@/features/portfolio/types";
 
@@ -42,7 +42,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
       {money && <Kpi label="Sales" value={inr(salesNow)} detail={`${change(salesNow, salesBefore)} · group, before GST`} />}
       {money && <Kpi label="Margin" value={salesNow ? `${percent(profit, salesNow)}%` : "—"} detail={`${inr(profit)} profit before salaries`} />}
       <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />
-      <Kpi label="Lead to win" value={leads ? `${percent(won, leads)}%` : "—"} detail={`${won} won from ${leads} leads this period`} />
+      <Kpi label="Lead to win" value={leads ? `${percent(won, leads)}%` : "—"} detail={`Deals won this period ÷ leads that came in: ${won} of ${leads}`} />
       <Kpi label="Average deal" value={won ? inr(wonValue / won) : "—"} detail={`${inr(wonValue)} won · ${change(wonValue, wonBefore)}`} />
       {money && <Kpi label="Collected" value={inr(collected)} detail={change(collected, collectedBefore)} />}
     </div>
@@ -76,10 +76,12 @@ function Leaders({ list, money }: { list: PortfolioCompany[]; money: boolean }) 
     return { name: top.item.name, value: format(top.value) };
   };
   const growth = (item: PortfolioCompany) => { const now = money ? n(item.books?.current.netSales) : item.period.current.leads; const before = money ? n(item.books?.previous.netSales) : item.period.previous.leads; return before ? ((now - before) / before) * 100 : null; };
+  const scoredGrowth = list.map(growth).filter((value): value is number => value !== null);
   const cards: [string, { name: string; value: string } | null][] = [
-    ["Growing fastest", best(growth, (value) => `${value >= 0 ? "+" : ""}${Math.round(value)}% ${money ? "sales" : "leads"}`)],
+    // When every company fell, the leader fell least: never call a fall growth.
+    [scoredGrowth.length && scoredGrowth.every((value) => value < 0) ? "Falling least" : "Growing fastest", best(growth, (value) => `${value >= 0 ? "+" : ""}${Math.round(value)}% ${money ? "sales" : "leads"}`)],
     ["Biggest pipeline", best((item) => n(item.crm.pipelineValue) || null, inr)],
-    ["Best win rate", best((item) => winRate(item), (value) => `${value}%`)],
+    [`Best win rate (${RATE_MINIMUM}+ closed deals)`, best((item) => item.crm.wonDeals + item.crm.lostDeals >= RATE_MINIMUM ? winRate(item) : null, (value) => `${value}%`)],
     money ? ["Best margin", best((item) => n(item.books?.current.netSales) ? percent(n(item.books?.current.profitBeforePayroll), n(item.books?.current.netSales)) : null, (value) => `${value}%`)] : ["Most leads", best((item) => item.period.current.leads || null, String)],
     money ? ["Most past due", best((item) => n(item.money?.overdue) || null, inr)] : ["Most open tickets", best((item) => item.openTickets || null, String)],
   ];
@@ -185,7 +187,7 @@ const measures: [string, (item: PortfolioCompany) => string][] = [
   ["Open deals", (item) => String(item.crm.openDeals)],
   ["Won deals, all time", (item) => String(item.crm.wonDeals)],
   ["Lost deals, all time", (item) => String(item.crm.lostDeals)],
-  ["Win rate", (item) => { const rate = winRate(item); return rate === null ? "—" : `${rate}%`; }],
+  ["Win rate, all time (won ÷ closed)", (item) => winRateText(item)],
   ["Members", (item) => String(item.members)],
   ["Health", (item) => item.health ? healthName[item.health.status] : "—"],
   ["People (on leave today)", (item) => item.people ? `${item.people.headcount} (${item.people.onLeaveToday})` : "—"],

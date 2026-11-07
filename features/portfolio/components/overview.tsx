@@ -7,7 +7,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { TargetsCard } from "@/features/portfolio/components/targets";
 import { WeeklyEmail } from "@/features/portfolio/components/weekly-email";
-import { groupBooks, groupProfitAfterSalaries, openIn, payrollFor, total, useRoles, winRate } from "@/features/portfolio/lib/companies";
+import { groupBooks, groupProfitAfterSalaries, openIn, payrollFor, total, useRoles, winRateText } from "@/features/portfolio/lib/companies";
 import { change, day, healthName, healthTone, inr, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor } from "@/features/portfolio/lib/work";
 import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
@@ -58,7 +58,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
     <SectionCard title="Company by company" description={`${period.label}, against the same days before. Open a name for its page.`}>
       <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-3">Company</th><th className="px-3 py-2">Health</th>{money ? <><th className="px-3 py-2">Sales</th><th className="px-3 py-2">Profit</th><th className="px-3 py-2">Past due</th></> : <th className="px-3 py-2">Leads in</th>}<th className="px-3 py-2">Pipeline</th><th className="px-3 py-2">Win rate</th><th className="px-3 py-2">Filings</th><th className="py-2 pl-3" /></tr></thead>
-        <tbody>{list.map((item) => { const rate = winRate(item); const filings = item.compliance.filter((due) => due.status === "overdue").length; return <tr key={item.id} className="border-b border-border align-top last:border-0">
+        <tbody>{list.map((item) => { const filings = item.compliance.filter((due) => due.status === "overdue").length; return <tr key={item.id} className="border-b border-border align-top last:border-0">
           <td className="py-2.5 pr-3"><a className="font-medium text-accent hover:underline" href={`/portfolio?view=companies&company=${item.id}`}>{item.name}</a>{item.current && <span className="ml-1 text-xs text-muted-foreground">· open now</span>}</td>
           <td className="px-3 py-2.5">{item.health ? <><Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>{item.health.reasons[0] && <p className="mt-1 max-w-[260px] text-xs text-muted-foreground">{item.health.reasons[0]}{item.health.reasons.length > 1 ? ` (+${item.health.reasons.length - 1})` : ""}</p>}</> : "—"}</td>
           {money ? <>
@@ -67,7 +67,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
             <td className={`px-3 py-2.5 tabular-nums ${n(item.money?.overdue) ? "text-danger" : ""}`}>{item.money ? inr(n(item.money.overdue)) : "—"}</td>
           </> : <td className="px-3 py-2.5 tabular-nums">{item.period.current.leads} <span className="text-xs text-muted-foreground">{pct(item.period.current.leads, item.period.previous.leads)}</span></td>}
           <td className="px-3 py-2.5 tabular-nums">{inr(n(item.crm.pipelineValue))}</td>
-          <td className="px-3 py-2.5 tabular-nums">{rate === null ? "—" : `${rate}%`}</td>
+          <td className="px-3 py-2.5 tabular-nums">{winRateText(item)}</td>
           <td className={`px-3 py-2.5 ${filings ? "text-danger" : "text-muted-foreground"}`}>{filings ? `${filings} past due` : item.complianceSetUp ? "Up to date" : <span className="text-warning">Not set up</span>}</td>
           <td className="py-2.5 pl-3 text-right">{owns(item) && <Button size="sm" variant="ghost" className="print:hidden" onClick={() => openIn(item)}>Open<ArrowRight className="ml-1 size-3.5" /></Button>}</td>
         </tr>; })}</tbody>
