@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
+import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
 import { groupBooks, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { change, healthName, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioPeriod, PortfolioTrends } from "@/features/portfolio/types";
@@ -20,6 +22,7 @@ const sourceName = (source: string) => ({ webhook: "Website and forms", whatsapp
 
 /** Comparison and trends across the companies: how each is moving, against the others and itself. */
 export function Analytics({ list, period }: { list: PortfolioCompany[]; period: PortfolioPeriod }) {
+  const router = useRouter();
   const [months, setMonths] = React.useState(6);
   const trends = useApi<PortfolioTrends>(`/portfolio/trends?months=${months}`);
   const money = list.some((item) => item.books);
@@ -39,15 +42,20 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
   const collectedBefore = total(list, "previous", (figures) => figures.collected);
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-      {money && <Kpi label="Sales" value={inr(salesNow)} detail={`${change(salesNow, salesBefore)} · group, before GST`} />}
+      {money && <Kpi label="Sales" value={inr(salesNow)} detail={`${change(salesNow, salesBefore)} · group, before GST`} delta={<Delta now={salesNow} before={salesBefore} compact />} />}
       {money && <Kpi label="Margin" value={salesNow ? `${percent(profit, salesNow)}%` : "—"} detail={`${inr(profit)} profit before salaries`} />}
-      <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />
+      <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} delta={<Delta now={leads} before={leadsBefore} format={String} compact />} />
       <Kpi label="Lead to win" value={leads ? `${percent(won, leads)}%` : "—"} detail={`Deals won this period ÷ leads that came in: ${won} of ${leads}`} />
       <Kpi label="Average deal" value={won ? inr(wonValue / won) : "—"} detail={`${inr(wonValue)} won · ${change(wonValue, wonBefore)}`} />
-      {money && <Kpi label="Collected" value={inr(collected)} detail={change(collected, collectedBefore)} />}
+      {money && <Kpi label="Collected" value={inr(collected)} detail={change(collected, collectedBefore)} delta={<Delta now={collected} before={collectedBefore} compact />} />}
     </div>
 
     <Leaders list={list} money={money} />
+
+    <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
+      <GroupLine money={money} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} />
+      <SalesHeatmap money={money} />
+    </div>
 
     <div className="flex items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">Month by month</h2>
@@ -55,7 +63,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
     </div>
     {trends.loading ? <p className="text-sm text-muted-foreground" role="status">Loading the months…</p>
       : trends.error ? <div role="alert" className="flex items-center gap-3 text-sm text-danger">{trends.error}<Button size="sm" variant="secondary" onClick={trends.reload}>Try again</Button></div>
-      : trends.data && <Trends data={trends.data} money={money} color={color} />}
+      : trends.data && <Trends data={trends.data} money={money} color={color} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} />}
 
     <div className="grid gap-4 lg:grid-cols-2">
       {money && <Share list={list} color={color} period={period} />}
@@ -100,7 +108,7 @@ function SeriesTable({ labels, rows, format }: { labels: string[]; rows: { name:
   return <table className="w-full min-w-[480px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-3">Company</th>{labels.map((label) => <th key={label} className="px-2 py-2 text-right">{label}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.name} className="border-b border-border last:border-0"><td className="py-2 pr-3 font-medium">{row.name}</td>{row.values.map((value, index) => <td key={index} className="px-2 py-2 text-right tabular-nums">{value === null ? "—" : format(value)}</td>)}</tr>)}</tbody></table>;
 }
 
-function Trends({ data, money, color }: { data: PortfolioTrends; money: boolean; color: Map<string, string> }) {
+function Trends({ data, money, color, onOpen }: { data: PortfolioTrends; money: boolean; color: Map<string, string>; onOpen: (companyId: string) => void }) {
   const companies = data.companies;
   const series = (pick: (point: PortfolioTrends["companies"][number]["points"][number]) => number | null) => data.labels.map((label, index) => Object.fromEntries([["label", label], ...companies.map((company) => [company.id, pick(company.points[index])])]));
   const rows = (pick: (point: PortfolioTrends["companies"][number]["points"][number]) => number | null) => companies.map((company) => ({ name: company.name, values: company.points.map(pick) }));
@@ -116,7 +124,7 @@ function Trends({ data, money, color }: { data: PortfolioTrends; money: boolean;
     <YAxis tick={axis} tickLine={false} axisLine={false} tickFormatter={format} width={56} />
     <Tooltip {...tooltipStyle} formatter={(value) => format(Number(value))} />
     <Legend wrapperStyle={{ fontSize: 12 }} iconType="plainline" />
-    {companies.map((company) => <Line key={company.id} type="linear" dataKey={company.id} name={company.name} stroke={color.get(company.id)} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />)}
+    {companies.map((company) => <Line key={company.id} type="linear" dataKey={company.id} name={company.name} stroke={color.get(company.id)} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5, cursor: "pointer", onClick: () => onOpen(company.id) }} connectNulls />)}
   </LineChart></ResponsiveContainer>;
   return <div className="grid gap-4 lg:grid-cols-2">
     <ChartCard title={money ? "Sales by month" : "Value won by month"} description={money ? "Invoiced before GST, less credit notes. This month runs to today." : "Deals won each month. Money from the books is not shared with your role."} table={<SeriesTable labels={data.labels} rows={rows(salesPick)} format={inr} />}>
@@ -129,7 +137,7 @@ function Trends({ data, money, color }: { data: PortfolioTrends; money: boolean;
         <YAxis tick={axis} tickLine={false} axisLine={false} allowDecimals={false} width={40} />
         <Tooltip {...tooltipStyle} cursor={{ fill: "var(--surface-2)" }} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
-        {companies.map((company) => <Bar key={company.id} dataKey={company.id} name={company.name} fill={color.get(company.id)} radius={[4, 4, 0, 0]} maxBarSize={18} />)}
+        {companies.map((company) => <Bar key={company.id} dataKey={company.id} name={company.name} fill={color.get(company.id)} radius={[4, 4, 0, 0]} maxBarSize={18} cursor="pointer" onClick={() => onOpen(company.id)} />)}
       </BarChart></ResponsiveContainer>}
     </ChartCard>
     {money && <ChartCard title="Group profit by month" description="Sales less supplier bills, all companies together, before salaries. Below the line is a loss." table={<SeriesTable labels={data.labels} rows={[{ name: "Group", values: groupProfit.map((point) => point.profit) }]} format={inr} />}>

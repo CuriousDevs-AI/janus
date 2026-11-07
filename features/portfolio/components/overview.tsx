@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Kpi } from "@/features/portfolio/components/figures";
+import { Delta, TickerRow } from "@/features/portfolio/components/market";
 import { TargetsCard } from "@/features/portfolio/components/targets";
 import { WeeklyEmail } from "@/features/portfolio/components/weekly-email";
 import { groupBooks, groupProfitAfterSalaries, openIn, payrollFor, total, useRoles, winRateText } from "@/features/portfolio/lib/companies";
@@ -35,11 +36,13 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Kpi label="Companies needing you" value={`${needYou} of ${list.length}`} detail={needYou ? "Marked red below" : "None is red"} />
-      {money ? <Kpi label="Sales" value={inr(sales)} detail={`${change(sales, groupBefore.sales)} · group, before GST`} /> : <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} />}
+      {money ? <Kpi label="Sales" value={inr(sales)} detail={`${change(sales, groupBefore.sales)} · group, before GST`} delta={<Delta now={sales} before={groupBefore.sales} compact />} /> : <Kpi label="Leads in" value={String(leads)} detail={change(leads, leadsBefore)} delta={<Delta now={leads} before={leadsBefore} format={String} compact />} />}
       {money ? <Kpi label={after.salaries ? "Profit after salaries" : "Profit before salaries"} value={inr(after.salaries ? after.profit : profit)} detail={after.salaries ? `Estimate · ${inr(profit)} before ${inr(after.salaries)} of salaries${after.unknown ? `; salaries unknown for ${after.unknown}` : ""}` : "Salaries not on record: add employees in HR"} /> : <Kpi label="Deals won" value={String(total(list, "current", (figures) => figures.wonDeals))} detail={`Worth ${inr(total(list, "current", (figures) => figures.wonValue))}`} />}
       {money ? <Kpi label="Past due from customers" value={inr(pastDue)} detail={pastDue ? "Chase it from the Work inbox" : "Nothing past due"} /> : <Kpi label="Open pipeline" value={inr(sum((item) => n(item.crm.pipelineValue)))} detail={`${sum((item) => item.crm.openDeals)} open deals`} />}
       <Kpi label="To do" value={String(work.length)} detail={urgent.length ? `${urgent.length} urgent` : "Nothing urgent"} />
     </div>
+
+    <TickerRow list={list} money={money} />
 
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
       <SectionCard title="Needs you first" description="The most urgent things across your companies." action={<a className="text-sm text-accent hover:underline" href="/portfolio?view=work">All {work.length} in the Work inbox</a>}>

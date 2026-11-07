@@ -1,6 +1,8 @@
+import type * as React from "react";
+
 /** The two ways the Portfolio shows a number: a tile, and bars side by side for each company. */
 
-export const Kpi = ({ label, value, detail }: { label: string; value: string; detail: string }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
+export const Kpi = ({ label, value, detail, delta }: { label: string; value: string; detail: string; delta?: React.ReactNode }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 flex flex-wrap items-baseline gap-2 text-2xl font-semibold tabular-nums">{value}{delta}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 
 /** Categorical colours in a fixed order, checked for colour-blind separation. A company keeps its
  * colour by its place in the Portfolio, never by its rank in a chart. Past eight, colours repeat
