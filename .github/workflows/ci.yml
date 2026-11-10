@@ -53,7 +53,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -80,12 +80,15 @@ jobs:
       NEXT_PUBLIC_JANUS_DEMO_MODE: "false"
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # Next.js writes the route types (LayoutProps, PageProps) into .next; a clean checkout has none.
+      - name: Route types
+        run: npx next typegen
       - name: Types
         run: npx tsc --noEmit -p .
       - name: Lint
