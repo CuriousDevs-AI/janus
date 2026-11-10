@@ -4,10 +4,10 @@
  * there is a date, and opens the screen where it is done. The record there stays the truth.
  */
 
-import { inr } from "@/features/portfolio/lib/format";
+import { inr, monthsOrPart } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany } from "@/features/portfolio/types";
 
-export type WorkKind = "approve" | "collect" | "pay" | "file" | "fix" | "deliver" | "support" | "stock";
+export type WorkKind = "approve" | "collect" | "pay" | "tax" | "file" | "renew" | "books" | "fix" | "deliver" | "support" | "stock";
 export type WorkItem = {
   key: string;
   company: PortfolioCompany;
@@ -24,7 +24,10 @@ export const workKinds: Record<WorkKind, string> = {
   approve: "Approve",
   collect: "Collect money",
   pay: "Pay suppliers",
+  tax: "Deposit tax",
   file: "File returns",
+  renew: "Renewals",
+  books: "Books and cash",
   fix: "Fill in details",
   deliver: "Delivery",
   support: "Customer support",
@@ -32,6 +35,8 @@ export const workKinds: Record<WorkKind, string> = {
 };
 
 const FINANCE = "/workspace/finance-accounting";
+const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
 const OPS = "/workspace/operations-inventory?workspace=operations-inventory";
 const PROJECTS = "/workspace/projects-delivery?workspace=projects-delivery";
 const TICKETS = "/tickets?workspace=customer-support";
@@ -64,6 +69,27 @@ export function workFor(list: PortfolioCompany[]): WorkItem[] {
     for (const due of company.compliance.filter((entry) => entry.status === "due_soon")) {
       add({ kind: "file", priority: "medium", title: `${due.label} for ${due.period}`, detail: "Due within 7 days.", due: due.dueOn, to: "/portfolio?view=compliance" });
     }
+    // TDS deducted last month and not yet deposited, with the interest building on it.
+    const tds = company.tds;
+    if (tds && Number(tds.toDeposit) > 0) {
+      const late = tds.dueOn < today;
+      const months = late ? monthsOrPart(tds.dueOn, today) : 0;
+      add({ kind: "tax", priority: late ? "high" : "medium", title: `Deposit ${inr(Number(tds.toDeposit))} of TDS for ${tds.label}`, detail: late ? `Interest so far about ${inr(Number(tds.toDeposit) * 0.015 * months)} (1.5% a month or part).` : `Deducted from bills and salaries; record the challan with the TDS payment.`, due: tds.dueOn, to: "/portfolio?view=finance" });
+    }
+    // Last month's GST to pay with GSTR-3B, while that return is not recorded as filed.
+    const gst = company.gst?.lastMonth;
+    const gstr3b = gst ? company.compliance.find((entry) => entry.key === `gstr3b_${gst.month}`) : undefined;
+    if (gst && Number(gst.payable) > 0 && gstr3b && gstr3b.status !== "filed") {
+      add({ kind: "tax", priority: gstr3b.status === "overdue" ? "high" : "medium", title: `Pay ${inr(Number(gst.payable))} of GST for ${gst.label}`, detail: `Paid with GSTR-3B${gstr3b.status === "overdue" ? `; interest is 18% a year on it from the due day` : ""}.`, due: gstr3b.dueOn, to: "/portfolio?view=finance" });
+    }
+    for (const doc of company.documents ?? []) {
+      if (doc.status === "expired") add({ kind: "renew", priority: "high", title: `Renew ${doc.name}`, detail: "It has expired. Renew it, then record the new expiry date.", due: doc.expiresOn, to: `/portfolio?view=companies&company=${company.id}` });
+      else if (doc.status === "expiring") add({ kind: "renew", priority: "medium", title: `Renew ${doc.name}`, detail: `Expires in ${doc.daysLeft} day${doc.daysLeft === 1 ? "" : "s"}.`, due: doc.expiresOn, to: `/portfolio?view=companies&company=${company.id}` });
+    }
+    const pay = company.payroll;
+    if (pay && !pay.posted && Number(pay.fromHr) > 0) add({ kind: "books", priority: "low", title: `Post ${pay.label} salaries to the books`, detail: `${inr(Number(pay.fromHr))} from HR, so profit after salaries is recorded, not estimated.`, due: null, to: "/portfolio?view=finance" });
+    const cash = company.cash;
+    if (cash?.runwayMonths !== null && cash?.runwayMonths !== undefined && cash.runwayMonths < 6) add({ kind: "books", priority: cash.runwayMonths < 3 ? "high" : "medium", title: `Cash lasts about ${cash.runwayMonths} months`, detail: `${inr(Number(cash.total))} in the bank, ${inr(Number(cash.monthlyBurn))} a month more going out than coming in.`, due: null, to: "/portfolio?view=finance" });
     for (const gap of company.complianceGaps.filter((entry) => entry.kind === "missing")) {
       const head = gap.text.split(":")[0];
       const rest = gap.text.includes(":") ? gap.text.slice(gap.text.indexOf(":") + 1).trim() : "Needed for the compliance calendar.";
@@ -81,6 +107,12 @@ export function workFor(list: PortfolioCompany[]): WorkItem[] {
     if (stock?.belowReorder) add({ kind: "stock", priority: "medium", title: `Reorder ${stock.belowReorder} item${stock.belowReorder === 1 ? "" : "s"}`, detail: "At or under the reorder level.", due: null, to: OPS });
     if (stock?.expiringBatches) add({ kind: "stock", priority: "medium", title: `${stock.expiringBatches} batch${stock.expiringBatches === 1 ? "" : "es"} expiring within 30 days`, detail: "Sell, move or write them off.", due: null, to: OPS });
   }
+  // Sales between your companies this period with no matching bill on the other side: the group's
+  // costs and GST credit are short until it is recorded.
+  const sold = list.reduce((sum, item) => sum + Number(item.intercompany?.sales ?? 0), 0);
+  const billed = list.reduce((sum, item) => sum + Number(item.intercompany?.purchases ?? 0), 0);
+  const seller = list.find((item) => Number(item.intercompany?.sales ?? 0) > 0);
+  if (seller && sold - billed >= 1) items.push({ key: "group:intercompany", company: seller, kind: "books", priority: "medium", title: `Record ${inr(sold - billed)} of bills between your companies`, detail: `${inr(sold)} sold between them this period, ${inr(billed)} recorded as bills. Record the missing ones in one step under Finance.`, due: null, to: "/portfolio?view=finance" });
   const order = { high: 0, medium: 1, low: 2 };
   return items.sort((a, b) => order[a.priority] - order[b.priority] || (a.due ?? "9999").localeCompare(b.due ?? "9999"));
 }

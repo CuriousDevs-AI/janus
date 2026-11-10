@@ -282,6 +282,13 @@ async def find_invitation(db: AsyncSession, token: str, *, lock: bool = False) -
     token_hash = digest(token)
     tenant_id = await db.scalar(text("SELECT invitation_tenant(:hash)"), {"hash": token_hash})
     if tenant_id is None:
+        # Accepted already, often together with the others of a Portfolio share: say so.
+        if await db.scalar(text("SELECT invitation_used(:hash)"), {"hash": token_hash}):
+            raise ApiError(
+                "invitation_used",
+                "This invitation was already accepted, so you are in. Sign in to open the company.",
+                409,
+            )
         raise ApiError("invalid_token", "Invalid or expired invitation.", 400)
     actor = await db.scalar(text("SELECT app_user()"))
     await set_context(db, tenant_id=int(tenant_id), user_id=actor)
@@ -307,6 +314,45 @@ async def invitation_labels(db: AsyncSession, invite: Invitation) -> tuple[str, 
     if not tenant or not role:
         raise ApiError("invalid_token", "Invalid invitation.")
     return tenant.name, role.name
+
+
+async def accept_siblings(
+    db: AsyncSession, token: str, invite: Invitation, user_id: int
+) -> list[int]:
+    """Accepts the other open invitations sent with this one (same email, same person inviting, same
+    role), company by company under each one's context. Returns the companies joined. One whose
+    membership was disabled is left as it is."""
+    tenants = (
+        await db.scalars(
+            text("SELECT * FROM sibling_invitation_tenants(:hash)"), {"hash": digest(token)}
+        )
+    ).all()
+    joined: list[int] = []
+    for tenant_id in tenants:
+        await set_context(db, tenant_id=int(tenant_id), user_id=user_id)
+        other = await db.scalar(
+            select(Invitation)
+            .where(
+                Invitation.tenant_id == int(tenant_id),
+                Invitation.email == invite.email,
+                Invitation.inviter_id == invite.inviter_id,
+                Invitation.role_id == invite.role_id,
+                Invitation.used_at.is_(None),
+                Invitation.revoked_at.is_(None),
+                Invitation.expires_at > now(),
+            )
+            .with_for_update()
+        )
+        if other is None:
+            continue
+        try:
+            await accept_membership(db, other, user_id)
+        except ApiError:
+            continue
+        record(db, "auth.invitation_accepted", user_id=user_id, tenant_id=int(tenant_id))
+        joined.append(int(tenant_id))
+    await set_context(db, tenant_id=invite.tenant_id, user_id=user_id)
+    return joined
 
 
 async def accept_membership(db: AsyncSession, invite: Invitation, user_id: int) -> None:

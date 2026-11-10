@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { useRoles } from "@/features/portfolio/lib/companies";
-import { day, inr, todayIst } from "@/features/portfolio/lib/format";
+import { day, inr, monthsOrPart, todayIst } from "@/features/portfolio/lib/format";
 import { CompanyEditor, entityNames, roleNames } from "@/features/portfolio/components/company-editor";
 import { DocumentsCard } from "@/features/portfolio/components/documents";
 import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan, PortfolioRegisterRow } from "@/features/portfolio/types";
@@ -97,6 +97,10 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
   const [paid, setPaid] = React.useState("");
   // A TDS payment, PF or ESI is paid with a challan: its amount is kept beside the filing.
   const paysAmount = /^(tds|pf|esi)_/.test(due.key);
+  // TDS for last month is known, so its interest (1.5% a month or part) can be worked out.
+  const tdsInterest = due.status === "overdue" && item.tds && due.key === `tds_${item.tds.month}` && Number(item.tds.toDeposit) > 0
+    ? Number(item.tds.toDeposit) * 0.015 * monthsOrPart(due.dueOn, todayIst())
+    : 0;
   const save = async (filed: boolean) => {
     setBusy(true);
     try {
@@ -110,7 +114,7 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
   return <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
     <div className="flex flex-wrap items-center gap-3">
       <Badge variant={dueTone[due.status]}>{dueName[due.status]}</Badge>
-      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}{due.amount ? ` · paid ${inr(Number(due.amount))}` : ""}</span>{due.status === "overdue" && due.lateNote && <span className="block text-xs text-danger">{due.lateFee ? `Late fee so far about ${inr(Number(due.lateFee))} (estimate). ` : "Late cost: "}{due.lateNote}.</span>}</span>
+      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}{due.amount ? ` · paid ${inr(Number(due.amount))}` : ""}</span>{due.status === "overdue" && due.lateNote && <span className="block text-xs text-danger">{due.lateFee ? `Late fee so far about ${inr(Number(due.lateFee))} (estimate). ` : tdsInterest ? `Interest so far about ${inr(tdsInterest)} on ${inr(Number(item.tds!.toDeposit))} of TDS not deposited (estimate). ` : "Late cost: "}{due.lateNote}.</span>}</span>
       {canMark && (due.status === "filed" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(false)}>Undo</Button> : !recording && <Button size="sm" variant="outline" disabled={busy} onClick={() => setRecording(true)}>Record filing</Button>)}
     </div>
     {recording && <form className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface-2 p-2" onSubmit={(event) => { event.preventDefault(); void save(true); }}>

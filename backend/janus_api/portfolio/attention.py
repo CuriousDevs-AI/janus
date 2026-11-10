@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from janus_api.portfolio import schemas
+from janus_api.portfolio.periods import inr
 
 FINANCE = "/workspace/finance-accounting"
 PROJECTS = "/workspace/projects-delivery?workspace=projects-delivery"
@@ -47,9 +48,9 @@ def attention(
         days = limits.overdueRedAfterDays
         add(
             "high" if old > 0 else "medium",
-            f"₹{Decimal(money.overdue):,.0f} overdue from customers on {money.overdueInvoices}"
+            f"{inr(money.overdue)} overdue from customers on {money.overdueInvoices}"
             f" invoice{'' if money.overdueInvoices == 1 else 's'}"
-            + (f", ₹{old:,.0f} over {days} days" if old > 0 else ""),
+            + (f", {inr(old)} over {days} days" if old > 0 else ""),
             f"{FINANCE}?view=receivables&workspace=finance-accounting",
         )
     bills_late, bills_week = (
@@ -59,9 +60,9 @@ def attention(
     if money and bills_late > 0:
         add(
             "high" if bills_late * 100 >= bills_week * limits.lateBillsRedShare else "medium",
-            f"₹{bills_late:,.0f} of supplier bills already late"
+            f"{inr(bills_late)} of supplier bills already late"
             + (
-                f", ₹{bills_week - bills_late:,.0f} more due within 7 days"
+                f", {inr(bills_week - bills_late)} more due within 7 days"
                 if bills_week > bills_late
                 else ""
             ),
@@ -70,7 +71,7 @@ def attention(
     elif money and bills_week > 0:
         add(
             "medium",
-            f"₹{bills_week:,.0f} of supplier bills due within 7 days",
+            f"{inr(bills_week)} of supplier bills due within 7 days",
             f"{FINANCE}?view=payables&workspace=finance-accounting",
         )
     waiting = sum(item.count for item in approvals)
@@ -177,7 +178,7 @@ def with_loss(
     return with_line(
         items,
         "high",
-        f"Losing {'about ' if estimate else ''}₹{abs(after_salaries):,.0f} this period once"
+        f"Losing {'about ' if estimate else ''}{inr(abs(after_salaries))} this period once"
         f" salaries are counted ({'estimate' if estimate else 'salaries posted'})",
         f"{FINANCE}?view=overview&workspace=finance-accounting",
     )

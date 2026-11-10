@@ -60,7 +60,7 @@ export function TickerRow({ list, money }: { list: PortfolioCompany[]; money: bo
       const before = money ? n(item.books?.previous.netSales) : item.period.previous.leads;
       return <Link key={item.id} role="listitem" href={`/portfolio?view=companies&company=${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3 transition-colors hover:bg-surface-2">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold">{item.name}</p>
+          <p className="truncate text-xs font-semibold" title={item.name}>{item.name}</p>
           <p className="mt-1 text-lg font-semibold tabular-nums">{money ? inr(now) : `${now} leads`}</p>
           <Delta now={now} before={before} format={money ? inr : String} compact />
         </div>
@@ -84,7 +84,7 @@ export function GroupLine({ money, onOpen }: { money: boolean; onOpen?: (company
   const now = rows.reduce((sum, row) => sum + row.now, 0), before = rows.reduce((sum, row) => sum + row.before, 0);
   const up = now >= before;
   const leader = data.data?.companies.map((company) => ({ id: company.id, name: company.name, value: company.points.slice(count).reduce((sum, point) => sum + pick(point), 0) })).sort((a, b) => b.value - a.value)[0];
-  return <SectionCard title={money ? "Group sales" : "Group value won"} description={`${money ? "Invoiced before GST, all companies together" : "Deals won, all companies together"}, against the same stretch just before (dashed).`} action={<div role="group" aria-label="Range" className="flex gap-1">{ranges.map((entry) => <Button key={entry[0]} size="sm" variant={range[0] === entry[0] ? "default" : "outline"} aria-pressed={range[0] === entry[0]} onClick={() => setRange(entry)}>{entry[0]}</Button>)}</div>}>
+  return <SectionCard title={money ? "Group sales" : "Group value won"} description={`${money ? "Invoiced before GST, every company as it recorded them (sales between your companies included)" : "Deals won, all companies together"}, over the ${({ "1M": "last 30 days", "3M": "last 13 weeks", "6M": "last 6 months", "1Y": "last 12 months" } as Record<string, string>)[range[0]]}, against the same stretch just before (dashed). Not the period chosen above.`} action={<div role="group" aria-label="Range" className="flex gap-1">{ranges.map((entry) => <Button key={entry[0]} size="sm" variant={range[0] === entry[0] ? "default" : "outline"} aria-pressed={range[0] === entry[0]} onClick={() => setRange(entry)}>{entry[0]}</Button>)}</div>}>
     {data.loading ? <p className="text-sm text-muted-foreground" role="status">Loading…</p> : data.error ? <p role="alert" className="text-sm text-danger">{data.error}</p> : <>
       <div className="mb-3 flex flex-wrap items-baseline gap-3"><span className="text-2xl font-semibold tabular-nums">{inr(now)}</span><Delta now={now} before={before} />{leader && leader.value > 0 && <button type="button" className="text-xs text-accent hover:underline" onClick={() => onOpen?.(leader.id)}>Most from {leader.name}</button>}</div>
       {rows.every((row) => !row.now && !row.before) ? <p className="flex h-[220px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">Nothing recorded in this range yet.</p>

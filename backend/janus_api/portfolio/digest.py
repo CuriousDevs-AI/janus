@@ -6,7 +6,6 @@ than the person could see on the page.
 """
 
 from datetime import date, datetime, time, timedelta
-from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, text
@@ -21,7 +20,7 @@ from janus_api.core.tenancy import set_context
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.models import PortfolioDigest
-from janus_api.portfolio.periods import today_ist
+from janus_api.portfolio.periods import inr, today_ist
 from janus_api.portfolio.summary import summary
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -83,22 +82,6 @@ def day(iso: str) -> str:
     """2026-10-26 as 26 Oct 2026."""
     value = date.fromisoformat(iso)
     return f"{value.day} {value:%b} {value.year}"
-
-
-def inr(value: str | Decimal | None) -> str:
-    """Rupees the way the Portfolio page writes them: ₹12,500, ₹4.2L, ₹1.3Cr."""
-    amount = Decimal(value or 0)
-    # A loss reads −₹3L, never ₹-3L.
-    if amount < 0 and inr(-amount) != "₹0":
-        return f"−{inr(-amount)}"
-    for size, unit in ((Decimal(10**7), "Cr"), (Decimal(10**5), "L")):
-        if abs(amount) >= size:
-            return f"₹{(amount / size).quantize(Decimal('0.1'), ROUND_HALF_UP).normalize():f}{unit}"
-    whole = int(amount.quantize(Decimal(1), ROUND_HALF_UP))
-    digits = str(abs(whole))
-    head, tail = digits[:-3], digits[-3:]
-    groups = [head[max(0, end - 2) : end] for end in range(len(head), 0, -2)][::-1]
-    return f"₹{'-' if whole < 0 else ''}{','.join([*groups, tail]) if head else tail}"
 
 
 async def build(

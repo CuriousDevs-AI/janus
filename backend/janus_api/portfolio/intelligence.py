@@ -29,8 +29,8 @@ from janus_api.org import service as org_service
 from janus_api.portfolio import knowledge, schemas
 from janus_api.portfolio import summary as portfolio
 from janus_api.portfolio.access import enter_company, readable_companies
-from janus_api.portfolio.digest import inr
 from janus_api.portfolio.models import PortfolioQuestion
+from janus_api.portfolio.periods import inr
 
 FEATURE = "portfolio_question"
 RULES = "rules"
@@ -203,9 +203,11 @@ def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
                 f"{inr(last.input)} input credit, {inr(last.payable)} to pay (an estimate).",
             )
         if c.cash and c.cash.total is not None:
+            months = c.cash.runwayMonths
+            how_long = "more than 3 years" if months and months > 36 else f"about {months} months"
             lasts = (
-                f", lasting about {c.cash.runwayMonths} months at {inr(c.cash.monthlyBurn)} a month"
-                if c.cash.runwayMonths is not None
+                f", lasting {how_long} at {inr(c.cash.monthlyBurn)} a month"
+                if months is not None
                 else ""
             )
             add(n, f"{n} cash in the bank {inr(c.cash.total)} as of {c.cash.asOf}{lasts}.")

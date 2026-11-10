@@ -1,6 +1,6 @@
 # Portfolio: everything pending
 
-**Status, 10 November 2026:** all 42 fixed (✅). Each fix has a line in `docs/decisions.md`. The list below is kept as it was written, with the marks added.
+**Status, 10 November 2026:** all 42 fixed (✅). A full check afterwards found 8 more problems, now fixed, and the limits still open; see "Check of 10 November 2026" at the end. Each fix has a line in `docs/decisions.md`. The list below is kept as it was written, with the marks added.
 
 What is still missing, wrong or worth improving in the Portfolio, from three sources: the independent founder audit of 7 November 2026 (score 59/100), the owner's own review, and the research report's gap list. Grouped by priority. Effort: S (hours), M (a day or two), L (several days).
 
@@ -96,3 +96,35 @@ Today Portfolio Intelligence is rules over the figures on the page. Janus alread
 3. Intelligence with a model picker and free models (19–22), then knowledge and memory (24–25), then RAG over documents (23).
 4. Board pack with P&L (7), GST payable and TDS (27), Activity with numbers (29).
 5. The rest by what customers ask for.
+
+## Check of 10 November 2026
+
+How it was checked: a fresh account seeded through the real API (`scripts/seed-portfolio.mjs`: three companies, 13 months of invoices, bills, payments, salaries, filings, documents, a bank statement, earlier months from Tally), and four more people sharing it as Read-only, Finance manager, Operations manager and Portfolio administrator. Every Portfolio view, for every period, was opened in a browser as each of the five people, watching for browser errors, failed requests and broken text (NaN, undefined, Invalid Date); none was found. Each screen was then read as an owner would, and every view was opened at phone width (390px), where nothing scrolls sideways.
+
+Found and fixed:
+
+| # | Problem | Fix |
+|---|---|---|
+| C1 | Sharing the Portfolio across several companies sends one invitation per company; following one email joined one company, and the rest waited unseen. Every person invited this way saw 1 of 3 companies. | Accepting an invitation also accepts the open ones sent with it (same email, same person inviting, same role), company by company. |
+| C2 | Alert lines wrote amounts the Western way: "₹1,053,525 overdue", "₹386,199 of supplier bills". | They use the Portfolio's own form: "₹10.5L overdue … ₹3.4L over 60 days". |
+| C3 | Analytics showed Sales ₹18L (−12%) beside a group sales chart of ₹42L (+18%) with nothing saying why. | The chart says it covers the last 30 days (or 13 weeks, 6 or 12 months), counts sales between your companies, and is not the period chosen above. |
+| C4 | The Work inbox left out what the Portfolio already knew: TDS to deposit, GST to pay, documents expired or due for renewal, salaries not posted, cash running short, bills missing between your companies. | Each is now a to-do, with the amount, and TDS shows the interest building on it. |
+| C5 | A late TDS payment said only "1.5% a month on the TDS not deposited", although the TDS is known. | It says "Interest so far about ₹281 on ₹18,737 of TDS not deposited". |
+| C6 | Cash "lasts about 453.6 months". | Over three years reads "more than 3 years", on the page and for Janus Intelligence. |
+| C7 | "−₹0" for sales or bills between your companies when there were none. | "₹0". |
+| C8 | Long company names were cut off in the ticker tiles with no way to read them. | The full name shows on hover. |
+
+Still open (limits, stated where they show):
+
+| Area | What is not there yet |
+|---|---|
+| Janus Intelligence | Real model answers could not be tried from the cloud session, which cannot reach the providers; the free providers' model names and limits are examples, not checked against their sites. Test them with the Test button on a computer that can reach them. |
+| Cash | Bank statements are imported as CSV; there is no live bank feed (account aggregator). |
+| Salaries and TDS on them | Janus has no payroll run: posting a month takes HR's current salaries, and TDS on salaries is typed in when posting, not worked out per person. |
+| GST | GST to pay is charged on invoices less GST on bills; credit carried from earlier months, blocked credit and credit notes' GST are not counted. |
+| Documents | Numbers and dates only; the files themselves are not stored. |
+| Opening balances | Added from outstanding reports; there is no screen to change or remove one (a payment or credit note settles it). |
+| Customers kept | Customers are matched by name, so one customer written two ways counts as two. |
+| Alerts | Red alerts and the weekly email go by email only, not push or WhatsApp; the weekly email is off until each person turns it on. |
+| Bills between your companies | Not created automatically when one company invoices another: a person records each, since the other may have recorded it already under another number. |
+

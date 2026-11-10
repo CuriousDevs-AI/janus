@@ -141,10 +141,11 @@ async def test_switch_tenant_existing_invitee_and_single_use(
     ).status_code == 401
     response = await client.post(f"/v1/invitations/{token}/accept", headers=first.headers, json={})
     assert response.status_code == 200, response.text
-    assert (await client.get(f"/v1/invitations/{token}")).status_code == 400
-    assert (
-        await client.post(f"/v1/invitations/{token}/accept", headers=first.headers, json={})
-    ).status_code == 400
+    # A used link says it was already accepted rather than calling itself invalid.
+    used = await client.get(f"/v1/invitations/{token}")
+    assert used.status_code == 409 and used.json()["error"]["code"] == "invitation_used"
+    again = await client.post(f"/v1/invitations/{token}/accept", headers=first.headers, json={})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "invitation_used"
     me = (await client.get("/v1/me", headers=first.headers)).json()
     assert len(me["tenants"]) == 2
     switched = await client.post(

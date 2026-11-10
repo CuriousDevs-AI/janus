@@ -620,6 +620,8 @@ async def accept_invitation(
         user = await create_user(db, data.name, invite.email, data.password, verified=True)
     user.email_verified_at = user.email_verified_at or now()
     await org.accept_membership(db, invite, user.id)
+    # Invitations sent with this one, to the other companies of a Portfolio share, are accepted too.
+    await org.accept_siblings(db, token, invite, user.id)
     pair = await issue_session(db, user, invite.tenant_id, ip, device)
     record(db, "auth.invitation_accepted", user_id=user.id, tenant_id=invite.tenant_id, ip=ip)
     return pair

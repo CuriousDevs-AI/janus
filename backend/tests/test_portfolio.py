@@ -1,6 +1,7 @@
 import os
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -8,9 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from janus_api.portfolio.compliance.due_dates import Profile, dues, status
-from janus_api.portfolio.digest import day, inr, next_due
+from janus_api.portfolio.digest import day, next_due
 from janus_api.portfolio.digest import run_once as digest_once
-from janus_api.portfolio.periods import period_for, today_ist
+from janus_api.portfolio.periods import inr, period_for, today_ist
 from tests.conftest import Mailbox
 from tests.helpers import PASSWORD, Account, accept_new, invite, signup
 
@@ -282,8 +283,10 @@ async def test_an_owner_shares_the_portfolio_with_a_group_role(
 
     analyst = await _join(client, mailbox, "cfo@example.com")
     view = (await client.get("/v1/portfolio/summary", headers=analyst)).json()["companies"]
-    # The analyst sees only what was shared, and no money.
-    assert len(view) == 1 and view[0]["money"] is None
+    # One link joins every company shared with them, and only those (not Nagpur Hardware), with
+    # no money.
+    assert {item["name"] for item in view} == {"Mumbai Traders", "Pune Retail"}
+    assert all(item["money"] is None for item in view)
     me = (await client.get("/v1/me", headers=analyst)).json()
     assert "portfolio:read" in me["permissions"] and "leads:read_own" not in me["permissions"]
     assert (await client.get("/v1/leads", headers=analyst)).status_code == 403
@@ -2049,3 +2052,61 @@ async def test_opening_balances_are_owed_and_paid_but_are_not_sales(
     assert paid.status_code == 201, paid.text
     found = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
     assert found["companies"][0]["money"]["overdue"] == "0.00"
+
+
+async def test_one_link_accepts_every_company_a_portfolio_share_covered(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    retail = await _second_company(client, owner, "Pune Retail")
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "cfo@example.com", "role": "group_finance", "companies": []},
+    )
+    assert shared.json()["done"] == ["Mumbai Traders", "Pune Retail"]
+    # The person follows only the last email's link.
+    person = await _join(client, mailbox, "cfo@example.com")
+    seen = (await client.get("/v1/portfolio/summary", headers=person)).json()
+    assert {item["name"] for item in seen["companies"]} == {"Mumbai Traders", "Pune Retail"}
+    # The other email's link now says the invitation was already accepted, not that it is invalid.
+    links = [
+        word
+        for to, _, body in mailbox.messages
+        if to == "cfo@example.com"
+        for word in body.split()
+        if "/invite?" in word
+    ]
+    assert len(links) == 2
+    used = parse_qs(urlsplit(links[0]).query)["token"][0]
+    again = await client.post(
+        f"/v1/invitations/{used}/accept", json={"name": "Group CFO", "password": PASSWORD}
+    )
+    assert again.status_code == 409 and again.json()["error"]["code"] == "invitation_used"
+    access = (await client.get("/v1/portfolio/access", headers=owner.headers)).json()
+    cfo = next(item for item in access["people"] if item["email"] == "cfo@example.com")
+    assert {item["status"] for item in cfo["companies"]} == {"active"}
+    assert retail["name"] == "Pune Retail"
+
+
+async def test_an_invitation_with_another_role_is_not_accepted_with_a_share(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    await _second_company(client, owner, "Pune Retail")
+    for company, role in ((str(owner.tenant_id), "group_finance"), ("", "group_analyst")):
+        sent = await client.post(
+            "/v1/portfolio/access",
+            headers=owner.headers,
+            json={
+                "email": "cfo@example.com",
+                "role": role,
+                "companies": [company] if company else [],
+            },
+        )
+        assert sent.status_code == 200, sent.text
+    # The analyst invitations went to both companies, but Mumbai already had a finance one, so
+    # only Pune got one; following its link accepts nothing with a different role.
+    person = await _join(client, mailbox, "cfo@example.com")
+    seen = (await client.get("/v1/portfolio/summary", headers=person)).json()["companies"]
+    assert [item["name"] for item in seen] == ["Pune Retail"]

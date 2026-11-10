@@ -31,3 +31,10 @@ export const severityTone = { high: "danger", medium: "warning", low: "neutral" 
 export const severityName = { high: "High", medium: "Medium", low: "Low" } as const;
 export const healthTone = { red: "danger", amber: "warning", green: "success" } as const;
 export const healthName = { red: "Needs you", amber: "Watch", green: "On track" } as const;
+
+/** Whole months, or part of one, from one day to another (ISO days), as TDS interest is charged. */
+export function monthsOrPart(from: string, to: string) {
+  const a = new Date(`${from}T00:00:00Z`), b = new Date(`${to}T00:00:00Z`);
+  const whole = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth() - (b.getUTCDate() < a.getUTCDate() ? 1 : 0);
+  return Math.max(1, whole + 1);
+}

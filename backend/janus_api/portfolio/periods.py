@@ -1,7 +1,7 @@
 """The periods the Portfolio reports on, and rupee amounts as the API sends them."""
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 from janus_api.portfolio import schemas
@@ -58,3 +58,19 @@ def rupees(value: Decimal | int, *, paise: bool = False) -> str:
     """An amount as a rupee string with two decimals: 1250 paise as "12.50"."""
     amount = Decimal(value) / 100 if paise else Decimal(value)
     return str(amount.quantize(Decimal("0.01")))
+
+
+def inr(value: str | Decimal | int | None) -> str:
+    """Rupees the way the Portfolio page writes them: ₹12,500, ₹4.2L, ₹1.3Cr."""
+    amount = Decimal(value or 0)
+    # A loss reads −₹3L, never ₹-3L.
+    if amount < 0 and inr(-amount) != "₹0":
+        return f"−{inr(-amount)}"
+    for size, unit in ((Decimal(10**7), "Cr"), (Decimal(10**5), "L")):
+        if abs(amount) >= size:
+            return f"₹{(amount / size).quantize(Decimal('0.1'), ROUND_HALF_UP).normalize():f}{unit}"
+    whole = int(amount.quantize(Decimal(1), ROUND_HALF_UP))
+    digits = str(abs(whole))
+    head, tail = digits[:-3], digits[-3:]
+    groups = [head[max(0, end - 2) : end] for end in range(len(head), 0, -2)][::-1]
+    return f"₹{'-' if whole < 0 else ''}{','.join([*groups, tail]) if head else tail}"

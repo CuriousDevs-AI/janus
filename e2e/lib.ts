@@ -111,6 +111,8 @@ export async function acceptEveryInvite(who: string, name: string) {
   let token: string | undefined;
   for (const link of found) {
     const accepted = await raw("POST", `/invitations/${decodeURIComponent(link)}/accept`, token ? {} : { name, password: run().password }, token);
+    // One link accepts the others sent with it, so a later link says it was already accepted.
+    if (accepted.status === 409 && accepted.text.includes("invitation_used")) continue;
     if (accepted.status >= 300) throw new ApiFailure(accepted.status, "accept invite", accepted.text);
     token = accepted.json().access_token;
   }

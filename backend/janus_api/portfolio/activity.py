@@ -20,7 +20,7 @@ from janus_api.org import overview as org
 from janus_api.org import service as org_service
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import readable_companies
-from janus_api.portfolio.digest import inr
+from janus_api.portfolio.periods import inr
 
 PER_COMPANY, MOST = 80, 300
 
