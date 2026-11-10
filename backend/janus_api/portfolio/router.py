@@ -7,6 +7,7 @@ from janus_api.core.tenancy import set_context
 from janus_api.portfolio import (
     access,
     activity,
+    alerts,
     companies,
     digest,
     intelligence,
@@ -323,3 +324,16 @@ async def save_preferences(
 @router.get("/compliance/register", response_model=list[schemas.RegisterRow])
 async def filing_register(actor: CurrentActor, db: Db) -> list[schemas.RegisterRow]:
     return await compliance.register_all(db, actor.user.id, actor.session.tenant_id)
+
+
+@router.get("/alerts", response_model=schemas.AlertsSetting)
+async def alerts_setting(actor: CurrentActor, db: Db) -> schemas.AlertsSetting:
+    return schemas.AlertsSetting(enabled=await alerts.get_setting(db, actor.user.id))
+
+
+@router.put("/alerts", response_model=schemas.AlertsSetting)
+async def set_alerts(
+    data: schemas.AlertsSetting, actor: CurrentActor, db: Db, request: Request
+) -> schemas.AlertsSetting:
+    enabled = await alerts.set_setting(db, actor.user.id, data.enabled, request_ip(request))
+    return schemas.AlertsSetting(enabled=enabled)

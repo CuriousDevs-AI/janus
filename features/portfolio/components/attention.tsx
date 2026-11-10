@@ -5,6 +5,9 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { api, message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
 import { SectionCard } from "@/components/settings/section-ui";
 import { attentionOf, openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { severityName, severityTone } from "@/features/portfolio/lib/format";
@@ -66,6 +69,19 @@ export function Notifications({ list }: { list: PortfolioCompany[] }) {
   </SectionCard>;
 }
 
+/** An email as soon as a company turns red, besides Monday's email. */
+function AlertsSwitch() {
+  const setting = useApi<{ enabled: boolean }>("/portfolio/alerts");
+  const [enabled, setEnabled] = React.useState<boolean | null>(null);
+  const on = enabled ?? setting.data?.enabled ?? false;
+  const toggle = async (next: boolean) => {
+    setEnabled(next);
+    try { await api("/portfolio/alerts", { method: "PUT", body: JSON.stringify({ enabled: next }) }); toast.success(next ? "You will get an email when a company turns red." : "Red alerts are off."); }
+    catch (error) { setEnabled(!next); toast.error(message(error)); }
+  };
+  return <label className="flex items-start gap-3 text-sm"><Switch checked={on} disabled={setting.loading} onCheckedChange={(value) => void toggle(value)} aria-label="Email me when a company turns red" /><span><span className="font-medium">Email me when a company turns red</span><span className="block text-xs text-muted-foreground">Checked about once an hour with these thresholds. A company that stays red is told once.</span></span></label>;
+}
+
 /** When a company turns red for this person: overdue money, approvals waiting and late bills. */
 export function ThresholdsCard() {
   const preferences = usePreferences();
@@ -75,7 +91,8 @@ export function ThresholdsCard() {
   const number = (text: string, max: number) => Math.min(max, Math.max(0, Math.round(Number(text) || 0)));
   const field = "h-8 w-28 rounded-md border border-input bg-surface-2 px-2 text-[13px] tabular-nums";
   const save = async () => { if (await preferences.save({ ...preferences.value, thresholds: value })) { toast.success("Saved. Health is worked out again with your thresholds."); window.location.reload(); } };
-  return <SectionCard title="When is a company red?" description="Your own thresholds. They change health on every Portfolio page and in your weekly email, for you only.">
+  return <SectionCard title="When is a company red?" description="Your own thresholds. They change health on every Portfolio page and in your emails, for you only.">
+    <div className="mb-4"><AlertsSwitch /></div>
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="flex flex-col gap-1 text-sm">Money owed is red once some of it is late by
         <select aria-label="Overdue is red after" className={field} value={value.overdueRedAfterDays} onChange={(event) => set({ overdueRedAfterDays: Number(event.target.value) as 30 | 60 })}><option value={30}>30 days</option><option value={60}>60 days</option></select></label>

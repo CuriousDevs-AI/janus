@@ -135,3 +135,16 @@ class PortfolioPreference(Base):
     snoozed: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
     thresholds: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PortfolioAlert(Base):
+    """One person's red alerts: an email when a company turns red, not only on Monday. `red` is
+    the companies that were red at the last check, so a company that stays red is told once."""
+
+    __tablename__ = "portfolio_alerts"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    red: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

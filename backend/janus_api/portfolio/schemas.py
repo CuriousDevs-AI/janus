@@ -619,3 +619,9 @@ class RegisterRow(BaseModel):
     acknowledgement: str | None
     lateFee: str | None
     lateNote: str | None
+
+
+class AlertsSetting(BaseModel):
+    """Whether this person gets an email when a company turns red."""
+
+    enabled: bool

@@ -1372,3 +1372,54 @@ async def test_gst_payable_unfiled_count_and_filing_register(
     rows = register.json()
     assert sum(row["status"] == "overdue" for row in rows) == company["unfiledCount"]
     assert {row["company"] for row in rows} == {"Mumbai Traders"}
+
+
+async def test_the_worker_emails_once_when_a_company_turns_red(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    from janus_api.portfolio.alerts import run_once as alert_once
+
+    owner = await signup(client, mailbox)
+    assert (await client.get("/v1/portfolio/alerts", headers=owner.headers)).json() == {
+        "enabled": False
+    }
+    on = await client.put("/v1/portfolio/alerts", headers=owner.headers, json={"enabled": True})
+    assert on.status_code == 200 and on.json() == {"enabled": True}
+    engine = create_async_engine(os.environ["JANUS_TEST_WORKER_URL"])
+
+    async def check() -> list[str]:
+        async with admin_engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE portfolio_alerts SET next_check_at = now() - interval '1 minute'")
+            )
+        before = len(mailbox.messages)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        assert await alert_once(factory)
+        assert not await alert_once(factory)
+        return [subject for _, subject, _ in mailbox.messages[before:]]
+
+    try:
+        # The first check only takes note of what is red now.
+        assert await check() == []
+        today = today_ist()
+        created = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": "red-1"},
+            json={
+                "customer": "Kavita Rao",
+                "invoice_date": (today - timedelta(days=100)).isoformat(),
+                "due_date": (today - timedelta(days=70)).isoformat(),
+                "same_state": True,
+                "lines": [
+                    {"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 100000, "gst_rate": 0}
+                ],
+            },
+        )
+        assert created.status_code == 201, created.text
+        # Money owed over 60 days turns the company red: one email, then none while it stays red.
+        assert await check() == ["Mumbai Traders turned red"]
+        body = mailbox.messages[-1][2]
+        assert "over 60 days" in body and "/portfolio?view=overview" in body
+        assert await check() == []
+    finally:
+        await engine.dispose()
