@@ -1,13 +1,17 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { api, message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Basis, Kpi } from "@/features/portfolio/components/figures";
 import { Delta, Waterfall } from "@/features/portfolio/components/market";
 import { groupBooks, openIn, payrollFor, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
-import { change, inr } from "@/features/portfolio/lib/format";
-import type { PortfolioBooks, PortfolioPeriod } from "@/features/portfolio/types";
+import { change, day, inr } from "@/features/portfolio/lib/format";
+import type { PortfolioBooks, PortfolioIntercompanyLink, PortfolioPeriod } from "@/features/portfolio/types";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const sumBooks = (list: WithMoney[], side: "current" | "previous", key: keyof PortfolioBooks) => list.reduce((total, item) => total + n(item.books?.[side][key]), 0);
@@ -63,6 +67,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
       <ByCompany list={list} period={period} />
     </SectionCard>}
     <GstCard list={list} />
+    {list.length > 1 && <IntercompanyCard />}
   </>;
 }
 
@@ -109,5 +114,29 @@ function GstCard({ list }: { list: WithMoney[] }) {
       </li>;
     })}</ul>
     <p className="mt-3 text-xs text-muted-foreground">TDS deducted and deposited is not recorded in Janus yet, so it is not shown here; the TDS filings are in Compliance.</p>
+  </SectionCard>;
+}
+
+/** Invoices between your own companies, each with the bill the buying company recorded for it.
+ * A missing bill is recorded in one step, so both sides of the group agree. */
+function IntercompanyCard() {
+  const links = useApi<PortfolioIntercompanyLink[]>("/portfolio/intercompany");
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const record = async (link: PortfolioIntercompanyLink) => {
+    setBusy(link.invoice);
+    try {
+      const made = await api<PortfolioIntercompanyLink>("/portfolio/intercompany/bills", { method: "POST", body: JSON.stringify({ sellerId: link.sellerId, invoice: link.invoice }) });
+      toast.success(`Bill ${made.bill} recorded in ${made.buyer}.`); links.reload();
+    } catch (error) { toast.error(message(error)); } finally { setBusy(null); }
+  };
+  const all = links.data ?? [];
+  const missing = all.filter((link) => !link.bill).length;
+  if (!links.loading && all.length === 0) return null;
+  return <SectionCard title="Between your companies" description={`Invoices one of your companies raised to another since last April, each with the bill the other recorded for it (linked by the invoice number). ${missing ? `${missing} bill${missing === 1 ? " is" : "s are"} missing, so the group's costs and GST credit are short.` : "Every one has its bill."}`}>
+    {links.error ? <p className="text-sm text-danger">{links.error}</p> : <ul className="flex flex-col divide-y divide-border">{all.slice(0, 50).map((link) => <li key={`${link.sellerId}-${link.invoice}`} className="flex flex-wrap items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
+      <Badge variant={link.bill ? "success" : "warning"}>{link.bill ? "Matched" : "Bill missing"}</Badge>
+      <span className="min-w-0 flex-1"><span className="font-medium">{link.seller} → {link.buyer}</span> <span className="text-muted-foreground">· {link.invoice} · {day(link.invoiceDate)} · {inr(n(link.amount))} with {inr(n(link.gst))} GST{link.bill ? ` · bill ${link.bill}` : ""}</span></span>
+      {!link.bill && link.canRecord && <Button size="sm" variant="outline" disabled={busy === link.invoice} onClick={() => void record(link)}>Record the bill in {link.buyer}</Button>}
+    </li>)}</ul>}
   </SectionCard>;
 }

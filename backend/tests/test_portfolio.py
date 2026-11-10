@@ -1494,3 +1494,60 @@ async def test_documents_that_expire_need_the_owner(
         url, headers=stranger.headers, json={"kind": "other", "name": "Lease"}
     )
     assert denied.status_code == 404
+
+
+async def test_an_invoice_between_own_companies_gets_its_bill_in_one_step(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    retail = await _second_company(client, owner, "Pune Retail")
+    today = today_ist().isoformat()
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "ic-1"},
+        json={
+            "customer": "Accounts",
+            "customer_company": "Pune Retail",
+            "invoice_date": today,
+            "due_date": today,
+            "same_state": True,
+            "lines": [
+                {"item": "Cloth", "hsn": "5208", "qty": 1, "rate_paise": 1000000, "gst_rate": 5}
+            ],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+    number = invoice.json()["number"]
+
+    links = (await client.get("/v1/portfolio/intercompany", headers=owner.headers)).json()
+    assert [(link["seller"], link["buyer"], link["invoice"], link["bill"]) for link in links] == [
+        ("Mumbai Traders", "Pune Retail", number, None)
+    ]
+    assert links[0]["amount"] == "10500.00" and links[0]["gst"] == "500.00"
+    body = {"sellerId": str(owner.tenant_id), "invoice": number}
+    made = await client.post("/v1/portfolio/intercompany/bills", headers=owner.headers, json=body)
+    assert made.status_code == 201, made.text
+    bill = made.json()["bill"]
+    assert bill.startswith("BILL-")
+    again = await client.post("/v1/portfolio/intercompany/bills", headers=owner.headers, json=body)
+    assert again.json()["bill"] == bill  # recorded once
+    links = (await client.get("/v1/portfolio/intercompany", headers=owner.headers)).json()
+    assert links[0]["bill"] == bill
+
+    # Both sides now agree: the group's sales and costs between the companies match.
+    companies = {
+        item["name"]: item
+        for item in (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+            "companies"
+        ]
+    }
+    assert companies["Mumbai Traders"]["intercompany"]["sales"] == "10000.00"
+    assert companies["Pune Retail"]["intercompany"]["purchases"] == "10000.00"
+    assert companies["Pune Retail"]["gst"] is None  # GST not set up there
+
+    missing = await client.post(
+        "/v1/portfolio/intercompany/bills",
+        headers=owner.headers,
+        json={"sellerId": retail["id"], "invoice": number},
+    )
+    assert missing.status_code == 404

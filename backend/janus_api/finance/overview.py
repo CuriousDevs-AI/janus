@@ -350,3 +350,73 @@ async def gst(db: AsyncSession, tenant_id: int, start: date, end: date) -> Gst:
         )
     ).one()
     return Gst(output=int(output or 0), input=int(paid or 0), bills_without_gst=int(missing or 0))
+
+
+@dataclass(frozen=True)
+class InvoiceRef:
+    """One invoice, in paise, as another module needs it to match a bill to it."""
+
+    number: str
+    customer: str
+    invoice_date: date
+    due_date: date
+    gst: int
+    total: int
+
+
+async def invoices_to(
+    db: AsyncSession, tenant_id: int, names: list[str], since: date
+) -> list[InvoiceRef]:
+    """Invoices since a day to customers with one of these names (the customer's company, or the
+    customer where no company is given), compared without case."""
+    wanted = [name.strip().casefold() for name in names]
+    party = func.lower(
+        func.coalesce(func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer)
+    )
+    rows = await db.execute(
+        select(
+            FinanceInvoice.number,
+            func.coalesce(
+                func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer
+            ),
+            FinanceInvoice.invoice_date,
+            FinanceInvoice.due_date,
+            FinanceInvoice.cgst_paise + FinanceInvoice.sgst_paise + FinanceInvoice.igst_paise,
+            FinanceInvoice.total_paise,
+        )
+        .where(
+            FinanceInvoice.tenant_id == tenant_id,
+            FinanceInvoice.invoice_date >= since,
+            func.trim(party).in_(wanted),
+        )
+        .order_by(FinanceInvoice.invoice_date.desc(), FinanceInvoice.id.desc())
+        .limit(500)
+    )
+    return [
+        InvoiceRef(
+            number=number,
+            customer=customer,
+            invoice_date=day,
+            due_date=due,
+            gst=int(gst),
+            total=int(total),
+        )
+        for number, customer, day, due, gst, total in rows.all()
+    ]
+
+
+async def bills_for_invoices(
+    db: AsyncSession, tenant_id: int, vendor: str, numbers: list[str]
+) -> dict[str, str]:
+    """Of these supplier invoice numbers from one supplier, those already recorded as bills: the
+    supplier's invoice number and Janus's own bill number."""
+    if not numbers:
+        return {}
+    rows = await db.execute(
+        select(FinanceBill.vendor_bill_no, FinanceBill.number).where(
+            FinanceBill.tenant_id == tenant_id,
+            func.lower(func.trim(FinanceBill.vendor)) == vendor.strip().casefold(),
+            FinanceBill.vendor_bill_no.in_(numbers),
+        )
+    )
+    return {str(supplier_no): str(own) for supplier_no, own in rows.all()}

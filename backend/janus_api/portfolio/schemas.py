@@ -652,3 +652,25 @@ class CompanyDocumentOut(BaseModel):
     # Days until it expires; negative once it has. None without an expiry date.
     daysLeft: int | None
     status: Literal["valid", "expiring", "expired", "no_expiry"]
+
+
+class IntercompanyLink(BaseModel):
+    """An invoice one of the person's companies raised to another, and the bill recorded for it
+    there (None while it is missing)."""
+
+    sellerId: str
+    seller: str
+    buyerId: str
+    buyer: str
+    invoice: str
+    invoiceDate: str
+    amount: str
+    gst: str
+    bill: str | None
+    # Whether this person may record the missing bill in the buying company.
+    canRecord: bool
+
+
+class IntercompanyRecord(BaseModel):
+    sellerId: str
+    invoice: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]

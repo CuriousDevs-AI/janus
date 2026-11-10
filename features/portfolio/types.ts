@@ -192,3 +192,5 @@ export type PortfolioKnowledgeItem = { id: string; companyId: string; company: s
 
 export type PortfolioDocumentKind = "registration" | "licence" | "insurance" | "trademark" | "contract" | "other";
 export type PortfolioDocument = { id: string; kind: PortfolioDocumentKind; name: string; number: string | null; issuedOn: string | null; expiresOn: string | null; notes: string | null; daysLeft: number | null; status: "valid" | "expiring" | "expired" | "no_expiry" };
+/** An invoice one of your companies raised to another, and the bill recorded for it there. */
+export type PortfolioIntercompanyLink = { sellerId: string; seller: string; buyerId: string; buyer: string; invoice: string; invoiceDate: string; amount: string; gst: string; bill: string | null; canRecord: boolean };

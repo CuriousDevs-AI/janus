@@ -12,6 +12,7 @@ from janus_api.portfolio import (
     digest,
     documents,
     intelligence,
+    intercompany,
     knowledge,
     preferences,
     schemas,
@@ -396,3 +397,17 @@ async def remove_document(
         db, actor.user.id, actor.session.tenant_id, company_id, document_id, request_ip(request)
     )
     return Response(status_code=204)
+
+
+@router.get("/intercompany", response_model=list[schemas.IntercompanyLink])
+async def intercompany_links(actor: CurrentActor, db: Db) -> list[schemas.IntercompanyLink]:
+    return await intercompany.links(db, actor.user.id, actor.session.tenant_id)
+
+
+@router.post("/intercompany/bills", response_model=schemas.IntercompanyLink, status_code=201)
+async def intercompany_bill(
+    data: schemas.IntercompanyRecord, actor: CurrentActor, db: Db, request: Request
+) -> schemas.IntercompanyLink:
+    return await intercompany.record_bill(
+        db, actor.user.id, actor.user.name, actor.session.tenant_id, data, request_ip(request)
+    )
