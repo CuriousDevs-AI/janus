@@ -85,6 +85,32 @@ async def test_only_billing_managers_can_move_money(
     assert denied.status_code == 403
     listed = await client.get("/v1/finance/budget-lines", headers=agent)
     assert listed.status_code == 403
+    # A manager runs projects against a line: sees the lines and draws from one, within what is
+    # left, and cannot put money into a line.
+    manager = await accept_new(
+        client, await invite(client, mailbox, owner, "manager@example.com", "manager")
+    )
+    seen = await client.get("/v1/finance/budget-lines", headers=manager)
+    assert seen.status_code == 200
+    assert [line["external_key"] for line in seen.json()] == ["line-sales"]
+    drawn = await client.post(
+        "/v1/finance/budget-lines/line-sales/draws",
+        headers={**manager, **_key("draw-manager")},
+        json=DRAW,
+    )
+    assert drawn.status_code == 201, drawn.text
+    too_much = await client.post(
+        "/v1/finance/budget-lines/line-sales/draws",
+        headers={**manager, **_key("draw-manager-2")},
+        json={**DRAW, "amount_paise": 10**12},
+    )
+    assert too_much.status_code == 422
+    allocate = await client.post(
+        "/v1/finance/budget-lines/line-sales/allocations",
+        headers={**manager, **_key("fund:manager")},
+        json={"amount_paise": 100, "note": "Not allowed", "booked_on": "2026-10-23"},
+    )
+    assert allocate.status_code == 403
 
 
 async def test_invalid_money_is_refused_before_anything_moves(

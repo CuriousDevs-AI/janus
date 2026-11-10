@@ -15,13 +15,23 @@ from sqlalchemy import select
 
 from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
-from janus_api.core.deps import Db, request_ip, require
+from janus_api.core.deps import Db, request_ip, require, require_any
 from janus_api.core.errors import ApiError
 from janus_api.finance.models import FinanceBudgetLine, FinanceBudgetMovement
 from janus_api.rules.service import ensure_open
 
 router = APIRouter(prefix="/v1/finance", tags=["Finance"])
 Billing = Annotated[Actor, Depends(require("billing:manage"))]
+# Budget lines are read by everyone who spends against one: buying, projects and approvals, not
+# only Finance. Those who run projects or decide approvals also draw from a line and hand money back
+# to it, never beyond what is left; creating lines and putting money into them stays with billing.
+BudgetReader = Annotated[
+    Actor,
+    Depends(require_any("billing:manage", "stock:adjust", "projects:manage", "approvals:manage")),
+]
+BudgetSpender = Annotated[
+    Actor, Depends(require_any("billing:manage", "projects:manage", "approvals:manage"))
+]
 
 MAX_PAISE = 10**15
 
@@ -81,7 +91,7 @@ async def _line(db: Db, tenant_id: int, key: str, *, lock: bool) -> FinanceBudge
 
 
 @router.get("/budget-lines", response_model=list[BudgetLineOut])
-async def list_budget_lines(actor: Billing, db: Db) -> list[BudgetLineOut]:
+async def list_budget_lines(actor: BudgetReader, db: Db) -> list[BudgetLineOut]:
     rows = await db.scalars(
         select(FinanceBudgetLine)
         .where(FinanceBudgetLine.tenant_id == actor.session.tenant_id)
@@ -210,7 +220,7 @@ IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, ma
 async def draw_budget(
     key: str,
     data: MovementRequest,
-    actor: Billing,
+    actor: BudgetSpender,
     db: Db,
     request: Request,
     response: Response,
@@ -233,7 +243,7 @@ async def draw_budget(
 async def release_budget(
     key: str,
     data: MovementRequest,
-    actor: Billing,
+    actor: BudgetSpender,
     db: Db,
     request: Request,
     response: Response,

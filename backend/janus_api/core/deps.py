@@ -45,3 +45,17 @@ def require(permission: str) -> Callable[..., Coroutine[Any, Any, Actor]]:
         return actor
 
     return check
+
+
+def require_any(*permissions: str) -> Callable[..., Coroutine[Any, Any, Actor]]:
+    """Allows a person holding at least one of these permissions."""
+    unknown = set(permissions) - PERMISSIONS
+    if unknown:
+        raise ValueError(f"Unknown permission: {sorted(unknown)}")
+
+    async def check(actor: CurrentActor) -> Actor:
+        if not set(permissions) & set(actor.permissions):
+            raise ApiError("forbidden", "You do not have permission for this action.", 403)
+        return actor
+
+    return check
