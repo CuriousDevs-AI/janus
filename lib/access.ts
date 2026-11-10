@@ -3,7 +3,7 @@
  * the same rules; this keeps the menus from offering what would only be refused.
  */
 
-const WORKSPACE_PERMISSION: Record<string, string> = {
+export const WORKSPACE_PERMISSION: Record<string, string> = {
   "crm-sales": "leads:read_own",
   "hr-people": "hr:self",
   "finance-accounting": "billing:manage",
@@ -46,3 +46,6 @@ export function homeForPermissions(permissions: string[]) {
   if (has(permissions, "leads:read_own")) return "/leads?workspace=crm-sales";
   return "/team?workspace=team-chat";
 }
+
+/** Workspaces whose permission can be given to one member on top of their role (the server's GRANTABLE). */
+export const GRANTABLE_WORKSPACES = ["finance-accounting", "operations-inventory", "projects-delivery", "it-infrastructure"];

@@ -147,3 +147,21 @@ async def remove_team_member(
         db, actor.session.tenant_id, actor.user.id, team_id, member_id, request_ip(request)
     )
     return Response(status_code=204)
+
+
+@router.put("/members/{member_id}/workspace-access", response_model=schemas.MemberOut)
+async def set_workspace_access(
+    member_id: int,
+    data: schemas.WorkspaceAccess,
+    actor: MemberManager,
+    db: Db,
+    request: Request,
+) -> schemas.MemberOut:
+    return await service.set_workspace_access(
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        member_id,
+        data.permissions,
+        request_ip(request),
+    )

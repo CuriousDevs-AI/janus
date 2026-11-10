@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { isFirstCompany } from "@/lib/companies";
 import { demoMode } from "@/lib/demo-mode";
-import { PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
+import { GRANTABLE_WORKSPACES, PORTFOLIO_ROLES, roleLabel, WORKSPACE_PERMISSION } from "@/lib/access";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
 import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
@@ -95,14 +95,14 @@ const initialMembers: AccessMember[] = [...users.map((user, index) => ({
 })),
 ];
 
-type ServerMember = { id: string; user_id: string; name: string; email: string; role: string; status: string };
+type ServerMember = { id: string; user_id: string; name: string; email: string; role: string; status: string; extra_permissions?: string[] };
 
 /** A member as the server lists it. The server does not hold departments or workspace access yet. */
 function toAccessMember(member: ServerMember): AccessMember {
   const role = (roleOrder as string[]).includes(member.role) ? (member.role as Role) : "read_only";
   // A Portfolio role (Group finance, Group analyst) reads the group's figures and has no workspace here.
   const portfolio = PORTFOLIO_ROLES.includes(member.role) && member.role !== "owner" && member.role !== "company_admin";
-  return { id: member.id, name: member.name, email: member.email, role, department: portfolio ? `Portfolio · ${roleLabel(member.role)}` : isManagementRole(role) ? "Management" : "Unassigned", status: member.status === "active" ? "Active" : "Suspended", businessAccess: role === "owner" || isManagementRole(role), workspaces: [], permissions: rolePermissions[role], lastActive: "Not yet" };
+  return { id: member.id, name: member.name, email: member.email, role, department: portfolio ? `Portfolio · ${roleLabel(member.role)}` : isManagementRole(role) ? "Management" : "Unassigned", status: member.status === "active" ? "Active" : "Suspended", businessAccess: role === "owner" || isManagementRole(role), workspaces: GRANTABLE_WORKSPACES.filter((key) => (member.extra_permissions ?? []).includes(WORKSPACE_PERMISSION[key])) as WorkspaceKey[], permissions: rolePermissions[role], lastActive: "Not yet" };
 }
 
 const initialRoles: RoleRecord[] = roleOrder.map((role) => ({ id: role, label: roleMeta[role].label, summary: roleMeta[role].summary, tone: roleMeta[role].tone as RoleRecord["tone"], permissions: rolePermissions[role], builtIn: true }));
@@ -190,12 +190,15 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     }
   }
   /** A real account changes a member's system role on the server. Name and email are not changed here. */
-  async function saveRoleOnServer(memberId: string, role: Role) {
+  async function saveRoleOnServer(memberId: string, role: Role, workspaces: WorkspaceKey[]) {
     const systemRole = role === "owner" || role === "admin" || isManagementRole(role) ? (role === "owner" ? "owner" : "admin") : role.includes("manager") ? "manager" : "agent";
+    const current = serverMembers.find((member) => member.id === memberId);
     try {
-      await api(`/members/${encodeURIComponent(memberId)}`, { method: "PATCH", body: JSON.stringify({ role: systemRole }) });
+      if (current && systemRole !== current.role && role !== current.role) await api(`/members/${encodeURIComponent(memberId)}`, { method: "PATCH", body: JSON.stringify({ role: systemRole }) });
+      // Finance, Operations, Projects and IT are given on top of the role, one workspace at a time.
+      if (systemRole !== "owner") await api(`/members/${encodeURIComponent(memberId)}/workspace-access`, { method: "PUT", body: JSON.stringify({ permissions: workspaces.filter((key) => GRANTABLE_WORKSPACES.includes(key)).map((key) => WORKSPACE_PERMISSION[key]) }) });
       await membersApi.reload();
-      setNotice("The member's role was saved on the server.");
+      setNotice("The member's role and workspace access were saved on the server.");
       closeMemberDialog();
     } catch (error: unknown) {
       setMemberError(message(error));
@@ -227,7 +230,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
       setInvites((current) => [{ id: `invite-${Date.now()}`, name: memberForm.name.trim(), email: memberForm.email.trim(), role: memberForm.role, businessAccess: memberForm.businessAccess, workspaces: assignedWorkspaces, invitedAt: "Just now", status: "Pending" }, ...current]);
       setNotice(`${memberForm.name.trim()} was added with a pending invitation. Demo password is not sent anywhere.`);
     } else if (editingMemberId && !demoMode) {
-      void saveRoleOnServer(editingMemberId, memberForm.role);
+      void saveRoleOnServer(editingMemberId, memberForm.role, assignedWorkspaces);
       return;
     } else if (editingMemberId) {
       setMembers((current) => current.map((member) => member.id === editingMemberId ? { ...member, name: memberForm.name.trim(), email: memberForm.email.trim(), role: memberForm.role, department: memberForm.department, businessAccess: member.role === "owner" ? true : memberForm.businessAccess, workspaces: assignedWorkspaces, permissions: memberForm.permissions } : member));

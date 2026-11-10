@@ -45,6 +45,26 @@ PERMISSIONS = {
 # What every member holds whatever their role: their own HR (profile, leave, attendance, pay).
 # It comes with the membership, so nobody has to grant it person by person.
 MEMBER_PERMISSIONS = frozenset({"hr:self"})
+# What can be given to one member on top of their role, so a department works in its own workspace
+# without a broader role: Finance, stock, projects, settings (IT), approvals and reports.
+GRANTABLE = frozenset(
+    {
+        "billing:manage",
+        "stock:adjust",
+        "projects:manage",
+        "settings:manage",
+        "approvals:manage",
+        "reports:read",
+    }
+)
+
+
+def permissions_of(member: Membership, role: Role) -> list[str]:
+    """A member's permissions: their role's, every member's own, and workspace access given."""
+    extra = set(member.extra_permissions or []) & GRANTABLE
+    return sorted(set(role.permissions) | MEMBER_PERMISSIONS | extra)
+
+
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
     "admin": sorted(
@@ -453,6 +473,7 @@ async def member_outputs(
             avatar_url=profiles[member.user_id].avatar_url,
             role=role.name,
             status=member.status,
+            extra_permissions=sorted(member.extra_permissions or []),
         )
         for member, role in rows
     ]
@@ -877,3 +898,48 @@ async def update_profile(
     if tenant is None:
         raise ApiError("not_found", "Company not found.", 404)
     tenant.name, tenant.industry, tenant.company_size = name, industry, company_size
+
+
+async def set_workspace_access(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    member_id: int,
+    permissions: list[str],
+    ip: str,
+) -> schemas.MemberOut:
+    """Gives a member workspace access on top of their role. Only permissions in GRANTABLE, and only
+    those the person giving them holds; an Owner's membership is not changed this way."""
+    await lock_workspace(db, tenant_id, user_id, "members:manage")
+    wanted = sorted(set(permissions))
+    unknown = set(wanted) - GRANTABLE
+    if unknown:
+        raise ApiError(
+            "invalid_permissions", f"These cannot be given here: {', '.join(sorted(unknown))}.", 422
+        )
+    caller, caller_role = await membership(db, user_id, tenant_id)
+    if caller_role.name != "owner" and not set(wanted) <= set(permissions_of(caller, caller_role)):
+        raise ApiError("forbidden", "You can only give access you hold yourself.", 403)
+    row = (
+        await db.execute(
+            select(Membership, Role)
+            .join(Role, Role.id == Membership.role_id)
+            .where(Membership.id == member_id, Membership.tenant_id == tenant_id)
+        )
+    ).first()
+    if row is None:
+        raise ApiError("not_found", "Member not found.", 404)
+    member, role = row
+    if role.name == "owner":
+        raise ApiError("invalid_member", "An Owner already holds every permission.", 422)
+    member.extra_permissions = wanted
+    record(
+        db,
+        "membership.workspace_access_set",
+        tenant_id=tenant_id,
+        user_id=user_id,
+        ip=ip,
+        details={"membership_id": member.id, "permissions": ",".join(wanted) or "none"},
+    )
+    await db.flush()
+    return (await member_outputs(db, [(member, role)]))[0]

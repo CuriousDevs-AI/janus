@@ -33,12 +33,4 @@ A failing test here states what the business needs and Janus doesn't do yet, or 
 
 ## Where it stands
 
-Last full run: 47 passed, 10 failed. All ten are in the product, not the suite:
-
-| Failing test | Cause |
-|---|---|
-| 04 expense and petty-cash top-up after a reload | The Finance store discards its saved expenses, top-ups, draws, bank entries, bank lines, opening cash and close reviews on every load of a real account (since `a529780`) |
-| 05 Karan raises a requisition; 05 the requisition is approved; 06 Neha creates the project | `GET /finance/budget-lines` needs `billing:manage`, so everyone but the Owner gets an empty Budget line list. Creating a project with no line does nothing and says nothing. The approval step never ran, because Shalini could not raise the requisition either |
-| 07 Arjun assigns the ticket | A manager's Assign menu says "No teammates to assign": the list comes from `/members`, which needs `members:manage` |
-| 07 feedback and renewal | Customer Support reads customers from the browser's copy of CRM records, which is empty on a real account |
-| 11 Finance, Operations, Projects, IT | Role limits: only the Owner holds `billing:manage`; only Admin and Owner hold `settings:manage`; agents hold neither `stock:adjust` nor `projects:manage`. There is no way to give a department only its own workspace |
+The ten failures recorded on 7 November 2026 (Finance discarding saved expenses, budget lines only for the Owner, an empty Assign menu, Customer Support without customers, and departments unable to open their own workspace) were product problems, fixed on 10 November 2026; each has a line in `docs/decisions.md`. Journey 02 now has the Owner give each department its workspace on top of its people's roles.

@@ -50,6 +50,11 @@ class Membership(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     role_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("roles.id"))
     status: Mapped[str] = mapped_column(default="active")
+    # Workspace access on top of the role, from org.service.GRANTABLE: a Finance agent's
+    # billing:manage, for one. Granted by someone who manages members and holds it.
+    extra_permissions: Mapped[list[str]] = mapped_column(
+        ARRAY(String), default=list, server_default="{}"
+    )
 
 
 class Invitation(Base):

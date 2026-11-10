@@ -231,9 +231,9 @@ async def authenticate(db: AsyncSession, token: str) -> Actor:
     )
     if session is None:
         raise ApiError("unauthorized", "Invalid or expired session.", 401)
-    _, role = await org.membership(db, user_id, tenant_id)
+    member, role = await org.membership(db, user_id, tenant_id)
     session.last_used_at = now()
-    return Actor(user, session, role.name, sorted(set(role.permissions) | org.MEMBER_PERMISSIONS))
+    return Actor(user, session, role.name, org.permissions_of(member, role))
 
 
 async def refresh(db: AsyncSession, token: str, ip: str) -> schemas.TokenPair:

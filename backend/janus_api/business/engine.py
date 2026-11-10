@@ -216,18 +216,18 @@ async def _runner(
     db: AsyncSession, run: AutomationExecution, workflow: AutomationWorkflow
 ) -> Runner:
     from janus_api.business.service import ensure_workspace_access
-    from janus_api.org.service import MEMBER_PERMISSIONS, membership
+    from janus_api.org.service import membership, permissions_of
 
     user_id = run.approved_by or run.event.get("requested_by") or workflow.created_by
     try:
-        _, role = await membership(db, int(user_id), run.tenant_id)
+        member, role = await membership(db, int(user_id), run.tenant_id)
         await ensure_workspace_access(db, run.tenant_id, int(user_id), workflow.workspace_id)
     except ApiError as error:
         raise StepError(
             "runner_not_allowed",
             "The person this run acts for is no longer an active member with access to it.",
         ) from error
-    return Runner(int(user_id), set(role.permissions) | MEMBER_PERMISSIONS)
+    return Runner(int(user_id), set(permissions_of(member, role)))
 
 
 async def _send_notification(

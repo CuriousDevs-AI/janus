@@ -40,6 +40,18 @@ test.describe("Shalini, the Head of HR, builds the organisation", () => {
     expect(members.length).toBe(EMPLOYEES.length + 2);
   });
 
+  test("Vikram gives each department its own workspace, on top of its people's roles", async () => {
+    // What People & access saves when the Owner ticks a department's workspace for a person.
+    const members: { id: string; email: string }[] = await api("vikram", "GET", "/members");
+    for (const employee of EMPLOYEES) {
+      const department = DEPARTMENTS.find((item) => item.name === employee.department)!;
+      if (department.name === "Sales") continue; // a sales role already works in CRM
+      const member = members.find((item) => item.email === emailOf(employee.key))!;
+      const saved = await api("vikram", "PUT", `/members/${member.id}/workspace-access`, { permissions: [department.permission] });
+      expect(saved.extra_permissions).toEqual([department.permission]);
+    }
+  });
+
   test("she adds every person's employee record, with who they report to", async ({ browser }) => {
     const shalini = await signIn(browser, "shalini");
     const records = [{ ...OWNER, department: "Management", salary: 300000 }, { ...HR_HEAD, department: "Management" }, ...EMPLOYEES];

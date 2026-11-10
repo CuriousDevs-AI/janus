@@ -138,6 +138,12 @@ class MemberOut(BaseModel):
     avatar_url: str | None
     role: str
     status: str
+    # Workspace access given on top of the role.
+    extra_permissions: list[str] = []
+
+
+class WorkspaceAccess(BaseModel):
+    permissions: list[str] = Field(default_factory=list, max_length=10)
 
 
 class RoleOut(BaseModel):
