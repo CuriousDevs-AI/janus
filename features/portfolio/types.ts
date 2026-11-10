@@ -60,6 +60,8 @@ export interface PortfolioCompany {
   unfiledSince: string | null;
   /** GST from the books, for a role with money where GST is set up. */
   gst: { gstin: string | null; lastMonth: PortfolioGstMonth; thisMonth: PortfolioGstMonth } | null;
+  /** Cash in the bank from imported statements, and how many months it lasts. Money roles only. */
+  cash: { total: string | null; asOf: string; accounts: { account: string; balance: string | null; asOf: string }[]; monthlyBurn: string | null; runwayMonths: number | null } | null;
   /** Last month's salaries: posted to the books or not, and what HR's salaries would post. Money roles only. */
   payroll: { month: string; label: string; posted: string | null; fromHr: string } | null;
   /** Registrations, licences, insurance and trademarks, soonest expiry first. */

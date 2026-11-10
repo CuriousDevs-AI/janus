@@ -1,5 +1,7 @@
 """What other modules may ask Finance to do, with the same checks as Finance's own screens."""
 
+import hashlib
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
@@ -7,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit import service as audit
 from janus_api.core.errors import ApiError
-from janus_api.finance.models import FinanceBill, FinancePayrollPosting
+from janus_api.finance.models import FinanceBankLine, FinanceBill, FinancePayrollPosting
 from janus_api.rules.service import ensure_open
 
 
@@ -114,3 +116,67 @@ async def post_payroll(
         details={"month": month.isoformat(), "amount_paise": amount_paise},
     )
     return True
+
+
+@dataclass(frozen=True)
+class BankRow:
+    day: date
+    description: str
+    amount_paise: int
+    balance_paise: int | None
+
+
+async def import_bank_lines(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    account: str,
+    rows: list[BankRow],
+    ip: str | None,
+) -> tuple[int, int]:
+    """Adds a statement's lines to the company's bank account (the caller is in its context and
+    has checked the person may). Lines already imported are skipped. Returns (added, skipped)."""
+    if not 1 <= len(rows) <= 5000:
+        raise ApiError("invalid_statement", "A statement has 1 to 5,000 lines.", 422)
+    account = account.strip()[:80] or "Bank account"
+    prints = []
+    for position, row in enumerate(rows):
+        key = f"{account}|{row.day}|{row.description}|{row.amount_paise}|{row.balance_paise}"
+        prints.append((position, row, hashlib.sha256(key.encode()).hexdigest()))
+    known = set(
+        await db.scalars(
+            select(FinanceBankLine.fingerprint).where(
+                FinanceBankLine.tenant_id == tenant_id,
+                FinanceBankLine.fingerprint.in_([p for _, _, p in prints]),
+            )
+        )
+    )
+    added = 0
+    for position, row, fingerprint in prints:
+        if fingerprint in known:
+            continue
+        known.add(fingerprint)
+        db.add(
+            FinanceBankLine(
+                tenant_id=tenant_id,
+                account=account,
+                line_date=row.day,
+                position=position,
+                description=row.description.strip()[:300],
+                amount_paise=row.amount_paise,
+                balance_paise=row.balance_paise,
+                fingerprint=fingerprint,
+                imported_by=user_id,
+            )
+        )
+        added += 1
+    await db.flush()
+    audit.record(
+        db,
+        "finance.bank_statement_imported",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={"account": account, "added": added, "skipped": len(rows) - added},
+    )
+    return added, len(rows) - added

@@ -10,6 +10,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { Basis, Kpi } from "@/features/portfolio/components/figures";
 import { Delta, Waterfall } from "@/features/portfolio/components/market";
 import { groupBooks, openIn, payrollFor, salariesRecorded, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
+import { parseStatement } from "@/features/portfolio/lib/bank-csv";
 import { change, day, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioBooksAmount, PortfolioIntercompanyLink, PortfolioPeriod } from "@/features/portfolio/types";
 
@@ -67,6 +68,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     : <SectionCard title="Company by company" description={`From each company's invoices, payments, credit notes and bills, ${period.label}. ${coverage}.`}>
       <ByCompany list={list} period={period} />
     </SectionCard>}
+    <CashCard list={list} />
     <SalariesCard list={list} />
     <GstCard list={list} />
     {list.length > 1 && <IntercompanyCard />}
@@ -159,5 +161,41 @@ function SalariesCard({ list }: { list: WithMoney[] }) {
       <span className="min-w-0 flex-1"><span className="font-medium">{item.name}</span> <span className="text-muted-foreground">· {pay.label} · {done ? `${inr(n(done))} posted` : `${inr(n(pay.fromHr))} from HR's salaries today`}</span></span>
       {!done && handlesMoney(item) && <Button size="sm" variant="outline" onClick={() => void post(item)}>Post {pay.label} salaries</Button>}
     </li>; })}</ul>
+  </SectionCard>;
+}
+
+/** Cash in the bank, per company, from bank statements imported here, and how long it lasts. */
+function CashCard({ list }: { list: WithMoney[] }) {
+  const { handlesMoney } = useRoles();
+  const editable = list.filter((item) => handlesMoney(item));
+  const [companyId, setCompanyId] = React.useState(editable[0]?.id ?? "");
+  const [account, setAccount] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const withCash = list.filter((item) => item.cash);
+  const total = withCash.reduce((sum, item) => sum + n(item.cash!.total), 0);
+  const upload = async (file: File) => {
+    setBusy(true);
+    try {
+      const parsed = parseStatement(await file.text());
+      if (parsed.rows.length === 0) throw new Error("No lines with a date and an amount were found.");
+      const result = await api<{ added: number; skipped: number }>(`/portfolio/companies/${companyId}/bank-statement`, { method: "POST", body: JSON.stringify({ account: account.trim() || file.name.replace(/\.csv$/i, ""), rows: parsed.rows.slice(0, 5000) }) });
+      toast.success(`${result.added} lines added${result.skipped ? `, ${result.skipped} already there` : ""}${parsed.skipped ? `; ${parsed.skipped} rows without a date or amount left out` : ""}. Reload to see the cash.`);
+    } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
+  };
+  return <SectionCard title="Cash in the bank" description="From bank statements imported here; Janus is not connected to your bank. How long the cash lasts uses the statement's last 90 days of money out less money in.">
+    {withCash.length > 0 ? <>
+      <p className="mb-3 text-sm"><span className="text-2xl font-semibold tabular-nums">{inr(total)}</span> <span className="text-muted-foreground">across {withCash.length} {withCash.length === 1 ? "company" : "companies"}</span></p>
+      <ul className="flex flex-col divide-y divide-border">{withCash.map((item) => { const cash = item.cash!; return <li key={item.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm first:pt-0 last:pb-0">
+        <span className="font-medium">{item.name}</span>
+        <span className="tabular-nums">{cash.total ? inr(n(cash.total)) : "Balance not in the statement"}</span>
+        <span className="text-muted-foreground">as of {day(cash.asOf)} · {cash.accounts.map((a) => a.account).join(", ")}</span>
+        <span className={`ml-auto ${cash.runwayMonths !== null && cash.runwayMonths < 3 ? "font-medium text-danger" : "text-muted-foreground"}`}>{cash.runwayMonths !== null ? `lasts about ${cash.runwayMonths} months at ${inr(n(cash.monthlyBurn))} a month` : "more came in than went out"}</span>
+      </li>; })}</ul>
+    </> : <p className="text-sm text-muted-foreground">No statement imported yet. Download your account statement as CSV from net banking and add it below.</p>}
+    {editable.length > 0 && <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-3">
+      <label className="grid gap-1 text-xs text-muted-foreground">Company<select className="h-9 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>{editable.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">Account<input className="h-9 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" maxLength={80} placeholder="HDFC current 1234" value={account} onChange={(event) => setAccount(event.target.value)} /></label>
+      <label className={`inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm ${busy ? "opacity-50" : ""}`}>Import statement (CSV)<input type="file" accept=".csv,text/csv" className="sr-only" disabled={busy || !companyId} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} /></label>
+    </div>}
   </SectionCard>;
 }

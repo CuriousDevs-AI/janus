@@ -1607,3 +1607,64 @@ async def test_last_months_salaries_are_posted_to_the_books_once(
         assert books["salariesPosted"] == "50000.00"
         assert f"{last:%Y-%m}" in books["salariesMonths"]
         assert books["salariesComplete"] is False  # this month is not posted yet
+
+
+async def test_a_bank_statement_gives_cash_and_how_long_it_lasts(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    url = f"/v1/portfolio/companies/{owner.tenant_id}/bank-statement"
+    today = today_ist()
+
+    def day(back: int) -> str:
+        return (today - timedelta(days=back)).isoformat()
+
+    rows = [
+        {"date": day(120), "description": "Opening", "amount": "500000", "balance": "500000"},
+        {"date": day(60), "description": "Rent", "amount": "-150000", "balance": "350000"},
+        {"date": day(30), "description": "Salaries", "amount": "-150000", "balance": "200000"},
+        {"date": day(5), "description": "Customer", "amount": "50000", "balance": "250000"},
+    ]
+    sent = await client.post(
+        url, headers=owner.headers, json={"account": "HDFC 1234", "rows": rows}
+    )
+    assert sent.status_code == 201 and sent.json() == {"added": 4, "skipped": 0}
+    again = await client.post(
+        url, headers=owner.headers, json={"account": "HDFC 1234", "rows": rows}
+    )
+    assert again.json() == {"added": 0, "skipped": 4}
+
+    company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+        "companies"
+    ][0]
+    cash = company["cash"]
+    assert cash["total"] == "250000.00" and cash["asOf"] == day(5)
+    # Over the statement's last 90 days, 3 lakh went out and 0.5 lakh came in.
+    assert cash["monthlyBurn"] == "83333.33" and cash["runwayMonths"] == 3.0
+
+    spend = [
+        {"date": day(3), "description": "Supplier", "amount": "-200000", "balance": "50000"},
+    ]
+    assert (
+        await client.post(url, headers=owner.headers, json={"account": "HDFC 1234", "rows": spend})
+    ).status_code == 201
+    # Now 5 lakh out and 0.5 lakh in over 90 days, with 0.5 lakh left.
+    cash = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"][
+        0
+    ]["cash"]
+    assert cash["total"] == "50000.00" and cash["monthlyBurn"] == "150000.00"
+    assert cash["runwayMonths"] == 0.3
+    lines = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"][
+        0
+    ]["attention"]
+    assert {
+        "severity": "high",
+        "text": "Cash in the bank lasts about 0.3 months at the last 90 days' spending",
+        "to": f"/portfolio?view=finance&company={owner.tenant_id}",
+    } in lines
+    bad = await client.post(
+        url,
+        headers=owner.headers,
+        json={"account": "X", "rows": [{"date": day(1), "amount": "12,000"}]},
+    )
+    assert bad.status_code == 422

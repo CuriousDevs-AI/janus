@@ -253,3 +253,22 @@ class FinancePayrollPosting(Base):
     posted_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     posted_by_name: Mapped[str] = mapped_column(String(160))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceBankLine(Base):
+    """One line of a bank statement a company imported: money in (positive) or out (negative),
+    and the balance after it where the statement gives one. The same line imported twice is kept
+    once, by its fingerprint."""
+
+    __tablename__ = "finance_bank_lines"
+    __table_args__ = (UniqueConstraint("tenant_id", "fingerprint"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    account: Mapped[str] = mapped_column(String(80))
+    line_date: Mapped[date] = mapped_column(Date)
+    position: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(String(300))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    balance_paise: Mapped[int | None] = mapped_column(BigInteger)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

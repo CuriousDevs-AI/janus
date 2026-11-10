@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.finance.models import (
+    FinanceBankLine,
     FinanceBill,
     FinanceBillPayment,
     FinanceCreditNote,
@@ -434,3 +435,68 @@ async def payroll_posted(
         )
     )
     return {month: int(amount) for month, amount in rows.all()}
+
+
+@dataclass(frozen=True)
+class AccountCash:
+    account: str
+    # The balance after the newest line that gives one, in paise; None without a balance column.
+    balance: int | None
+    as_of: date
+
+
+@dataclass(frozen=True)
+class Cash:
+    accounts: list[AccountCash]
+    # Money out less money in over the 90 days before the newest line, per month, in paise;
+    # zero or less when more came in than went out.
+    monthly_burn: int
+
+
+async def cash(db: AsyncSession, tenant_id: int) -> Cash | None:
+    """Cash in the bank from imported statements; None when none was imported."""
+    accounts = list(
+        await db.scalars(
+            select(FinanceBankLine.account)
+            .where(FinanceBankLine.tenant_id == tenant_id)
+            .group_by(FinanceBankLine.account)
+            .order_by(FinanceBankLine.account)
+        )
+    )
+    if not accounts:
+        return None
+    found: list[AccountCash] = []
+    newest = date.min
+    for account in accounts:
+        line = (
+            await db.execute(
+                select(FinanceBankLine.balance_paise, FinanceBankLine.line_date)
+                .where(
+                    FinanceBankLine.tenant_id == tenant_id,
+                    FinanceBankLine.account == account,
+                    FinanceBankLine.balance_paise.is_not(None),
+                )
+                .order_by(FinanceBankLine.line_date.desc(), FinanceBankLine.position.desc())
+                .limit(1)
+            )
+        ).first()
+        last_day = await db.scalar(
+            select(func.max(FinanceBankLine.line_date)).where(
+                FinanceBankLine.tenant_id == tenant_id, FinanceBankLine.account == account
+            )
+        )
+        newest = max(newest, last_day or date.min)
+        found.append(
+            AccountCash(
+                account=account,
+                balance=int(line[0]) if line else None,
+                as_of=line[1] if line else (last_day or date.min),
+            )
+        )
+    net = await db.scalar(
+        select(func.coalesce(func.sum(FinanceBankLine.amount_paise), 0)).where(
+            FinanceBankLine.tenant_id == tenant_id,
+            FinanceBankLine.line_date > newest - timedelta(days=90),
+        )
+    )
+    return Cash(accounts=found, monthly_burn=round(-int(net or 0) / 3))

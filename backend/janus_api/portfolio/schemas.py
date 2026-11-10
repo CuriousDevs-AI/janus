@@ -317,6 +317,24 @@ class GstPosition(BaseModel):
     thisMonth: GstMonth
 
 
+class CashAccount(BaseModel):
+    account: str
+    balance: str | None
+    asOf: str
+
+
+class CashPosition(BaseModel):
+    """Cash in the bank from imported statements, in rupees, and how long it lasts."""
+
+    total: str | None
+    asOf: str
+    accounts: list[CashAccount]
+    # Money out less money in per month over the statement's last 90 days; None when more came in.
+    monthlyBurn: str | None
+    # Months the cash lasts at that pace; None when cash is unknown or nothing is burning.
+    runwayMonths: float | None
+
+
 class PayrollMonth(BaseModel):
     month: str
     label: str
@@ -363,6 +381,8 @@ class CompanySummary(BaseModel):
     unfiledSince: str | None = None
     # GST from the books, for a role with money: None without money or with GST not set up.
     gst: GstPosition | None = None
+    # Cash in the bank from imported statements, for a role with money.
+    cash: CashPosition | None = None
     # Last month's salaries: whether they are posted to the books, for a role with money.
     payroll: PayrollMonth | None = None
     # Registrations, licences, insurance and trademarks, with expiry dates.
@@ -693,3 +713,24 @@ class IntercompanyRecord(BaseModel):
 
 class PayrollPost(BaseModel):
     month: Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+
+
+BankAmount = Annotated[str, StringConstraints(pattern=r"^-?\d{1,13}(\.\d{1,2})?$")]
+
+
+class BankRowIn(BaseModel):
+    date: date
+    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] = ""
+    # Money in is positive, money out negative, in rupees.
+    amount: BankAmount
+    balance: BankAmount | None = None
+
+
+class BankStatementIn(BaseModel):
+    account: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+    rows: list[BankRowIn] = Field(min_length=1, max_length=5000)
+
+
+class BankImported(BaseModel):
+    added: int
+    skipped: int

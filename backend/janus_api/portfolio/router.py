@@ -8,6 +8,7 @@ from janus_api.portfolio import (
     access,
     activity,
     alerts,
+    bank,
     companies,
     digest,
     documents,
@@ -428,3 +429,20 @@ async def post_payroll(
         request_ip(request),
     )
     return {"posted": posted}
+
+
+@router.post(
+    "/companies/{company_id}/bank-statement",
+    response_model=schemas.BankImported,
+    status_code=201,
+)
+async def import_bank_statement(
+    company_id: str,
+    data: schemas.BankStatementIn,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.BankImported:
+    return await bank.import_statement(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
+    )

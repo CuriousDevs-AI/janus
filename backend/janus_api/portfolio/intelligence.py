@@ -177,6 +177,13 @@ def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
                 f"{n} GST for {last.label} from the books: {inr(last.output)} charged, "
                 f"{inr(last.input)} input credit, {inr(last.payable)} to pay (an estimate).",
             )
+        if c.cash and c.cash.total is not None:
+            lasts = (
+                f", lasting about {c.cash.runwayMonths} months at {inr(c.cash.monthlyBurn)} a month"
+                if c.cash.runwayMonths is not None
+                else ""
+            )
+            add(n, f"{n} cash in the bank {inr(c.cash.total)} as of {c.cash.asOf}{lasts}.")
         if c.unfiledCount:
             add(
                 n,

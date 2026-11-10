@@ -291,6 +291,16 @@ async def company_summary(
             if after < 0:
                 out.attention = attention.with_loss(out.attention, after)
                 out.health = attention.health(out.attention)
+        out.cash = await cash_position(db, tenant_id)
+        if out.cash and out.cash.runwayMonths is not None and out.cash.runwayMonths < 6:
+            months = out.cash.runwayMonths
+            out.attention = attention.with_line(
+                out.attention,
+                "high" if months < 3 else "medium",
+                f"Cash in the bank lasts about {months:.1f} months at the last 90 days' spending",
+                f"/portfolio?view=finance&company={tenant_id}",
+            )
+            out.health = attention.health(out.attention)
         last_end = today.replace(day=1) - timedelta(days=1)
         last_month = last_end.replace(day=1)
         posted = await finance.payroll_posted(db, tenant_id, last_month, last_end)
@@ -322,6 +332,31 @@ async def company_summary(
                 await finance.costs_by_vendor(db, tenant_id, *span_before),
             )
     return out
+
+
+async def cash_position(db: AsyncSession, tenant_id: int) -> schemas.CashPosition | None:
+    held = await finance.cash(db, tenant_id)
+    if held is None:
+        return None
+    known = [account.balance for account in held.accounts if account.balance is not None]
+    total = sum(known) if len(known) == len(held.accounts) else None
+    burn = held.monthly_burn if held.monthly_burn > 0 else None
+    return schemas.CashPosition(
+        total=rupees(total, paise=True) if total is not None else None,
+        asOf=max(account.as_of for account in held.accounts).isoformat(),
+        accounts=[
+            schemas.CashAccount(
+                account=account.account,
+                balance=rupees(account.balance, paise=True)
+                if account.balance is not None
+                else None,
+                asOf=account.as_of.isoformat(),
+            )
+            for account in held.accounts
+        ],
+        monthlyBurn=rupees(burn, paise=True) if burn else None,
+        runwayMonths=round(total / burn, 1) if total is not None and burn else None,
+    )
 
 
 async def gst_month(db: AsyncSession, tenant_id: int, first: date, last: date) -> schemas.GstMonth:
