@@ -568,6 +568,8 @@ class FreeProvider(BaseModel):
     models: list[str]
     limits: str
     keyUrl: str
+    # The provider's own, current list of models.
+    modelsUrl: str
 
 
 class ModelsOut(BaseModel):

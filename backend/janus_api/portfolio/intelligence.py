@@ -157,6 +157,7 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
             models=list(item.models),
             limits=item.limits,
             keyUrl=item.key_url,
+            modelsUrl=item.models_url,
         )
         for item in ai.free_providers()
     ]

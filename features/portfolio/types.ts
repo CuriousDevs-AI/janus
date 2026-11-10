@@ -194,7 +194,7 @@ export type PortfolioModel = { id: string; label: string; provider: string | nul
 export type PortfolioAiKey = { provider: AiProvider; model: string; keyLastFour: string; baseUrl: string | null; enabled: boolean };
 export type AiProvider = "openai" | "anthropic" | "gemini" | "openai_compatible" | "openrouter" | "groq" | "cerebras" | "mistral" | "sambanova" | "github" | "nvidia" | "huggingface";
 /** A provider that gives a free API key, with some of its free models and where to get a key. */
-export type PortfolioFreeProvider = { id: string; name: string; provider: string; baseUrl: string | null; models: string[]; limits: string; keyUrl: string };
+export type PortfolioFreeProvider = { id: string; name: string; provider: string; baseUrl: string | null; models: string[]; limits: string; keyUrl: string; modelsUrl: string };
 export type PortfolioAiCompany = { id: string; name: string; keys: PortfolioAiKey[]; spentUsd: string; capUsd: string };
 export type PortfolioModels = { options: PortfolioModel[]; companies: PortfolioAiCompany[]; free: PortfolioFreeProvider[] };
 /** A figure (F), an approved fact (K) or a document passage (D) an answer cited. */
