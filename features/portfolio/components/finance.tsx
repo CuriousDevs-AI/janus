@@ -9,12 +9,12 @@ import { useApi } from "@/lib/api/use-api";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Basis, Kpi } from "@/features/portfolio/components/figures";
 import { Delta, Waterfall } from "@/features/portfolio/components/market";
-import { groupBooks, openIn, payrollFor, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
+import { groupBooks, openIn, payrollFor, salariesRecorded, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
 import { change, day, inr } from "@/features/portfolio/lib/format";
-import type { PortfolioBooks, PortfolioIntercompanyLink, PortfolioPeriod } from "@/features/portfolio/types";
+import type { PortfolioBooksAmount, PortfolioIntercompanyLink, PortfolioPeriod } from "@/features/portfolio/types";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
-const sumBooks = (list: WithMoney[], side: "current" | "previous", key: keyof PortfolioBooks) => list.reduce((total, item) => total + n(item.books?.[side][key]), 0);
+const sumBooks = (list: WithMoney[], side: "current" | "previous", key: PortfolioBooksAmount) => list.reduce((total, item) => total + n(item.books?.[side][key]), 0);
 const margin = (profit: number, sales: number) => sales > 0 ? `${Math.round((profit / sales) * 100)}%` : "—";
 
 /** Money across the companies whose money the person's role includes; `hidden` counts the rest. */
@@ -30,6 +30,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
   const groupSales = group.sales;
   const groupCosts = group.costs;
   const payroll = list.reduce((total, item) => total + (payrollFor(item, period) ?? 0), 0);
+  const recorded = salariesRecorded(list);
   const owed = list.reduce((total, item) => total + n(item.money.receivable), 0);
   const overdue = list.reduce((total, item) => total + n(item.money.overdue), 0);
   const coverage = `${list.length} ${list.length === 1 ? "company" : "companies"}${hidden ? `; ${hidden} more ${hidden === 1 ? "does" : "do"} not share money with your role` : ""}`;
@@ -40,7 +41,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     </div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <Kpi label="Sales" value={inr(groupSales)} detail={`Group, before GST, sales between your companies taken out. ${change(groupSales, groupBefore.sales)}`} delta={<Delta now={groupSales} before={groupBefore.sales} compact />} />
-      {payroll ? <Kpi label="Profit after salaries" value={inr(groupSales - groupCosts - payroll)} detail={`Estimate · ${inr(groupSales - groupCosts)} before ${inr(payroll)} of salaries (margin ${margin(groupSales - groupCosts, groupSales)} before)`} />
+      {payroll ? <Kpi label="Profit after salaries" value={inr(groupSales - groupCosts - payroll)} detail={`${recorded ? "Salaries posted" : "Estimate"} · ${inr(groupSales - groupCosts)} before ${inr(payroll)} of salaries (margin ${margin(groupSales - groupCosts, groupSales)} before)`} />
         : <Kpi label="Profit before salaries" value={inr(groupSales - groupCosts)} detail={`Margin ${margin(groupSales - groupCosts, groupSales)} · salaries not on record`} />}
       <Kpi label="Money in − money out" value={inr(moneyIn - moneyOut)} detail={`${inr(moneyIn)} from customers, ${inr(moneyOut)} to suppliers`} />
       <Kpi label="Customers owe" value={inr(owed)} detail={overdue ? `${inr(overdue)} of it past due` : "Nothing past due"} />
@@ -55,8 +56,8 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
           <tr className="border-b border-border"><td className="py-2.5 pr-4 font-medium">Sales<Basis /></td><td className="px-3 tabular-nums">{inr(sales)}</td><td className="px-3 tabular-nums text-muted-foreground">−{inr(internalSales)}</td><td className="px-3 font-semibold tabular-nums">{inr(groupSales)}</td></tr>
           <tr className="border-b border-border"><td className="py-2.5 pr-4 font-medium">Costs<Basis /></td><td className="px-3 tabular-nums">{inr(costs)}</td><td className="px-3 tabular-nums text-muted-foreground">−{inr(internalBills)}</td><td className="px-3 font-semibold tabular-nums">{inr(groupCosts)}</td></tr>
           <tr className="border-b border-border"><td className="py-2.5 pr-4 font-medium">Profit before salaries<Basis /></td><td className="px-3 tabular-nums">{inr(sales - costs)}</td><td className="px-3" /><td className="px-3 font-semibold tabular-nums">{inr(groupSales - groupCosts)}</td></tr>
-          <tr className="border-b border-border"><td className="py-2.5 pr-4 font-medium">Salaries for the period<Basis estimate title="Monthly salaries on record, scaled to the days in the period; not yet booked" /></td><td className="px-3 tabular-nums">{payroll ? inr(payroll) : "—"}</td><td className="px-3" /><td className="px-3 tabular-nums">{payroll ? inr(payroll) : "—"}</td></tr>
-          <tr><td className="py-2.5 pr-4 font-medium">Profit after salaries<Basis estimate /></td><td className="px-3 tabular-nums">{payroll ? inr(sales - costs - payroll) : "—"}</td><td className="px-3" /><td className="px-3 font-semibold tabular-nums">{payroll ? inr(groupSales - groupCosts - payroll) : "—"}</td></tr>
+          <tr className="border-b border-border"><td className="py-2.5 pr-4 font-medium">Salaries for the period<Basis estimate={!recorded} title={recorded ? "Salaries posted to the books for every month of the period" : "Monthly salaries on record, scaled to the days in the period; not posted for every month"} /></td><td className="px-3 tabular-nums">{payroll ? inr(payroll) : "—"}</td><td className="px-3" /><td className="px-3 tabular-nums">{payroll ? inr(payroll) : "—"}</td></tr>
+          <tr><td className="py-2.5 pr-4 font-medium">Profit after salaries<Basis estimate={!recorded} /></td><td className="px-3 tabular-nums">{payroll ? inr(sales - costs - payroll) : "—"}</td><td className="px-3" /><td className="px-3 font-semibold tabular-nums">{payroll ? inr(groupSales - groupCosts - payroll) : "—"}</td></tr>
         </tbody>
       </table></div>
       <p className="mt-3 text-xs text-muted-foreground">{internalSales || internalBills
@@ -66,6 +67,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     : <SectionCard title="Company by company" description={`From each company's invoices, payments, credit notes and bills, ${period.label}. ${coverage}.`}>
       <ByCompany list={list} period={period} />
     </SectionCard>}
+    <SalariesCard list={list} />
     <GstCard list={list} />
     {list.length > 1 && <IntercompanyCard />}
   </>;
@@ -78,8 +80,8 @@ function ByCompany({ list, period }: { list: WithMoney[]; period: PortfolioPerio
     [<>Costs<Basis /></>, (item) => inr(n(item.books?.current.costs))],
     [<>Profit before salaries<Basis /></>, (item) => inr(n(item.books?.current.profitBeforePayroll))],
     ["Margin", (item) => margin(n(item.books?.current.profitBeforePayroll), n(item.books?.current.netSales))],
-    [<>Salaries for the period<Basis estimate /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "Unknown: no salaries in HR" : inr(pay); }],
-    [<>Profit after salaries<Basis estimate /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "—" : inr(n(item.books?.current.profitBeforePayroll) - pay); }],
+    [<>Salaries for the period<Basis estimate={!salariesRecorded(list)} /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "Unknown: no salaries in HR" : `${inr(pay)}${item.books?.current.salariesComplete ? " · posted" : " · estimate"}`; }],
+    [<>Profit after salaries<Basis estimate={!salariesRecorded(list)} /></>, (item) => { const pay = payrollFor(item, period); return pay === null ? "—" : inr(n(item.books?.current.profitBeforePayroll) - pay); }],
     ["Money in", (item) => inr(n(item.books?.current.moneyIn))],
     ["Money out", (item) => inr(n(item.books?.current.moneyOut))],
     ["Biggest customer", (item) => { const top = item.customers[0]; const total = n(item.books?.current.netSales); return top && n(top.current) > 0 ? `${top.name} · ${total > 0 ? Math.round((n(top.current) / total) * 100) : 0}% of sales` : "—"; }],
@@ -138,5 +140,24 @@ function IntercompanyCard() {
       <span className="min-w-0 flex-1"><span className="font-medium">{link.seller} → {link.buyer}</span> <span className="text-muted-foreground">· {link.invoice} · {day(link.invoiceDate)} · {inr(n(link.amount))} with {inr(n(link.gst))} GST{link.bill ? ` · bill ${link.bill}` : ""}</span></span>
       {!link.bill && link.canRecord && <Button size="sm" variant="outline" disabled={busy === link.invoice} onClick={() => void record(link)}>Record the bill in {link.buyer}</Button>}
     </li>)}</ul>}
+  </SectionCard>;
+}
+
+/** Last month's salaries per company: posted to the books, or a button to post them from HR. */
+function SalariesCard({ list }: { list: WithMoney[] }) {
+  const { handlesMoney } = useRoles();
+  const [posted, setPosted] = React.useState<Record<string, boolean>>({});
+  const shown = list.filter((item) => item.payroll && (item.payroll.posted || n(item.payroll.fromHr) > 0));
+  if (shown.length === 0) return null;
+  const post = async (item: WithMoney) => {
+    try { await api(`/portfolio/companies/${item.id}/payroll`, { method: "POST", body: JSON.stringify({ month: item.payroll!.month }) }); setPosted((current) => ({ ...current, [item.id]: true })); toast.success(`${item.payroll!.label} salaries posted for ${item.name}. Reload to see profit with them.`); }
+    catch (error) { toast.error(message(error)); }
+  };
+  return <SectionCard title="Salaries in the books" description="Janus has no payroll run: HR keeps each person's monthly salary. Posting a finished month records those salaries as that month's expense, so profit after salaries is recorded instead of estimated. A month is posted once, with the salaries as they stand when you post.">
+    <ul className="flex flex-col divide-y divide-border">{shown.map((item) => { const pay = item.payroll!; const done = pay.posted ?? (posted[item.id] ? pay.fromHr : null); return <li key={item.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
+      <Badge variant={done ? "success" : "warning"}>{done ? "Posted" : "Not posted"}</Badge>
+      <span className="min-w-0 flex-1"><span className="font-medium">{item.name}</span> <span className="text-muted-foreground">· {pay.label} · {done ? `${inr(n(done))} posted` : `${inr(n(pay.fromHr))} from HR's salaries today`}</span></span>
+      {!done && handlesMoney(item) && <Button size="sm" variant="outline" onClick={() => void post(item)}>Post {pay.label} salaries</Button>}
+    </li>; })}</ul>
   </SectionCard>;
 }

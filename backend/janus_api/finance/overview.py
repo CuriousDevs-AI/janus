@@ -19,6 +19,7 @@ from janus_api.finance.models import (
     FinanceFundRequest,
     FinanceInvoice,
     FinancePayment,
+    FinancePayrollPosting,
 )
 
 
@@ -420,3 +421,16 @@ async def bills_for_invoices(
         )
     )
     return {str(supplier_no): str(own) for supplier_no, own in rows.all()}
+
+
+async def payroll_posted(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> dict[date, int]:
+    """Salaries posted for the months that fall between two days, in paise, by month."""
+    rows = await db.execute(
+        select(FinancePayrollPosting.month, FinancePayrollPosting.amount_paise).where(
+            FinancePayrollPosting.tenant_id == tenant_id,
+            FinancePayrollPosting.month.between(start.replace(day=1), end),
+        )
+    )
+    return {month: int(amount) for month, amount in rows.all()}

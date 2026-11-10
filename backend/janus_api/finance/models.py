@@ -237,3 +237,19 @@ class FinanceFundRequest(Base):
     rejected_reason: Mapped[str | None] = mapped_column(String(300))
     raised_on: Mapped[date] = mapped_column(Date)
     idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class FinancePayrollPosting(Base):
+    """A month's salaries posted to the books: the gross salaries from HR for that month, as one
+    expense, so profit after salaries is recorded rather than estimated."""
+
+    __tablename__ = "finance_payroll_postings"
+    __table_args__ = (UniqueConstraint("tenant_id", "month"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    # The first day of the month the salaries are for.
+    month: Mapped[date] = mapped_column(Date)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    headcount: Mapped[int] = mapped_column(Integer)
+    posted_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    posted_by_name: Mapped[str] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

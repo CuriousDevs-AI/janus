@@ -257,6 +257,11 @@ class Books(BaseModel):
     profitBeforePayroll: str
     moneyIn: str
     moneyOut: str
+    # Salaries posted to the books for months in the span, and which months ("2026-10"). Where
+    # every month the span touches is posted, profit after salaries is recorded, not estimated.
+    salariesPosted: str = "0.00"
+    salariesMonths: list[str] = []
+    salariesComplete: bool = False
 
 
 class BooksCompare(BaseModel):
@@ -312,6 +317,14 @@ class GstPosition(BaseModel):
     thisMonth: GstMonth
 
 
+class PayrollMonth(BaseModel):
+    month: str
+    label: str
+    # The amount posted, or None while it is not; what HR's salaries would post now.
+    posted: str | None
+    fromHr: str
+
+
 class CompanySummary(BaseModel):
     id: str
     name: str
@@ -350,6 +363,8 @@ class CompanySummary(BaseModel):
     unfiledSince: str | None = None
     # GST from the books, for a role with money: None without money or with GST not set up.
     gst: GstPosition | None = None
+    # Last month's salaries: whether they are posted to the books, for a role with money.
+    payroll: PayrollMonth | None = None
     # Registrations, licences, insurance and trademarks, with expiry dates.
     documents: list["CompanyDocumentOut"] = []
 
@@ -674,3 +689,7 @@ class IntercompanyLink(BaseModel):
 class IntercompanyRecord(BaseModel):
     sellerId: str
     invoice: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+
+
+class PayrollPost(BaseModel):
+    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]

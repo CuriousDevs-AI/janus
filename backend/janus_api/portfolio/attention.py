@@ -170,13 +170,14 @@ def with_line(
 
 
 def with_loss(
-    items: list[schemas.AttentionItem], after_salaries: Decimal
+    items: list[schemas.AttentionItem], after_salaries: Decimal, *, estimate: bool = True
 ) -> list[schemas.AttentionItem]:
-    """Adds the line for a period that loses money once salaries are counted (an estimate)."""
+    """Adds the line for a period that loses money once salaries are counted: an estimate from
+    HR's monthly salaries, or recorded where the period's salaries are posted."""
     return with_line(
         items,
         "high",
-        f"Losing about ₹{abs(after_salaries):,.0f} this period once salaries are counted"
-        " (estimate)",
+        f"Losing {'about ' if estimate else ''}₹{abs(after_salaries):,.0f} this period once"
+        f" salaries are counted ({'estimate' if estimate else 'salaries posted'})",
         f"{FINANCE}?view=overview&workspace=finance-accounting",
     )

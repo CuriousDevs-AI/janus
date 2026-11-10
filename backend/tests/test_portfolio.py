@@ -848,6 +848,9 @@ async def test_books_profit_and_sales_between_own_companies(
         "profitBeforePayroll": "1200.00",
         "moneyIn": "200.00",
         "moneyOut": "0.00",
+        "salariesPosted": "0.00",
+        "salariesMonths": [],
+        "salariesComplete": False,
     }
     assert mumbai["books"]["previous"]["netSales"] == "0.00"
     # The name on the invoice and bill matches the other company, whatever its case.
@@ -1551,3 +1554,56 @@ async def test_an_invoice_between_own_companies_gets_its_bill_in_one_step(
         json={"sellerId": retail["id"], "invoice": number},
     )
     assert missing.status_code == 404
+
+
+async def test_last_months_salaries_are_posted_to_the_books_once(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    seeded = await client.post(
+        "/v1/hr/records/seed",
+        headers=owner.headers,
+        json={
+            "records": {
+                "employee": [
+                    {
+                        "id": "emp-001",
+                        "name": "Owner",
+                        "email": "owner@example.com",
+                        "title": "Staff",
+                        "department": "Sales",
+                        "managerId": None,
+                        "status": "active",
+                        "salaryMonthly": 50000,
+                    }
+                ]
+            }
+        },
+    )
+    assert seeded.status_code in (200, 201), seeded.text
+    today = today_ist()
+    last = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    async def company(period: str = "month") -> dict[str, Any]:
+        found = await client.get(f"/v1/portfolio/summary?period={period}", headers=owner.headers)
+        return found.json()["companies"][0]
+
+    assert (await company())["payroll"] == {
+        "month": f"{last:%Y-%m}",
+        "label": f"{last:%b %Y}",
+        "posted": None,
+        "fromHr": "50000.00",
+    }
+    url = f"/v1/portfolio/companies/{owner.tenant_id}/payroll"
+    posted = await client.post(url, headers=owner.headers, json={"month": f"{last:%Y-%m}"})
+    assert posted.status_code == 201 and posted.json() == {"posted": True}
+    again = await client.post(url, headers=owner.headers, json={"month": f"{last:%Y-%m}"})
+    assert again.json() == {"posted": False}
+    early = await client.post(url, headers=owner.headers, json={"month": f"{today:%Y-%m}"})
+    assert early.status_code == 422
+    assert (await company())["payroll"]["posted"] == "50000.00"
+    if today.month != 4:  # the financial year to date holds last month
+        books = (await company("fy"))["books"]["current"]
+        assert books["salariesPosted"] == "50000.00"
+        assert f"{last:%Y-%m}" in books["salariesMonths"]
+        assert books["salariesComplete"] is False  # this month is not posted yet

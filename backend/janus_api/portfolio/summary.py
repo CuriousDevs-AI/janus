@@ -277,13 +277,29 @@ async def company_summary(
         # Salaries are not booked yet, so a company can show a profit on its bills and still lose
         # money once its people are paid. Estimate the period's salaries from the monthly ones on
         # record and say so when that turns the period into a loss.
-        if staff.headcount and staff.monthly_payroll > 0:
+        # Where every month of the period is posted, the recorded salaries are used instead.
+        now_books = out.books.current
+        if now_books.salariesComplete:
+            after = Decimal(now_books.profitBeforePayroll) - Decimal(now_books.salariesPosted)
+            if after < 0:
+                out.attention = attention.with_loss(out.attention, after, estimate=False)
+                out.health = attention.health(out.attention)
+        elif staff.headcount and staff.monthly_payroll > 0:
             days = (span_now[1] - span_now[0]).days + 1
             salaries = staff.monthly_payroll * days / Decimal("30.44")
-            after = Decimal(out.books.current.profitBeforePayroll) - salaries
+            after = Decimal(now_books.profitBeforePayroll) - salaries
             if after < 0:
                 out.attention = attention.with_loss(out.attention, after)
                 out.health = attention.health(out.attention)
+        last_end = today.replace(day=1) - timedelta(days=1)
+        last_month = last_end.replace(day=1)
+        posted = await finance.payroll_posted(db, tenant_id, last_month, last_end)
+        out.payroll = schemas.PayrollMonth(
+            month=f"{last_month:%Y-%m}",
+            label=f"{last_month:%b %Y}",
+            posted=rupees(posted[last_month], paise=True) if last_month in posted else None,
+            fromHr=rupees(staff.monthly_payroll),
+        )
         sales_now = await finance.sales_by_customer(db, tenant_id, *span_now)
         sales_before = await finance.sales_by_customer(db, tenant_id, *span_before)
         # The customers who moved most, so a change in sales can be explained by name.
@@ -337,7 +353,17 @@ async def gst_position(
 async def books_for(db: AsyncSession, tenant_id: int, start: date, end: date) -> schemas.Books:
     kept = await finance.books(db, tenant_id, start, end)
     flow = await finance.flow(db, tenant_id, start, end)
+    posted = await finance.payroll_posted(db, tenant_id, start, end)
+    touched = {
+        date(year, month, 1)
+        for year in range(start.year, end.year + 1)
+        for month in range(1, 13)
+        if start.replace(day=1) <= date(year, month, 1) <= end
+    }
     return schemas.Books(
+        salariesPosted=rupees(sum(posted.values()), paise=True),
+        salariesMonths=sorted(f"{month:%Y-%m}" for month in posted),
+        salariesComplete=bool(touched) and touched <= set(posted),
         netSales=rupees(kept.net_sales, paise=True),
         costs=rupees(kept.costs, paise=True),
         profitBeforePayroll=rupees(kept.net_sales - kept.costs, paise=True),

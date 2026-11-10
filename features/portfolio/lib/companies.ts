@@ -19,6 +19,7 @@ export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
     money: null,
     books: null,
     gst: null,
+    payroll: null,
     customers: [],
     intercompany: null,
     period: { current: { ...item.period.current, invoiced: null, collected: null }, previous: { ...item.period.previous, invoiced: null, collected: null } },
@@ -78,10 +79,16 @@ export function monthsIn(period: { start: string; end: string }) {
   return days / 30.44;
 }
 
-/** Payroll for the period from the monthly salaries on record. An estimate: it is not booked.
- * Null when the company has no employee records or no salaries on them: unknown, not zero. */
+/** Payroll for the period: the salaries posted to the books where every month of it is posted,
+ * otherwise an estimate from the monthly salaries in HR. Null when the company has no employee
+ * records or no salaries on them: unknown, not zero. */
 export const payrollFor = (item: PortfolioCompany, period: { start: string; end: string }) =>
-  (item.people?.headcount ?? 0) > 0 && Number(item.people?.monthlyPayroll ?? 0) > 0 ? Number(item.people!.monthlyPayroll) * monthsIn(period) : null;
+  item.books?.current.salariesComplete ? Number(item.books.current.salariesPosted)
+    : (item.people?.headcount ?? 0) > 0 && Number(item.people?.monthlyPayroll ?? 0) > 0 ? Number(item.people!.monthlyPayroll) * monthsIn(period) : null;
+
+/** Whether every known salary figure in the list is posted to the books, not estimated. */
+export const salariesRecorded = (list: PortfolioCompany[]) =>
+  list.some((item) => item.books?.current.salariesComplete) && list.every((item) => item.books?.current.salariesComplete || (item.people?.headcount ?? 0) === 0 || Number(item.people?.monthlyPayroll ?? 0) === 0);
 
 /** The group's profit once known salaries are counted, and how many companies' salaries are unknown. */
 export function groupProfitAfterSalaries(list: PortfolioCompany[], period: { start: string; end: string }) {

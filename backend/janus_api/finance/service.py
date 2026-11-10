@@ -1,13 +1,13 @@
 """What other modules may ask Finance to do, with the same checks as Finance's own screens."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit import service as audit
 from janus_api.core.errors import ApiError
-from janus_api.finance.models import FinanceBill
+from janus_api.finance.models import FinanceBill, FinancePayrollPosting
 from janus_api.rules.service import ensure_open
 
 
@@ -67,3 +67,50 @@ async def record_bill(
         details={"bill": row.number, "amount_paise": amount_paise, "vendor": row.vendor},
     )
     return row.number
+
+
+async def post_payroll(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    user_name: str,
+    *,
+    month: date,
+    amount_paise: int,
+    headcount: int,
+    ip: str | None,
+) -> bool:
+    """Posts a month's salaries to the books (the caller is in the company's context and has
+    checked the person may). False when that month was posted already: a posting is not changed."""
+    month = month.replace(day=1)
+    if amount_paise <= 0:
+        raise ApiError("no_salaries", "There are no salaries on record to post.", 422)
+    exists = await db.scalar(
+        select(FinancePayrollPosting.id).where(
+            FinancePayrollPosting.tenant_id == tenant_id, FinancePayrollPosting.month == month
+        )
+    )
+    if exists is not None:
+        return False
+    next_month = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    await ensure_open(db, tenant_id, next_month - timedelta(days=1))
+    db.add(
+        FinancePayrollPosting(
+            tenant_id=tenant_id,
+            month=month,
+            amount_paise=amount_paise,
+            headcount=headcount,
+            posted_by=user_id,
+            posted_by_name=user_name,
+        )
+    )
+    await db.flush()
+    audit.record(
+        db,
+        "finance.payroll_posted",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={"month": month.isoformat(), "amount_paise": amount_paise},
+    )
+    return True

@@ -60,6 +60,8 @@ export interface PortfolioCompany {
   unfiledSince: string | null;
   /** GST from the books, for a role with money where GST is set up. */
   gst: { gstin: string | null; lastMonth: PortfolioGstMonth; thisMonth: PortfolioGstMonth } | null;
+  /** Last month's salaries: posted to the books or not, and what HR's salaries would post. Money roles only. */
+  payroll: { month: string; label: string; posted: string | null; fromHr: string } | null;
   /** Registrations, licences, insurance and trademarks, soonest expiry first. */
   documents: PortfolioDocument[];
 }
@@ -87,12 +89,18 @@ export interface PortfolioRegistration {
 export type LeaderRole = "director" | "founder" | "cofounder";
 export interface PortfolioPersonRecord { name: string; din: string | null; roles: LeaderRole[]; title: string | null }
 /** Rupees: sales before GST less credit notes, supplier bills before their recorded GST plus write-offs, money in and out. */
+/** The money fields of the books, as decimal strings. */
+export type PortfolioBooksAmount = "netSales" | "costs" | "profitBeforePayroll" | "moneyIn" | "moneyOut" | "salariesPosted";
 export interface PortfolioBooks {
   netSales: string;
   costs: string;
   profitBeforePayroll: string;
   moneyIn: string;
   moneyOut: string;
+  /** Salaries posted to the books for months in the span; complete when every month is posted. */
+  salariesPosted: string;
+  salariesMonths: string[];
+  salariesComplete: boolean;
 }
 export interface PortfolioComplianceDue {
   /** The filing's code and period, e.g. gstr3b_2026-10, used to mark it filed. */

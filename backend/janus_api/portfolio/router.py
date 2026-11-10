@@ -14,6 +14,7 @@ from janus_api.portfolio import (
     intelligence,
     intercompany,
     knowledge,
+    payroll,
     preferences,
     schemas,
     summary,
@@ -411,3 +412,19 @@ async def intercompany_bill(
     return await intercompany.record_bill(
         db, actor.user.id, actor.user.name, actor.session.tenant_id, data, request_ip(request)
     )
+
+
+@router.post("/companies/{company_id}/payroll", status_code=201)
+async def post_payroll(
+    company_id: str, data: schemas.PayrollPost, actor: CurrentActor, db: Db, request: Request
+) -> dict[str, bool]:
+    posted = await payroll.post(
+        db,
+        actor.user.id,
+        actor.user.name,
+        actor.session.tenant_id,
+        company_id,
+        data.month,
+        request_ip(request),
+    )
+    return {"posted": posted}
