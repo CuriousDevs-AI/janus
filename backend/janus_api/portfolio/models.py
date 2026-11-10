@@ -85,3 +85,40 @@ class CompanyRegistration(Base):
     directors: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PortfolioQuestion(Base):
+    """One question a person asked Janus Intelligence across their companies, and its answer.
+
+    Kept for the person alone: it is their memory for follow-ups and the record of what was sent to
+    which model, with the figures it was given. They can clear it.
+    """
+
+    __tablename__ = "portfolio_questions"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    # The company whose AI key answered; None for Janus rules.
+    key_tenant_id: Mapped[int | None] = mapped_column(BigInteger)
+    model: Mapped[str] = mapped_column(String(200))
+    question: Mapped[str] = mapped_column(String(2000))
+    answer: Mapped[str] = mapped_column(String(8000))
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PortfolioKnowledge(Base):
+    """What Janus knows about a company beyond its records: a fact the owner approved ("pays
+    suppliers on the 20th"), or a passage of a document they added (a policy, a contract)."""
+
+    __tablename__ = "portfolio_knowledge"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    kind: Mapped[str] = mapped_column(String(10))
+    # 'approved', or 'suggested' by Janus and waiting for the owner.
+    status: Mapped[str] = mapped_column(String(10), default="approved")
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(String(4000))
+    # A document is kept in passages; each passage is one row with its place in the document.
+    document: Mapped[str | None] = mapped_column(String(40))
+    passage: Mapped[int] = mapped_column(default=0)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

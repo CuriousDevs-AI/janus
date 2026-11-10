@@ -1,17 +1,22 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 
+from janus_api.ai import service as ai
 from janus_api.core.deps import CurrentActor, Db, request_ip
 from janus_api.core.errors import ApiError
+from janus_api.core.tenancy import set_context
 from janus_api.portfolio import (
     access,
     activity,
     companies,
     digest,
+    intelligence,
+    knowledge,
     schemas,
     summary,
     targets,
     trends,
 )
+from janus_api.portfolio.access import enter_company
 from janus_api.portfolio.compliance import plan as compliance
 
 router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
@@ -170,3 +175,133 @@ async def update_details(
     return await companies.update_details(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )
+
+
+@router.get("/intelligence/models", response_model=schemas.ModelsOut)
+async def intelligence_models(actor: CurrentActor, db: Db) -> schemas.ModelsOut:
+    return await intelligence.models(db, actor.user.id, actor.session.tenant_id)
+
+
+@router.post("/intelligence/ask", response_model=schemas.AskOut)
+async def intelligence_ask(
+    data: schemas.AskIn, actor: CurrentActor, db: Db, request: Request
+) -> schemas.AskOut:
+    return await intelligence.ask(
+        db, actor.user.id, actor.session.tenant_id, request_ip(request), data
+    )
+
+
+@router.get("/intelligence/history", response_model=list[schemas.AskOut])
+async def intelligence_history(actor: CurrentActor, db: Db) -> list[schemas.AskOut]:
+    return await intelligence.history(db, actor.user.id)
+
+
+@router.delete("/intelligence/history", status_code=204)
+async def intelligence_forget(actor: CurrentActor, db: Db, request: Request) -> Response:
+    await intelligence.forget(db, actor.user.id, request_ip(request))
+    return Response(status_code=204)
+
+
+@router.put("/companies/{company_id}/ai/{provider}", response_model=schemas.AiKey)
+async def save_ai_key(
+    company_id: str,
+    provider: schemas.AiProvider,
+    data: schemas.AiKeyPut,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.AiKey:
+    current = actor.session.tenant_id
+    try:
+        tenant_id = await enter_company(db, actor.user.id, company_id, "ai:manage")
+        saved = await ai.save_key(
+            db,
+            tenant_id,
+            actor.user.id,
+            provider,
+            data.model_dump(exclude_none=True),
+            request_ip(request),
+        )
+    finally:
+        await set_context(db, user_id=actor.user.id, tenant_id=current)
+    return schemas.AiKey(
+        provider=saved.provider,
+        model=saved.model,
+        keyLastFour=saved.keyLastFour,
+        baseUrl=saved.baseUrl,
+        enabled=saved.enabled,
+    )
+
+
+@router.delete("/companies/{company_id}/ai/{provider}", status_code=204)
+async def remove_ai_key(
+    company_id: str,
+    provider: schemas.AiProvider,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> Response:
+    current = actor.session.tenant_id
+    try:
+        tenant_id = await enter_company(db, actor.user.id, company_id, "ai:manage")
+        await ai.delete_credential(db, tenant_id, actor.user.id, provider, request_ip(request))
+    finally:
+        await set_context(db, user_id=actor.user.id, tenant_id=current)
+    return Response(status_code=204)
+
+
+@router.post("/companies/{company_id}/ai/{provider}/test", response_model=schemas.AskOut)
+async def test_ai_key(
+    company_id: str, provider: schemas.AiProvider, actor: CurrentActor, db: Db
+) -> schemas.AskOut:
+    current = actor.session.tenant_id
+    try:
+        await enter_company(db, actor.user.id, company_id, "ai:manage")
+        result = await ai.test_connection(db, provider)
+    finally:
+        await set_context(db, user_id=actor.user.id, tenant_id=current)
+    return schemas.AskOut(
+        id="test",
+        question="Connection test",
+        answer=result.text,
+        model=f"{result.usage.model} ({result.usage.provider})",
+        sources=[],
+        grounded=False,
+        costUsd=str(result.usage.costUsd) if result.usage.costUsd is not None else None,
+        suggested=[],
+        createdAt=result.usage.date.isoformat(),
+    )
+
+
+@router.get("/knowledge", response_model=list[schemas.KnowledgeItem])
+async def read_knowledge(actor: CurrentActor, db: Db) -> list[schemas.KnowledgeItem]:
+    return await knowledge.list_knowledge(db, actor.user.id, actor.session.tenant_id)
+
+
+@router.post("/knowledge", response_model=list[schemas.KnowledgeItem], status_code=201)
+async def add_knowledge(
+    data: schemas.KnowledgeAdd, actor: CurrentActor, db: Db, request: Request
+) -> list[schemas.KnowledgeItem]:
+    return await knowledge.add(
+        db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
+    )
+
+
+@router.put("/companies/{company_id}/knowledge/{item_id}/approve", status_code=204)
+async def approve_knowledge(
+    company_id: str, item_id: str, actor: CurrentActor, db: Db, request: Request
+) -> Response:
+    await knowledge.decide(
+        db, actor.user.id, actor.session.tenant_id, company_id, item_id, True, request_ip(request)
+    )
+    return Response(status_code=204)
+
+
+@router.delete("/companies/{company_id}/knowledge/{item_id}", status_code=204)
+async def remove_knowledge(
+    company_id: str, item_id: str, actor: CurrentActor, db: Db, request: Request
+) -> Response:
+    await knowledge.decide(
+        db, actor.user.id, actor.session.tenant_id, company_id, item_id, False, request_ip(request)
+    )
+    return Response(status_code=204)

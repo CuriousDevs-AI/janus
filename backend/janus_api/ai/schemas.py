@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 Provider = Literal["openai", "anthropic", "gemini", "openai_compatible"]
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "host.docker.internal")
 
 
 class CredentialPut(BaseModel):
@@ -32,8 +33,15 @@ class CredentialPut(BaseModel):
     @model_validator(mode="after")
     def valid_url(self) -> Self:
         url = self.baseUrl
+        # Plain HTTP only for a model server on this machine, such as Ollama; the operator must
+        # still list the address in JANUS_AI_ALLOWED_BASE_URLS.
+        local = url is not None and url.scheme == "http" and url.host in LOCAL_HOSTS
         if url and (
-            url.scheme != "https" or url.username or url.password or url.query or url.fragment
+            (url.scheme != "https" and not local)
+            or url.username
+            or url.password
+            or url.query
+            or url.fragment
         ):
             raise ValueError("Use an HTTPS API base URL without credentials, query or fragment")
         return self

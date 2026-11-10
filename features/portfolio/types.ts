@@ -163,3 +163,14 @@ export interface PortfolioTrends {
   labels: string[];
   companies: { id: string; name: string; points: { month: string; leads: number; wonDeals: number; wonValue: string; netSales: string | null; costs: string | null; collected: string | null }[] }[];
 }
+
+/** A way to answer Portfolio questions: Janus rules, or a model one of the companies set up. */
+export type PortfolioModel = { id: string; label: string; provider: string | null; company: string | null; free: boolean; note: string };
+export type PortfolioAiKey = { provider: AiProvider; model: string; keyLastFour: string; baseUrl: string | null; enabled: boolean };
+export type AiProvider = "openai" | "anthropic" | "gemini" | "openai_compatible";
+export type PortfolioAiCompany = { id: string; name: string; keys: PortfolioAiKey[]; spentUsd: string; capUsd: string };
+export type PortfolioModels = { options: PortfolioModel[]; companies: PortfolioAiCompany[] };
+/** A figure (F), an approved fact (K) or a document passage (D) an answer cited. */
+export type PortfolioSource = { id: string; kind: "figure" | "knowledge" | "document"; company: string; text: string; title: string | null };
+export type PortfolioAsked = { id: string; question: string; answer: string; model: string; sources: PortfolioSource[]; grounded: boolean; costUsd: string | null; suggested: string[]; createdAt: string };
+export type PortfolioKnowledgeItem = { id: string; companyId: string; company: string; kind: "fact" | "document"; status: "approved" | "suggested"; title: string; body: string; document: string | null; passage: number; createdAt: string };

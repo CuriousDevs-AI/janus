@@ -1,4 +1,5 @@
 import base64
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal, Self
 
@@ -28,6 +29,10 @@ class Settings(BaseSettings):
     s3_public_base_url: str = ""
     public_api_url: HttpUrl = HttpUrl("http://localhost:8000")
     ai_allowed_base_urls: list[HttpUrl] = Field(default_factory=list)
+    # Portfolio questions to a language model: a monthly spend cap per company key, in US dollars,
+    # and a daily number of questions per person.
+    portfolio_ai_monthly_usd: Decimal = Decimal("5")
+    portfolio_ai_daily_questions: int = 100
     meta_graph_version: str = Field(default="", pattern=r"^(?:v[0-9]{1,3}\.0)?$")
     form_limit_per_minute: int = Field(default=10, ge=1, le=120)
     frontend_url: str = "http://localhost:3000"

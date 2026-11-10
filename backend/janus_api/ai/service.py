@@ -1,7 +1,10 @@
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from cryptography.fernet import InvalidToken
-from sqlalchemy import select
+from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.ai import gateway, schemas
@@ -144,3 +147,52 @@ async def list_usage(db: AsyncSession, after_id: int, limit: int) -> list[schema
         select(AIUsage).where(AIUsage.id > after_id).order_by(AIUsage.id).limit(limit)
     )
     return [gateway.usage_out(row) for row in rows]
+
+
+async def spent_since(db: AsyncSession, feature: str, since: datetime) -> Decimal:
+    """What one feature has cost this company since a moment, in US dollars, as priced by the
+    provider's published rates. Calls whose price is unknown count as nothing."""
+    total = await db.scalar(
+        select(func.coalesce(func.sum(AIUsage.cost_usd), 0)).where(
+            AIUsage.feature == feature, AIUsage.created_at >= since
+        )
+    )
+    return Decimal(total or 0)
+
+
+async def converse(
+    db: AsyncSession,
+    provider: schemas.Provider,
+    system: str,
+    turns: list[tuple[str, str]],
+    *,
+    feature: str,
+    max_tokens: int = 700,
+) -> schemas.CompletionOut:
+    """One answer from this company's model: a system prompt, then (role, text) turns, the last
+    from the user. For other modules, which do not build provider messages themselves."""
+    messages = [schemas.Message(role="system", content=system)]
+    messages += [
+        schemas.Message(role="user" if r == "user" else "assistant", content=t) for r, t in turns
+    ]
+    return await complete(db, provider, messages, feature=feature, max_tokens=max_tokens)
+
+
+async def save_key(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    provider: str,
+    fields: dict[str, object],
+    ip: str,
+) -> schemas.CredentialOut:
+    """Saves a provider's model and key for this company from plain fields, for other modules;
+    the same checks as the AI settings apply."""
+    if provider not in ("openai", "anthropic", "gemini", "openai_compatible"):
+        raise ApiError("not_found", "Unknown AI provider.", 404)
+    try:
+        data = schemas.CredentialPut.model_validate(fields)
+    except ValidationError as error:
+        message = error.errors()[0].get("msg", "Invalid AI settings.")
+        raise ApiError("invalid_ai_settings", str(message), 422) from None
+    return await put_credential(db, tenant_id, user_id, provider, data, ip)  # type: ignore[arg-type]

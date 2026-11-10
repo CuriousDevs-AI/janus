@@ -443,3 +443,101 @@ class Trends(BaseModel):
     months: list[str]
     labels: list[str]
     companies: list[CompanyTrend]
+
+
+class ModelOption(BaseModel):
+    """A way to answer Portfolio questions: Janus rules, or a model a company set up."""
+
+    id: str
+    label: str
+    provider: str | None = None
+    company: str | None = None
+    free: bool = False
+    note: str = ""
+
+
+class AiKey(BaseModel):
+    provider: str
+    model: str
+    keyLastFour: str
+    baseUrl: str | None
+    enabled: bool
+
+
+class AiCompany(BaseModel):
+    """A company where this person may set up a model, with what it has, and this month's spend
+    on Portfolio questions against the cap, in US dollars."""
+
+    id: str
+    name: str
+    keys: list[AiKey]
+    spentUsd: str
+    capUsd: str
+
+
+class ModelsOut(BaseModel):
+    options: list[ModelOption]
+    companies: list[AiCompany]
+
+
+AiProvider = Literal["openai", "anthropic", "gemini", "openai_compatible"]
+
+
+class AiKeyPut(BaseModel):
+    model: str
+    apiKey: str | None = None
+    baseUrl: str | None = None
+    enabled: bool = True
+
+
+class AskIn(BaseModel):
+    question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+    ]
+    model: Annotated[str, StringConstraints(max_length=60)]
+    period: PeriodKey = "month"
+
+
+class Source(BaseModel):
+    """A fact or passage an answer was given and cited: F for a figure from the Portfolio, K for
+    an approved fact, D for a passage of a document."""
+
+    id: str
+    kind: Literal["figure", "knowledge", "document"]
+    company: str
+    text: str
+    title: str | None = None
+
+
+class AskOut(BaseModel):
+    id: str
+    question: str
+    answer: str
+    model: str
+    sources: list[Source]
+    # False when the answer cites nothing it was given: the page says so beside it.
+    grounded: bool
+    costUsd: str | None
+    # Facts Janus suggested remembering; they wait for the owner's approval.
+    suggested: list[str]
+    createdAt: str
+
+
+class KnowledgeItem(BaseModel):
+    id: str
+    companyId: str
+    company: str
+    kind: Literal["fact", "document"]
+    status: Literal["approved", "suggested"]
+    title: str
+    body: str
+    document: str | None
+    passage: int
+    createdAt: str
+
+
+class KnowledgeAdd(BaseModel):
+    companyId: str
+    kind: Literal["fact", "document"]
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=100000)]
