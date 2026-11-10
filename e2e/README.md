@@ -33,4 +33,6 @@ A failing test here states what the business needs and Janus doesn't do yet, or 
 
 ## Where it stands
 
+Last full run, 10 November 2026: 57 passed, none failed. One is skipped on purpose: in journey 06, Vikram creates the project only if Neha could not, and she now can.
+
 The ten failures recorded on 7 November 2026 (Finance discarding saved expenses, budget lines only for the Owner, an empty Assign menu, Customer Support without customers, and departments unable to open their own workspace) were product problems, fixed on 10 November 2026; each has a line in `docs/decisions.md`. Journey 02 now has the Owner give each department its workspace on top of its people's roles.
