@@ -812,3 +812,46 @@ class HistoryMonthIn(BaseModel):
 class HistoryIn(BaseModel):
     source: Literal["tally", "zoho", "other"]
     months: list[HistoryMonthIn] = Field(min_length=1, max_length=120)
+
+
+class LostCustomer(BaseModel):
+    name: str
+    # What they bought in the twelve months before, before GST, in rupees.
+    salesBefore: str
+    # The last month they bought in (YYYY-MM).
+    lastBought: str
+
+
+class CustomerRetention(BaseModel):
+    companyId: str
+    company: str
+    # Customers who bought in the twelve months before; of them, those who bought again lately.
+    before: int
+    kept: int
+    # Customers who bought lately and not in the twelve months before.
+    new: int
+    # Kept as a share of before, in percent; None with no customers before.
+    rate: int | None
+    lostCount: int
+    lost: list[LostCustomer]
+    # Some months came from an imported customer-wise report.
+    imported: bool
+
+
+class CustomerRetentionList(BaseModel):
+    beforeStart: str
+    beforeEnd: str
+    recentStart: str
+    recentEnd: str
+    companies: list[CustomerRetention]
+
+
+class CustomerHistoryRow(BaseModel):
+    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+    customer: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
+    sales: Annotated[str, StringConstraints(pattern=r"^\d{1,13}(\.\d{1,2})?$")]
+
+
+class CustomerHistoryIn(BaseModel):
+    source: Literal["tally", "zoho", "other"]
+    rows: list[CustomerHistoryRow] = Field(min_length=1, max_length=20000)

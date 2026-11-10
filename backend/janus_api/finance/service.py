@@ -12,6 +12,7 @@ from janus_api.core.errors import ApiError
 from janus_api.finance.models import (
     FinanceBankLine,
     FinanceBill,
+    FinanceHistoryCustomer,
     FinanceHistoryMonth,
     FinancePayrollPosting,
 )
@@ -231,3 +232,49 @@ async def import_history(
         details={"source": source, "months": len(months)},
     )
     return len(months)
+
+
+async def import_customer_history(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    source: str,
+    rows: list[tuple[date, str, int]],
+    ip: str | None,
+) -> int:
+    """Saves imported months customer by customer (first day, customer, sales in paise), adding up
+    rows for one customer and month and replacing an earlier import of them. The caller is in the
+    company's context and has checked the person may."""
+    if not 1 <= len(rows) <= 20000:
+        raise ApiError("invalid_history", "Import 1 to 20,000 rows at a time.", 422)
+    totals: dict[tuple[date, str], int] = {}
+    for month, customer, paise in rows:
+        name = customer.strip()[:160]
+        if not name or paise < 0:
+            raise ApiError(
+                "invalid_history", "Each row needs a customer and sales of 0 or more.", 422
+            )
+        key = (month.replace(day=1), name)
+        totals[key] = totals.get(key, 0) + paise
+    for (month, name), paise in totals.items():
+        row = await db.scalar(
+            select(FinanceHistoryCustomer).where(
+                FinanceHistoryCustomer.tenant_id == tenant_id,
+                FinanceHistoryCustomer.month == month,
+                FinanceHistoryCustomer.customer == name,
+            )
+        )
+        if row is None:
+            row = FinanceHistoryCustomer(tenant_id=tenant_id, month=month, customer=name)
+            db.add(row)
+        row.sales_paise, row.source, row.imported_by = paise, source, user_id
+    await db.flush()
+    audit.record(
+        db,
+        "finance.customer_history_imported",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={"source": source, "rows": len(totals)},
+    )
+    return len(totals)

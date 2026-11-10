@@ -18,6 +18,7 @@ from janus_api.finance.models import (
     FinanceBillPayment,
     FinanceCreditNote,
     FinanceFundRequest,
+    FinanceHistoryCustomer,
     FinanceHistoryMonth,
     FinanceInvoice,
     FinancePayment,
@@ -557,3 +558,47 @@ async def tds(db: AsyncSession, tenant_id: int, start: date, end: date) -> Tds:
         )
     )
     return Tds(on_bills=sum(sections.values()), on_salaries=int(salaries or 0), by_section=sections)
+
+
+async def customer_months(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> tuple[dict[str, dict[date, int]], bool]:
+    """Sales before GST by customer and month between two days, in paise: from invoices, and from
+    imported customer history for months with no invoices in Janus. Also says whether any imported
+    month was used."""
+    name = func.coalesce(func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer)
+    month = func.date_trunc("month", FinanceInvoice.invoice_date)
+    out: dict[str, dict[date, int]] = {}
+    own: set[date] = set()
+    for customer, first, paise in (
+        await db.execute(
+            select(name, month, func.sum(FinanceInvoice.taxable_paise))
+            .where(
+                FinanceInvoice.tenant_id == tenant_id,
+                FinanceInvoice.invoice_date.between(start, end),
+            )
+            .group_by(name, month)
+        )
+    ).all():
+        day = first.date() if hasattr(first, "date") else first
+        own.add(day)
+        out.setdefault(str(customer), {})[day] = int(paise or 0)
+    used = False
+    for customer, day, paise in (
+        await db.execute(
+            select(
+                FinanceHistoryCustomer.customer,
+                FinanceHistoryCustomer.month,
+                FinanceHistoryCustomer.sales_paise,
+            ).where(
+                FinanceHistoryCustomer.tenant_id == tenant_id,
+                FinanceHistoryCustomer.month.between(start.replace(day=1), end),
+            )
+        )
+    ).all():
+        if day in own:
+            continue
+        used = True
+        bucket = out.setdefault(str(customer), {})
+        bucket[day] = bucket.get(day, 0) + int(paise)
+    return out, used

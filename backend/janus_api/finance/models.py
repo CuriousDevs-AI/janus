@@ -294,3 +294,19 @@ class FinanceHistoryMonth(Base):
     source: Mapped[str] = mapped_column(String(20))
     imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceHistoryCustomer(Base):
+    """One customer's sales before GST in a month from before the company kept its books in Janus,
+    imported from a party-wise sales report (Tally, Zoho Books). Used for customer retention, and
+    only for months Janus has no invoices of its own."""
+
+    __tablename__ = "finance_history_customers"
+    __table_args__ = (UniqueConstraint("tenant_id", "month", "customer"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    month: Mapped[date] = mapped_column(Date)
+    customer: Mapped[str] = mapped_column(String(160))
+    sales_paise: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(20))
+    imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

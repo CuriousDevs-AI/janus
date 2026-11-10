@@ -71,7 +71,7 @@ async function sales(company, plan) {
       const due = new Date(date); due.setDate(due.getDate() + 30);
       const rate = Math.round(plan.monthly * (0.18 + rand() * 0.2) * (1 + (12 - back) * plan.growth) * 100);
       const invoice = await call("POST", "/finance/invoices", {
-        customer: "Accounts", customer_company: pick(CUSTOMERS), invoice_date: iso(date), due_date: iso(due), same_state: rand() > 0.3,
+        customer: "Accounts", customer_company: pick(CUSTOMERS.slice(0, 6)), invoice_date: iso(date), due_date: iso(due), same_state: rand() > 0.3,
         lines: [{ item: pick(plan.items), hsn: plan.hsn, qty: 1, rate_paise: rate, gst_rate: plan.gst }],
       }, keyed(`${company}-inv-${back}-${n}`));
       // Paid unless recent, or one of the few left unpaid on purpose (overdue for the money views).
@@ -149,6 +149,10 @@ async function history(company, monthly) {
   const months = [];
   for (let back = 24; back >= 13; back--) months.push({ month: monthKey(back), sales: String(Math.round(monthly * (0.75 + rand() * 0.3))), costs: String(Math.round(monthly * 0.55 * (0.8 + rand() * 0.3))) });
   await call("POST", `/portfolio/companies/${company}/history`, { source: "tally", months });
+  // The same year customer by customer, as a party-wise sales register gives it. The last two
+  // customers bought then and stopped, so the Portfolio has someone to name as lost.
+  const rows = months.flatMap((item) => CUSTOMERS.map((customer, index) => ({ month: item.month, customer, sales: String(Math.round(Number(item.sales) * (index < 6 ? 0.1 : 0.2) * (0.7 + rand() * 0.6))) })));
+  await call("POST", `/portfolio/companies/${company}/history/customers`, { source: "tally", rows });
 }
 
 (async () => {

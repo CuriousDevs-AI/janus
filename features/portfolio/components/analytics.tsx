@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
+import { CustomersKept } from "@/features/portfolio/components/customers-kept";
 import { LastYear } from "@/features/portfolio/components/last-year";
 import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
 import { groupBooks, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
@@ -59,6 +60,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
     </div>
 
     {money && <LastYear list={list} />}
+    {money && <CustomersKept list={list} />}
 
     <div className="flex items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">Month by month</h2>

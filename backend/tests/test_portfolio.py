@@ -1899,3 +1899,85 @@ async def test_tds_deducted_on_bills_and_salaries_against_what_was_deposited(
     assert challan.status_code == 204, challan.text
     position = await tds()
     assert position["deposited"] == "30000.00" and position["toDeposit"] == "5000.00"
+
+
+def test_customers_kept_new_and_lost() -> None:
+    from janus_api.portfolio.customers import retention_for, spans
+
+    assert spans(date(2026, 11, 10)) == (
+        date(2024, 11, 1),
+        date(2025, 10, 31),
+        date(2025, 11, 1),
+        date(2026, 10, 31),
+    )
+    before = (date(2024, 11, 1), date(2025, 10, 31))
+    recent = (date(2025, 11, 1), date(2026, 10, 31))
+    months = {
+        "Kavita Stores": {date(2025, 3, 1): 50000, date(2026, 2, 1): 70000},
+        "kavita stores ": {date(2026, 6, 1): 10000},  # the same customer, written differently
+        "Metro Mart": {date(2025, 5, 1): 900000},
+        "Sai Fashions": {date(2025, 9, 1): 20000},
+        "Gupta Traders": {date(2026, 9, 1): 30000},
+    }
+    earlier, kept, new, lost = retention_for(months, before, recent)
+    assert (earlier, kept, new) == (3, 1, 1)
+    # Sales to one of the person's own companies are not a customer.
+    assert retention_for(months, before, recent, frozenset({"gupta traders"}))[:3] == (3, 1, 0)
+    assert [(item.name, item.salesBefore, item.lastBought) for item in lost] == [
+        ("Metro Mart", "9000.00", "2025-05"),
+        ("Sai Fashions", "200.00", "2025-09"),
+    ]
+
+
+async def test_customer_retention_from_invoices_and_an_imported_report(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    today = today_ist()
+    last = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    year_ago = date(last.year - 1, last.month, 1)
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "ret-1"},
+        json={
+            "customer": "Accounts",
+            "customer_company": "Kavita Stores",
+            "invoice_date": last.isoformat(),
+            "due_date": last.isoformat(),
+            "same_state": True,
+            "lines": [
+                {"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 100000, "gst_rate": 0}
+            ],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+    imported = await client.post(
+        f"/v1/portfolio/companies/{company}/history/customers",
+        headers=owner.headers,
+        json={
+            "source": "tally",
+            "rows": [
+                {"month": f"{year_ago:%Y-%m}", "customer": "KAVITA STORES", "sales": "5000"},
+                {"month": f"{year_ago:%Y-%m}", "customer": "Metro Mart", "sales": "80000"},
+                {"month": f"{year_ago:%Y-%m}", "customer": "Metro Mart", "sales": "20000"},
+            ],
+        },
+    )
+    assert imported.status_code == 201 and imported.json() == {"rows": 2}
+    found = (await client.get("/v1/portfolio/customers", headers=owner.headers)).json()
+    mine = found["companies"][0]
+    assert (mine["before"], mine["kept"], mine["new"], mine["rate"]) == (2, 1, 0, 50)
+    assert mine["lost"] == [
+        {"name": "Metro Mart", "salesBefore": "100000.00", "lastBought": f"{year_ago:%Y-%m}"}
+    ]
+    assert mine["imported"] is True
+    early = await client.post(
+        f"/v1/portfolio/companies/{company}/history/customers",
+        headers=owner.headers,
+        json={
+            "source": "zoho",
+            "rows": [{"month": f"{today:%Y-%m}", "customer": "X", "sales": "1"}],
+        },
+    )
+    assert early.status_code == 422

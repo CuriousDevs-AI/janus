@@ -10,6 +10,7 @@ from janus_api.portfolio import (
     alerts,
     bank,
     companies,
+    customers,
     digest,
     documents,
     history,
@@ -460,3 +461,22 @@ async def import_history(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )
     return {"months": months}
+
+
+@router.get("/customers", response_model=schemas.CustomerRetentionList)
+async def customer_retention(actor: CurrentActor, db: Db) -> schemas.CustomerRetentionList:
+    return await customers.retention(db, actor.user.id, actor.session.tenant_id)
+
+
+@router.post("/companies/{company_id}/history/customers", status_code=201)
+async def import_customer_history(
+    company_id: str,
+    data: schemas.CustomerHistoryIn,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> dict[str, int]:
+    rows = await history.import_customers(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
+    )
+    return {"rows": rows}

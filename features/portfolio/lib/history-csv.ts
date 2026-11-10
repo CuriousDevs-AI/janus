@@ -49,3 +49,46 @@ export function parseHistory(text: string): { rows: HistoryRow[]; skipped: numbe
   }
   return { rows, skipped };
 }
+
+export type CustomerRow = { month: string; customer: string; sales: string };
+
+/** Reads a party-wise sales report: either one row per customer and month (Customer, Month, Sales),
+ * or Tally's layout with one row per party and a column per month ("Particulars, Apr-25, May-25…").
+ * Totals and blank amounts are skipped. */
+export function parseCustomerHistory(text: string): { rows: CustomerRow[]; skipped: number } {
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((line) => line.trim());
+  // The header: a customer column, and either a column per month or a month and a sales column.
+  const at = lines.findIndex((line) => {
+    const names = cells(line).map((name) => name.toLowerCase().trim());
+    if (!names.some((name) => /customer|party|particulars|name/.test(name))) return false;
+    return names.filter((name) => monthOf(name)).length >= 2 || (names.some((name) => /month|period|date/.test(name)) && names.some((name) => /sales|amount|value|revenue/.test(name)));
+  });
+  if (at < 0) throw new Error("No header row with a customer column and months or a month and sales was found.");
+  const head = cells(lines[at]).map((name) => name.toLowerCase().trim());
+  const who = head.findIndex((name) => /customer|party|particulars|name/.test(name));
+  const monthColumns = head.map((name, index) => [index, monthOf(name)] as const).filter(([, month]) => month);
+  const rows: CustomerRow[] = []; let skipped = 0;
+  const total = (name: string) => /^(grand )?total|^sub ?total/i.test(name);
+  if (monthColumns.length >= 2) {
+    for (const line of lines.slice(at + 1)) {
+      const row = cells(line); const name = (row[who] ?? "").trim();
+      if (!name || total(name)) { skipped++; continue; }
+      for (const [index, month] of monthColumns) {
+        const value = rupees(row[index] ?? "");
+        if (value && value > 0) rows.push({ month: month!, customer: name.slice(0, 160), sales: value.toFixed(2) });
+      }
+    }
+    return { rows, skipped };
+  }
+  const month = head.findIndex((name) => /month|period|date/.test(name));
+  const sales = head.findIndex((name) => /sales|amount|value|revenue/.test(name));
+  if (month < 0 || sales < 0) throw new Error("The report needs a month and a sales column, or a column per month.");
+  for (const line of lines.slice(at + 1)) {
+    const row = cells(line); const name = (row[who] ?? "").trim();
+    const when = monthOf(row[month] ?? "") ?? (/^\d{4}-\d{2}-\d{2}$/.test((row[month] ?? "").trim()) ? row[month].trim().slice(0, 7) : null);
+    const value = rupees(row[sales] ?? "");
+    if (!name || total(name) || !when || value === null) { skipped++; continue; }
+    rows.push({ month: when, customer: name.slice(0, 160), sales: Math.abs(value).toFixed(2) });
+  }
+  return { rows, skipped };
+}

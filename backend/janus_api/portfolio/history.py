@@ -41,3 +41,27 @@ async def import_months(
         return await finance_service.import_history(db, tenant_id, user_id, data.source, months, ip)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
+async def import_customers(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    company_id: str,
+    data: schemas.CustomerHistoryIn,
+    ip: str | None,
+) -> int:
+    this_month = today_ist().replace(day=1)
+    rows = []
+    for row in data.rows:
+        first = date.fromisoformat(f"{row.month}-01")
+        if first >= this_month:
+            raise ApiError("month_not_over", "Only finished months can be imported.", 422)
+        rows.append((first, row.customer, int(Decimal(row.sales) * 100)))
+    try:
+        tenant_id = await enter_company(db, user_id, company_id, "portfolio:finance")
+        return await finance_service.import_customer_history(
+            db, tenant_id, user_id, data.source, rows, ip
+        )
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
