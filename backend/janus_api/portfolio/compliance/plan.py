@@ -257,12 +257,13 @@ async def mark_filing(
             due.key == key
             for due in due_dates.dues(
                 _rules(profile, registration),
-                today - timedelta(days=400),
+                # The same span as the filing register, so every filing it lists can be recorded.
+                due_dates.register_start(today),
                 today + timedelta(days=60),
             )
         )
         if not known:
-            raise ApiError("not_found", "That filing is not in this company's due_dates.", 404)
+            raise ApiError("not_found", "That filing is not in this company's due dates.", 404)
         row = await db.scalar(
             select(ComplianceFiling).where(
                 ComplianceFiling.tenant_id == tenant_id, ComplianceFiling.item_key == key

@@ -1375,6 +1375,14 @@ async def test_gst_payable_unfiled_count_and_filing_register(
     rows = register.json()
     assert sum(row["status"] == "overdue" for row in rows) == company["unfiledCount"]
     assert {row["company"] for row in rows} == {"Mumbai Traders"}
+    # Every filing the register lists can be recorded as filed, the oldest too.
+    oldest = min((row for row in rows if row["status"] == "overdue"), key=lambda row: row["dueOn"])
+    marked = await client.put(
+        f"/v1/portfolio/companies/{company_id}/filings/{oldest['key']}",
+        headers=owner.headers,
+        json={"filedOn": oldest["dueOn"]},
+    )
+    assert marked.status_code == 204, marked.text
 
 
 async def test_the_worker_emails_once_when_a_company_turns_red(
