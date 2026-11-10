@@ -502,6 +502,8 @@ class TrendPoint(BaseModel):
     netSales: str | None
     costs: str | None
     collected: str | None
+    # Sales and costs from a month imported from another system, not from Janus's records.
+    imported: bool = False
 
 
 class CompanyTrend(BaseModel):
@@ -734,3 +736,17 @@ class BankStatementIn(BaseModel):
 class BankImported(BaseModel):
     added: int
     skipped: int
+
+
+HistoryAmount = Annotated[str, StringConstraints(pattern=r"^\d{1,13}(\.\d{1,2})?$")]
+
+
+class HistoryMonthIn(BaseModel):
+    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+    sales: HistoryAmount
+    costs: HistoryAmount = "0"
+
+
+class HistoryIn(BaseModel):
+    source: Literal["tally", "zoho", "other"]
+    months: list[HistoryMonthIn] = Field(min_length=1, max_length=120)

@@ -186,7 +186,7 @@ export interface PortfolioTrends {
   /** The start of each day or week (YYYY-MM-DD), or month (YYYY-MM), oldest first. */
   months: string[];
   labels: string[];
-  companies: { id: string; name: string; points: { month: string; leads: number; wonDeals: number; wonValue: string; netSales: string | null; costs: string | null; collected: string | null }[] }[];
+  companies: { id: string; name: string; points: { month: string; leads: number; wonDeals: number; wonValue: string; netSales: string | null; costs: string | null; collected: string | null; imported?: boolean }[] }[];
 }
 
 /** A way to answer Portfolio questions: Janus rules, or a model one of the companies set up. */

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
+import { LastYear } from "@/features/portfolio/components/last-year";
 import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
 import { groupBooks, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { change, healthName, inr } from "@/features/portfolio/lib/format";
@@ -56,6 +57,8 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
       <GroupLine money={money} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} />
       <SalesHeatmap money={money} />
     </div>
+
+    {money && <LastYear list={list} />}
 
     <div className="flex items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">Month by month</h2>

@@ -272,3 +272,19 @@ class FinanceBankLine(Base):
     fingerprint: Mapped[str] = mapped_column(String(64))
     imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceHistoryMonth(Base):
+    """A month from before the company kept its books in Janus, imported from Tally, Zoho Books or
+    another system: sales before GST and costs, in paise. Used only for months Janus has no
+    invoices or bills of its own."""
+
+    __tablename__ = "finance_history_months"
+    __table_args__ = (UniqueConstraint("tenant_id", "month"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    month: Mapped[date] = mapped_column(Date)
+    sales_paise: Mapped[int] = mapped_column(BigInteger)
+    costs_paise: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(20))
+    imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

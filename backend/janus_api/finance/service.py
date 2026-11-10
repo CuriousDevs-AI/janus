@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit import service as audit
 from janus_api.core.errors import ApiError
-from janus_api.finance.models import FinanceBankLine, FinanceBill, FinancePayrollPosting
+from janus_api.finance.models import (
+    FinanceBankLine,
+    FinanceBill,
+    FinanceHistoryMonth,
+    FinancePayrollPosting,
+)
 from janus_api.rules.service import ensure_open
 
 
@@ -180,3 +185,45 @@ async def import_bank_lines(
         details={"account": account, "added": added, "skipped": len(rows) - added},
     )
     return added, len(rows) - added
+
+
+async def import_history(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    source: str,
+    months: list[tuple[date, int, int]],
+    ip: str | None,
+) -> int:
+    """Saves imported months (first day, sales, costs in paise), replacing a month imported
+    before. The caller is in the company's context and has checked the person may."""
+    if not 1 <= len(months) <= 120:
+        raise ApiError("invalid_history", "Import 1 to 120 months at a time.", 422)
+    for month, sales, costs in months:
+        if sales < 0 or costs < 0:
+            raise ApiError("invalid_history", "Sales and costs cannot be negative.", 422)
+        row = await db.scalar(
+            select(FinanceHistoryMonth).where(
+                FinanceHistoryMonth.tenant_id == tenant_id,
+                FinanceHistoryMonth.month == month.replace(day=1),
+            )
+        )
+        if row is None:
+            row = FinanceHistoryMonth(tenant_id=tenant_id, month=month.replace(day=1))
+            db.add(row)
+        row.sales_paise, row.costs_paise, row.source, row.imported_by = (
+            sales,
+            costs,
+            source,
+            user_id,
+        )
+    await db.flush()
+    audit.record(
+        db,
+        "finance.history_imported",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={"source": source, "months": len(months)},
+    )
+    return len(months)

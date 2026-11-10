@@ -1668,3 +1668,54 @@ async def test_a_bank_statement_gives_cash_and_how_long_it_lasts(
         json={"account": "X", "rows": [{"date": day(1), "amount": "12,000"}]},
     )
     assert bad.status_code == 422
+
+
+async def test_months_imported_from_tally_fill_the_trends_before_janus(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    this_month = today.replace(day=1)
+    year_ago = date(this_month.year - 1, this_month.month, 1)
+    last = (this_month - timedelta(days=1)).replace(day=1)
+    url = f"/v1/portfolio/companies/{owner.tenant_id}/history"
+    sent = await client.post(
+        url,
+        headers=owner.headers,
+        json={
+            "source": "tally",
+            "months": [
+                {"month": f"{year_ago:%Y-%m}", "sales": "250000", "costs": "180000"},
+                {"month": f"{last:%Y-%m}", "sales": "90000.50", "costs": "1000"},
+            ],
+        },
+    )
+    assert sent.status_code == 201 and sent.json() == {"months": 2}
+    early = await client.post(
+        url,
+        headers=owner.headers,
+        json={"source": "zoho", "months": [{"month": f"{this_month:%Y-%m}", "sales": "1"}]},
+    )
+    assert early.status_code == 422
+    # A month with Janus's own records keeps them; the import is only for months without.
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "hist-1"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": last.isoformat(),
+            "due_date": last.isoformat(),
+            "same_state": True,
+            "lines": [{"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 50000, "gst_rate": 0}],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+    trends = (
+        await client.get("/v1/portfolio/trends?unit=month&count=13", headers=owner.headers)
+    ).json()
+    points = {p["month"]: p for p in trends["companies"][0]["points"]}
+    assert points[f"{year_ago:%Y-%m}"]["netSales"] == "250000.00"
+    assert points[f"{year_ago:%Y-%m}"]["costs"] == "180000.00"
+    assert points[f"{year_ago:%Y-%m}"]["imported"] is True
+    assert points[f"{last:%Y-%m}"]["netSales"] == "500.00"
+    assert points[f"{last:%Y-%m}"]["imported"] is False

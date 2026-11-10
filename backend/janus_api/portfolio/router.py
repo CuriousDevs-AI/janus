@@ -12,6 +12,7 @@ from janus_api.portfolio import (
     companies,
     digest,
     documents,
+    history,
     intelligence,
     intercompany,
     knowledge,
@@ -167,7 +168,8 @@ async def read_trends(
 ) -> schemas.Trends:
     """Day, week or month figures for every company the person sees, oldest first. `months` is
     the older way of asking for months."""
-    limits = {"day": (30, 366), "week": (12, 104), "month": (6, 24)}
+    # Months: two full years and the one still running, so a year can be set against the one before.
+    limits = {"day": (30, 366), "week": (12, 104), "month": (6, 25)}
     default, most = limits[unit]
     wanted = count if count is not None else months if months is not None else default
     return await trends.trends(
@@ -446,3 +448,13 @@ async def import_bank_statement(
     return await bank.import_statement(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )
+
+
+@router.post("/companies/{company_id}/history", status_code=201)
+async def import_history(
+    company_id: str, data: schemas.HistoryIn, actor: CurrentActor, db: Db, request: Request
+) -> dict[str, int]:
+    months = await history.import_months(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
+    )
+    return {"months": months}

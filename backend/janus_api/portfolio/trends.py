@@ -76,10 +76,35 @@ async def trends(
             money = "portfolio:finance" in role.permissions
             sales_days = await crm.daily(db, tenant_id, first, last)
             money_days = await finance.daily(db, tenant_id, first, last) if money else {}
+            # Months from before the books were kept in Janus, where it has none of its own.
+            earlier = (
+                await finance.history(db, tenant_id, first, last)
+                if money and unit == "month"
+                else {}
+            )
             points = []
             for start, end in spans:
                 days = [d for d in sales_days if start <= d <= end]
                 books = [v for d, v in money_days.items() if start <= d <= end]
+                past = (
+                    earlier.get(start) if not any(v.net_sales or v.costs for v in books) else None
+                )
+                if past is not None:
+                    points.append(
+                        schemas.TrendPoint(
+                            month=f"{start:%Y-%m}",
+                            leads=sum(sales_days[d].leads for d in days),
+                            wonDeals=sum(sales_days[d].won_deals for d in days),
+                            wonValue=rupees(
+                                sum((sales_days[d].won_value for d in days), Decimal(0))
+                            ),
+                            netSales=rupees(past[0], paise=True),
+                            costs=rupees(past[1], paise=True),
+                            collected=None,
+                            imported=True,
+                        )
+                    )
+                    continue
                 points.append(
                     schemas.TrendPoint(
                         month=start.isoformat() if unit != "month" else f"{start:%Y-%m}",

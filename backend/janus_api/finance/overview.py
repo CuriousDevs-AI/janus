@@ -18,6 +18,7 @@ from janus_api.finance.models import (
     FinanceBillPayment,
     FinanceCreditNote,
     FinanceFundRequest,
+    FinanceHistoryMonth,
     FinanceInvoice,
     FinancePayment,
     FinancePayrollPosting,
@@ -500,3 +501,20 @@ async def cash(db: AsyncSession, tenant_id: int) -> Cash | None:
         )
     )
     return Cash(accounts=found, monthly_burn=round(-int(net or 0) / 3))
+
+
+async def history(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> dict[date, tuple[int, int]]:
+    """Imported months between two days: (sales, costs) in paise, by the month's first day."""
+    rows = await db.execute(
+        select(
+            FinanceHistoryMonth.month,
+            FinanceHistoryMonth.sales_paise,
+            FinanceHistoryMonth.costs_paise,
+        ).where(
+            FinanceHistoryMonth.tenant_id == tenant_id,
+            FinanceHistoryMonth.month.between(start.replace(day=1), end),
+        )
+    )
+    return {month: (int(sales), int(costs)) for month, sales, costs in rows.all()}
