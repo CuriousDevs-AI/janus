@@ -209,6 +209,15 @@ def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
                 else ""
             )
             add(n, f"{n} cash in the bank {inr(c.cash.total)} as of {c.cash.asOf}{lasts}.")
+        if c.tds:
+            t = c.tds
+            deposited = inr(t.deposited) if t.deposited is not None else "no challan recorded"
+            add(
+                n,
+                f"{n} TDS for {t.label}: {inr(t.deducted)} deducted ({inr(t.onBills)} on bills,"
+                f" {inr(t.onSalaries)} on salaries), {deposited} deposited,"
+                f" {inr(t.toDeposit)} still to deposit by {t.dueOn}.",
+            )
         if c.unfiledCount:
             add(
                 n,

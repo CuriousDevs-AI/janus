@@ -60,6 +60,8 @@ export interface PortfolioCompany {
   unfiledSince: string | null;
   /** GST from the books, for a role with money where GST is set up. */
   gst: { gstin: string | null; lastMonth: PortfolioGstMonth; thisMonth: PortfolioGstMonth } | null;
+  /** Last month's TDS: deducted on bills and salaries against what its TDS payment deposited. Money roles, where TDS applies. */
+  tds: { month: string; label: string; onBills: string; onSalaries: string; bySection: Record<string, string>; deducted: string; deposited: string | null; toDeposit: string; dueOn: string; salariesPosted: boolean } | null;
   /** Cash in the bank from imported statements, and how many months it lasts. Money roles only. */
   cash: { total: string | null; asOf: string; accounts: { account: string; balance: string | null; asOf: string }[]; monthlyBurn: string | null; runwayMonths: number | null } | null;
   /** Last month's salaries: posted to the books or not, and what HR's salaries would post. Money roles only. */
@@ -119,6 +121,8 @@ export interface PortfolioComplianceDue {
   /** Past due: the late fee to date in rupees where it is a daily or flat fee (an estimate), and what the cost is made of. */
   lateFee: string | null;
   lateNote: string | null;
+  /** What was paid with it, where recorded (a TDS challan), in rupees. */
+  amount?: string | null;
 }
 /** GST for one month from the books, rupees as decimal strings; payable below zero is credit left over. */
 export type PortfolioGstMonth = { month: string; label: string; output: string; input: string; payable: string; billsWithoutGst: number };

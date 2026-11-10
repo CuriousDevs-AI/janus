@@ -181,6 +181,10 @@ class FinanceBill(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger)
     # The GST inside amount_paise; 0 on bills recorded before it was asked for (not known).
     gst_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    # TDS the company deducts from this bill and pays to the government, not to the supplier, and
+    # the section it is under (194C, 194J and so on).
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    tds_section: Mapped[str | None] = mapped_column(String(10))
     po_key: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_by_name: Mapped[str] = mapped_column(String(160))
@@ -249,6 +253,8 @@ class FinancePayrollPosting(Base):
     # The first day of the month the salaries are for.
     month: Mapped[date] = mapped_column(Date)
     amount_paise: Mapped[int] = mapped_column(BigInteger)
+    # TDS deducted from these salaries (section 192), owed to the government.
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     headcount: Mapped[int] = mapped_column(Integer)
     posted_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     posted_by_name: Mapped[str] = mapped_column(String(160))

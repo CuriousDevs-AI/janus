@@ -21,6 +21,7 @@ export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
     gst: null,
     payroll: null,
     cash: null,
+    tds: null,
     customers: [],
     intercompany: null,
     period: { current: { ...item.period.current, invoiced: null, collected: null }, previous: { ...item.period.previous, invoiced: null, collected: null } },

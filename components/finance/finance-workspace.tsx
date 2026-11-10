@@ -102,6 +102,8 @@ function PayablesView({ me }: { me: string }) {
   const [vendor, setVendor] = React.useState("");
   const [vendorBillNo, setVendorBillNo] = React.useState("");
   const [gst, setGst] = React.useState("");
+  const [tds, setTds] = React.useState("");
+  const [tdsSection, setTdsSection] = React.useState("194C");
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState("2026-11-15");
   /** A vendor's payment terms set the due date: the bill date plus its days. Vendors without terms use 30 days. */
@@ -121,10 +123,10 @@ function PayablesView({ me }: { me: string }) {
   }, []);
 
   async function create() {
-    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), gst: Number(gst) || 0, poId: poId || undefined }, me);
+    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), gst: Number(gst) || 0, tds: Number(tds) || 0, tdsSection: Number(tds) > 0 ? tdsSection : undefined, poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
-    setVendor(""); setVendorBillNo(""); setAmount(""); setGst(""); setPoId("");
+    setVendor(""); setVendorBillNo(""); setAmount(""); setGst(""); setTds(""); setPoId("");
   }
 
   async function pay(billId: string) {
@@ -139,15 +141,16 @@ function PayablesView({ me }: { me: string }) {
       <Card>
         <CardHeader><CardTitle className="text-base">Record a bill</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">A bill is what the company owes a vendor. Pay it in one or more payments; each payment cannot be more than the amount still owed.</p>
+          <p className="text-xs text-muted-foreground">A bill is what the company owes a vendor. Where the company deducts TDS, enter it with its section: the vendor is then owed the bill less the TDS, which the company deposits with the government. Pay it in one or more payments; each payment cannot be more than the amount still owed.</p>
           <div className="grid gap-3 sm:grid-cols-5">
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><select id="bill-vendor" className={selectClass} value={vendor} onChange={(e) => chooseVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount with GST (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-gst">GST in this bill (₹)</Label><Input id="bill-gst" type="number" min={0} placeholder="As on the bill" value={gst} onChange={(e) => setGst(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-tds">TDS deducted (₹)</Label><div className="flex gap-1"><Input id="bill-tds" type="number" min={0} placeholder="0" value={tds} onChange={(e) => setTds(e.target.value)} /><select aria-label="TDS section" className={selectClass} value={tdsSection} onChange={(e) => setTdsSection(e.target.value)}>{["194C", "194J", "194I", "194H", "194Q", "194A"].map((code) => <option key={code}>{code}</option>)}</select></div></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-po">Purchase order (optional)</Label><select id="bill-po" className={selectClass} value={poId} onChange={(e) => setPoId(e.target.value)}><option value="">No order</option>{purchaseOrders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.vendor}</option>)}</select></div>
-            <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0) || Number(gst) >= Number(amount)} onClick={create}>Record bill</Button>
+            <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0) || Number(gst) >= Number(amount) || Number(tds) >= Number(amount) - (Number(gst) || 0)} onClick={create}>Record bill</Button>
           </div>
         </CardContent>
       </Card>

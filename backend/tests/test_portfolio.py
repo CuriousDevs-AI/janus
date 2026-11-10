@@ -1805,3 +1805,97 @@ async def test_six_portfolio_roles_and_who_may_give_them(
         "/v1/portfolio/access/remove", headers=owner.headers, json={"email": "admin@example.com"}
     )
     assert removed.json()["done"] == ["Mumbai Traders"]
+
+
+async def test_tds_deducted_on_bills_and_salaries_against_what_was_deposited(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    plan = await client.put(
+        f"/v1/portfolio/companies/{company}/compliance",
+        headers=owner.headers,
+        json={"gstFiling": "none", "tds": True},
+    )
+    assert plan.status_code == 200, plan.text
+    today = today_ist()
+    last = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    bill = {
+        "vendor": "Design Studio",
+        "vendor_bill_no": "DS-1",
+        "bill_date": last.isoformat(),
+        "due_date": (last + timedelta(days=10)).isoformat(),
+        "amount_paise": 11800000,
+        "gst_paise": 1800000,
+        "tds_paise": 1000000,
+    }
+    no_section = await client.post(
+        "/v1/finance/bills", headers={**owner.headers, "Idempotency-Key": "tds-0"}, json=bill
+    )
+    assert no_section.status_code == 422
+    made = await client.post(
+        "/v1/finance/bills",
+        headers={**owner.headers, "Idempotency-Key": "tds-1"},
+        json={**bill, "tds_section": "194J"},
+    )
+    assert made.status_code == 201, made.text
+    # The supplier is owed the bill less the TDS, which goes to the government.
+    assert made.json()["due_paise"] == 10800000
+    over = await client.post(
+        f"/v1/finance/bills/{made.json()['id']}/payments",
+        headers={**owner.headers, "Idempotency-Key": "tds-pay"},
+        json={
+            "amount_paise": 11800000,
+            "method": "UPI",
+            "reference": "UPI-9",
+            "paid_on": today.isoformat(),
+        },
+    )
+    assert over.status_code == 422
+    seeded = await client.post(
+        "/v1/hr/records/seed",
+        headers=owner.headers,
+        json={
+            "records": {
+                "employee": [
+                    {
+                        "id": "emp-1",
+                        "name": "Owner",
+                        "email": "owner@example.com",
+                        "title": "Staff",
+                        "department": "Sales",
+                        "managerId": None,
+                        "status": "active",
+                        "salaryMonthly": 200000,
+                    }
+                ]
+            }
+        },
+    )
+    assert seeded.status_code in (200, 201), seeded.text
+    posted = await client.post(
+        f"/v1/portfolio/companies/{company}/payroll",
+        headers=owner.headers,
+        json={"month": f"{last:%Y-%m}", "tds": "25000"},
+    )
+    assert posted.status_code == 201, posted.text
+
+    async def tds() -> dict[str, Any]:
+        found = await client.get("/v1/portfolio/summary", headers=owner.headers)
+        return found.json()["companies"][0]["tds"]
+
+    position = await tds()
+    assert position["label"] == f"{last:%b %Y}"
+    assert position["onBills"] == "10000.00" and position["onSalaries"] == "25000.00"
+    assert position["bySection"] == {"194J": "10000.00"}
+    assert position["deducted"] == "35000.00" and position["deposited"] is None
+    assert position["toDeposit"] == "35000.00" and position["salariesPosted"] is True
+    # The TDS payment recorded with a challan for part of it.
+    challan = await client.put(
+        f"/v1/portfolio/companies/{company}/filings/tds_{last:%Y-%m}",
+        headers=owner.headers,
+        json={"filedOn": today.isoformat(), "acknowledgement": "CIN-0001", "amount": "30000"},
+    )
+    assert challan.status_code == 204, challan.text
+    position = await tds()
+    assert position["deposited"] == "30000.00" and position["toDeposit"] == "5000.00"

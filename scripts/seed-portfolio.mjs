@@ -88,10 +88,12 @@ async function sales(company, plan) {
       const due = new Date(date); due.setDate(due.getDate() + 21);
       const taxable = Math.round(plan.monthly * plan.costShare * (0.4 + rand() * 0.2) * 100);
       const gst = Math.round(taxable * 0.12);
-      const bill = await call("POST", "/finance/bills", { vendor: pick(SUPPLIERS), vendor_bill_no: `SUP-${back}${n}-${RUN}`.slice(0, 40), bill_date: iso(date), due_date: iso(due), amount_paise: taxable + gst, gst_paise: gst }, keyed(`${company}-bill-${back}-${n}`));
+      // A job-work supplier's bill has 2% TDS deducted under section 194C; the supplier is paid the rest.
+      const tds = n === 0 ? Math.round(taxable * 0.02) : 0;
+      const bill = await call("POST", "/finance/bills", { vendor: pick(SUPPLIERS), vendor_bill_no: `SUP-${back}${n}-${RUN}`.slice(0, 40), bill_date: iso(date), due_date: iso(due), amount_paise: taxable + gst, gst_paise: gst, tds_paise: tds, ...(tds ? { tds_section: "194C" } : {}) }, keyed(`${company}-bill-${back}-${n}`));
       // Paid when due, except this month's (not due yet) and one left late where planned.
       if (due < today && !(back === 1 && n === 0 && plan.lateBills)) {
-        await call("POST", `/finance/bills/${bill.id}/payments`, { amount_paise: taxable + gst, method: "Bank transfer", reference: `PAY${RUN}${company}${back}${n}`.slice(0, 40), paid_on: iso(due < today ? due : today) }, keyed(`${company}-billpay-${back}-${n}`));
+        await call("POST", `/finance/bills/${bill.id}/payments`, { amount_paise: taxable + gst - tds, method: "Bank transfer", reference: `PAY${RUN}${company}${back}${n}`.slice(0, 40), paid_on: iso(due < today ? due : today) }, keyed(`${company}-billpay-${back}-${n}`));
       }
     }
   }
@@ -121,7 +123,7 @@ async function compliance(company, details) {
   const open = register.filter((due) => due.companyId === String(company) && due.status === "overdue").sort((a, b) => a.dueOn.localeCompare(b.dueOn));
   for (const due of open.slice(0, Math.max(0, open.length - details.leaveUnfiled))) {
     const filed = new Date(due.dueOn); filed.setDate(filed.getDate() - 2);
-    await call("PUT", `/portfolio/companies/${company}/filings/${encodeURIComponent(due.key)}`, { filedOn: iso(filed < today ? filed : today), acknowledgement: `AA${String(Math.floor(rand() * 1e12)).padStart(12, "0")}` });
+    await call("PUT", `/portfolio/companies/${company}/filings/${encodeURIComponent(due.key)}`, { filedOn: iso(filed < today ? filed : today), acknowledgement: `AA${String(Math.floor(rand() * 1e12)).padStart(12, "0")}`, ...(due.key.startsWith("tds_") ? { amount: String(Math.round(8000 + rand() * 20000)) } : {}) });
   }
 }
 
@@ -189,7 +191,8 @@ async function history(company, monthly) {
     await history(company.id, company.plan.monthly);
     await call("PUT", `/portfolio/companies/${company.id}/targets`, { leads: String(company.leads + 4), wonValue: String(company.plan.monthly), collected: String(Math.round(company.plan.monthly * 0.9)) });
     // Last month's salaries, posted to the books for all but the Retail company.
-    if (company.id !== retail.id) await call("POST", `/portfolio/companies/${company.id}/payroll`, { month: monthKey(1) });
+    // TDS on salaries is about 5% of the month's salaries here; a real figure comes from each person's tax.
+    if (company.id !== retail.id) await call("POST", `/portfolio/companies/${company.id}/payroll`, { month: monthKey(1), tds: String(company.staff * 1500) });
   }
   // Sales between the companies: the first sells cloth to Retail; one bill is recorded, one is not.
   await enter(first.id);

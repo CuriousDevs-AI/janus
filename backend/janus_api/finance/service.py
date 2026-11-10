@@ -86,12 +86,15 @@ async def post_payroll(
     amount_paise: int,
     headcount: int,
     ip: str | None,
+    tds_paise: int = 0,
 ) -> bool:
     """Posts a month's salaries to the books (the caller is in the company's context and has
     checked the person may). False when that month was posted already: a posting is not changed."""
     month = month.replace(day=1)
     if amount_paise <= 0:
         raise ApiError("no_salaries", "There are no salaries on record to post.", 422)
+    if not 0 <= tds_paise < amount_paise:
+        raise ApiError("invalid_tds", "TDS on salaries must be less than the salaries.", 422)
     exists = await db.scalar(
         select(FinancePayrollPosting.id).where(
             FinancePayrollPosting.tenant_id == tenant_id, FinancePayrollPosting.month == month
@@ -106,6 +109,7 @@ async def post_payroll(
             tenant_id=tenant_id,
             month=month,
             amount_paise=amount_paise,
+            tds_paise=tds_paise,
             headcount=headcount,
             posted_by=user_id,
             posted_by_name=user_name,
@@ -118,7 +122,7 @@ async def post_payroll(
         user_id=user_id,
         tenant_id=tenant_id,
         ip=ip,
-        details={"month": month.isoformat(), "amount_paise": amount_paise},
+        details={"month": month.isoformat(), "amount_paise": amount_paise, "tds_paise": tds_paise},
     )
     return True
 

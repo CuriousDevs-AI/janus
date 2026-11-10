@@ -7,6 +7,7 @@ page says before posting.
 """
 
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +27,7 @@ async def post(
     company_id: str,
     month: str,
     ip: str | None,
+    tds: Decimal = Decimal(0),
 ) -> bool:
     first = date.fromisoformat(f"{month}-01")
     if first >= today_ist().replace(day=1):
@@ -42,6 +44,7 @@ async def post(
             amount_paise=int(staff.monthly_payroll * 100),
             headcount=staff.headcount,
             ip=ip,
+            tds_paise=int(tds * 100),
         )
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)

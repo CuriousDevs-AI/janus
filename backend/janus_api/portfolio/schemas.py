@@ -134,6 +134,8 @@ class ComplianceDue(BaseModel):
     # estimate), and what the cost is made of.
     lateFee: str | None = None
     lateNote: str | None = None
+    # What was paid with it, where recorded (a TDS challan), in rupees.
+    amount: str | None = None
 
 
 class Targets(BaseModel):
@@ -175,6 +177,8 @@ class FilingMark(BaseModel):
     acknowledgement: (
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)] | None
     ) = None
+    # What was paid with it, in rupees: a TDS payment's challan amount, for one.
+    amount: Annotated[Decimal, Field(ge=0, le=10**12, decimal_places=2)] | None = None
 
 
 def _blank_to_none(value: object) -> object:
@@ -311,6 +315,24 @@ class GstMonth(BaseModel):
     billsWithoutGst: int
 
 
+class TdsMonth(BaseModel):
+    """TDS for one month, in rupees: deducted from supplier bills and from salaries posted, what the
+    TDS payment for it deposited (its challan, where recorded), and what is still to deposit."""
+
+    month: str
+    label: str
+    onBills: str
+    onSalaries: str
+    bySection: dict[str, str]
+    deducted: str
+    # None until the TDS payment for the month is recorded with its challan amount.
+    deposited: str | None
+    toDeposit: str
+    dueOn: str
+    # Salaries were not posted for the month, so TDS on them is not known.
+    salariesPosted: bool
+
+
 class GstPosition(BaseModel):
     gstin: str | None
     lastMonth: GstMonth
@@ -381,6 +403,8 @@ class CompanySummary(BaseModel):
     unfiledSince: str | None = None
     # GST from the books, for a role with money: None without money or with GST not set up.
     gst: GstPosition | None = None
+    # Last month's TDS, for a role with money where TDS is in the filing plan.
+    tds: TdsMonth | None = None
     # Cash in the bank from imported statements, for a role with money.
     cash: CashPosition | None = None
     # Last month's salaries: whether they are posted to the books, for a role with money.
@@ -751,6 +775,8 @@ class IntercompanyRecord(BaseModel):
 
 class PayrollPost(BaseModel):
     month: Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+    # TDS deducted from the month's salaries (section 192), in rupees.
+    tds: Annotated[Decimal, Field(ge=0, le=10**12, decimal_places=2)] = Decimal(0)
 
 
 BankAmount = Annotated[str, StringConstraints(pattern=r"^-?\d{1,13}(\.\d{1,2})?$")]

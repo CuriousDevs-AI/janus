@@ -129,6 +129,7 @@ async def mark_filed(
         data.filedOn,
         request_ip(request),
         data.acknowledgement,
+        int(data.amount * 100) if data.amount is not None else None,
     )
 
 
@@ -429,6 +430,7 @@ async def post_payroll(
         company_id,
         data.month,
         request_ip(request),
+        data.tds,
     )
     return {"posted": posted}
 

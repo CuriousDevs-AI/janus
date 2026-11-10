@@ -94,10 +94,13 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
   const [recording, setRecording] = React.useState(false);
   const [filedOn, setFiledOn] = React.useState(todayIst());
   const [ack, setAck] = React.useState("");
+  const [paid, setPaid] = React.useState("");
+  // A TDS payment, PF or ESI is paid with a challan: its amount is kept beside the filing.
+  const paysAmount = /^(tds|pf|esi)_/.test(due.key);
   const save = async (filed: boolean) => {
     setBusy(true);
     try {
-      await api(`/portfolio/companies/${item.id}/filings/${encodeURIComponent(due.key)}`, filed ? { method: "PUT", body: JSON.stringify({ filedOn, acknowledgement: ack.trim() || null }) } : { method: "DELETE" });
+      await api(`/portfolio/companies/${item.id}/filings/${encodeURIComponent(due.key)}`, filed ? { method: "PUT", body: JSON.stringify({ filedOn, acknowledgement: ack.trim() || null, amount: paysAmount && paid ? paid : null }) } : { method: "DELETE" });
       toast.success(filed ? `${due.label} for ${due.period} recorded as filed.` : `${due.label} for ${due.period} is open again.`);
       setRecording(false);
       onChanged();
@@ -107,11 +110,12 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
   return <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
     <div className="flex flex-wrap items-center gap-3">
       <Badge variant={dueTone[due.status]}>{dueName[due.status]}</Badge>
-      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}</span>{due.status === "overdue" && due.lateNote && <span className="block text-xs text-danger">{due.lateFee ? `Late fee so far about ${inr(Number(due.lateFee))} (estimate). ` : "Late cost: "}{due.lateNote}.</span>}</span>
+      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}{due.amount ? ` · paid ${inr(Number(due.amount))}` : ""}</span>{due.status === "overdue" && due.lateNote && <span className="block text-xs text-danger">{due.lateFee ? `Late fee so far about ${inr(Number(due.lateFee))} (estimate). ` : "Late cost: "}{due.lateNote}.</span>}</span>
       {canMark && (due.status === "filed" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(false)}>Undo</Button> : !recording && <Button size="sm" variant="outline" disabled={busy} onClick={() => setRecording(true)}>Record filing</Button>)}
     </div>
     {recording && <form className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface-2 p-2" onSubmit={(event) => { event.preventDefault(); void save(true); }}>
       <label className="grid gap-1 text-xs text-muted-foreground">Filed on<Input type="date" value={filedOn} max={todayIst()} onChange={(event) => setFiledOn(event.target.value)} className="w-40" /></label>
+      {paysAmount && <label className="grid gap-1 text-xs text-muted-foreground">Challan amount (₹)<Input type="number" min={0} value={paid} onChange={(event) => setPaid(event.target.value)} className="w-36" /></label>}
       <label className="grid flex-1 gap-1 text-xs text-muted-foreground">Acknowledgement number (optional)<Input value={ack} maxLength={60} placeholder="ARN, challan or SRN" onChange={(event) => setAck(event.target.value)} /></label>
       <Button type="submit" size="sm" disabled={busy || !filedOn}>Save</Button>
       <Button type="button" size="sm" variant="ghost" onClick={() => setRecording(false)}>Cancel</Button>

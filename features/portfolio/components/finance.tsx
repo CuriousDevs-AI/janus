@@ -71,6 +71,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     <CashCard list={list} />
     <SalariesCard list={list} />
     <GstCard list={list} />
+    <TdsCard list={list} />
     {list.length > 1 && <IntercompanyCard />}
   </>;
 }
@@ -117,7 +118,6 @@ function GstCard({ list }: { list: WithMoney[] }) {
         {(gst.lastMonth.billsWithoutGst + gst.thisMonth.billsWithoutGst) > 0 && <p className="text-xs text-warning">{gst.lastMonth.billsWithoutGst + gst.thisMonth.billsWithoutGst} supplier bills have no GST recorded, so the credit may be higher and the GST to pay lower.</p>}
       </li>;
     })}</ul>
-    <p className="mt-3 text-xs text-muted-foreground">TDS deducted and deposited is not recorded in Janus yet, so it is not shown here; the TDS filings are in Compliance.</p>
   </SectionCard>;
 }
 
@@ -149,17 +149,18 @@ function IntercompanyCard() {
 function SalariesCard({ list }: { list: WithMoney[] }) {
   const { handlesMoney } = useRoles();
   const [posted, setPosted] = React.useState<Record<string, boolean>>({});
+  const [tds, setTds] = React.useState<Record<string, string>>({});
   const shown = list.filter((item) => item.payroll && (item.payroll.posted || n(item.payroll.fromHr) > 0));
   if (shown.length === 0) return null;
   const post = async (item: WithMoney) => {
-    try { await api(`/portfolio/companies/${item.id}/payroll`, { method: "POST", body: JSON.stringify({ month: item.payroll!.month }) }); setPosted((current) => ({ ...current, [item.id]: true })); toast.success(`${item.payroll!.label} salaries posted for ${item.name}. Reload to see profit with them.`); }
+    try { await api(`/portfolio/companies/${item.id}/payroll`, { method: "POST", body: JSON.stringify({ month: item.payroll!.month, tds: tds[item.id] || "0" }) }); setPosted((current) => ({ ...current, [item.id]: true })); toast.success(`${item.payroll!.label} salaries posted for ${item.name}. Reload to see profit with them.`); }
     catch (error) { toast.error(message(error)); }
   };
   return <SectionCard title="Salaries in the books" description="Janus has no payroll run: HR keeps each person's monthly salary. Posting a finished month records those salaries as that month's expense, so profit after salaries is recorded instead of estimated. A month is posted once, with the salaries as they stand when you post.">
     <ul className="flex flex-col divide-y divide-border">{shown.map((item) => { const pay = item.payroll!; const done = pay.posted ?? (posted[item.id] ? pay.fromHr : null); return <li key={item.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
       <Badge variant={done ? "success" : "warning"}>{done ? "Posted" : "Not posted"}</Badge>
       <span className="min-w-0 flex-1"><span className="font-medium">{item.name}</span> <span className="text-muted-foreground">· {pay.label} · {done ? `${inr(n(done))} posted` : `${inr(n(pay.fromHr))} from HR's salaries today`}</span></span>
-      {!done && handlesMoney(item) && <Button size="sm" variant="outline" onClick={() => void post(item)}>Post {pay.label} salaries</Button>}
+      {!done && handlesMoney(item) && <span className="flex items-center gap-2"><label className="flex items-center gap-1 text-xs text-muted-foreground">TDS on salaries (₹)<input aria-label={`TDS on ${item.name} salaries`} type="number" min={0} className="h-8 w-24 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" value={tds[item.id] ?? ""} placeholder="0" onChange={(event) => setTds((current) => ({ ...current, [item.id]: event.target.value }))} /></label><Button size="sm" variant="outline" onClick={() => void post(item)}>Post {pay.label} salaries</Button></span>}
     </li>; })}</ul>
   </SectionCard>;
 }
@@ -197,5 +198,19 @@ function CashCard({ list }: { list: WithMoney[] }) {
       <label className="grid gap-1 text-xs text-muted-foreground">Account<input className="h-9 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" maxLength={80} placeholder="HDFC current 1234" value={account} onChange={(event) => setAccount(event.target.value)} /></label>
       <label className={`inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm ${busy ? "opacity-50" : ""}`}>Import statement (CSV)<input type="file" accept=".csv,text/csv" className="sr-only" disabled={busy || !companyId} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} /></label>
     </div>}
+  </SectionCard>;
+}
+
+/** Last month's TDS per company: deducted on supplier bills and salaries, against the challan
+ * recorded with its TDS payment in Compliance. */
+function TdsCard({ list }: { list: WithMoney[] }) {
+  const withTds = list.filter((item) => item.tds);
+  if (withTds.length === 0) return null;
+  return <SectionCard title="TDS to deposit" description="TDS deducted last month from supplier bills (by section) and from salaries posted, against the challan recorded with the month's TDS payment in Compliance. Due by the 7th, or 30 April for March.">
+    <ul className="flex flex-col divide-y divide-border">{withTds.map((item) => { const tds = item.tds!; const left = n(tds.toDeposit); return <li key={item.id} className="flex flex-col gap-1 py-3 text-sm first:pt-0 last:pb-0">
+      <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{item.name} · {tds.label}</span><span className={`tabular-nums font-medium ${left > 0 ? "text-danger" : "text-success"}`}>{left > 0 ? `${inr(left)} to deposit by ${day(tds.dueOn)}` : n(tds.deducted) > 0 ? "Deposited" : "None deducted"}</span></p>
+      <p className="text-xs text-muted-foreground">{inr(n(tds.deducted))} deducted: {inr(n(tds.onBills))} on bills{Object.keys(tds.bySection).length ? ` (${Object.entries(tds.bySection).map(([code, value]) => `${code} ${inr(n(value))}`).join(", ")})` : ""}, {inr(n(tds.onSalaries))} on salaries · {tds.deposited !== null ? `${inr(n(tds.deposited))} deposited` : "no challan recorded yet"}</p>
+      {!tds.salariesPosted && <p className="text-xs text-warning">{tds.label} salaries are not posted, so TDS on them is not counted yet.</p>}
+    </li>; })}</ul>
   </SectionCard>;
 }

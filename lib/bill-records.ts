@@ -69,7 +69,7 @@ export async function syncBills(): Promise<void> {
 }
 
 export async function addBill(
-  input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; gst?: number; poId?: string },
+  input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; gst?: number; tds?: number; tdsSection?: string; poId?: string },
   by: string,
 ): Promise<string | null> {
   if (demoMode) return useFinanceStore.getState().addBill(input, by);
@@ -86,6 +86,8 @@ export async function addBill(
         due_date: input.dueDate,
         amount_paise: toPaise(input.amount),
         gst_paise: input.gst ? toPaise(input.gst) : 0,
+        tds_paise: input.tds ? toPaise(input.tds) : 0,
+        tds_section: input.tds ? input.tdsSection ?? null : null,
         po_key: input.poId ?? null,
       }),
     });

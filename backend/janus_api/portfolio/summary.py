@@ -240,6 +240,8 @@ async def company_summary(
     out.unfiledSince = since.isoformat()
     if money and out.compliancePlan.gstFiling != "none":
         out.gst = await gst_position(db, tenant_id, today, out.compliancePlan.gstin)
+    if money and out.compliancePlan.tds:
+        out.tds = await tds_month(db, tenant_id, today, everything)
     if not out.complianceSetUp and (staff.headcount or sales.leads or out.money):
         out.attention = attention.with_line(
             out.attention,
@@ -356,6 +358,36 @@ async def cash_position(db: AsyncSession, tenant_id: int) -> schemas.CashPositio
         ],
         monthlyBurn=rupees(burn, paise=True) if burn else None,
         runwayMonths=round(total / burn, 1) if total is not None and burn else None,
+    )
+
+
+async def tds_month(
+    db: AsyncSession, tenant_id: int, today: date, dues: list[schemas.ComplianceDue]
+) -> schemas.TdsMonth:
+    """Last month's TDS: deducted on bills and salaries, against its TDS payment (due on the 7th,
+    or 30 April for March), where the payment was recorded with its challan amount."""
+    last_end = today.replace(day=1) - timedelta(days=1)
+    first = last_end.replace(day=1)
+    figures = await finance.tds(db, tenant_id, first, last_end)
+    posted = await finance.payroll_posted(db, tenant_id, first, last_end)
+    deducted = figures.on_bills + figures.on_salaries
+    payment = next((due for due in dues if due.key == f"tds_{first:%Y-%m}"), None)
+    deposited = (
+        int(Decimal(payment.amount) * 100) if payment is not None and payment.amount else None
+    )
+    return schemas.TdsMonth(
+        month=f"{first:%Y-%m}",
+        label=f"{first:%b %Y}",
+        onBills=rupees(figures.on_bills, paise=True),
+        onSalaries=rupees(figures.on_salaries, paise=True),
+        bySection={k: rupees(v, paise=True) for k, v in figures.by_section.items()},
+        deducted=rupees(deducted, paise=True),
+        deposited=rupees(deposited, paise=True) if deposited is not None else None,
+        toDeposit=rupees(max(0, deducted - (deposited or 0)), paise=True),
+        dueOn=payment.dueOn
+        if payment
+        else (date(today.year, 4, 30) if first.month == 3 else today.replace(day=7)).isoformat(),
+        salariesPosted=first in posted,
     )
 
 

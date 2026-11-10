@@ -55,6 +55,8 @@ class ComplianceFiling(Base):
     filed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     # The acknowledgement number the portal gave, when someone recorded it.
     acknowledgement: Mapped[str | None] = mapped_column(String(60))
+    # What was paid with it, in paise, where someone recorded it: a TDS challan, for one.
+    amount_paise: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

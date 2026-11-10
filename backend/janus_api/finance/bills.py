@@ -38,12 +38,19 @@ class BillCreate(BaseModel):
     amount_paise: int = Field(gt=0, le=MAX_PAISE)
     # The GST inside the amount, when the supplier's bill shows it.
     gst_paise: int = Field(default=0, ge=0, le=MAX_PAISE)
+    # TDS deducted from the bill and paid to the government, and its section (194C, 194J…).
+    tds_paise: int = Field(default=0, ge=0, le=MAX_PAISE)
+    tds_section: str | None = Field(default=None, pattern=r"^[0-9]{3}[A-Z]{0,3}(\([a-z0-9]+\))?$")
     po_key: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def gst_within_amount(self) -> "BillCreate":
         if self.gst_paise >= self.amount_paise:
             raise ValueError("The GST must be less than the bill's amount.")
+        if self.tds_paise >= self.amount_paise - self.gst_paise:
+            raise ValueError("The TDS must be less than the bill before GST.")
+        if self.tds_paise and not self.tds_section:
+            raise ValueError("Say which section the TDS is under, such as 194C.")
         return self
 
 
@@ -71,6 +78,8 @@ class BillOut(BaseModel):
     bill_date: date
     due_date: date
     amount_paise: int
+    tds_paise: int = 0
+    tds_section: str | None = None
     gst_paise: int = 0
     po_key: str | None
     match: str
@@ -139,10 +148,13 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
         due_date=row.due_date,
         amount_paise=row.amount_paise,
         gst_paise=row.gst_paise,
+        tds_paise=row.tds_paise,
+        tds_section=row.tds_section,
         po_key=row.po_key,
         match=match,
         paid_paise=paid,
-        due_paise=max(0, row.amount_paise - paid),
+        # The supplier is paid the bill less the TDS, which goes to the government.
+        due_paise=max(0, row.amount_paise - row.tds_paise - paid),
         created_by=row.created_by_name,
         payments=[
             BillPaymentOut(
@@ -227,6 +239,8 @@ async def record_bill(
         due_date=data.due_date,
         amount_paise=data.amount_paise,
         gst_paise=data.gst_paise,
+        tds_paise=data.tds_paise,
+        tds_section=data.tds_section,
         po_key=data.po_key,
         created_by=actor.user.id,
         created_by_name=actor.user.name,
@@ -294,7 +308,7 @@ async def pay_bill(
             FinanceBillPayment.bill_id == row.id
         )
     )
-    due = row.amount_paise - int(paid or 0)
+    due = row.amount_paise - row.tds_paise - int(paid or 0)
     if data.amount_paise > due:
         raise ApiError(
             "over_payment", f"Payment is more than the {due} paise still owed on {row.number}.", 422

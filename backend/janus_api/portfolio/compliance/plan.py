@@ -15,9 +15,12 @@ from janus_api.portfolio import schemas
 from janus_api.portfolio.access import enter_company, readable_companies
 from janus_api.portfolio.compliance import due_dates
 from janus_api.portfolio.models import CompanyRegistration, ComplianceFiling, ComplianceProfile
-from janus_api.portfolio.periods import today_ist
+from janus_api.portfolio.periods import rupees, today_ist
 
 COMPANIES = ("pvt_ltd", "public_ltd", "opc")
+
+# Each filing marked done: the day, the acknowledgement and the amount paid with it, in paise.
+Filed = dict[str, tuple[date, str | None, int | None]]
 
 
 def _rules(
@@ -155,10 +158,9 @@ async def compliance_view(
     ]
 
 
-def _due_out(
-    due: due_dates.Due, filed: dict[str, tuple[date, str | None]], today: date
-) -> schemas.ComplianceDue:
+def _due_out(due: due_dates.Due, filed: Filed, today: date) -> schemas.ComplianceDue:
     done = due.key in filed
+    paid = filed[due.key][2] if done else None
     fee, note = (None, "") if done else due_dates.late_cost(due.key, due.due_on, today)
     return schemas.ComplianceDue(
         key=due.key,
@@ -172,6 +174,7 @@ def _due_out(
         to="/portfolio?view=compliance",
         lateFee=str(fee) if fee is not None else None,
         lateNote=note or None,
+        amount=rupees(paid, paise=True) if paid is not None else None,
     )
 
 
@@ -190,15 +193,16 @@ async def register(
     return [_due_out(due, filed, today) for due in dues], start
 
 
-async def _filed(db: AsyncSession, tenant_id: int) -> dict[str, tuple[date, str | None]]:
+async def _filed(db: AsyncSession, tenant_id: int) -> Filed:
     return {
-        key: (day, acknowledgement)
-        for key, day, acknowledgement in (
+        key: (day, acknowledgement, amount)
+        for key, day, acknowledgement, amount in (
             await db.execute(
                 select(
                     ComplianceFiling.item_key,
                     ComplianceFiling.filed_on,
                     ComplianceFiling.acknowledgement,
+                    ComplianceFiling.amount_paise,
                 ).where(ComplianceFiling.tenant_id == tenant_id)
             )
         ).all()
@@ -243,6 +247,7 @@ async def mark_filing(
     filed_on: date | None,
     ip: str,
     acknowledgement: str | None = None,
+    amount_paise: int | None = None,
 ) -> None:
     """Marks a filing done on a day, or (with no day) takes the mark back. The key must be one of
     the company's own dues, so nothing else can be recorded."""
@@ -280,10 +285,12 @@ async def mark_filing(
                     filed_on=filed_on,
                     filed_by=user_id,
                     acknowledgement=acknowledgement,
+                    amount_paise=amount_paise,
                 )
             )
         else:
             row.filed_on, row.filed_by, row.acknowledgement = filed_on, user_id, acknowledgement
+            row.amount_paise = amount_paise
         record(
             db,
             "portfolio.filing_marked" if filed_on else "portfolio.filing_unmarked",

@@ -99,7 +99,11 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
     bills = (
         await db.execute(
             select(
-                FinanceBill.due_date, FinanceBill.amount_paise - func.coalesce(bill_paid.c.paise, 0)
+                FinanceBill.due_date,
+                # Owed to the supplier: the bill less its TDS, which goes to the government.
+                FinanceBill.amount_paise
+                - FinanceBill.tds_paise
+                - func.coalesce(bill_paid.c.paise, 0),
             )
             .outerjoin(bill_paid, bill_paid.c.bill_id == FinanceBill.id)
             .where(FinanceBill.tenant_id == tenant_id)
@@ -518,3 +522,38 @@ async def history(
         )
     )
     return {month: (int(sales), int(costs)) for month, sales, costs in rows.all()}
+
+
+@dataclass(frozen=True)
+class Tds:
+    """TDS deducted between two days, in paise: from supplier bills (by bill date) and from salaries
+    posted for months in the span."""
+
+    on_bills: int
+    on_salaries: int
+    # Bills in the span with TDS, by section: {"194C": paise}.
+    by_section: dict[str, int]
+
+
+async def tds(db: AsyncSession, tenant_id: int, start: date, end: date) -> Tds:
+    sections = {
+        str(section): int(paise)
+        for section, paise in (
+            await db.execute(
+                select(FinanceBill.tds_section, func.sum(FinanceBill.tds_paise))
+                .where(
+                    FinanceBill.tenant_id == tenant_id,
+                    FinanceBill.bill_date.between(start, end),
+                    FinanceBill.tds_paise > 0,
+                )
+                .group_by(FinanceBill.tds_section)
+            )
+        ).all()
+    }
+    salaries = await db.scalar(
+        select(func.coalesce(func.sum(FinancePayrollPosting.tds_paise), 0)).where(
+            FinancePayrollPosting.tenant_id == tenant_id,
+            FinancePayrollPosting.month.between(start.replace(day=1), end),
+        )
+    )
+    return Tds(on_bills=sum(sections.values()), on_salaries=int(salaries or 0), by_section=sections)
