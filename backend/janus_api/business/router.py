@@ -1,6 +1,6 @@
 # ruff: noqa: E501
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, or_, select, update
@@ -112,7 +112,12 @@ async def agents(actor: CurrentActor, db: Db) -> list[schemas.AgentOut]:
             await db.scalars(
                 select(AgentDefinition)
                 .where(AgentDefinition.tenant_id == actor.session.tenant_id)
-                .where(or_(AgentDefinition.workspace_id.is_(None), AgentDefinition.workspace_id.in_(workspace_ids)))
+                .where(
+                    or_(
+                        AgentDefinition.workspace_id.is_(None),
+                        AgentDefinition.workspace_id.in_(workspace_ids),
+                    )
+                )
                 .where(AgentDefinition.status != "archived")
                 .order_by(AgentDefinition.id)
             )
@@ -124,7 +129,9 @@ async def agents(actor: CurrentActor, db: Db) -> list[schemas.AgentOut]:
 async def create_agent(
     data: schemas.AgentCreate, actor: Agents, db: Db, request: Request
 ) -> schemas.AgentOut:
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, data.workspaceId)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, data.workspaceId
+    )
     item = AgentDefinition(
         tenant_id=actor.session.tenant_id,
         workspace_id=data.workspaceId,
@@ -161,7 +168,9 @@ async def agent_detail(agent_id: int, actor: CurrentActor, db: Db) -> schemas.Ag
         from janus_api.core.errors import ApiError
 
         raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     return service.agent_out(item)
 
 
@@ -181,7 +190,9 @@ async def update_agent(
         from janus_api.core.errors import ApiError
 
         raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     for key, value in (
         ("name", data.name),
         ("department", data.department),
@@ -204,9 +215,7 @@ async def update_agent(
 
 
 @router.delete("/business/agents/{agent_id}", response_model=schemas.AgentOut)
-async def archive_agent(
-    agent_id: int, actor: Agents, db: Db, request: Request
-) -> schemas.AgentOut:
+async def archive_agent(agent_id: int, actor: Agents, db: Db, request: Request) -> schemas.AgentOut:
     item = await db.scalar(
         select(AgentDefinition)
         .where(
@@ -219,7 +228,9 @@ async def archive_agent(
         from janus_api.core.errors import ApiError
 
         raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     item.status = "archived"
     from janus_api.audit.service import record
 
@@ -235,9 +246,7 @@ async def archive_agent(
 
 
 @router.post("/business/agents/{agent_id}/test", response_model=dict, status_code=202)
-async def test_agent(
-    agent_id: int, actor: Agents, db: Db, request: Request
-) -> dict:
+async def test_agent(agent_id: int, actor: Agents, db: Db, request: Request) -> dict[str, Any]:
     """Run a side-effect-free agent preview against its saved contract."""
     item = await db.scalar(
         select(AgentDefinition).where(
@@ -248,7 +257,9 @@ async def test_agent(
     )
     if item is None:
         raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     from janus_api.audit.service import record
 
     record(
@@ -263,7 +274,9 @@ async def test_agent(
         "agentId": str(item.id),
         "status": "dry_run",
         "sideEffects": False,
-        "readScopes": item.configuration.get("readScopes", item.configuration.get("readPermissions", [])),
+        "readScopes": item.configuration.get(
+            "readScopes", item.configuration.get("readPermissions", [])
+        ),
         "proposedActions": item.configuration.get("actions", []),
         "message": "Dry run completed. No messages were sent and no business records were changed.",
     }
@@ -338,10 +351,14 @@ CORE_ACTIONS = [
     {"type": "update_record", "label": "Update record", "module": "crm_sales"},
     {"type": "send_notification", "label": "Post in Team Chat", "module": "communication"},
 ]
-TRIGGERS = [
+TRIGGERS: list[dict[str, object]] = [
     {"type": "manual", "label": "Run by hand"},
     {"type": "lead_created", "label": "When a lead is captured", "module": "crm_sales"},
-    {"type": "ticket_created", "label": "When a support ticket is opened", "module": "customer_support"},
+    {
+        "type": "ticket_created",
+        "label": "When a support ticket is opened",
+        "module": "customer_support",
+    },
 ]
 
 
@@ -362,7 +379,7 @@ async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict
             )
         ).all()
     )
-    template_actions = [
+    template_actions: list[dict[str, object]] = [
         {
             "type": step["action"],
             "label": str(step["action"]).replace("_", " ").capitalize(),
@@ -372,7 +389,7 @@ async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict
         for step in template.steps
     ]
     seen: set[tuple[object, object]] = set()
-    actions = []
+    actions: list[dict[str, object]] = []
     for action in CORE_ACTIONS + template_actions:
         if (action["type"], action["module"]) not in seen:
             seen.add((action["type"], action["module"]))
@@ -502,7 +519,10 @@ async def automations(actor: CurrentActor, db: Db) -> list[schemas.WorkflowOut]:
                 select(AutomationWorkflow)
                 .where(
                     AutomationWorkflow.tenant_id == actor.session.tenant_id,
-                    or_(AutomationWorkflow.workspace_id.is_(None), AutomationWorkflow.workspace_id.in_(workspace_ids)),
+                    or_(
+                        AutomationWorkflow.workspace_id.is_(None),
+                        AutomationWorkflow.workspace_id.in_(workspace_ids),
+                    ),
                     AutomationWorkflow.status != "archived",
                 )
                 .order_by(AutomationWorkflow.id)
@@ -515,7 +535,9 @@ async def automations(actor: CurrentActor, db: Db) -> list[schemas.WorkflowOut]:
 async def create_automation(
     data: schemas.WorkflowCreate, actor: Automations, db: Db, request: Request
 ) -> schemas.WorkflowOut:
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, data.workspaceId)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, data.workspaceId
+    )
     if data.folderId is not None:
         await _folder(db, actor.session.tenant_id, data.folderId)
     item = AutomationWorkflow(
@@ -547,13 +569,20 @@ async def create_automation(
 @router.get("/business/automations/executions", response_model=list[schemas.ExecutionOut])
 async def executions_for_business(actor: CurrentActor, db: Db) -> list[schemas.ExecutionOut]:
     """List only executions belonging to workspaces visible to the caller."""
-    workspace_ids = await service.accessible_workspace_ids(db, actor.session.tenant_id, actor.user.id)
+    workspace_ids = await service.accessible_workspace_ids(
+        db, actor.session.tenant_id, actor.user.id
+    )
     items = (
         await db.scalars(
             select(AutomationExecution)
             .join(AutomationWorkflow, AutomationWorkflow.id == AutomationExecution.workflow_id)
             .where(AutomationExecution.tenant_id == actor.session.tenant_id)
-            .where(or_(AutomationWorkflow.workspace_id.is_(None), AutomationWorkflow.workspace_id.in_(workspace_ids)))
+            .where(
+                or_(
+                    AutomationWorkflow.workspace_id.is_(None),
+                    AutomationWorkflow.workspace_id.in_(workspace_ids),
+                )
+            )
             .order_by(AutomationExecution.id.desc())
             .limit(100)
         )
@@ -562,7 +591,9 @@ async def executions_for_business(actor: CurrentActor, db: Db) -> list[schemas.E
 
 
 @router.get("/business/automations/{workflow_id}/runs", response_model=list[schemas.ExecutionOut])
-async def workflow_runs(workflow_id: int, actor: CurrentActor, db: Db) -> list[schemas.ExecutionOut]:
+async def workflow_runs(
+    workflow_id: int, actor: CurrentActor, db: Db
+) -> list[schemas.ExecutionOut]:
     workflow = await db.scalar(
         select(AutomationWorkflow).where(
             AutomationWorkflow.id == workflow_id,
@@ -572,7 +603,9 @@ async def workflow_runs(workflow_id: int, actor: CurrentActor, db: Db) -> list[s
     )
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
+    )
     items = (
         await db.scalars(
             select(AutomationExecution)
@@ -587,8 +620,8 @@ async def workflow_runs(workflow_id: int, actor: CurrentActor, db: Db) -> list[s
     return [service.execution_out(item) for item in items]
 
 
-@router.get("/business/automations/{workflow_id}/versions", response_model=list[dict])
-async def workflow_versions(workflow_id: int, actor: CurrentActor, db: Db) -> list[dict]:
+@router.get("/business/automations/{workflow_id}/versions", response_model=list[dict[str, Any]])
+async def workflow_versions(workflow_id: int, actor: CurrentActor, db: Db) -> list[dict[str, Any]]:
     workflow = await db.scalar(
         select(AutomationWorkflow).where(
             AutomationWorkflow.id == workflow_id,
@@ -598,8 +631,17 @@ async def workflow_versions(workflow_id: int, actor: CurrentActor, db: Db) -> li
     )
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
-    return [{"version": 1, "status": workflow.status, "createdAt": workflow.created_at, "changeNote": "Initial workflow version"}]
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
+    )
+    return [
+        {
+            "version": 1,
+            "status": workflow.status,
+            "createdAt": workflow.created_at,
+            "changeNote": "Initial workflow version",
+        }
+    ]
 
 
 @router.patch("/business/automations/{workflow_id}/draft", response_model=schemas.WorkflowOut)
@@ -607,48 +649,80 @@ async def save_workflow_draft(
     workflow_id: int, data: schemas.WorkflowUpdate, actor: Automations, db: Db, request: Request
 ) -> schemas.WorkflowOut:
     item = await db.scalar(
-        select(AutomationWorkflow).where(
+        select(AutomationWorkflow)
+        .where(
             AutomationWorkflow.id == workflow_id,
             AutomationWorkflow.tenant_id == actor.session.tenant_id,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if item is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
-    for key, value in (("name", data.name), ("description", data.description), ("trigger", data.trigger), ("actions", data.actions), ("requires_approval", data.requiresApproval)):
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
+    for key, value in (
+        ("name", data.name),
+        ("description", data.description),
+        ("trigger", data.trigger),
+        ("actions", data.actions),
+        ("requires_approval", data.requiresApproval),
+    ):
         if value is not None:
             setattr(item, key, value)
     item.status = "draft"
     from janus_api.audit.service import record
-    record(db, "business.automation_draft_saved", tenant_id=actor.session.tenant_id, user_id=actor.user.id, ip=request_ip(request), details={"workflow_id": workflow_id})
+
+    record(
+        db,
+        "business.automation_draft_saved",
+        tenant_id=actor.session.tenant_id,
+        user_id=actor.user.id,
+        ip=request_ip(request),
+        details={"workflow_id": workflow_id},
+    )
     return service.workflow_out(item)
 
 
 @router.post("/business/automations/{workflow_id}/publish", response_model=schemas.WorkflowOut)
 async def publish_workflow(
-    workflow_id: int, payload: dict, actor: Automations, db: Db, request: Request
+    workflow_id: int, payload: dict[str, Any], actor: Automations, db: Db, request: Request
 ) -> schemas.WorkflowOut:
     item = await db.scalar(
-        select(AutomationWorkflow).where(
+        select(AutomationWorkflow)
+        .where(
             AutomationWorkflow.id == workflow_id,
             AutomationWorkflow.tenant_id == actor.session.tenant_id,
             AutomationWorkflow.status != "archived",
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if item is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     if (item.trigger or {}).get("type") in engine.EVENT_TRIGGERS:
         _refuse_unsupported(item)
     item.status = "active"
     from janus_api.audit.service import record
-    record(db, "business.automation_published", tenant_id=actor.session.tenant_id, user_id=actor.user.id, ip=request_ip(request), details={"workflow_id": workflow_id, "change_note": payload.get("changeNote", "")})
+
+    record(
+        db,
+        "business.automation_published",
+        tenant_id=actor.session.tenant_id,
+        user_id=actor.user.id,
+        ip=request_ip(request),
+        details={"workflow_id": workflow_id, "change_note": payload.get("changeNote", "")},
+    )
     return service.workflow_out(item)
 
 
-@router.post("/business/automations/{workflow_id}/test", response_model=schemas.ExecutionOut, status_code=202)
+@router.post(
+    "/business/automations/{workflow_id}/test", response_model=schemas.ExecutionOut, status_code=202
+)
 async def test_workflow(
-    workflow_id: int, payload: dict, actor: Automations, db: Db, request: Request
+    workflow_id: int, payload: dict[str, Any], actor: Automations, db: Db, request: Request
 ) -> schemas.ExecutionOut:
     workflow = await db.scalar(
         select(AutomationWorkflow).where(
@@ -659,22 +733,53 @@ async def test_workflow(
     )
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
-    item = AutomationExecution(tenant_id=actor.session.tenant_id, workflow_id=workflow.id, status="dry_run", event={"trigger": "test", "step_id": payload.get("stepId")}, result={"side_effects": False, "message": "Dry run completed without sending or changing business records.", "unsupported": engine.refusals(workflow.actions or [])})
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
+    )
+    item = AutomationExecution(
+        tenant_id=actor.session.tenant_id,
+        workflow_id=workflow.id,
+        status="dry_run",
+        event={"trigger": "test", "step_id": payload.get("stepId")},
+        result={
+            "side_effects": False,
+            "message": "Dry run completed without sending or changing business records.",
+            "unsupported": engine.refusals(workflow.actions or []),
+        },
+    )
     db.add(item)
     await db.flush()
     from janus_api.audit.service import record
-    record(db, "business.automation_dry_run", tenant_id=actor.session.tenant_id, user_id=actor.user.id, ip=request_ip(request), details={"workflow_id": workflow_id, "execution_id": item.id})
+
+    record(
+        db,
+        "business.automation_dry_run",
+        tenant_id=actor.session.tenant_id,
+        user_id=actor.user.id,
+        ip=request_ip(request),
+        details={"workflow_id": workflow_id, "execution_id": item.id},
+    )
     return service.execution_out(item)
 
 
 @router.post("/business/automations/{workflow_id}/on", response_model=schemas.WorkflowOut)
 @router.post("/business/automations/{workflow_id}/off", response_model=schemas.WorkflowOut)
-async def set_workflow_status(workflow_id: int, actor: Automations, db: Db, request: Request) -> schemas.WorkflowOut:
-    item = await db.scalar(select(AutomationWorkflow).where(AutomationWorkflow.id == workflow_id, AutomationWorkflow.tenant_id == actor.session.tenant_id).with_for_update())
+async def set_workflow_status(
+    workflow_id: int, actor: Automations, db: Db, request: Request
+) -> schemas.WorkflowOut:
+    item = await db.scalar(
+        select(AutomationWorkflow)
+        .where(
+            AutomationWorkflow.id == workflow_id,
+            AutomationWorkflow.tenant_id == actor.session.tenant_id,
+        )
+        .with_for_update()
+    )
     if item is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     item.status = "active" if request.url.path.endswith("/on") else "paused"
     return service.workflow_out(item)
 
@@ -692,7 +797,9 @@ async def automation_detail(workflow_id: int, actor: CurrentActor, db: Db) -> sc
         from janus_api.core.errors import ApiError
 
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     return service.workflow_out(item)
 
 
@@ -706,7 +813,12 @@ async def executions(actor: CurrentActor, db: Db) -> list[schemas.ExecutionOut]:
             select(AutomationExecution)
             .join(AutomationWorkflow, AutomationWorkflow.id == AutomationExecution.workflow_id)
             .where(AutomationExecution.tenant_id == actor.session.tenant_id)
-            .where(or_(AutomationWorkflow.workspace_id.is_(None), AutomationWorkflow.workspace_id.in_(workspace_ids)))
+            .where(
+                or_(
+                    AutomationWorkflow.workspace_id.is_(None),
+                    AutomationWorkflow.workspace_id.in_(workspace_ids),
+                )
+            )
             .order_by(AutomationExecution.id.desc())
             .limit(100)
         )
@@ -729,7 +841,9 @@ async def run_automation(
     )
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
+    )
     _refuse_unsupported(workflow)
     item = AutomationExecution(
         tenant_id=actor.session.tenant_id,
@@ -772,10 +886,14 @@ async def approve_execution(
     )
     if item is None:
         raise ApiError("not_found", "Execution not found.", 404)
-    workflow = await db.scalar(select(AutomationWorkflow).where(AutomationWorkflow.id == item.workflow_id))
+    workflow = await db.scalar(
+        select(AutomationWorkflow).where(AutomationWorkflow.id == item.workflow_id)
+    )
     if workflow is None:
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, workflow.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
+    )
     if item.status != "pending_approval":
         raise ApiError("not_waiting", "This run is not waiting for an approval.", 409)
     item.status = "approved"
@@ -809,7 +927,9 @@ async def update_automation(
         from janus_api.core.errors import ApiError
 
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     for key, value in (
         ("name", data.name),
         ("description", data.description),
@@ -849,7 +969,9 @@ async def archive_automation(
         from janus_api.core.errors import ApiError
 
         raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(db, actor.session.tenant_id, actor.user.id, item.workspace_id)
+    await service.ensure_workspace_access(
+        db, actor.session.tenant_id, actor.user.id, item.workspace_id
+    )
     item.status = "archived"
     from janus_api.audit.service import record
 

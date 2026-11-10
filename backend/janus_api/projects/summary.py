@@ -1,6 +1,7 @@
 """The closure summary for a project, computed on the server from its typed records."""
 
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +11,9 @@ from janus_api.projects.models import Project
 from janus_api.projects.planning_models import ProjectMilestone
 
 
-async def closure_summary(db: AsyncSession, tenant_id: int, project_key: str) -> dict | None:
+async def closure_summary(
+    db: AsyncSession, tenant_id: int, project_key: str
+) -> dict[str, Any] | None:
     """Closing figures from the typed records. None if the project is only on the screens."""
     project = await db.scalar(
         select(Project).where(Project.tenant_id == tenant_id, Project.external_key == project_key)
@@ -40,12 +43,12 @@ async def closure_summary(db: AsyncSession, tenant_id: int, project_key: str) ->
             ProjectChange.project_id == project.id, ProjectChange.status == "approved"
         )
     )
-    billed = Decimal(milestones[1])
+    billed = Decimal(milestones[1] or 0)
     return {
         "budget": str(project.budget),
         "milestones_accepted": milestones[0],
         "milestones_total": total_milestones,
         "billed": str(billed),
-        "hours": str(Decimal(hours)),
+        "hours": str(Decimal(hours or 0)),
         "approved_changes": approved_changes,
     }

@@ -47,15 +47,11 @@ async def test_requester_cannot_approve_and_another_owner_can(
         await client.post("/v1/vendor-bank-accounts", headers=owner.headers, json=REQUEST)
     ).json()["id"]
 
-    own = await client.post(
-        f"/v1/vendor-bank-accounts/{request_id}/approve", headers=owner.headers
-    )
+    own = await client.post(f"/v1/vendor-bank-accounts/{request_id}/approve", headers=owner.headers)
     assert own.status_code == 403
     assert own.json()["error"]["code"] == "self_approval"
 
-    approved = await client.post(
-        f"/v1/vendor-bank-accounts/{request_id}/approve", headers=second
-    )
+    approved = await client.post(f"/v1/vendor-bank-accounts/{request_id}/approve", headers=second)
     assert approved.status_code == 200, approved.text
     assert approved.json()["status"] == "approved"
     assert approved.json()["approved_by"] == "Member"
@@ -65,10 +61,16 @@ async def test_requester_cannot_approve_and_another_owner_can(
 
     async with admin_engine.connect() as admin:
         actions = (
-            await admin.execute(
-                text("SELECT action FROM audit_log WHERE action LIKE 'vendor_bank.%' ORDER BY id")
+            (
+                await admin.execute(
+                    text(
+                        "SELECT action FROM audit_log WHERE action LIKE 'vendor_bank.%' ORDER BY id"
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert actions == ["vendor_bank.requested", "vendor_bank.approved"]
 
 

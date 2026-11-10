@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
@@ -214,9 +214,7 @@ async def list_workspace_members(
     ]
 
 
-async def accessible_workspace_ids(
-    db: AsyncSession, tenant_id: int, user_id: int
-) -> list[int]:
+async def accessible_workspace_ids(db: AsyncSession, tenant_id: int, user_id: int) -> list[int]:
     """Return active department workspaces this user is explicitly assigned to."""
     return list(
         (
@@ -250,7 +248,7 @@ async def ensure_workspace_access(
             BusinessWorkspace.status == "active",
             or_(
                 BusinessWorkspace.workspace_type == raw.replace("-", "_"),
-                BusinessWorkspace.id == int(raw) if raw.isdigit() else False,
+                BusinessWorkspace.id == int(raw) if raw.isdigit() else false(),
             ),
         )
     )
@@ -353,9 +351,7 @@ def execution_out(item: AutomationExecution) -> schemas.ExecutionOut:
         approvedBy=str(item.approved_by) if item.approved_by else None,
         createdAt=item.created_at,
         completedAt=item.completed_at,
-        recordRef={
-            key: item.event[key] for key in ("lead_id", "ticket_id") if key in item.event
-        }
+        recordRef={key: item.event[key] for key in ("lead_id", "ticket_id") if key in item.event}
         or None,
         steps=list((item.result or {}).get("steps", [])),
         startedAt=item.created_at,

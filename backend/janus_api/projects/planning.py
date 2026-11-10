@@ -297,7 +297,9 @@ async def list_tasks(project_key: str, actor: Manage, db: Db) -> list[TaskOut]:
         TaskOut(
             external_key=row.external_key,
             title=row.title,
-            milestone_key=milestone_keys.get(row.milestone_id),
+            milestone_key=(
+                milestone_keys.get(row.milestone_id) if row.milestone_id is not None else None
+            ),
             assignee_user_id=str(row.assignee_user_id) if row.assignee_user_id else None,
             due_on=row.due_on,
             status=row.status,

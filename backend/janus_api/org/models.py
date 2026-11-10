@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -24,7 +25,8 @@ class Tenant(Base):
     timezone: Mapped[str] = mapped_column(default="Asia/Kolkata")
     industry: Mapped[str] = mapped_column(String(120), server_default="")
     company_size: Mapped[str] = mapped_column(String(80), server_default="")
-    business_hours: Mapped[dict[str, str]] = mapped_column(
+    # Opening hours, and the setup wizard's finished steps (a list) under "setup_steps".
+    business_hours: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text('\'{"start":"09:00","end":"18:00"}\'::jsonb')
     )
     default_channel: Mapped[str] = mapped_column(String(20), server_default="whatsapp")

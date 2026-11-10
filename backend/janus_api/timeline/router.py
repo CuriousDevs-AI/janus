@@ -9,7 +9,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
@@ -55,7 +55,7 @@ class EntryOut(BaseModel):
     kind: str
     author: str | None
     body: str
-    payload: dict
+    payload: dict[str, Any]
     created_at: datetime
 
 

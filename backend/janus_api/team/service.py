@@ -66,11 +66,12 @@ async def _space(db: Db, tenant_id: int, space_id: int) -> TeamSpace:
 
 
 async def _member(db: Db, space_id: int, user_id: int) -> TeamSpaceMember | None:
-    return await db.scalar(
+    found: TeamSpaceMember | None = await db.scalar(
         select(TeamSpaceMember).where(
             TeamSpaceMember.space_id == space_id, TeamSpaceMember.user_id == user_id
         )
     )
+    return found
 
 
 async def _readable(db: Db, actor: Actor, space: TeamSpace) -> TeamSpaceMember | None:
@@ -256,15 +257,16 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
         return []
     ids = [row.id for row in rows]
     people = await _people(db, {row.author_id for row in rows})
-    replies = dict(
-        (
+    replies: dict[int | None, int] = {
+        parent: count
+        for parent, count in (
             await db.execute(
                 select(TeamMessage.parent_id, func.count())
                 .where(TeamMessage.parent_id.in_(ids))
                 .group_by(TeamMessage.parent_id)
             )
         ).all()
-    )
+    }
     reactions: dict[int, list[schemas.ReactionOut]] = {}
     grouped = await db.execute(
         select(
@@ -293,14 +295,14 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
         .where(TeamAttachment.message_id.in_(ids))
         .order_by(TeamAttachment.id)
     )
-    for row in attached.all():
-        attachments.setdefault(row.message_id, []).append(
+    for attached_row in attached.all():
+        attachments.setdefault(attached_row.message_id, []).append(
             schemas.AttachmentOut(
-                id=str(row.id),
-                filename=row.filename,
-                contentType=row.content_type,
-                sizeBytes=row.size_bytes,
-                isImage=row.content_type in IMAGE_TYPES,
+                id=str(attached_row.id),
+                filename=attached_row.filename,
+                contentType=attached_row.content_type,
+                sizeBytes=attached_row.size_bytes,
+                isImage=attached_row.content_type in IMAGE_TYPES,
             )
         )
     posts = await _posts_out(db, actor, rows)
@@ -323,7 +325,7 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
                 reactions=[] if deleted else reactions.get(row.id, []),
                 attachments=[] if deleted else attachments.get(row.id, []),
                 kind=row.kind,
-                **posts.get(row.id, {}),  # type: ignore[arg-type]
+                **posts.get(row.id, {}),
             )
         )
     return out
@@ -508,7 +510,7 @@ async def list_messages(
 ) -> list[schemas.MessageOut]:
     space = await _space(db, actor.session.tenant_id, space_id)
     await _readable(db, actor, space)
-    query: Select = select(TeamMessage).where(
+    query: Select[tuple[TeamMessage]] = select(TeamMessage).where(
         TeamMessage.space_id == space.id, TeamMessage.parent_id.is_(None)
     )
     if before_id:
@@ -866,13 +868,14 @@ async def call_people(db: Db, space_id: int) -> list[schemas.CallPersonOut]:
 
 
 async def _presence(db: Db, space_id: int, user_id: int) -> TeamVoicePresence | None:
-    return await db.scalar(
+    found: TeamVoicePresence | None = await db.scalar(
         select(TeamVoicePresence).where(
             TeamVoicePresence.space_id == space_id,
             TeamVoicePresence.user_id == user_id,
             TeamVoicePresence.seen_at > _now() - CALL_STALE,
         )
     )
+    return found
 
 
 async def join_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
@@ -1025,8 +1028,8 @@ async def prune_call(db: Db, space_id: int) -> None:
             TeamSignal.space_id == space_id, TeamSignal.created_at <= _now() - SIGNAL_TTL
         )
     )
-    for row in old.all():
-        await db.delete(row)
+    for signal in old.all():
+        await db.delete(signal)
     await db.flush()
 
 
