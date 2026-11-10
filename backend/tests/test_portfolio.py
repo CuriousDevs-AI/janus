@@ -968,6 +968,30 @@ async def test_activity_across_companies_leaves_money_out_for_an_analyst(
     assert all(item["who"] == "Owner" for item in seen["items"])
     # Reading the Portfolio is not itself something that happened in a company.
     assert all("read" not in item["text"] for item in seen["items"])
+    raised = next(item for item in seen["items"] if item["text"] == "raised an invoice")
+    assert raised["amount"] == "₹10" and raised["detail"].endswith(" · Kavita Rao")
+    assert raised["count"] == 1 and raised["flag"] is None
+    # Two more invoices soon after read as one line, with the total.
+    for key in ("act-inv-2", "act-inv-3"):
+        more = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "customer": "Kavita Rao",
+                "invoice_date": today,
+                "due_date": today,
+                "same_state": True,
+                "lines": [
+                    {"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 1000, "gst_rate": 0}
+                ],
+            },
+        )
+        assert more.status_code == 201, more.text
+    seen = (await client.get("/v1/portfolio/activity", headers=owner.headers)).json()
+    burst = [item for item in seen["items"] if "invoice" in item["text"]]
+    assert [(b["text"], b["count"], b["amount"], b["detail"]) for b in burst] == [
+        ("raised 3 invoices", 3, "₹30", None)
+    ]
 
     shared = await client.post(
         "/v1/portfolio/access",
@@ -984,6 +1008,7 @@ async def test_activity_across_companies_leaves_money_out_for_an_analyst(
     areas = {item["area"] for item in view["items"]}
     assert "Sales" in areas and "Finance" not in areas
     assert {item["company"] for item in view["items"]} == {"Mumbai Traders"}
+    assert all(item["amount"] is None and item["detail"] is None for item in view["items"])
 
 
 def test_month_spans_end_today_and_cross_the_year() -> None:

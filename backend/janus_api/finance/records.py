@@ -372,7 +372,11 @@ async def create_invoice(
         user_id=actor.user.id,
         tenant_id=tenant_id,
         ip=request_ip(request),
-        details={"invoice": row.number, "total_paise": row.total_paise},
+        details={
+            "invoice": row.number,
+            "total_paise": row.total_paise,
+            "customer": (row.customer_company or row.customer)[:160],
+        },
     )
     return await _invoice_out(db, row)
 

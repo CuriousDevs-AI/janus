@@ -412,6 +412,13 @@ class ActivityItem(BaseModel):
     area: str
     who: str
     text: str
+    # For a role with money: the document and the amount, such as "INV-0012 · Kavita Stores".
+    detail: str | None = None
+    amount: str | None = None
+    # How many events of the same kind by the same person this line stands for (a burst).
+    count: int = 1
+    # "change" for an edit, "reversal" for something undone or taken back.
+    flag: Literal["change", "reversal"] | None = None
 
 
 class ActivityList(BaseModel):

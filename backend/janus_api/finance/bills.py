@@ -240,7 +240,7 @@ async def record_bill(
         user_id=actor.user.id,
         tenant_id=tenant_id,
         ip=request_ip(request),
-        details={"bill": row.number, "amount_paise": data.amount_paise},
+        details={"bill": row.number, "amount_paise": data.amount_paise, "vendor": row.vendor[:160]},
     )
     return await _bill_out(db, row)
 

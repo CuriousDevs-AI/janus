@@ -150,10 +150,11 @@ export interface PortfolioAccessResult {
   done: string[];
   skipped: { company: string; reason: string }[];
 }
-/** GET /portfolio/activity: what happened across the companies, newest first, without amounts. */
+/** GET /portfolio/activity: what happened across the companies, newest first. Money events carry
+ * their document and amount for a role with money; several close together come as one line. */
 export interface PortfolioActivity {
   days: number;
-  items: { companyId: string; company: string; at: string; area: string; who: string; text: string }[];
+  items: { companyId: string; company: string; at: string; area: string; who: string; text: string; detail: string | null; amount: string | null; count: number; flag: "change" | "reversal" | null }[];
 }
 /** GET /portfolio/trends: day, week or month per company, oldest first. Money is null without money. */
 export interface PortfolioTrends {

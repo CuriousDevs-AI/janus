@@ -1,11 +1,14 @@
 """One timeline of what happened across every company a person sees in the Portfolio.
 
 Each company is read on its own, under its own context. Only events that mean something to an
-owner are shown, in plain words, without amounts; money events are left out for a role without
-money.
+owner are shown, in plain words. For a role with money, a money event names its document, the
+customer or supplier and the amount; for a role without money, money events are left out. Several
+events of one kind by one person close together read as one line ("raised 6 invoices, ₹4.2L"), and
+edits and reversals are marked.
 """
 
 from datetime import timedelta
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +20,7 @@ from janus_api.org import overview as org
 from janus_api.org import service as org_service
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import readable_companies
+from janus_api.portfolio.digest import inr
 
 PER_COMPANY, MOST = 80, 300
 
@@ -80,6 +84,55 @@ EVENTS: dict[str, tuple[str, str]] = {
     "portfolio.access_removed": ("People", "removed someone's Portfolio access"),
 }
 MONEY_AREAS = {"Finance"}
+# The plural for a burst: "raised 6 invoices".
+PLURAL: dict[str, str] = {
+    "lead.captured": "captured {n} leads",
+    "deal.created": "opened {n} deals",
+    "deal.updated": "updated {n} deals",
+    "finance.invoice_created": "raised {n} invoices",
+    "finance.payment_recorded": "recorded {n} customer payments",
+    "finance.bill_recorded": "recorded {n} supplier bills",
+    "finance.bill_paid": "paid {n} supplier bills",
+    "finance.credit_note_raised": "raised {n} credit notes",
+    "operations.goods_received": "received goods {n} times",
+    "operations.dispatch_booked": "booked {n} dispatches",
+    "support.ticket_created": "opened {n} support tickets",
+    "support.ticket_resolved": "resolved {n} support tickets",
+    "project.milestone_created": "added {n} milestones",
+    "invitation.created": "invited {n} people",
+}
+CHANGES = {
+    "deal.updated",
+    "membership.updated",
+    "company.rules_changed",
+    "portfolio.company_updated",
+    "portfolio.compliance_plan_set",
+    "portfolio.registration_set",
+    "project.status_changed",
+}
+REVERSALS = {
+    "finance.credit_note_raised",
+    "finance.credit_note_approved",
+    "portfolio.filing_unmarked",
+    "portfolio.access_removed",
+    "finance.fund_rejected",
+}
+# Events this close together, of one kind by one person in one company, read as one line.
+BURST = timedelta(minutes=30)
+
+
+def _paise(details: dict[str, str | int | bool]) -> int | None:
+    value = details.get("amount_paise", details.get("total_paise"))
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _detail(details: dict[str, str | int | bool]) -> str | None:
+    number = next(
+        (str(details[key]) for key in ("invoice", "bill", "note") if details.get(key)), None
+    )
+    party = next((str(details[key]) for key in ("customer", "vendor") if details.get(key)), None)
+    parts = [part for part in (number, party) if part]
+    return " · ".join(parts) or None
 
 
 async def activity(
@@ -105,18 +158,51 @@ async def activity(
     found.sort(key=lambda entry: entry[2].at, reverse=True)
     found = found[:MOST]
     people = await user_directory(db, sorted({e.user_id for _, _, e in found if e.user_id}))
-    items = []
+    items: list[schemas.ActivityItem] = []
+    # For each line, the event kind and its paise, while bursts are added up.
+    actions: list[str] = []
+    totals: list[int | None] = []
     for tenant_id, name, event in found:
         area, text = EVENTS[event.action]
         who = people[event.user_id].name if event.user_id in people else "Janus"
-        items.append(
-            schemas.ActivityItem(
-                companyId=str(tenant_id),
-                company=name,
-                at=event.at,
-                area=area,
-                who=who,
-                text=text,
-            )
+        money = area in MONEY_AREAS
+        paise = _paise(event.details) if money else None
+        last = items[-1] if items else None
+        if (
+            last is not None
+            and event.action in PLURAL
+            and last.companyId == str(tenant_id)
+            and last.who == who
+            and last.area == area
+            and actions[-1] == event.action
+            and last.at - event.at <= BURST
+        ):
+            last.count += 1
+            last.text = PLURAL[event.action].format(n=last.count)
+            last.detail = None
+            if paise is not None and totals[-1] is not None:
+                totals[-1] = (totals[-1] or 0) + paise
+            else:
+                totals[-1] = None
+            continue
+        item = schemas.ActivityItem(
+            companyId=str(tenant_id),
+            company=name,
+            at=event.at,
+            area=area,
+            who=who,
+            text=text,
+            detail=_detail(event.details) if money else None,
+            flag="change"
+            if event.action in CHANGES
+            else "reversal"
+            if event.action in REVERSALS
+            else None,
         )
+        items.append(item)
+        actions.append(event.action)
+        totals.append(paise)
+    for item, paise in zip(items, totals, strict=True):
+        if paise is not None:
+            item.amount = inr(Decimal(paise) / 100)
     return schemas.ActivityList(days=days, items=items)
