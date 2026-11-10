@@ -11,6 +11,7 @@ from janus_api.portfolio import (
     digest,
     intelligence,
     knowledge,
+    preferences,
     schemas,
     summary,
     targets,
@@ -305,3 +306,15 @@ async def remove_knowledge(
         db, actor.user.id, actor.session.tenant_id, company_id, item_id, False, request_ip(request)
     )
     return Response(status_code=204)
+
+
+@router.get("/preferences", response_model=schemas.Preferences)
+async def read_preferences(actor: CurrentActor, db: Db) -> schemas.Preferences:
+    return await preferences.read(db, actor.user.id)
+
+
+@router.put("/preferences", response_model=schemas.Preferences)
+async def save_preferences(
+    data: schemas.Preferences, actor: CurrentActor, db: Db
+) -> schemas.Preferences:
+    return await preferences.save(db, actor.user.id, data)

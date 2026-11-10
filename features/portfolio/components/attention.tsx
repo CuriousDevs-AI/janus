@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { Check } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { attentionOf, openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { severityName, severityTone } from "@/features/portfolio/lib/format";
+import { defaultThresholds, usePreferences, type Thresholds } from "@/features/portfolio/lib/preferences";
 import type { PortfolioCompany } from "@/features/portfolio/types";
 
 export function AttentionList({ list, limit, onOpen, read = [] }: { list: PortfolioCompany[]; limit?: number; onOpen?: (key: string) => void; read?: string[] }) {
@@ -20,8 +22,6 @@ export function AttentionList({ list, limit, onOpen, read = [] }: { list: Portfo
   </li>)}</ul>;
 }
 
-const readKey = "janus.portfolio-live-read";
-
 /** What a notification is about, from where it opens. */
 function categoryOf(text: string, to: string) {
   if (/approval/.test(text)) return "Approvals";
@@ -34,16 +34,17 @@ function categoryOf(text: string, to: string) {
 }
 
 /** Notifications say what is wrong right now, from every company; each opens where it is dealt with.
- * Which ones were read is remembered in this browser only. To act, use the Work inbox. */
+ * Which ones were read is kept on the server, so every browser agrees. To act, use the Work inbox. */
 export function Notifications({ list }: { list: PortfolioCompany[] }) {
   const [company, setCompany] = React.useState("all");
   const [category, setCategory] = React.useState("all");
   const [severity, setSeverity] = React.useState("all");
   const [unreadOnly, setUnreadOnly] = React.useState(false);
-  const [read, setRead] = React.useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(readKey) ?? "[]"); } catch { return []; } });
+  const preferences = usePreferences();
+  const read = preferences.value.read;
   const all = attentionOf(list).map((item) => ({ ...item, category: categoryOf(item.text, item.to) }));
   const items = all.filter((item) => (company === "all" || item.company.id === company) && (category === "all" || item.category === category) && (severity === "all" || item.severity === severity) && (!unreadOnly || !read.includes(item.key)));
-  const mark = (keys: string[]) => { const next = [...new Set([...read, ...keys])]; setRead(next); try { window.localStorage.setItem(readKey, JSON.stringify(next)); } catch { /* private mode */ } };
+  const mark = (keys: string[]) => { void preferences.save({ ...preferences.value, read: [...new Set([...read, ...keys])] }); };
   const unread = all.filter((item) => !read.includes(item.key));
   const categories = [...new Set(all.map((item) => item.category))].sort();
   const { owns } = useRoles();
@@ -61,7 +62,31 @@ export function Notifications({ list }: { list: PortfolioCompany[] }) {
       {!read.includes(item.key) && <Button size="sm" variant="ghost" onClick={() => mark([item.key])}>Mark read</Button>}
       {(owns(item.company) || item.to.startsWith("/portfolio")) && <Button size="sm" variant="secondary" onClick={() => { mark([item.key]); if (item.to.startsWith("/portfolio")) window.location.assign(item.to); else openIn(item.company, item.to); }}>Open</Button>}
     </li>)}</ul>}
-    {all.length > 0 && <p className="mt-3 text-xs text-muted-foreground">{all.length - unread.length} of {all.length} marked read in this browser.</p>}
+    {all.length > 0 && <p className="mt-3 text-xs text-muted-foreground">{all.length - unread.length} of {all.length} marked read.</p>}
+  </SectionCard>;
+}
+
+/** When a company turns red for this person: overdue money, approvals waiting and late bills. */
+export function ThresholdsCard() {
+  const preferences = usePreferences();
+  const [draft, setDraft] = React.useState<Thresholds | null>(null);
+  const value = draft ?? preferences.value.thresholds;
+  const set = (patch: Partial<Thresholds>) => setDraft({ ...value, ...patch });
+  const number = (text: string, max: number) => Math.min(max, Math.max(0, Math.round(Number(text) || 0)));
+  const field = "h-8 w-28 rounded-md border border-input bg-surface-2 px-2 text-[13px] tabular-nums";
+  const save = async () => { if (await preferences.save({ ...preferences.value, thresholds: value })) { toast.success("Saved. Health is worked out again with your thresholds."); window.location.reload(); } };
+  return <SectionCard title="When is a company red?" description="Your own thresholds. They change health on every Portfolio page and in your weekly email, for you only.">
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className="flex flex-col gap-1 text-sm">Money owed is red once some of it is late by
+        <select aria-label="Overdue is red after" className={field} value={value.overdueRedAfterDays} onChange={(event) => set({ overdueRedAfterDays: Number(event.target.value) as 30 | 60 })}><option value={30}>30 days</option><option value={60}>60 days</option></select></label>
+      <label className="flex flex-col gap-1 text-sm">Ignore overdue amounts under (₹)
+        <input aria-label="Ignore overdue under" type="number" min={0} className={field} value={value.overdueMinimum} onChange={(event) => set({ overdueMinimum: number(event.target.value, 1e10) })} /></label>
+      <label className="flex flex-col gap-1 text-sm">Approvals waiting are red above
+        <input aria-label="Approvals red above" type="number" min={0} className={field} value={value.approvalsRedAbove} onChange={(event) => set({ approvalsRedAbove: number(event.target.value, 1000) })} /></label>
+      <label className="flex flex-col gap-1 text-sm">Late supplier bills are red at this share of the week&apos;s bills (%)
+        <input aria-label="Late bills red at percent" type="number" min={0} max={100} className={field} value={value.lateBillsRedShare} onChange={(event) => set({ lateBillsRedShare: number(event.target.value, 100) })} /></label>
+    </div>
+    <div className="mt-4 flex gap-2"><Button size="sm" onClick={save} disabled={!draft}>Save thresholds</Button><Button size="sm" variant="ghost" onClick={() => setDraft(defaultThresholds)}>Use the defaults</Button></div>
   </SectionCard>;
 }
 

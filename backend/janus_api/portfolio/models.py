@@ -122,3 +122,16 @@ class PortfolioKnowledge(Base):
     passage: Mapped[int] = mapped_column(default=0)
     created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PortfolioPreference(Base):
+    """One person's Portfolio settings, kept on the server so every browser and phone agrees:
+    which notifications they have read, what they snoozed in the Work inbox, and when a company
+    turns red for them."""
+
+    __tablename__ = "portfolio_preferences"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), unique=True)
+    read: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    snoozed: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

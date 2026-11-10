@@ -29,20 +29,27 @@ def attention(
     support: schemas.Support,
     stock: schemas.Stock,
     dues: list[schemas.ComplianceDue],
+    limits: schemas.Thresholds | None = None,
 ) -> list[schemas.AttentionItem]:
-    """What needs the owner, most urgent first."""
+    """What needs the owner, most urgent first, red where the person's thresholds say."""
+    limits = limits or schemas.Thresholds()
     items: list[schemas.AttentionItem] = []
 
     def add(severity: str, text: str, to: str) -> None:
         items.append(schemas.AttentionItem(severity=severity, text=text, to=to))
 
-    if money and money.overdueInvoices:
-        late = Decimal(money.ageing.over60) > 0
+    if money and money.overdueInvoices and Decimal(money.overdue) >= limits.overdueMinimum:
+        ageing = money.ageing
+        # Ageing is kept in 30-day buckets, so "over 30" is the two older buckets together.
+        old = Decimal(ageing.over60)
+        if limits.overdueRedAfterDays == 30:
+            old += Decimal(ageing.days31to60)
+        days = limits.overdueRedAfterDays
         add(
-            "high" if late else "medium",
+            "high" if old > 0 else "medium",
             f"₹{Decimal(money.overdue):,.0f} overdue from customers on {money.overdueInvoices}"
             f" invoice{'' if money.overdueInvoices == 1 else 's'}"
-            + (f", ₹{Decimal(money.ageing.over60):,.0f} over 60 days" if late else ""),
+            + (f", ₹{old:,.0f} over {days} days" if old > 0 else ""),
             f"{FINANCE}?view=receivables&workspace=finance-accounting",
         )
     bills_late, bills_week = (
@@ -51,7 +58,7 @@ def attention(
     )
     if money and bills_late > 0:
         add(
-            "high" if bills_late >= bills_week / 2 else "medium",
+            "high" if bills_late * 100 >= bills_week * limits.lateBillsRedShare else "medium",
             f"₹{bills_late:,.0f} of supplier bills already late"
             + (
                 f", ₹{bills_week - bills_late:,.0f} more due within 7 days"
@@ -69,7 +76,7 @@ def attention(
     waiting = sum(item.count for item in approvals)
     if waiting:
         add(
-            "high" if waiting > 5 else "medium",
+            "high" if waiting > limits.approvalsRedAbove else "medium",
             f"{_count(waiting, 'approval')} waiting: "
             + ", ".join(
                 _count(item.count, item.one.lower(), item.label.lower()) for item in approvals

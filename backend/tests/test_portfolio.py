@@ -1193,3 +1193,71 @@ async def test_trends_by_day(client: httpx.AsyncClient, mailbox: Mailbox) -> Non
     point = trend["companies"][0]["points"][-1]
     assert point["leads"] == 1 and point["wonValue"] == "700.00" and point["netSales"] == "250.00"
     assert all(p["leads"] == 0 for p in trend["companies"][0]["points"][:-1])
+
+
+async def test_each_person_keeps_read_snoozed_and_red_thresholds_on_the_server(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    created = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "late-45"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": (today - timedelta(days=70)).isoformat(),
+            "due_date": (today - timedelta(days=45)).isoformat(),
+            "same_state": True,
+            "lines": [
+                {"item": "Staples", "hsn": "1904", "qty": 1, "rate_paise": 100000, "gst_rate": 0}
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    async def overdue_line() -> dict[str, Any] | None:
+        company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+            "companies"
+        ][0]
+        lines = [item for item in company["attention"] if "overdue from customers" in item["text"]]
+        return lines[0] if lines else None
+
+    assert (await client.get("/v1/portfolio/preferences", headers=owner.headers)).json() == {
+        "read": [],
+        "snoozed": {},
+        "thresholds": {
+            "overdueRedAfterDays": 60,
+            "overdueMinimum": 0,
+            "approvalsRedAbove": 5,
+            "lateBillsRedShare": 50,
+        },
+    }
+    # 45 days late is under the default 60: watch, not red.
+    line = await overdue_line()
+    assert line and line["severity"] == "medium" and "days" not in line["text"]
+
+    async def save(**thresholds: int) -> httpx.Response:
+        return await client.put(
+            "/v1/portfolio/preferences",
+            headers=owner.headers,
+            json={
+                "read": ["1:0:Something"],
+                "snoozed": {"inbox:1": 1893456000000},
+                "thresholds": thresholds,
+            },
+        )
+
+    assert (await save(overdueRedAfterDays=90)).status_code == 422  # ageing has no 90-day bucket
+    saved = await save(overdueRedAfterDays=30)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["read"] == ["1:0:Something"]
+    assert saved.json()["snoozed"] == {"inbox:1": 1893456000000}
+    line = await overdue_line()
+    assert line and line["severity"] == "high" and line["text"].endswith("₹1,000 over 30 days")
+    assert (await save(overdueMinimum=5000)).status_code == 200
+    assert await overdue_line() is None
+
+    # Another person's settings are their own.
+    other = await signup(client, mailbox, "second@example.com")
+    theirs = (await client.get("/v1/portfolio/preferences", headers=other.headers)).json()
+    assert theirs["read"] == [] and theirs["thresholds"]["overdueMinimum"] == 0

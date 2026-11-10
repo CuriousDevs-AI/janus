@@ -541,3 +541,28 @@ class KnowledgeAdd(BaseModel):
     kind: Literal["fact", "document"]
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
     body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=100000)]
+
+
+class Thresholds(BaseModel):
+    """When a company turns red for this person. The defaults are the Portfolio's own."""
+
+    # Money customers owe is red once any of it is this many days past due. Ageing is kept in
+    # 30-day buckets, so 30 or 60.
+    overdueRedAfterDays: Literal[30, 60] = 60
+    # Overdue amounts below this, in rupees, are not flagged at all.
+    overdueMinimum: int = Field(default=0, ge=0, le=10**10)
+    # Approvals waiting turn red above this many.
+    approvalsRedAbove: int = Field(default=5, ge=0, le=1000)
+    # Late supplier bills turn red at this share, in percent, of what is due within 7 days.
+    lateBillsRedShare: int = Field(default=50, ge=0, le=100)
+
+
+ReadKey = Annotated[str, StringConstraints(max_length=400)]
+
+
+class Preferences(BaseModel):
+    # Notifications read, as the page names them; the newest 1,000 are kept.
+    read: list[ReadKey] = Field(default_factory=list, max_length=1000)
+    # Work inbox items snoozed: their key, and until when (milliseconds since 1970).
+    snoozed: dict[ReadKey, int] = Field(default_factory=dict)
+    thresholds: Thresholds = Field(default_factory=Thresholds)

@@ -8,20 +8,22 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { day, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor, workKinds, type WorkKind } from "@/features/portfolio/lib/work";
+import { usePreferences } from "@/features/portfolio/lib/preferences";
 import type { PortfolioCompany } from "@/features/portfolio/types";
 
-const snoozeKey = "janus.portfolio-snoozed";
 const DAY = 864e5;
 
 /** Everything that needs someone to act, across the companies, with filters. Snoozing hides an item
- * for a day in this browser only; the record in the company is unchanged. */
+ * for a day, on every device; the record in the company is unchanged. */
 export function WorkInbox({ list }: { list: PortfolioCompany[] }) {
   const { owns } = useRoles();
   const [company, setCompany] = React.useState("all");
   const [kind, setKind] = React.useState<WorkKind | "all">("all");
   const [urgentOnly, setUrgentOnly] = React.useState(false);
-  const [snoozed, setSnoozed] = React.useState<Record<string, number>>(() => { try { return JSON.parse(window.localStorage.getItem(snoozeKey) ?? "{}"); } catch { return {}; } });
-  const save = (next: Record<string, number>) => { setSnoozed(next); try { window.localStorage.setItem(snoozeKey, JSON.stringify(next)); } catch { /* private mode */ } };
+  const preferences = usePreferences();
+  const snoozed = preferences.value.snoozed;
+  // Snoozes that have ended are dropped when the next one is saved.
+  const save = (next: Record<string, number>) => { const now = Date.now(); void preferences.save({ ...preferences.value, snoozed: Object.fromEntries(Object.entries(next).filter(([, until]) => until > now)) }); };
   // The moment the page opened: an item snoozed until after it stays hidden.
   const [openedAt] = React.useState(() => Date.now());
   const all = workFor(list);

@@ -20,7 +20,7 @@ from janus_api.it import overview as it
 from janus_api.operations import overview as operations
 from janus_api.org import overview as org
 from janus_api.org import service as org_service
-from janus_api.portfolio import attention, schemas
+from janus_api.portfolio import attention, preferences, schemas
 from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.compliance import plan as compliance_plan
 from janus_api.portfolio.compliance.plan import compliance_view
@@ -147,6 +147,7 @@ async def company_summary(
     money: bool,
     detail: bool = True,
     trade: dict[int, Trade] | None = None,
+    limits: schemas.Thresholds | None = None,
 ) -> schemas.CompanySummary:
     """One company's headline numbers, and with `detail` its operating view.
 
@@ -229,7 +230,7 @@ async def company_summary(
     )
     out.targets = await targets_view(db, tenant_id, money=money)
     out.attention = attention.attention(
-        out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance
+        out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance, limits
     )
     # A company tracking no filings is not "up to date": it is not set up. With people on its
     # payroll, TDS and PF or ESI usually apply, so that is urgent.
@@ -359,6 +360,9 @@ async def summary(
     # The digest reads as of the end of the week it reports; the page reads as of today.
     today = today or today_ist()
     period = period_for(period_key, today)
+    # When a company turns red is this person's own setting.
+    await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    limits = (await preferences.read(db, user_id)).thresholds
     try:
         for tenant_id in await readable_companies(db, user_id):
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
@@ -377,6 +381,7 @@ async def summary(
                     money="portfolio:finance" in role.permissions,
                     detail=detail,
                     trade=trade,
+                    limits=limits,
                 )
             )
             record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)

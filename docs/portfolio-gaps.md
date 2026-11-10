@@ -66,8 +66,8 @@ Today Portfolio Intelligence is rules over the figures on the page. Janus alread
 | 34 | Cash: a bank feed or bank statement import, so the Portfolio can show cash and runway instead of only money in and out. | L |
 | 35 | Salaries posted to the books from HR payroll, so profit after salaries is recorded, not estimated. | M |
 | 36 | Alerts that reach the owner: an email or push message when something turns red, not only the Monday email. | M |
-| 37 | Notifications read state kept on the server, not per browser. | S |
-| 38 | Risk thresholds the owner can change (what counts as late, how much overdue is red). | S |
+| 37 ✅ | Notifications read state kept on the server, not per browser. | S |
+| 38 ✅ | Risk thresholds the owner can change (what counts as late, how much overdue is red). | S |
 
 ## P3: finish and checks
 

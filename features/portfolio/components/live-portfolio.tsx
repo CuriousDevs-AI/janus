@@ -12,7 +12,7 @@ import { Access } from "@/features/portfolio/components/access";
 import { Activity } from "@/features/portfolio/components/activity";
 import { WorkInbox } from "@/features/portfolio/components/work-inbox";
 import { Analytics } from "@/features/portfolio/components/analytics";
-import { Notifications } from "@/features/portfolio/components/attention";
+import { Notifications, ThresholdsCard } from "@/features/portfolio/components/attention";
 import { AddCompany, Companies } from "@/features/portfolio/components/companies";
 import { ComplianceView } from "@/features/portfolio/components/compliance";
 import { ExportButtons } from "@/features/portfolio/components/export-buttons";
@@ -88,7 +88,7 @@ export function LivePortfolio() {
       case "people": return owner
         ? <Access list={list} />
         : <SectionCard title="Portfolio access" description="Only an Owner shares the Portfolio."><p className="text-sm text-muted-foreground">The Owner decides who else sees these companies.</p></SectionCard>;
-      case "notifications": return <Notifications list={list} />;
+      case "notifications": return <><Notifications list={list} /><ThresholdsCard /></>;
       case "intelligence": return <Intelligence list={list} period={summary.data.period} />;
       case "compliance": return <ComplianceView list={list} onChanged={summary.reload} />;
       case "work": return <WorkInbox list={list} />;
