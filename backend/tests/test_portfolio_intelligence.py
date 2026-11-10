@@ -195,3 +195,55 @@ async def test_a_local_model_server_needs_the_operator_to_allow_it(
     options = (await client.get("/v1/portfolio/intelligence/models", headers=owner.headers)).json()
     local = options["options"][1]
     assert local["free"] is True and local["label"] == "llama3.1"
+
+
+async def test_free_providers_each_keep_their_own_key_and_fixed_address(
+    client: httpx.AsyncClient, mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = await signup(client, mailbox)
+    listed = (await client.get("/v1/portfolio/intelligence/models", headers=owner.headers)).json()
+    free = {item["id"]: item for item in listed["free"]}
+    assert {"openrouter", "gemini", "groq", "cerebras", "mistral", "huggingface"} <= set(free)
+    assert free["openrouter"]["baseUrl"] == "https://openrouter.ai/api/v1"
+    assert all(model.endswith(":free") for model in free["openrouter"]["models"])
+    company = listed["companies"][0]["id"]
+    for provider, model in (
+        ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
+        ("groq", "llama-3.3-70b-versatile"),
+    ):
+        saved = await client.put(
+            f"/v1/portfolio/companies/{company}/ai/{provider}",
+            headers=owner.headers,
+            json={"model": model, "apiKey": f"{provider}-key-1234"},
+        )
+        assert saved.status_code == 200, saved.text
+    # No address is accepted for a built-in provider: it always uses the official one.
+    moved = await client.put(
+        f"/v1/portfolio/companies/{company}/ai/groq",
+        headers=owner.headers,
+        json={"model": "x", "baseUrl": "https://evil.example/v1"},
+    )
+    assert moved.status_code == 422
+    options = (await client.get("/v1/portfolio/intelligence/models", headers=owner.headers)).json()
+    shown = {option["id"]: option for option in options["options"]}
+    assert shown[f"{company}:openrouter"]["free"] is True
+    assert shown[f"{company}:groq"]["free"] is True
+
+    hosts: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        hosts.append(f"{request.url.host}{request.url.path}")
+        return _chat("Nothing on record answers that.")
+
+    provider_transport(monkeypatch, respond)
+    for provider in ("openrouter", "groq"):
+        asked = await client.post(
+            "/v1/portfolio/intelligence/ask",
+            headers=owner.headers,
+            json={"question": "How are sales?", "model": f"{company}:{provider}"},
+        )
+        assert asked.status_code == 200, asked.text
+    assert hosts == [
+        "openrouter.ai/api/v1/chat/completions",
+        "api.groq.com/openai/v1/chat/completions",
+    ]

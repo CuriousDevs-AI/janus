@@ -10,7 +10,7 @@ from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from openai import AsyncOpenAI
 
-from janus_api.ai import schemas
+from janus_api.ai import catalog, schemas
 from janus_api.ai.models import AICredential, AIUsage
 from janus_api.core.db import session_factory
 from janus_api.core.errors import ApiError
@@ -55,8 +55,12 @@ async def provider_call(
     messages: list[schemas.Message],
     max_tokens: int,
 ) -> litellm.ModelResponse:
-    provider = "openai" if credential.provider == "openai_compatible" else credential.provider
-    base_url = credential.base_url or BASE_URLS[provider]
+    provider = credential.provider if credential.provider in ("anthropic", "gemini") else "openai"
+    base_url = (
+        credential.base_url
+        or catalog.COMPATIBLE.get(credential.provider)
+        or BASE_URLS[credential.provider]
+    )
     client: AsyncOpenAI | AsyncHTTPHandler
     if provider == "openai":
         client = AsyncOpenAI(
@@ -99,7 +103,7 @@ def capture_usage(row: AIUsage, response: litellm.ModelResponse) -> None:
     if counts[2] == 0:
         return  # Some compatible providers omit usage; the SDK supplies zero defaults.
     row.input_tokens, row.output_tokens, row.total_tokens = counts
-    if row.provider == "openai_compatible":
+    if row.provider not in BASE_URLS:
         return  # A custom deployment's prices cannot be inferred from its model name.
     try:
         amount = litellm.completion_cost(

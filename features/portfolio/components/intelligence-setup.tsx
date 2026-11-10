@@ -70,36 +70,31 @@ export function KnowledgeCard({ list }: { list: PortfolioCompany[] }) {
   </SectionCard>;
 }
 
-type Preset = { name: string; provider: AiProvider; model: string; baseUrl?: string; free: string; keyHint: string };
-
-/** Ready settings for common models. Free ones first; a custom address must be allowed by whoever
- * runs Janus (JANUS_AI_ALLOWED_BASE_URLS). */
-const presets: Preset[] = [
-  { name: "Ollama on your server", provider: "openai_compatible", model: "llama3.1:8b", baseUrl: "http://localhost:11434/v1", free: "Free, open source, runs on your machine. Also qwen2.5:7b or mistral.", keyHint: "Any text, such as ollama-local" },
-  { name: "Gemini Flash", provider: "gemini", model: "gemini-2.5-flash", free: "Free tier with daily limits.", keyHint: "Key from Google AI Studio" },
-  { name: "Groq", provider: "openai_compatible", model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1", free: "Free tier, open models (Llama, Qwen).", keyHint: "Key from console.groq.com" },
-  { name: "OpenRouter free models", provider: "openai_compatible", model: "meta-llama/llama-3.3-70b-instruct:free", baseUrl: "https://openrouter.ai/api/v1", free: "Models marked :free cost nothing.", keyHint: "Key from openrouter.ai" },
-  { name: "OpenAI", provider: "openai", model: "gpt-4o-mini", free: "Paid.", keyHint: "Key from platform.openai.com" },
-  { name: "Anthropic Claude", provider: "anthropic", model: "claude-haiku-5-5", free: "Paid.", keyHint: "Key from console.anthropic.com" },
+/** Paid models, below the free ones. */
+const paid: { name: string; provider: AiProvider; model: string; keyUrl: string }[] = [
+  { name: "OpenAI", provider: "openai", model: "gpt-4o-mini", keyUrl: "https://platform.openai.com/api-keys" },
+  { name: "Anthropic Claude", provider: "anthropic", model: "claude-haiku-5-5", keyUrl: "https://console.anthropic.com/settings/keys" },
 ];
-const providerName: Record<AiProvider, string> = { openai: "OpenAI", anthropic: "Anthropic", gemini: "Gemini", openai_compatible: "Custom (OpenAI-compatible)" };
+const providerName: Record<AiProvider, string> = { openai: "OpenAI", anthropic: "Anthropic", gemini: "Google Gemini", openai_compatible: "Custom (OpenAI-compatible)", openrouter: "OpenRouter", groq: "Groq", cerebras: "Cerebras", mistral: "Mistral", sambanova: "SambaNova", github: "GitHub Models", nvidia: "NVIDIA", huggingface: "Hugging Face" };
+type Choice = { provider: AiProvider; name: string; model: string; models: string[]; keyUrl: string; limits: string };
 
-/** Sets up a model for a company, with that company's key; it then shows in "Answer with". */
+/** Sets up a model for a company, with that company's key; it then shows in "Answer with". Free
+ * providers come first, each with its free models and where to get a key. */
 export function ModelSetup({ models, onChange }: { models: PortfolioModels; onChange: () => void }) {
   const [companyId, setCompanyId] = React.useState(models.companies[0]?.id ?? "");
-  const [preset, setPreset] = React.useState<Preset>(presets[0]);
-  const [model, setModel] = React.useState(presets[0].model);
-  const [baseUrl, setBaseUrl] = React.useState(presets[0].baseUrl ?? "");
+  const [choice, setChoice] = React.useState<Choice | null>(null);
   const [key, setKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   if (models.companies.length === 0) return null;
+  const company = models.companies.find((item) => item.id === companyId) ?? models.companies[0];
+  const has = (provider: AiProvider) => company.keys.find((item) => item.provider === provider);
 
-  const pick = (name: string) => { const found = presets.find((item) => item.name === name)!; setPreset(found); setModel(found.model); setBaseUrl(found.baseUrl ?? ""); };
   const save = async () => {
+    if (!choice) return;
     setBusy(true);
     try {
-      await api(`/portfolio/companies/${companyId}/ai/${preset.provider}`, { method: "PUT", body: JSON.stringify({ model: model.trim(), apiKey: key || undefined, baseUrl: preset.provider === "openai_compatible" ? baseUrl.trim() : undefined }) });
-      setKey(""); onChange(); toast.success("Model saved. Pick it under Answer with.");
+      await api(`/portfolio/companies/${company.id}/ai/${choice.provider}`, { method: "PUT", body: JSON.stringify({ model: choice.model.trim(), apiKey: key || undefined }) });
+      setKey(""); setChoice(null); onChange(); toast.success(`${choice.name} saved for ${company.name}. Pick it under Answer with.`);
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   const test = async (id: string, provider: AiProvider) => {
@@ -110,27 +105,30 @@ export function ModelSetup({ models, onChange }: { models: PortfolioModels; onCh
     try { await api(`/portfolio/companies/${id}/ai/${provider}`, { method: "DELETE" }); onChange(); }
     catch (error) { toast.error(message(error)); }
   };
+  const pick = (next: Choice) => { setChoice(next); setKey(""); };
 
-  return <SectionCard title="Models" description="A model answers with one company's key, and its cost shows in that company's AI usage. Each company's Portfolio questions stop at the monthly cap below. Your figures go only to the model you pick.">
-    <div className="flex flex-col gap-4">
-      <ul className="flex flex-col gap-3">{models.companies.map((company) => <li key={company.id} className="flex flex-col gap-1.5 text-sm">
-        <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{company.name}</span><span className="text-xs tabular-nums text-muted-foreground">${Number(company.spentUsd).toFixed(2)} of ${Number(company.capUsd).toFixed(2)} this month on Portfolio questions</span></p>
-        {company.keys.length === 0 ? <p className="text-xs text-muted-foreground">No model set up.</p> : company.keys.map((item) => <div key={item.provider} className="flex flex-wrap items-center justify-between gap-2 border border-border px-3 py-2"><span>{item.model} <span className="text-xs text-muted-foreground">· {providerName[item.provider]}{item.baseUrl ? ` · ${item.baseUrl}` : ""} · key …{item.keyLastFour}</span>{!item.enabled && <Badge variant="outline" className="ml-2">Off</Badge>}</span><span className="flex gap-1"><Button size="sm" variant="outline" onClick={() => test(company.id, item.provider)}><Plug className="mr-1 size-4" />Test</Button><Button size="sm" variant="ghost" aria-label={`Remove ${item.model}`} onClick={() => remove(company.id, item.provider)}><Trash2 className="size-4" /></Button></span></div>)}
+  return <>
+    <SectionCard title="Free models" description="These providers give a free API key. Each has its own limits, set by the provider. Pick one, get a key from its site, and paste it here. Your figures go only to the provider you pick." action={<Select value={company.id} onValueChange={setCompanyId}><SelectTrigger className="w-[200px]" aria-label="Company whose key it is"><SelectValue /></SelectTrigger><SelectContent>{models.companies.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select>}>
+      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{models.free.map((item) => { const saved = has(item.provider as AiProvider); return <li key={item.id} className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3 text-sm">
+        <p className="flex items-center justify-between gap-2"><span className="font-medium">{item.name}</span>{saved ? <Badge variant="success">Set up</Badge> : <Badge variant="neutral">Free</Badge>}</p>
+        <p className="text-xs text-muted-foreground">{item.limits}</p>
+        <ul className="flex flex-wrap gap-1">{item.models.map((model) => <li key={model}><button type="button" className={`rounded border px-1.5 py-0.5 font-mono text-[11px] ${choice?.provider === item.provider && choice.model === model ? "border-accent bg-accent-muted" : "border-border hover:bg-surface"}`} onClick={() => pick({ provider: item.provider as AiProvider, name: item.name, model, models: item.models, keyUrl: item.keyUrl, limits: item.limits })}>{model}</button></li>)}</ul>
+        {saved ? <p className="mt-auto flex flex-wrap items-center gap-1 text-xs text-muted-foreground">Using {saved.model} · key …{saved.keyLastFour}<Button size="sm" variant="ghost" onClick={() => test(company.id, saved.provider)}><Plug className="mr-1 size-3.5" />Test</Button><Button size="sm" variant="ghost" aria-label={`Remove ${item.name}`} onClick={() => remove(company.id, saved.provider)}><Trash2 className="size-3.5" /></Button></p>
+          : <a className="mt-auto text-xs text-accent underline" href={item.keyUrl} target="_blank" rel="noreferrer">Get a free key</a>}
+      </li>; })}</ul>
+      {choice && <form className="mt-4 grid gap-2 rounded-md border border-accent-border bg-accent-muted/40 p-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+        <p className="text-sm sm:col-span-3"><span className="font-medium">{choice.name}</span> for {company.name}. {choice.limits} <a className="text-accent underline" href={choice.keyUrl} target="_blank" rel="noreferrer">Get a key</a></p>
+        <label className="grid gap-1 text-xs text-muted-foreground">Model<Input aria-label="Model name" value={choice.model} onChange={(event) => setChoice({ ...choice, model: event.target.value })} /></label>
+        <label className="grid gap-1 text-xs text-muted-foreground">API key<Input aria-label="API key" type="password" autoComplete="off" placeholder={has(choice.provider) ? "Leave empty to keep the saved key" : `Paste your ${choice.name} key`} value={key} onChange={(event) => setKey(event.target.value)} /></label>
+        <span className="flex items-end gap-2"><Button type="submit" size="sm" disabled={busy || !choice.model.trim() || (!key && !has(choice.provider))}>Save</Button><Button type="button" size="sm" variant="ghost" onClick={() => setChoice(null)}>Cancel</Button></span>
+      </form>}
+    </SectionCard>
+    <SectionCard title="Paid models and spend" description="A paid model is billed to the company whose key it is, and shows in its AI usage. Each company's Portfolio questions stop at the monthly cap.">
+      <ul className="flex flex-col gap-3">{models.companies.map((item) => <li key={item.id} className="flex flex-col gap-1.5 text-sm">
+        <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{item.name}</span><span className="text-xs tabular-nums text-muted-foreground">${Number(item.spentUsd).toFixed(2)} of ${Number(item.capUsd).toFixed(2)} this month on Portfolio questions</span></p>
+        {item.keys.filter((saved) => !models.free.some((free) => free.provider === saved.provider)).map((saved) => <div key={saved.provider} className="flex flex-wrap items-center justify-between gap-2 border border-border px-3 py-2"><span>{saved.model} <span className="text-xs text-muted-foreground">· {providerName[saved.provider]}{saved.baseUrl ? ` · ${saved.baseUrl}` : ""} · key …{saved.keyLastFour}</span>{!saved.enabled && <Badge variant="outline" className="ml-2">Off</Badge>}</span><span className="flex gap-1"><Button size="sm" variant="outline" onClick={() => test(item.id, saved.provider)}><Plug className="mr-1 size-4" />Test</Button><Button size="sm" variant="ghost" aria-label={`Remove ${saved.model}`} onClick={() => remove(item.id, saved.provider)}><Trash2 className="size-4" /></Button></span></div>)}
       </li>)}</ul>
-      <div className="flex flex-col gap-2 border-t border-border pt-3">
-        <p className="text-sm font-medium">Add a model</p>
-        <div className="flex flex-wrap gap-2">
-          <Select value={companyId} onValueChange={setCompanyId}><SelectTrigger className="w-[200px]" aria-label="Company whose key pays"><SelectValue /></SelectTrigger><SelectContent>{models.companies.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select>
-          <Select value={preset.name} onValueChange={pick}><SelectTrigger className="w-[240px]" aria-label="Model"><SelectValue /></SelectTrigger><SelectContent>{presets.map((item) => <SelectItem key={item.name} value={item.name}>{item.name}</SelectItem>)}</SelectContent></Select>
-        </div>
-        <p className="text-xs text-muted-foreground">{preset.free}{preset.provider === "openai_compatible" ? " Whoever runs Janus must allow this address first (JANUS_AI_ALLOWED_BASE_URLS)." : ""}</p>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Input aria-label="Model name" value={model} onChange={(event) => setModel(event.target.value)} />
-          {preset.provider === "openai_compatible" && <Input aria-label="Address" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />}
-          <Input aria-label="API key" type="password" autoComplete="off" placeholder={preset.keyHint} value={key} onChange={(event) => setKey(event.target.value)} />
-        </div>
-        <Button className="self-start" size="sm" onClick={save} disabled={busy || !companyId || !model.trim()}>Save model</Button>
-      </div>
-    </div>
-  </SectionCard>;
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">{paid.map((item) => <Button key={item.provider} size="sm" variant="outline" onClick={() => pick({ provider: item.provider, name: item.name, model: item.model, models: [item.model], keyUrl: item.keyUrl, limits: "Paid by use." })}>Add {item.name}</Button>)}</div>
+    </SectionCard>
+  </>;
 }

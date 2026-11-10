@@ -12,7 +12,21 @@ from pydantic import (
     model_validator,
 )
 
-Provider = Literal["openai", "anthropic", "gemini", "openai_compatible"]
+Provider = Literal[
+    "openai",
+    "anthropic",
+    "gemini",
+    "openai_compatible",
+    # Providers with a free API key and a fixed endpoint (ai.catalog).
+    "openrouter",
+    "groq",
+    "cerebras",
+    "mistral",
+    "sambanova",
+    "github",
+    "nvidia",
+    "huggingface",
+]
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "host.docker.internal")
 
 

@@ -62,7 +62,7 @@ def _month_start() -> datetime:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _free(base_url: str | None) -> bool:
+def _local(base_url: str | None) -> bool:
     return bool(base_url) and any(host in (base_url or "") for host in LOCAL)
 
 
@@ -118,17 +118,29 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
             for key in keys:
                 if not key.enabled:
                     continue
-                free = _free(key.baseUrl)
+                local = _local(key.baseUrl)
+                # A free provider's model, or a ":free" OpenRouter one; Gemini's free tier too.
+                free_tier = (
+                    local
+                    or key.model.endswith(":free")
+                    or any(
+                        item.base_url == key.baseUrl
+                        or (item.base_url is None and item.provider == key.provider)
+                        for item in ai.free_providers()
+                    )
+                )
                 options.append(
                     schemas.ModelOption(
                         id=f"{tenant_id}:{key.provider}",
                         label=key.model,
                         provider=key.provider,
                         company=name,
-                        free=free,
+                        free=free_tier,
                         note=(
                             f"Runs on your own server, set up in {name}."
-                            if free
+                            if local
+                            else f"Free tier, with the provider's limits, on {_whose(name)} key."
+                            if free_tier
                             else f"Paid with {_whose(name)} key: ${spent:.2f} of ${cap:.2f}"
                             " this month."
                         ),
@@ -136,7 +148,19 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
                 )
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
-    return schemas.ModelsOut(options=options, companies=companies)
+    free = [
+        schemas.FreeProvider(
+            id=item.id,
+            name=item.name,
+            provider=item.provider,
+            baseUrl=item.base_url,
+            models=list(item.models),
+            limits=item.limits,
+            keyUrl=item.key_url,
+        )
+        for item in ai.free_providers()
+    ]
+    return schemas.ModelsOut(options=options, companies=companies, free=free)
 
 
 def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
@@ -276,7 +300,7 @@ async def ask(
     if data.model == RULES or ":" not in data.model:
         raise ApiError("rules_in_page", "Janus rules answer on the page; pick a model to ask.", 422)
     company_id, provider = data.model.split(":", 1)
-    if provider not in ("openai", "anthropic", "gemini", "openai_compatible"):
+    if provider not in ai.providers():
         raise ApiError("not_found", "That model is not set up.", 404)
     settings = get_settings()
     try:

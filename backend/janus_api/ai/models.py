@@ -20,7 +20,11 @@ class AICredential(Base):
     __tablename__ = "ai_credentials"
     __table_args__ = (
         UniqueConstraint("tenant_id", "provider"),
-        CheckConstraint("provider IN ('openai', 'anthropic', 'gemini', 'openai_compatible')"),
+        CheckConstraint(
+            "provider IN ('openai', 'anthropic', 'gemini', 'openai_compatible', 'openrouter',"
+            " 'groq', 'cerebras', 'mistral', 'sambanova', 'github', 'nvidia', 'huggingface')",
+            name="ai_credentials_provider_check",
+        ),
     )
     tenant_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), index=True

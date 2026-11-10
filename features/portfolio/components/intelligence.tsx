@@ -16,7 +16,7 @@ import type { PortfolioAsked, PortfolioCompany, PortfolioModels, PortfolioPeriod
 
 const suggestions = ["Which company needs me most?", "Why did sales change?", "Who is my biggest customer?", "Compare profit across companies", "What approvals are waiting?", "Any GST or TDS due?"];
 const RULES = "rules";
-const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [] };
+const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [] };
 
 /** One turn: Janus rules answer on the page; a model answers on the server with the facts it cited. */
 type Turn = { q: string; rules?: Answer; ai?: PortfolioAsked; pending?: boolean; error?: string };

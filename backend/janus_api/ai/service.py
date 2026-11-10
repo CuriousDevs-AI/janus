@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from janus_api.ai import gateway, schemas
+from janus_api.ai import catalog, gateway, schemas
 from janus_api.ai.models import AICredential, AIUsage
 from janus_api.audit.service import record
 from janus_api.core.config import get_settings
@@ -188,7 +188,7 @@ async def save_key(
 ) -> schemas.CredentialOut:
     """Saves a provider's model and key for this company from plain fields, for other modules;
     the same checks as the AI settings apply."""
-    if provider not in ("openai", "anthropic", "gemini", "openai_compatible"):
+    if provider not in catalog.PROVIDERS:
         raise ApiError("not_found", "Unknown AI provider.", 404)
     try:
         data = schemas.CredentialPut.model_validate(fields)
@@ -196,3 +196,12 @@ async def save_key(
         message = error.errors()[0].get("msg", "Invalid AI settings.")
         raise ApiError("invalid_ai_settings", str(message), 422) from None
     return await put_credential(db, tenant_id, user_id, provider, data, ip)  # type: ignore[arg-type]
+
+
+def free_providers() -> tuple[catalog.FreeProvider, ...]:
+    """Providers that give a free API key, for other modules to offer."""
+    return catalog.FREE
+
+
+def providers() -> tuple[str, ...]:
+    return catalog.PROVIDERS

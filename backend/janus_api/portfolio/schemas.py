@@ -558,12 +558,38 @@ class AiCompany(BaseModel):
     capUsd: str
 
 
+class FreeProvider(BaseModel):
+    """A provider that gives a free API key: its free models, limits and where to get a key."""
+
+    id: str
+    name: str
+    provider: str
+    baseUrl: str | None
+    models: list[str]
+    limits: str
+    keyUrl: str
+
+
 class ModelsOut(BaseModel):
     options: list[ModelOption]
     companies: list[AiCompany]
+    free: list[FreeProvider] = []
 
 
-AiProvider = Literal["openai", "anthropic", "gemini", "openai_compatible"]
+AiProvider = Literal[
+    "openai",
+    "anthropic",
+    "gemini",
+    "openai_compatible",
+    "openrouter",
+    "groq",
+    "cerebras",
+    "mistral",
+    "sambanova",
+    "github",
+    "nvidia",
+    "huggingface",
+]
 
 
 class AiKeyPut(BaseModel):
