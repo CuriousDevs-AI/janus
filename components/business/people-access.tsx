@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { isFirstCompany } from "@/lib/companies";
 import { demoMode } from "@/lib/demo-mode";
-import { roleLabel } from "@/lib/access";
+import { PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
 import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
@@ -101,7 +101,7 @@ type ServerMember = { id: string; user_id: string; name: string; email: string; 
 function toAccessMember(member: ServerMember): AccessMember {
   const role = (roleOrder as string[]).includes(member.role) ? (member.role as Role) : "read_only";
   // A Portfolio role (Group finance, Group analyst) reads the group's figures and has no workspace here.
-  const portfolio = member.role === "group_finance" || member.role === "group_analyst";
+  const portfolio = PORTFOLIO_ROLES.includes(member.role) && member.role !== "owner" && member.role !== "company_admin";
   return { id: member.id, name: member.name, email: member.email, role, department: portfolio ? `Portfolio · ${roleLabel(member.role)}` : isManagementRole(role) ? "Management" : "Unassigned", status: member.status === "active" ? "Active" : "Suspended", businessAccess: role === "owner" || isManagementRole(role), workspaces: [], permissions: rolePermissions[role], lastActive: "Not yet" };
 }
 

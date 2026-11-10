@@ -11,9 +11,20 @@ from janus_api.org import overview as org
 from janus_api.org import service as org_service
 from janus_api.portfolio import schemas
 
-# Who an Owner may share the Portfolio with, and the two roles that share only the Portfolio.
-ACCESS_ROLES = ("owner", "group_finance", "group_analyst")
-GROUP_ROLES = ("group_finance", "group_analyst")
+# The roles the Portfolio is shared with, and those an Owner or Portfolio administrator can take
+# away again here (a co-owner's ownership is changed company by company).
+ACCESS_ROLES = (
+    "owner",
+    "group_admin",
+    "company_admin",
+    "finance_manager",
+    "operations_manager",
+    "group_finance",
+    "group_analyst",
+)
+GROUP_ROLES = ACCESS_ROLES[1:]
+# Roles only an Owner of the company gives: they own it, or share the Portfolio themselves.
+OWNER_GIVES = ("owner", "group_admin")
 
 
 async def readable_companies(db: AsyncSession, user_id: int) -> list[int]:
@@ -40,24 +51,31 @@ async def enter_company(db: AsyncSession, user_id: int, company_id: str, need: s
 
 
 async def _shareable(db: AsyncSession, user_id: int, wanted: list[str]) -> list[int]:
-    """The companies to share: those asked for, all of which this person must own, or every one
-    they own when none is named."""
-    owned = await org.owned_tenants(db, user_id)
-    if not owned:
-        raise ApiError("forbidden", "Only an Owner can share the Portfolio.", 403)
+    """The companies to share: those asked for, in all of which this person must be an Owner or
+    Portfolio administrator, or every such company when none is named."""
+    mine = await org.tenants_with_permission(db, user_id, "portfolio:share")
+    if not mine:
+        raise ApiError(
+            "forbidden", "Only an Owner or Portfolio administrator can share the Portfolio.", 403
+        )
     if not wanted:
-        return owned
+        return mine
     ids = {int(item) for item in wanted if item.isdigit()}
-    if len(ids) != len(set(wanted)) or not ids <= set(owned):
-        raise ApiError("forbidden", "You can share only companies you own.", 403)
+    if len(ids) != len(set(wanted)) or not ids <= set(mine):
+        raise ApiError("forbidden", "You can share only companies you own or administer.", 403)
     return sorted(ids)
+
+
+async def _is_owner(db: AsyncSession, user_id: int, tenant_id: int) -> bool:
+    _, role = await org_service.membership(db, user_id, tenant_id)
+    return bool(role.name == "owner")
 
 
 async def list_access(db: AsyncSession, user_id: int, current_tenant: int) -> schemas.AccessList:
     """Everyone who holds, or is invited to, a Portfolio role in a company this Owner owns."""
     people: dict[str, schemas.AccessPerson] = {}
     try:
-        for tenant_id in await org.owned_tenants(db, user_id):
+        for tenant_id in await org.tenants_with_permission(db, user_id, "portfolio:share"):
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
             company = await org.company(db, tenant_id)
             if company is None:
@@ -101,6 +119,11 @@ async def grant_access(
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
             company = await org.company(db, tenant_id)
             name = company.name if company else str(tenant_id)
+            if data.role in OWNER_GIVES and not await _is_owner(db, user_id, tenant_id):
+                skipped.append(
+                    schemas.AccessSkipped(company=name, reason="Only its Owner can give that role.")
+                )
+                continue
             try:
                 await org_service.create_invitation(
                     db, tenant_id, user_id, str(data.email), data.role, ip
@@ -133,9 +156,11 @@ async def remove_access(
                 if person is not None and person != user_id
                 else None
             )
+            # A Portfolio administrator is removed by an Owner only.
+            removable = GROUP_ROLES if await _is_owner(db, user_id, tenant_id) else GROUP_ROLES[1:]
             membership_id = (
-                await org_service.disable_role_membership(db, tenant_id, person, GROUP_ROLES)
-                if person is not None and role in GROUP_ROLES
+                await org_service.disable_role_membership(db, tenant_id, person, removable)
+                if person is not None and role in removable
                 else None
             )
             if membership_id is not None:

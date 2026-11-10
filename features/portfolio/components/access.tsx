@@ -14,12 +14,24 @@ import { useApi } from "@/lib/api/use-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import type { PortfolioAccessResult, PortfolioCompany, PortfolioPerson, PortfolioRole } from "@/features/portfolio/types";
 
-const accessRoles: [PortfolioRole, string][] = [["group_finance", "Sees every view here, money included. Cannot change anything in the companies."], ["group_analyst", "Sees sales, people and support here, not money. Cannot change anything in the companies."], ["owner", "A co-owner: full control of each company shared, including adding people."]];
+/** The six Portfolio roles, and Group finance kept for people it was shared with before. Each is
+ * held company by company, so its scope is the companies chosen. */
+const accessRoles: [PortfolioRole, string][] = [
+  ["group_analyst", "Read-only. Sees sales, people, support and compliance, not money. Cannot change anything."],
+  ["group_finance", "Sees every view here, money included. Cannot change anything in the companies."],
+  ["operations_manager", "Sees the Portfolio without money, and in each company runs stock, projects and approvals."],
+  ["finance_manager", "Sees the Portfolio with money, and in each company records bills and decides approvals."],
+  ["company_admin", "Runs the company: its people, settings and workspaces, and sees it on the Portfolio with money."],
+  ["group_admin", "Portfolio administrator: sees every company shared, money included, and shares the Portfolio with view roles. Owns nothing."],
+  ["owner", "A co-owner: full control of each company shared, including adding people."],
+];
+/** What an administrator may give: only roles that can do no more than theirs. */
+const ADMIN_GIVES: PortfolioRole[] = ["group_analyst", "group_finance"];
 /** Joins what one call did into a sentence, saying which companies were left out and why. */
 const outcome = (result: PortfolioAccessResult, verb: string) => [result.done.length ? `${verb} ${result.done.join(", ")}.` : "", ...result.skipped.map((item) => `${item.company}: ${item.reason}`)].filter(Boolean).join(" ");
 
 /** Who else sees the Portfolio. Only an Owner opens this view. */
-export function Access({ list }: { list: PortfolioCompany[] }) {
+export function Access({ list, owner = true }: { list: PortfolioCompany[]; owner?: boolean }) {
   const router = useRouter();
   const people = useApi<{ people: PortfolioPerson[] }>("/portfolio/access");
   const [adding, setAdding] = React.useState(false);
@@ -35,16 +47,17 @@ export function Access({ list }: { list: PortfolioCompany[] }) {
           <Button size="sm" variant="ghost" aria-label={`Remove ${person.name ?? person.email}`} onClick={() => setRemoving(person)}><Trash2 className="size-4" /></Button>
         </li>)}</ul>}
     </SectionCard>
-    <SectionCard title="What each role sees" description="Everyone sees only the companies shared with them. Preview a role to check before you share."><dl className="grid gap-3 md:grid-cols-3">{accessRoles.map(([role, detail]) => <div key={role} className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3"><dt className="text-sm font-medium">{roleLabel(role)}</dt><dd className="text-xs text-muted-foreground">{detail}</dd>{role !== "owner" && <Button size="sm" variant="outline" className="mt-auto w-fit" onClick={() => router.push(`/portfolio?view=overview&preview=${role}`)}><Eye className="size-3.5" />Preview as {roleLabel(role)}</Button>}</div>)}</dl></SectionCard>
-    {adding && <AddPerson list={list} onClose={() => setAdding(false)} onDone={people.reload} />}
+    <SectionCard title="What each role sees" description="Everyone sees only the companies shared with them. Preview a role to check before you share."><dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{accessRoles.map(([role, detail]) => <div key={role} className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3"><dt className="text-sm font-medium">{roleLabel(role)}</dt><dd className="text-xs text-muted-foreground">{detail}</dd>{(role === "group_finance" || role === "group_analyst") && <Button size="sm" variant="outline" className="mt-auto w-fit" onClick={() => router.push(`/portfolio?view=overview&preview=${role}`)}><Eye className="size-3.5" />Preview as {roleLabel(role)}</Button>}</div>)}</dl></SectionCard>
+    {adding && <AddPerson list={list} owner={owner} onClose={() => setAdding(false)} onDone={people.reload} />}
     {removing && <RemovePerson person={removing} onClose={() => setRemoving(null)} onDone={people.reload} />}
   </>;
 }
 
-function AddPerson({ list, onClose, onDone }: { list: PortfolioCompany[]; onClose: () => void; onDone: () => void }) {
-  const { owns } = useRoles();
-  // Only companies this person owns can be shared from here.
-  const owned = list.filter(owns);
+function AddPerson({ list, owner, onClose, onDone }: { list: PortfolioCompany[]; owner: boolean; onClose: () => void; onDone: () => void }) {
+  const { shares } = useRoles();
+  // Only companies this person owns or administers can be shared from here.
+  const owned = list.filter(shares);
+  const offered = owner ? accessRoles : accessRoles.filter(([value]) => ADMIN_GIVES.includes(value));
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<PortfolioRole>("group_finance");
   const [companies, setCompanies] = React.useState<string[]>(owned.map((item) => item.id));
@@ -68,7 +81,7 @@ function AddPerson({ list, onClose, onDone }: { list: PortfolioCompany[]; onClos
   return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Add a person</DialogTitle><DialogDescription>They get one email invitation for each company you choose.</DialogDescription></DialogHeader>
     <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label className="grid gap-1.5 text-xs text-muted-foreground">Email<Input type="email" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <label className="grid gap-1.5 text-xs text-muted-foreground">Role<select className="h-9 border border-border bg-surface px-3 text-sm text-foreground" value={role} onChange={(event) => setRole(event.target.value as PortfolioRole)}>{accessRoles.map(([value]) => <option key={value} value={value}>{roleLabel(value)}</option>)}</select></label>
+      <label className="grid gap-1.5 text-xs text-muted-foreground">Role<select className="h-9 border border-border bg-surface px-3 text-sm text-foreground" value={role} onChange={(event) => setRole(event.target.value as PortfolioRole)}>{offered.map(([value]) => <option key={value} value={value}>{roleLabel(value)}</option>)}</select></label>
       <fieldset className="grid gap-1.5"><legend className="mb-1 text-xs text-muted-foreground">Companies</legend>{owned.map((item) => <label key={item.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={companies.includes(item.id)} onChange={() => setCompanies(companies.includes(item.id) ? companies.filter((id) => id !== item.id) : [...companies, item.id])} />{item.name}</label>)}</fieldset>
       {touched && error && <p role="alert" className="text-xs text-danger">{error}</p>}
       <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Sending…" : "Send invitations"}</Button></DialogFooter>

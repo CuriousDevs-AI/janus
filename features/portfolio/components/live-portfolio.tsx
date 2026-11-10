@@ -70,6 +70,8 @@ export function LivePortfolio() {
   React.useEffect(() => { if (fromAddress) writePreview(fromAddress); }, [fromAddress]);
   const preview = realOwner ? fromAddress ?? previewRoles.find((role) => role === remembered) ?? null : null;
   const owner = realOwner && !preview;
+  // An Owner or a Portfolio administrator shares the Portfolio.
+  const shares = !preview && session.tenants.some((item) => (item.role === "owner" || item.role === "group_admin") && item.status === "active");
   const [title, base] = titles[view] ?? titles.overview;
   const description = !owner && view === "overview" ? "Every company shared with you, at a glance." : base;
   const list = (summary.data?.companies ?? []).map((item) => preview === "group_analyst" ? withoutMoney(item) : item);
@@ -82,12 +84,12 @@ export function LivePortfolio() {
     switch (view) {
       case "analytics": return <Analytics list={list} period={summary.data.period} />;
       case "finance": return withMoney.length === 0
-        ? <SectionCard title="Money is not shared with you" description="Your role covers sales and people, not money."><p className="text-sm text-muted-foreground">Ask the Owner for Group finance if you need what customers owe and what is due to suppliers.</p></SectionCard>
+        ? <SectionCard title="Money is not shared with you" description="Your role covers sales and people, not money."><p className="text-sm text-muted-foreground">Ask the Owner for a role with money, such as Finance manager, if you need what customers owe and what is due to suppliers.</p></SectionCard>
         : <Finance list={withMoney} hidden={list.length - withMoney.length} period={summary.data.period} />;
       case "companies": return <Companies list={list} period={summary.data.period} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />;
-      case "people": return owner
-        ? <Access list={list} />
-        : <SectionCard title="Portfolio access" description="Only an Owner shares the Portfolio."><p className="text-sm text-muted-foreground">The Owner decides who else sees these companies.</p></SectionCard>;
+      case "people": return shares
+        ? <Access list={list} owner={owner} />
+        : <SectionCard title="Portfolio access" description="Only an Owner or a Portfolio administrator shares the Portfolio."><p className="text-sm text-muted-foreground">They decide who else sees these companies.</p></SectionCard>;
       case "notifications": return <><Notifications list={list} /><ThresholdsCard /></>;
       case "intelligence": return <Intelligence list={list} period={summary.data.period} />;
       case "compliance": return <ComplianceView list={list} onChanged={summary.reload} />;

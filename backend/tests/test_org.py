@@ -64,6 +64,10 @@ async def test_members_roles_live_permissions_and_last_owner(
         "agent",
         "group_finance",
         "group_analyst",
+        "group_admin",
+        "company_admin",
+        "finance_manager",
+        "operations_manager",
     }
     members = (await client.get("/v1/members", headers=owner.headers)).json()
     owner_id = next(m["id"] for m in members if m["email"] == owner.email)

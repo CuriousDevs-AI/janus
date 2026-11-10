@@ -39,6 +39,7 @@ PERMISSIONS = {
     "announcements:post",
     "portfolio:read",
     "portfolio:finance",
+    "portfolio:share",
 }
 
 # What every member holds whatever their role: their own HR (profile, leave, attendance, pay).
@@ -46,7 +47,9 @@ PERMISSIONS = {
 MEMBER_PERMISSIONS = frozenset({"hr:self"})
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
-    "admin": sorted(PERMISSIONS - {"billing:manage", "portfolio:read", "portfolio:finance"}),
+    "admin": sorted(
+        PERMISSIONS - {"billing:manage", "portfolio:read", "portfolio:finance", "portfolio:share"}
+    ),
     "manager": [
         "leads:read_own",
         "leads:read_team",
@@ -61,6 +64,30 @@ SYSTEM_ROLES = {
     # Portfolio access an Owner shares across their companies (migration 0048).
     "group_finance": ["portfolio:finance", "portfolio:read", "reports:read"],
     "group_analyst": ["portfolio:read", "reports:read"],
+    # The six Portfolio roles (migration 0062): the Owner, these four, and Group analyst as
+    # Read-only. Each is held company by company, so its scope is the companies shared.
+    "group_admin": [
+        "members:manage",
+        "portfolio:finance",
+        "portfolio:read",
+        "portfolio:share",
+        "reports:read",
+    ],
+    "company_admin": sorted(PERMISSIONS - {"billing:manage", "portfolio:share"}),
+    "finance_manager": [
+        "approvals:manage",
+        "billing:manage",
+        "portfolio:finance",
+        "portfolio:read",
+        "reports:read",
+    ],
+    "operations_manager": [
+        "approvals:manage",
+        "portfolio:read",
+        "projects:manage",
+        "reports:read",
+        "stock:adjust",
+    ],
 }
 
 
@@ -167,6 +194,10 @@ async def create_invitation(
     _, caller_role = await membership(db, user_id, tenant_id)
     if role_name == "owner" and caller_role.name != "owner":
         raise ApiError("forbidden", "Only an Owner can invite another Owner.", 403)
+    # Nobody hands out more than they hold: a role with a permission the inviter lacks is the
+    # Owner's to give.
+    if caller_role.name != "owner" and not set(role.permissions) <= set(caller_role.permissions):
+        raise ApiError("forbidden", "That role can do more than yours. Ask an Owner.", 403)
     await check_invitee(db, tenant_id, email.casefold())
     token = random_token()
     invite = Invitation(

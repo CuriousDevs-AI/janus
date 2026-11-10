@@ -45,7 +45,10 @@ export function useRoles() {
   const session = useSession();
   const preview = React.useContext(PreviewRole);
   const role = (item: PortfolioCompany) => preview ?? session.tenants.find((tenant) => tenant.id === item.id)?.role;
-  return { owns: (item: PortfolioCompany) => role(item) === "owner", handlesMoney: (item: PortfolioCompany) => role(item) === "owner" || role(item) === "group_finance" };
+  // Editing registration, documents, salaries and statements needs money; previewing a view role
+  // never edits.
+  const edits = ["owner", "group_admin", "company_admin", "finance_manager"];
+  return { owns: (item: PortfolioCompany) => role(item) === "owner", shares: (item: PortfolioCompany) => !preview && (role(item) === "owner" || role(item) === "group_admin"), handlesMoney: (item: PortfolioCompany) => !preview && edits.includes(role(item) ?? "") };
 }
 
 /** Opens a screen inside a company, moving the session there first when it is another one. */

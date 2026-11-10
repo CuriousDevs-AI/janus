@@ -1719,3 +1719,81 @@ async def test_months_imported_from_tally_fill_the_trends_before_janus(
     assert points[f"{year_ago:%Y-%m}"]["imported"] is True
     assert points[f"{last:%Y-%m}"]["netSales"] == "500.00"
     assert points[f"{last:%Y-%m}"]["imported"] is False
+
+
+async def test_six_portfolio_roles_and_who_may_give_them(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "admin@example.com", "role": "group_admin", "companies": [company]},
+    )
+    assert shared.status_code == 200 and shared.json()["done"] == ["Mumbai Traders"]
+    administrator = await _join(client, mailbox, "admin@example.com")
+    # A Portfolio administrator sees money and shares the Portfolio, without owning the company.
+    seen = (await client.get("/v1/portfolio/summary", headers=administrator)).json()
+    assert seen["companies"][0]["money"] is not None
+    analyst = await client.post(
+        "/v1/portfolio/access",
+        headers=administrator,
+        json={"email": "analyst@example.com", "role": "group_analyst", "companies": [company]},
+    )
+    assert analyst.status_code == 200 and analyst.json()["done"] == ["Mumbai Traders"]
+    # Nobody gives more than they hold: a Finance manager can approve and record bills, which the
+    # administrator cannot, so only the Owner gives it.
+    finance = await client.post(
+        "/v1/portfolio/access",
+        headers=administrator,
+        json={"email": "cfo@example.com", "role": "finance_manager", "companies": [company]},
+    )
+    assert finance.json()["done"] == []
+    assert "can do more than yours" in finance.json()["skipped"][0]["reason"]
+    finance = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "cfo@example.com", "role": "finance_manager", "companies": [company]},
+    )
+    assert finance.json()["done"] == ["Mumbai Traders"]
+    # Owner-level roles stay the Owner's to give.
+    for role in ("owner", "group_admin"):
+        refused = await client.post(
+            "/v1/portfolio/access",
+            headers=administrator,
+            json={"email": f"{role}@example.com", "role": role, "companies": [company]},
+        )
+        assert refused.json()["done"] == []
+        assert refused.json()["skipped"][0]["reason"] == "Only its Owner can give that role."
+    cfo = await _join(client, mailbox, "cfo@example.com")
+    assert (await client.get("/v1/portfolio/summary", headers=cfo)).json()["companies"][0][
+        "money"
+    ] is not None
+    # Nobody gives more than they hold: the administrator manages members, but cannot invite a
+    # Company administrator, who can do more.
+    over = await client.post(
+        "/v1/invitations",
+        headers=administrator,
+        json={"email": "boss@example.com", "role": "company_admin"},
+    )
+    assert over.status_code == 403
+    operations = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "ops@example.com", "role": "operations_manager", "companies": [company]},
+    )
+    assert operations.json()["done"] == ["Mumbai Traders"]
+    ops = await _join(client, mailbox, "ops@example.com")
+    assert (await client.get("/v1/portfolio/summary", headers=ops)).json()["companies"][0][
+        "money"
+    ] is None
+    # The administrator cannot remove another administrator; the Owner can.
+    kept = await client.post(
+        "/v1/portfolio/access/remove", headers=administrator, json={"email": "admin@example.com"}
+    )
+    assert kept.json()["done"] == []
+    removed = await client.post(
+        "/v1/portfolio/access/remove", headers=owner.headers, json={"email": "admin@example.com"}
+    )
+    assert removed.json()["done"] == ["Mumbai Traders"]

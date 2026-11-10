@@ -162,7 +162,7 @@ export interface PortfolioDigest {
   lastSentAt: string | null;
 }
 /** Roles an Owner shares the Portfolio with: a co-owner, or one of the two group roles. */
-export type PortfolioRole = "owner" | "group_finance" | "group_analyst";
+export type PortfolioRole = "owner" | "group_admin" | "company_admin" | "finance_manager" | "operations_manager" | "group_finance" | "group_analyst";
 /** One person in GET /portfolio/access, with each company they hold or are invited to. */
 export interface PortfolioPerson {
   email: string;

@@ -12,7 +12,18 @@ from pydantic import (
     model_validator,
 )
 
-SystemRole = Literal["owner", "admin", "manager", "agent", "group_finance", "group_analyst"]
+SystemRole = Literal[
+    "owner",
+    "admin",
+    "manager",
+    "agent",
+    "group_finance",
+    "group_analyst",
+    "group_admin",
+    "company_admin",
+    "finance_manager",
+    "operations_manager",
+]
 MemberStatus = Literal["active", "disabled"]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 

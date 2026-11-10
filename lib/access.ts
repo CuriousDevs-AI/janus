@@ -31,9 +31,11 @@ export function mayOpenWorkspace(id: string, permissions: string[]) {
   return required ? has(permissions, required) : false;
 }
 
-/** Roles that see the Portfolio: the Owner, and the group roles an Owner shares it with. */
-export const PORTFOLIO_ROLES = ["owner", "group_finance", "group_analyst"];
-export const roleLabel = (role: string) => ({ owner: "Owner", admin: "Admin", manager: "Manager", agent: "Agent", group_finance: "Group finance", group_analyst: "Group analyst" })[role] ?? role;
+/** Roles that see the Portfolio: the Owner, and the roles it is shared with, company by company. */
+export const PORTFOLIO_ROLES = ["owner", "group_admin", "company_admin", "finance_manager", "operations_manager", "group_finance", "group_analyst"];
+/** Portfolio roles that include money. */
+export const MONEY_ROLES = ["owner", "group_admin", "company_admin", "finance_manager", "group_finance"];
+export const roleLabel = (role: string) => ({ owner: "Owner", admin: "Admin", manager: "Manager", agent: "Agent", group_finance: "Group finance", group_analyst: "Read-only", group_admin: "Portfolio administrator", company_admin: "Company administrator", finance_manager: "Finance manager", operations_manager: "Operations manager" } as Record<string, string>)[role] ?? role;
 
 /** Where a person starts after signing in: the first workspace they can work in. */
 export function homeForPermissions(permissions: string[]) {

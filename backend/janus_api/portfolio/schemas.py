@@ -412,7 +412,15 @@ class CompanyOut(BaseModel):
 
 
 # Who an Owner may share the Portfolio with: a co-owner, or one of the two group roles.
-AccessRole = Literal["owner", "group_finance", "group_analyst"]
+AccessRole = Literal[
+    "owner",
+    "group_admin",
+    "company_admin",
+    "finance_manager",
+    "operations_manager",
+    "group_finance",
+    "group_analyst",
+]
 
 
 class AccessGrant(BaseModel):
