@@ -148,3 +148,19 @@ class PortfolioAlert(Base):
     next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CompanyDocument(Base):
+    """A document a company must keep valid: a registration, licence, insurance policy or
+    trademark, with its number and the day it expires, so renewals are not missed."""
+
+    __tablename__ = "company_documents"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(160))
+    number: Mapped[str | None] = mapped_column(String(80))
+    issued_on: Mapped[date | None] = mapped_column(Date)
+    expires_on: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(String(400))
+    updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

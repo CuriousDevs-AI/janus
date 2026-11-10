@@ -1423,3 +1423,74 @@ async def test_the_worker_emails_once_when_a_company_turns_red(
         assert await check() == []
     finally:
         await engine.dispose()
+
+
+async def test_documents_that_expire_need_the_owner(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    today = today_ist()
+    url = f"/v1/portfolio/companies/{company}/documents"
+    fssai = await client.post(
+        url,
+        headers=owner.headers,
+        json={
+            "kind": "licence",
+            "name": "FSSAI licence",
+            "number": "11519999000123",
+            "expiresOn": (today + timedelta(days=12)).isoformat(),
+        },
+    )
+    assert fssai.status_code == 201, fssai.text
+    assert fssai.json()["status"] == "expiring" and fssai.json()["daysLeft"] == 12
+    bad = await client.post(
+        url,
+        headers=owner.headers,
+        json={
+            "kind": "insurance",
+            "name": "Fire policy",
+            "issuedOn": today.isoformat(),
+            "expiresOn": (today - timedelta(days=1)).isoformat(),
+        },
+    )
+    assert bad.status_code == 422
+
+    async def lines() -> list[tuple[str, str]]:
+        found = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+            "companies"
+        ][0]
+        return [(a["severity"], a["text"]) for a in found["attention"] if "document" in a["text"]]
+
+    assert await lines() == [
+        ("medium", "1 document to renew within 30 days, first FSSAI licence in 12 days")
+    ]
+    policy = await client.post(
+        url,
+        headers=owner.headers,
+        json={
+            "kind": "insurance",
+            "name": "Fire policy",
+            "expiresOn": (today - timedelta(days=3)).isoformat(),
+        },
+    )
+    assert policy.status_code == 201, policy.text
+    assert ("high", "1 document expired: Fire policy") in await lines()
+    renewed = await client.put(
+        f"{url}/{policy.json()['id']}",
+        headers=owner.headers,
+        json={
+            "kind": "insurance",
+            "name": "Fire policy",
+            "expiresOn": (today + timedelta(days=365)).isoformat(),
+        },
+    )
+    assert renewed.status_code == 200 and renewed.json()["status"] == "valid"
+    removed = await client.delete(f"{url}/{fssai.json()['id']}", headers=owner.headers)
+    assert removed.status_code == 204
+    assert await lines() == []
+    stranger = await signup(client, mailbox, "stranger@example.com")
+    denied = await client.post(
+        url, headers=stranger.headers, json={"kind": "other", "name": "Lease"}
+    )
+    assert denied.status_code == 404

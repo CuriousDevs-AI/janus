@@ -10,6 +10,7 @@ from janus_api.portfolio import (
     alerts,
     companies,
     digest,
+    documents,
     intelligence,
     knowledge,
     preferences,
@@ -20,6 +21,7 @@ from janus_api.portfolio import (
 )
 from janus_api.portfolio.access import enter_company
 from janus_api.portfolio.compliance import plan as compliance
+from janus_api.portfolio.periods import today_ist
 
 router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
 
@@ -337,3 +339,60 @@ async def set_alerts(
 ) -> schemas.AlertsSetting:
     enabled = await alerts.set_setting(db, actor.user.id, data.enabled, request_ip(request))
     return schemas.AlertsSetting(enabled=enabled)
+
+
+@router.post(
+    "/companies/{company_id}/documents",
+    response_model=schemas.CompanyDocumentOut,
+    status_code=201,
+)
+async def add_document(
+    company_id: str,
+    data: schemas.CompanyDocumentIn,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.CompanyDocumentOut:
+    return await documents.save(
+        db,
+        actor.user.id,
+        actor.session.tenant_id,
+        company_id,
+        None,
+        data,
+        request_ip(request),
+        today_ist(),
+    )
+
+
+@router.put(
+    "/companies/{company_id}/documents/{document_id}", response_model=schemas.CompanyDocumentOut
+)
+async def update_document(
+    company_id: str,
+    document_id: str,
+    data: schemas.CompanyDocumentIn,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.CompanyDocumentOut:
+    return await documents.save(
+        db,
+        actor.user.id,
+        actor.session.tenant_id,
+        company_id,
+        document_id,
+        data,
+        request_ip(request),
+        today_ist(),
+    )
+
+
+@router.delete("/companies/{company_id}/documents/{document_id}", status_code=204)
+async def remove_document(
+    company_id: str, document_id: str, actor: CurrentActor, db: Db, request: Request
+) -> Response:
+    await documents.remove(
+        db, actor.user.id, actor.session.tenant_id, company_id, document_id, request_ip(request)
+    )
+    return Response(status_code=204)

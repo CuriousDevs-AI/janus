@@ -13,6 +13,7 @@ import { api, message } from "@/lib/api/client";
 import { switchTenant } from "@/lib/live-company";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { RegistrationCard } from "@/features/portfolio/components/compliance";
+import { DocumentsCard } from "@/features/portfolio/components/documents";
 import { CompanyEditor, entityNames, PeopleList } from "@/features/portfolio/components/company-editor";
 import { TargetsForm } from "@/features/portfolio/components/targets";
 import { openIn, payrollFor, useRoles, winRateText } from "@/features/portfolio/lib/companies";
@@ -176,6 +177,7 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
     <SectionCard title="Registration and filings" description="Its legal identity, and what it must file.">
       <div className="grid gap-3">
         <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onSaved} />
+        <DocumentsCard item={item} canEdit={handlesMoney(item)} onSaved={onSaved} />
         {item.complianceGaps.length > 0 && <ul className="grid gap-1 text-xs">{item.complianceGaps.map((gap) => <li key={gap.text} className={gap.kind === "missing" ? "text-warning" : "text-muted-foreground"}>{gap.kind === "missing" ? "Missing: " : "Suggested: "}{gap.text}</li>)}</ul>}
         <p className="text-sm">{pastDue(item) ? <span className="text-danger">{pastDue(item)} filing{pastDue(item) === 1 ? "" : "s"} past due and not recorded.</span> : item.complianceSetUp ? "No filing past due." : <span className="text-warning">No filings are tracked yet.</span>} <a className="text-accent hover:underline" href="/portfolio?view=compliance">Open Compliance</a></p>
       </div>

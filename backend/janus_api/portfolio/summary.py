@@ -20,7 +20,7 @@ from janus_api.it import overview as it
 from janus_api.operations import overview as operations
 from janus_api.org import overview as org
 from janus_api.org import service as org_service
-from janus_api.portfolio import attention, preferences, schemas
+from janus_api.portfolio import attention, documents, preferences, schemas
 from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.compliance import plan as compliance_plan
 from janus_api.portfolio.compliance.plan import compliance_view
@@ -247,6 +247,11 @@ async def company_summary(
             "Compliance not set up: no filings are tracked"
             + (f" for {staff.headcount} people on the payroll" if staff.headcount else ""),
             "/portfolio?view=compliance",
+        )
+    out.documents = await documents.for_company(db, tenant_id, today)
+    for severity, text in documents.attention_lines(out.documents):
+        out.attention = attention.with_line(
+            out.attention, severity, text, f"/portfolio?view=companies&company={tenant_id}"
         )
     out.health = attention.health(out.attention)
     span_now = date.fromisoformat(period.start), today

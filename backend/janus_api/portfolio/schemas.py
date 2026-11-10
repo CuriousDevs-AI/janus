@@ -350,6 +350,8 @@ class CompanySummary(BaseModel):
     unfiledSince: str | None = None
     # GST from the books, for a role with money: None without money or with GST not set up.
     gst: GstPosition | None = None
+    # Registrations, licences, insurance and trademarks, with expiry dates.
+    documents: list["CompanyDocumentOut"] = []
 
 
 class PortfolioSummary(BaseModel):
@@ -625,3 +627,28 @@ class AlertsSetting(BaseModel):
     """Whether this person gets an email when a company turns red."""
 
     enabled: bool
+
+
+DocumentKind = Literal["registration", "licence", "insurance", "trademark", "contract", "other"]
+
+
+class CompanyDocumentIn(BaseModel):
+    kind: DocumentKind
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+    number: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] | None = None
+    issuedOn: date | None = None
+    expiresOn: date | None = None
+    notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=400)] | None = None
+
+
+class CompanyDocumentOut(BaseModel):
+    id: str
+    kind: DocumentKind
+    name: str
+    number: str | None
+    issuedOn: str | None
+    expiresOn: str | None
+    notes: str | None
+    # Days until it expires; negative once it has. None without an expiry date.
+    daysLeft: int | None
+    status: Literal["valid", "expiring", "expired", "no_expiry"]

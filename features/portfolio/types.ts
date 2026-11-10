@@ -60,6 +60,8 @@ export interface PortfolioCompany {
   unfiledSince: string | null;
   /** GST from the books, for a role with money where GST is set up. */
   gst: { gstin: string | null; lastMonth: PortfolioGstMonth; thisMonth: PortfolioGstMonth } | null;
+  /** Registrations, licences, insurance and trademarks, soonest expiry first. */
+  documents: PortfolioDocument[];
 }
 export type EntityType = "pvt_ltd" | "public_ltd" | "opc" | "llp" | "partnership" | "proprietorship" | "other";
 export interface PortfolioRegistration {
@@ -187,3 +189,6 @@ export type PortfolioModels = { options: PortfolioModel[]; companies: PortfolioA
 export type PortfolioSource = { id: string; kind: "figure" | "knowledge" | "document"; company: string; text: string; title: string | null };
 export type PortfolioAsked = { id: string; question: string; answer: string; model: string; sources: PortfolioSource[]; grounded: boolean; costUsd: string | null; suggested: string[]; createdAt: string };
 export type PortfolioKnowledgeItem = { id: string; companyId: string; company: string; kind: "fact" | "document"; status: "approved" | "suggested"; title: string; body: string; document: string | null; passage: number; createdAt: string };
+
+export type PortfolioDocumentKind = "registration" | "licence" | "insurance" | "trademark" | "contract" | "other";
+export type PortfolioDocument = { id: string; kind: PortfolioDocumentKind; name: string; number: string | null; issuedOn: string | null; expiresOn: string | null; notes: string | null; daysLeft: number | null; status: "valid" | "expiring" | "expired" | "no_expiry" };

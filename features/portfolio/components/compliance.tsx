@@ -11,6 +11,7 @@ import { api, message } from "@/lib/api/client";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 import { CompanyEditor, entityNames, roleNames } from "@/features/portfolio/components/company-editor";
+import { DocumentsCard } from "@/features/portfolio/components/documents";
 import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan, PortfolioRegisterRow } from "@/features/portfolio/types";
 
 const dueTone = { overdue: "danger", due_soon: "warning", upcoming: "neutral", filed: "success" } as const;
@@ -56,6 +57,7 @@ export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; 
         <div className="grid gap-4">
           {!item.complianceSetUp && <p role="status" className="rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-sm"><span className="font-medium">Not set up.</span> No filings are tracked for {item.name}, so nothing here can be called up to date. Choose what applies below{item.complianceGaps.some((gap) => gap.switch) ? ", or switch on what its records suggest" : ""}.</p>}
           <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
+          <DocumentsCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
           {item.complianceGaps.length > 0 && <ul className="grid gap-1.5">{item.complianceGaps.map((gap) => <li key={gap.text} className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${gap.kind === "missing" ? "border-warning/30 bg-warning-muted" : "border-accent-border bg-accent-muted/50"}`}>{gap.kind === "missing" ? <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden /> : <Lightbulb className="mt-px size-3.5 shrink-0 text-accent" aria-hidden />}<span className="flex-1"><span className="font-medium">{gap.kind === "missing" ? "Missing: " : "Suggested: "}</span>{gap.text}</span>{gap.switch && handlesMoney(item) && <SwitchOn item={item} part={gap.switch} onSaved={onChanged} />}</li>)}</ul>}
           {handlesMoney(item) && <PlanForm item={item} onSaved={onChanged} />}
           {item.compliance.length === 0 ? <p className="text-sm text-muted-foreground">No filings set up for this company yet. Choose what applies above.</p>

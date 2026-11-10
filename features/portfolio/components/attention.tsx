@@ -28,6 +28,7 @@ export function AttentionList({ list, limit, onOpen, read = [] }: { list: Portfo
 /** What a notification is about, from where it opens. */
 function categoryOf(text: string, to: string) {
   if (/approval/.test(text)) return "Approvals";
+  if (/document/.test(text)) return "Documents";
   if (to.includes("compliance")) return "Compliance";
   if (to.includes("finance")) return "Money";
   if (to.includes("projects")) return "Delivery";
