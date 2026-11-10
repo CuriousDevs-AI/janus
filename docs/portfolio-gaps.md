@@ -73,10 +73,10 @@ Today Portfolio Intelligence is rules over the figures on the page. Janus alread
 
 | # | Gap | Effort |
 |---|---|---|
-| 39 | Phone width (390px) and keyboard check of every Portfolio view; the audit could not run them. Wide tables need a mobile layout. | M |
-| 40 | Each company has two buttons both labelled "Open Neema Finance"; give each its own label. | S |
-| 41 | The floating "N" dev-tools circle covers the user's name in the corner (development only; confirm it is absent in a production build). | S |
-| 42 | Long empty space under short pages; the Notifications view largely repeats the Work inbox. | S |
+| 39 ✅ | Phone width (390px) and keyboard check of every Portfolio view; the audit could not run them. Wide tables need a mobile layout. | M |
+| 40 ✅ | Each company has two buttons both labelled "Open Neema Finance"; give each its own label. | S |
+| 41 ✅ | The floating "N" dev-tools circle covers the user's name in the corner (development only; confirm it is absent in a production build). | S |
+| 42 ✅ | Long empty space under short pages; the Notifications view largely repeats the Work inbox. | S |
 
 ## Outside the Portfolio, still open
 

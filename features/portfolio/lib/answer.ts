@@ -11,7 +11,10 @@ export type Answer = { text: string; rows?: [string, string][] };
 /** Answers from the figures on the page only, naming the company and the number, and says when it cannot. */
 export function answerLive(question: string, list: PortfolioCompany[], period?: PortfolioPeriod): Answer {
   const q = question.toLowerCase();
-  const named = list.find((item) => q.includes(item.name.toLowerCase()) || q.includes(item.name.split(" ")[0].toLowerCase()));
+  // A company by its full name, or by its first word when no other company shares it ("Neema" alone
+  // cannot tell Neema Textiles from Neema Retail).
+  const first = (item: PortfolioCompany) => item.name.split(" ")[0].toLowerCase();
+  const named = list.find((item) => q.includes(item.name.toLowerCase())) ?? list.find((item) => new RegExp(`\\b${first(item).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q) && list.filter((other) => first(other) === first(item)).length === 1);
   const scope = named ? [named] : list;
   const top = <T,>(pick: (item: PortfolioCompany) => T | null | undefined, value: (item: PortfolioCompany) => number) => [...scope].filter((item) => pick(item) !== null && pick(item) !== undefined).sort((a, b) => value(b) - value(a))[0];
   // Janus does not forecast: say so before anything else can match "sales" or "pipeline".

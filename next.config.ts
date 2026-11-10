@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // The development-only "N" indicator sat over the signed-in name at the bottom of the sidebar.
+  // Production builds never show it.
+  devIndicators: { position: "bottom-right" },
   // The push service worker: always fetched fresh, and allowed to run only its own code.
   async headers() {
     return [

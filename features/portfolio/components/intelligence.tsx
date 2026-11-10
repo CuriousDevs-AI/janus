@@ -57,7 +57,7 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
   return <div className="flex flex-col gap-4">
     <SectionCard title="Ask across your companies" description="Every answer comes from the figures on the Portfolio and the knowledge you approved, with each source shown. Janus does not guess or forecast.">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="flex min-w-[260px] flex-col gap-1 text-xs font-medium text-muted-foreground">Answer with
             <Select value={model.id} onValueChange={setChosen}>
               <SelectTrigger aria-label="Answer with"><SelectValue /></SelectTrigger>
