@@ -86,6 +86,9 @@ class FinanceInvoice(Base):
     sgst_paise: Mapped[int] = mapped_column(BigInteger)
     igst_paise: Mapped[int] = mapped_column(BigInteger)
     total_paise: Mapped[int] = mapped_column(BigInteger)
+    # An opening balance: what the customer owed when the company moved to Janus. It is owed and
+    # paid like any invoice, but it is not a sale: no sales, GST or customer figure uses it.
+    opening: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_by_name: Mapped[str] = mapped_column(String(160))
     idempotency_key: Mapped[str] = mapped_column(String(80))
@@ -185,6 +188,9 @@ class FinanceBill(Base):
     # the section it is under (194C, 194J and so on).
     tds_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     tds_section: Mapped[str | None] = mapped_column(String(10))
+    # An opening balance owed to the supplier when the company moved to Janus: owed and paid like
+    # any bill, but not a cost, so no cost, GST or TDS figure uses it.
+    opening: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     po_key: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_by_name: Mapped[str] = mapped_column(String(160))

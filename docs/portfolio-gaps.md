@@ -1,6 +1,6 @@
 # Portfolio: everything pending
 
-**Status, 10 November 2026:** 41 of 42 fixed (✅) and 1 partly done (◐). Still open: opening balances and customer retention from history (33). Each fix has a line in `docs/decisions.md`. The list below is kept as it was written, with the marks added.
+**Status, 10 November 2026:** all 42 fixed (✅). Each fix has a line in `docs/decisions.md`. The list below is kept as it was written, with the marks added.
 
 What is still missing, wrong or worth improving in the Portfolio, from three sources: the independent founder audit of 7 November 2026 (score 59/100), the owner's own review, and the research report's gap list. Grouped by priority. Effort: S (hours), M (a day or two), L (several days).
 
@@ -64,7 +64,7 @@ Today Portfolio Intelligence is rules over the figures on the page. Janus alread
 | 30 ✅ | Six Portfolio roles with a company scope (Portfolio owner, Portfolio administrator, Company administrator, Finance manager, Operations manager, Read-only). Today: Owner, Group finance, Group analyst. | L |
 | 31 ✅ | Sales between your own companies linked by record, not name, and a bill created automatically in the other company when one sells to the other. | M |
 | 32 ✅ | Document vault per company with expiry dates and renewal reminders (registrations, licences, insurance, trademarks). | M |
-| 33 ◐ | Opening balances or a history import (Tally, Zoho Books), so growth against last year and retention can be shown. Done: monthly sales and costs imported from Tally or Zoho Books, and growth against last year. Open: opening balances, and customer retention (needs customer-level history). | L |
+| 33 ✅ | Opening balances or a history import (Tally, Zoho Books), so growth against last year and retention can be shown. Done: monthly and customer-wise history from Tally or Zoho Books, growth against last year, customers kept and lost, and opening balances. | L |
 | 34 ✅ | Cash: a bank feed or bank statement import, so the Portfolio can show cash and runway instead of only money in and out. | L |
 | 35 ✅ | Salaries posted to the books from HR payroll, so profit after salaries is recorded, not estimated. | M |
 | 36 ✅ | Alerts that reach the owner: an email or push message when something turns red, not only the Monday email. | M |

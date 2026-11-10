@@ -480,3 +480,22 @@ async def import_customer_history(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )
     return {"rows": rows}
+
+
+@router.post(
+    "/companies/{company_id}/opening-balances",
+    response_model=schemas.OpeningOut,
+    status_code=201,
+)
+async def record_opening_balances(
+    company_id: str, data: schemas.OpeningIn, actor: CurrentActor, db: Db, request: Request
+) -> schemas.OpeningOut:
+    return await history.record_openings(
+        db,
+        actor.user.id,
+        actor.user.name,
+        actor.session.tenant_id,
+        company_id,
+        data,
+        request_ip(request),
+    )

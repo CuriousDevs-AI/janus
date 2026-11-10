@@ -80,6 +80,8 @@ class BillOut(BaseModel):
     amount_paise: int
     tds_paise: int = 0
     tds_section: str | None = None
+    # An opening balance from before Janus, not a cost.
+    opening: bool = False
     gst_paise: int = 0
     po_key: str | None
     match: str
@@ -150,6 +152,7 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
         gst_paise=row.gst_paise,
         tds_paise=row.tds_paise,
         tds_section=row.tds_section,
+        opening=row.opening,
         po_key=row.po_key,
         match=match,
         paid_paise=paid,

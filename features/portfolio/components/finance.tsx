@@ -11,6 +11,7 @@ import { Basis, Kpi } from "@/features/portfolio/components/figures";
 import { Delta, Waterfall } from "@/features/portfolio/components/market";
 import { groupBooks, openIn, payrollFor, salariesRecorded, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
 import { parseStatement } from "@/features/portfolio/lib/bank-csv";
+import { parseOpening, type OpeningRow } from "@/features/portfolio/lib/history-csv";
 import { change, day, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioBooksAmount, PortfolioIntercompanyLink, PortfolioPeriod } from "@/features/portfolio/types";
 
@@ -69,6 +70,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
       <ByCompany list={list} period={period} />
     </SectionCard>}
     <CashCard list={list} />
+    <OpeningCard list={list} />
     <SalariesCard list={list} />
     <GstCard list={list} />
     <TdsCard list={list} />
@@ -212,5 +214,45 @@ function TdsCard({ list }: { list: WithMoney[] }) {
       <p className="text-xs text-muted-foreground">{inr(n(tds.deducted))} deducted: {inr(n(tds.onBills))} on bills{Object.keys(tds.bySection).length ? ` (${Object.entries(tds.bySection).map(([code, value]) => `${code} ${inr(n(value))}`).join(", ")})` : ""}, {inr(n(tds.onSalaries))} on salaries · {tds.deposited !== null ? `${inr(n(tds.deposited))} deposited` : "no challan recorded yet"}</p>
       {!tds.salariesPosted && <p className="text-xs text-warning">{tds.label} salaries are not posted, so TDS on them is not counted yet.</p>}
     </li>; })}</ul>
+  </SectionCard>;
+}
+
+/** What customers owed and what was owed to suppliers when a company moved to Janus, from the
+ * old system's outstanding reports. They become opening invoices and bills: owed, aged and paid
+ * like any other, never sales or costs. */
+function OpeningCard({ list }: { list: WithMoney[] }) {
+  const { handlesMoney } = useRoles();
+  const editable = list.filter((item) => handlesMoney(item));
+  const [companyId, setCompanyId] = React.useState(editable[0]?.id ?? "");
+  const [asOf, setAsOf] = React.useState("");
+  const [rows, setRows] = React.useState<{ customers: OpeningRow[]; suppliers: OpeningRow[] }>({ customers: [], suppliers: [] });
+  const [busy, setBusy] = React.useState(false);
+  if (editable.length === 0) return null;
+  const read = async (file: File, side: "customers" | "suppliers") => {
+    try { const parsed = parseOpening(await file.text()); setRows((current) => ({ ...current, [side]: parsed.rows })); toast.success(`${parsed.rows.length} ${side} read${parsed.skipped ? `; ${parsed.skipped} rows left out (totals or blank)` : ""}.`); }
+    catch (error) { toast.error(message(error)); }
+  };
+  const total = (side: OpeningRow[]) => side.reduce((sum, row) => sum + Number(row.amount), 0);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const result = await api<{ invoices: number; bills: number }>(`/portfolio/companies/${companyId}/opening-balances`, { method: "POST", body: JSON.stringify({ asOf, customers: rows.customers.map(({ name, amount, dueOn }) => ({ name, amount, dueOn })), suppliers: rows.suppliers.map(({ name, amount, dueOn }) => ({ name, amount, dueOn })) }) });
+      toast.success(`${result.invoices} customer and ${result.bills} supplier balances recorded. Reload to see them in what is owed.`);
+      setRows({ customers: [], suppliers: [] });
+    } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
+  };
+  const upload = (side: "customers" | "suppliers", label: string) => <label className="inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm">{label}<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void read(file, side); }} /></label>;
+  return <SectionCard title="Opening balances" description="What customers owed you and what you owed suppliers on the day a company moved to Janus, from your old system's outstanding reports (Tally's Bills Receivable and Bills Payable, or Zoho's aged balances) saved as CSV. They are recorded in Finance as opening invoices and bills: owed, aged and paid like any other, but never counted as sales, costs or GST. Recording the same party twice for one day changes nothing.">
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="grid gap-1 text-xs text-muted-foreground">Company<select className="h-9 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>{editable.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">Moved to Janus on<input type="date" className="h-9 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" max={new Date().toISOString().slice(0, 10)} value={asOf} onChange={(event) => setAsOf(event.target.value)} /></label>
+      {upload("customers", "Customers who owe you (CSV)")}
+      {upload("suppliers", "Suppliers you owe (CSV)")}
+    </div>
+    {(rows.customers.length > 0 || rows.suppliers.length > 0) && <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+      <span>{rows.customers.length} customers owing {inr(total(rows.customers))} · {rows.suppliers.length} suppliers owed {inr(total(rows.suppliers))}</span>
+      <Button size="sm" disabled={busy || !asOf || !companyId} onClick={() => void save()}>Record opening balances</Button>
+      {!asOf && <span className="text-xs text-warning">Choose the day the company moved to Janus.</span>}
+    </div>}
   </SectionCard>;
 }

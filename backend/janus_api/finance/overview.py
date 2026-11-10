@@ -171,7 +171,9 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
     """Sales, costs and money paid out between two days, both included."""
     taxable = await db.scalar(
         select(func.coalesce(func.sum(FinanceInvoice.taxable_paise), 0)).where(
-            FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.invoice_date.between(start, end)
+            FinanceInvoice.tenant_id == tenant_id,
+            FinanceInvoice.opening.is_(False),
+            FinanceInvoice.invoice_date.between(start, end),
         )
     )
     notes: dict[str, int] = {
@@ -193,7 +195,9 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
     }
     bills = await db.scalar(
         select(func.coalesce(func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise), 0)).where(
-            FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end)
+            FinanceBill.tenant_id == tenant_id,
+            FinanceBill.opening.is_(False),
+            FinanceBill.bill_date.between(start, end),
         )
     )
     paid = await db.scalar(
@@ -220,6 +224,7 @@ async def sales_by_customer(
             select(name, func.sum(FinanceInvoice.taxable_paise))
             .where(
                 FinanceInvoice.tenant_id == tenant_id,
+                FinanceInvoice.opening.is_(False),
                 FinanceInvoice.invoice_date.between(start, end),
             )
             .group_by(name)
@@ -235,7 +240,11 @@ async def costs_by_vendor(
     rows = (
         await db.execute(
             select(FinanceBill.vendor, func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise))
-            .where(FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end))
+            .where(
+                FinanceBill.tenant_id == tenant_id,
+                FinanceBill.opening.is_(False),
+                FinanceBill.bill_date.between(start, end),
+            )
             .group_by(FinanceBill.vendor)
         )
     ).all()
@@ -268,6 +277,7 @@ async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dic
                 select(FinanceInvoice.invoice_date, func.sum(FinanceInvoice.taxable_paise))
                 .where(
                     FinanceInvoice.tenant_id == tenant_id,
+                    FinanceInvoice.opening.is_(False),
                     FinanceInvoice.invoice_date.between(start, end),
                 )
                 .group_by(FinanceInvoice.invoice_date)
@@ -300,7 +310,9 @@ async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dic
                     func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise),
                 )
                 .where(
-                    FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end)
+                    FinanceBill.tenant_id == tenant_id,
+                    FinanceBill.opening.is_(False),
+                    FinanceBill.bill_date.between(start, end),
                 )
                 .group_by(FinanceBill.bill_date)
             )
@@ -346,7 +358,9 @@ async def gst(db: AsyncSession, tenant_id: int, start: date, end: date) -> Gst:
                 0,
             )
         ).where(
-            FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.invoice_date.between(start, end)
+            FinanceInvoice.tenant_id == tenant_id,
+            FinanceInvoice.opening.is_(False),
+            FinanceInvoice.invoice_date.between(start, end),
         )
     )
     paid, missing = (
@@ -354,7 +368,11 @@ async def gst(db: AsyncSession, tenant_id: int, start: date, end: date) -> Gst:
             select(
                 func.coalesce(func.sum(FinanceBill.gst_paise), 0),
                 func.count(FinanceBill.id).filter(FinanceBill.gst_paise == 0),
-            ).where(FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end))
+            ).where(
+                FinanceBill.tenant_id == tenant_id,
+                FinanceBill.opening.is_(False),
+                FinanceBill.bill_date.between(start, end),
+            )
         )
     ).one()
     return Gst(output=int(output or 0), input=int(paid or 0), bills_without_gst=int(missing or 0))
@@ -394,6 +412,7 @@ async def invoices_to(
         )
         .where(
             FinanceInvoice.tenant_id == tenant_id,
+            FinanceInvoice.opening.is_(False),
             FinanceInvoice.invoice_date >= since,
             func.trim(party).in_(wanted),
         )
@@ -544,6 +563,7 @@ async def tds(db: AsyncSession, tenant_id: int, start: date, end: date) -> Tds:
                 select(FinanceBill.tds_section, func.sum(FinanceBill.tds_paise))
                 .where(
                     FinanceBill.tenant_id == tenant_id,
+                    FinanceBill.opening.is_(False),
                     FinanceBill.bill_date.between(start, end),
                     FinanceBill.tds_paise > 0,
                 )
@@ -575,6 +595,7 @@ async def customer_months(
             select(name, month, func.sum(FinanceInvoice.taxable_paise))
             .where(
                 FinanceInvoice.tenant_id == tenant_id,
+                FinanceInvoice.opening.is_(False),
                 FinanceInvoice.invoice_date.between(start, end),
             )
             .group_by(name, month)

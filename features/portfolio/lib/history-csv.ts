@@ -1,7 +1,7 @@
 /** Reads a monthly summary exported from Tally, Zoho Books or a spreadsheet: one row a month, with
  * the month, sales and purchases or expenses. Months may be written "Apr-25", "April 2025",
  * "2025-04" or "04/2025". Rows that are not a month (totals, headings) are skipped. */
-import { rupees } from "@/features/portfolio/lib/bank-csv";
+import { isoDate, rupees } from "@/features/portfolio/lib/bank-csv";
 
 export type HistoryRow = { month: string; sales: string; costs: string };
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -91,4 +91,35 @@ export function parseCustomerHistory(text: string): { rows: CustomerRow[]; skipp
     rows.push({ month: when, customer: name.slice(0, 160), sales: Math.abs(value).toFixed(2) });
   }
   return { rows, skipped };
+}
+
+export type OpeningRow = { name: string; amount: string; dueOn: string | null };
+
+/** Reads an outstanding report (Tally's Bills Receivable or Payable, Zoho's aged balances): a party,
+ * the pending amount and, where given, the due date. Several bills of one party are added up, with
+ * the earliest due date. Totals are skipped. */
+export function parseOpening(text: string): { rows: OpeningRow[]; skipped: number } {
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((line) => line.trim());
+  const at = lines.findIndex((line) => {
+    const names = cells(line).map((name) => name.toLowerCase().trim());
+    return names.some((name) => /party|customer|supplier|vendor|particulars|name/.test(name)) && names.some((name) => /pending|outstanding|balance|amount|due amount/.test(name));
+  });
+  if (at < 0) throw new Error("No header row with a party and a pending amount was found.");
+  const head = cells(lines[at]).map((name) => name.toLowerCase().trim());
+  const who = head.findIndex((name) => /party|customer|supplier|vendor|particulars|name/.test(name));
+  const amount = head.findIndex((name) => /pending|outstanding|balance|due amount/.test(name)) >= 0 ? head.findIndex((name) => /pending|outstanding|balance|due amount/.test(name)) : head.findIndex((name) => /amount/.test(name));
+  const due = head.findIndex((name) => /due on|due date|due/.test(name) && !/amount/.test(name));
+  const parties = new Map<string, OpeningRow>(); let skipped = 0;
+  for (const line of lines.slice(at + 1)) {
+    const row = cells(line); const name = (row[who] ?? "").trim();
+    const value = rupees(row[amount] ?? "");
+    if (name.length < 2 || /^(grand )?total|^sub ?total/i.test(name) || !value) { skipped++; continue; }
+    const dueOn = due >= 0 ? isoDate(row[due] ?? "") : null;
+    const key = name.toLowerCase();
+    const before = parties.get(key);
+    const sum = Math.abs(value) + (before ? Number(before.amount) : 0);
+    const earliest = [before?.dueOn, dueOn].filter(Boolean).sort()[0] ?? null;
+    parties.set(key, { name: name.slice(0, 160), amount: sum.toFixed(2), dueOn: earliest });
+  }
+  return { rows: [...parties.values()], skipped };
 }

@@ -65,3 +65,44 @@ async def import_customers(
         )
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
+async def record_openings(
+    db: AsyncSession,
+    user_id: int,
+    user_name: str,
+    current_tenant: int | None,
+    company_id: str,
+    data: schemas.OpeningIn,
+    ip: str | None,
+) -> schemas.OpeningOut:
+    """Opening balances, recorded in Finance as opening invoices and bills, by a role that may
+    record bills there."""
+    if data.asOf > today_ist():
+        raise ApiError("invalid_date", "The opening day cannot be in the future.", 422)
+
+    def rows(items: list[schemas.OpeningRowIn]) -> list[finance_service.OpeningRow]:
+        return [
+            finance_service.OpeningRow(
+                party=item.name,
+                amount_paise=int(Decimal(item.amount) * 100),
+                due=item.dueOn or data.asOf,
+            )
+            for item in items
+        ]
+
+    try:
+        tenant_id = await enter_company(db, user_id, company_id, "billing:manage")
+        invoices, bills = await finance_service.record_openings(
+            db,
+            tenant_id,
+            user_id,
+            user_name,
+            as_of=data.asOf,
+            customers=rows(data.customers),
+            suppliers=rows(data.suppliers),
+            ip=ip,
+        )
+        return schemas.OpeningOut(invoices=invoices, bills=bills)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)

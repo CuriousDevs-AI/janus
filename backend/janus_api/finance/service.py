@@ -14,6 +14,7 @@ from janus_api.finance.models import (
     FinanceBill,
     FinanceHistoryCustomer,
     FinanceHistoryMonth,
+    FinanceInvoice,
     FinancePayrollPosting,
 )
 from janus_api.rules.service import ensure_open
@@ -278,3 +279,97 @@ async def import_customer_history(
         details={"source": source, "rows": len(totals)},
     )
     return len(totals)
+
+
+@dataclass(frozen=True)
+class OpeningRow:
+    party: str
+    amount_paise: int
+    due: date
+
+
+async def record_openings(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    user_name: str,
+    *,
+    as_of: date,
+    customers: list[OpeningRow],
+    suppliers: list[OpeningRow],
+    ip: str | None,
+) -> tuple[int, int]:
+    """Records what customers owed and what was owed to suppliers on the day the company moved to
+    Janus, as opening invoices and bills dated that day. A party's opening balance is recorded once:
+    asking again for the same party and day changes nothing. Returns (invoices, bills) added."""
+    if len(customers) + len(suppliers) > 2000:
+        raise ApiError("invalid_opening", "Import up to 2,000 opening balances at a time.", 422)
+    await ensure_open(db, tenant_id, as_of)
+    added = [0, 0]
+    for kind, rows in (("customer", customers), ("supplier", suppliers)):
+        for row in rows:
+            name = row.party.strip()[:160]
+            if len(name) < 2 or row.amount_paise <= 0:
+                raise ApiError("invalid_opening", "Each balance needs a name and an amount.", 422)
+            key = f"opening:{as_of}:{hashlib.sha256(name.casefold().encode()).hexdigest()[:40]}"
+            model = FinanceInvoice if kind == "customer" else FinanceBill
+            if await db.scalar(
+                select(model.id).where(model.tenant_id == tenant_id, model.idempotency_key == key)
+            ):
+                continue
+            count = await db.scalar(
+                select(func.count())
+                .select_from(model)
+                .where(model.tenant_id == tenant_id, model.opening.is_(True))
+            )
+            due = max(row.due, as_of)
+            if kind == "customer":
+                db.add(
+                    FinanceInvoice(
+                        tenant_id=tenant_id,
+                        number=f"OB-{as_of.year}-{1 + (count or 0):04d}",
+                        customer=name,
+                        customer_company=name,
+                        invoice_date=as_of,
+                        due_date=due,
+                        same_state=True,
+                        taxable_paise=row.amount_paise,
+                        cgst_paise=0,
+                        sgst_paise=0,
+                        igst_paise=0,
+                        total_paise=row.amount_paise,
+                        opening=True,
+                        created_by=user_id,
+                        created_by_name=user_name,
+                        idempotency_key=key,
+                    )
+                )
+                added[0] += 1
+            else:
+                db.add(
+                    FinanceBill(
+                        tenant_id=tenant_id,
+                        number=f"OBB-{as_of.year}-{1 + (count or 0):04d}",
+                        vendor=name,
+                        vendor_bill_no="Opening balance",
+                        bill_date=as_of,
+                        due_date=due,
+                        amount_paise=row.amount_paise,
+                        gst_paise=0,
+                        opening=True,
+                        created_by=user_id,
+                        created_by_name=user_name,
+                        idempotency_key=key,
+                    )
+                )
+                added[1] += 1
+            await db.flush()
+    audit.record(
+        db,
+        "finance.opening_balances_recorded",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={"as_of": as_of.isoformat(), "invoices": added[0], "bills": added[1]},
+    )
+    return added[0], added[1]

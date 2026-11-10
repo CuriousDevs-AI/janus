@@ -855,3 +855,26 @@ class CustomerHistoryRow(BaseModel):
 class CustomerHistoryIn(BaseModel):
     source: Literal["tally", "zoho", "other"]
     rows: list[CustomerHistoryRow] = Field(min_length=1, max_length=20000)
+
+
+OpeningAmount = Annotated[str, StringConstraints(pattern=r"^\d{1,13}(\.\d{1,2})?$")]
+
+
+class OpeningRowIn(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+    amount: OpeningAmount
+    # When it falls due; the opening day where not given.
+    dueOn: date | None = None
+
+
+class OpeningIn(BaseModel):
+    """What customers owed and what was owed to suppliers on the day the company moved to Janus."""
+
+    asOf: date
+    customers: list[OpeningRowIn] = Field(default_factory=list, max_length=2000)
+    suppliers: list[OpeningRowIn] = Field(default_factory=list, max_length=2000)
+
+
+class OpeningOut(BaseModel):
+    invoices: int
+    bills: int

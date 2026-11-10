@@ -198,6 +198,15 @@ async function history(company, monthly) {
     // TDS on salaries is about 5% of the month's salaries here; a real figure comes from each person's tax.
     if (company.id !== retail.id) await call("POST", `/portfolio/companies/${company.id}/payroll`, { month: monthKey(1), tds: String(company.staff * 1500) });
   }
+  // What was owed when the first company moved to Janus, about 13 months ago: one customer has paid
+  // it since, one still owes it.
+  const movedOn = iso(monthDay(13, 1));
+  await enter(first.id);
+  await call("POST", `/portfolio/companies/${first.id}/opening-balances`, { asOf: movedOn, customers: [{ name: "Gupta Traders", amount: "185000", dueOn: iso(monthDay(13, 20)) }, { name: "Royal Retail", amount: "64000", dueOn: iso(monthDay(13, 25)) }], suppliers: [{ name: "Surat Yarn Co", amount: "92000", dueOn: iso(monthDay(13, 15)) }] });
+  const openings = (await call("GET", "/finance/invoices")).filter((item) => item.opening && item.customer === "Gupta Traders");
+  for (const item of openings) await call("POST", `/finance/invoices/${item.id}/payments`, { amount_paise: item.total_paise, method: "Bank transfer", reference: `OBPAY${RUN}`.slice(0, 40), paid_on: iso(monthDay(12, 10)) }, keyed("ob-pay"));
+  const openBills = (await call("GET", "/finance/bills")).filter((item) => item.opening);
+  for (const item of openBills) await call("POST", `/finance/bills/${item.id}/payments`, { amount_paise: item.amount_paise, method: "Bank transfer", reference: `OBBPAY${RUN}`.slice(0, 40), paid_on: iso(monthDay(13, 14)) }, keyed("obb-pay"));
   // Sales between the companies: the first sells cloth to Retail; one bill is recorded, one is not.
   await enter(first.id);
   for (const [n, back] of [[1, 2], [2, 0]]) {

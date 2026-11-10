@@ -1981,3 +1981,71 @@ async def test_customer_retention_from_invoices_and_an_imported_report(
         },
     )
     assert early.status_code == 422
+
+
+async def test_opening_balances_are_owed_and_paid_but_are_not_sales(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    today = today_ist()
+    as_of = today - timedelta(days=40)
+    body = {
+        "asOf": as_of.isoformat(),
+        "customers": [
+            {
+                "name": "Kavita Stores",
+                "amount": "50000",
+                "dueOn": (as_of + timedelta(days=5)).isoformat(),
+            }
+        ],
+        "suppliers": [{"name": "Surat Yarn Co", "amount": "20000.50"}],
+    }
+    url = f"/v1/portfolio/companies/{company}/opening-balances"
+    made = await client.post(url, headers=owner.headers, json=body)
+    assert made.status_code == 201 and made.json() == {"invoices": 1, "bills": 1}
+    again = await client.post(url, headers=owner.headers, json=body)
+    assert again.json() == {"invoices": 0, "bills": 0}
+    future = await client.post(
+        url, headers=owner.headers, json={**body, "asOf": (today + timedelta(days=1)).isoformat()}
+    )
+    assert future.status_code == 422
+
+    found = (await client.get("/v1/portfolio/summary?period=quarter", headers=owner.headers)).json()
+    mine = found["companies"][0]
+    assert mine["money"]["receivable"] == "50000.00" and mine["money"]["overdue"] == "50000.00"
+    assert mine["money"]["payable"] == "20000.50"
+    # Not a sale or a cost, and no customer figure.
+    assert mine["books"]["current"]["netSales"] == "0.00"
+    assert mine["books"]["current"]["costs"] == "0.00"
+    assert mine["customers"] == []
+
+    invoices = (await client.get("/v1/finance/invoices", headers=owner.headers)).json()
+    opening = next(item for item in invoices if item["opening"])
+    assert opening["number"].startswith("OB-")
+    # The invoice series is not shifted by the opening balance.
+    first = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "after-ob"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": today.isoformat(),
+            "due_date": today.isoformat(),
+            "same_state": True,
+            "lines": [{"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 1000, "gst_rate": 0}],
+        },
+    )
+    assert first.json()["number"] == f"INV-{today.year}-0101"
+    paid = await client.post(
+        f"/v1/finance/invoices/{opening['id']}/payments",
+        headers={**owner.headers, "Idempotency-Key": "ob-pay"},
+        json={
+            "amount_paise": 5000000,
+            "method": "UPI",
+            "reference": "UPI-OB",
+            "paid_on": today.isoformat(),
+        },
+    )
+    assert paid.status_code == 201, paid.text
+    found = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    assert found["companies"][0]["money"]["overdue"] == "0.00"
