@@ -130,6 +130,10 @@ class ComplianceDue(BaseModel):
     filedOn: str | None
     to: str
     acknowledgement: str | None = None
+    # For a filing past due: the late fee to date in rupees where it is a daily or flat fee (an
+    # estimate), and what the cost is made of.
+    lateFee: str | None = None
+    lateNote: str | None = None
 
 
 class Targets(BaseModel):
@@ -288,6 +292,26 @@ class Intercompany(BaseModel):
     partners: list[str]
 
 
+class GstMonth(BaseModel):
+    """GST for one month from the books, in rupees: GST charged on invoices, GST paid on supplier
+    bills (input credit, where it was recorded), and the difference."""
+
+    month: str
+    label: str
+    output: str
+    input: str
+    # Output less input; negative is credit left over.
+    payable: str
+    # Supplier bills in the month recorded without their GST, so input credit may be higher.
+    billsWithoutGst: int
+
+
+class GstPosition(BaseModel):
+    gstin: str | None
+    lastMonth: GstMonth
+    thisMonth: GstMonth
+
+
 class CompanySummary(BaseModel):
     id: str
     name: str
@@ -321,6 +345,11 @@ class CompanySummary(BaseModel):
     complianceGaps: list[ComplianceGap] = []
     # False until at least one kind of filing is switched on for the company.
     complianceSetUp: bool = False
+    # Every filing past due and not recorded as filed since unfiledSince, not only the last 90 days.
+    unfiledCount: int = 0
+    unfiledSince: str | None = None
+    # GST from the books, for a role with money: None without money or with GST not set up.
+    gst: GstPosition | None = None
 
 
 class PortfolioSummary(BaseModel):
@@ -573,3 +602,20 @@ class Preferences(BaseModel):
     # Work inbox items snoozed: their key, and until when (milliseconds since 1970).
     snoozed: dict[ReadKey, int] = Field(default_factory=dict)
     thresholds: Thresholds = Field(default_factory=Thresholds)
+
+
+class RegisterRow(BaseModel):
+    """One line of the filing register: every filing due for a company, filed or not."""
+
+    companyId: str
+    company: str
+    key: str
+    label: str
+    period: str
+    area: str
+    dueOn: str
+    status: Literal["filed", "overdue", "due_soon", "upcoming"]
+    filedOn: str | None
+    acknowledgement: str | None
+    lateFee: str | None
+    lateNote: str | None

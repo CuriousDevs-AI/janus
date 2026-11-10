@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Lightbulb, Pencil } from "lucide-react";
+import { AlertTriangle, Download, Lightbulb, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { useRoles } from "@/features/portfolio/lib/companies";
-import { day, todayIst } from "@/features/portfolio/lib/format";
+import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 import { CompanyEditor, entityNames, roleNames } from "@/features/portfolio/components/company-editor";
-import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan } from "@/features/portfolio/types";
+import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan, PortfolioRegisterRow } from "@/features/portfolio/types";
 
 const dueTone = { overdue: "danger", due_soon: "warning", upcoming: "neutral", filed: "success" } as const;
 // Janus cannot see the government portals, so a past date with no record is "not confirmed", not "late".
@@ -22,15 +22,32 @@ export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; 
   const { handlesMoney } = useRoles();
   const [filter, setFilter] = React.useState<"open" | "all">("open");
   const open = list.flatMap((item) => item.compliance.filter((due) => due.status !== "filed"));
-  const pastDue = open.filter((due) => due.status === "overdue").length;
+  const pastDue = list.reduce((sum, item) => sum + item.unfiledCount, 0);
+  const listed = open.filter((due) => due.status === "overdue").length;
+  const fees = open.reduce((sum, due) => sum + (due.status === "overdue" && due.lateFee ? Number(due.lateFee) : 0), 0);
+  const since = list.find((item) => item.unfiledSince)?.unfiledSince;
+  const download = async () => {
+    try {
+      const rows = await api<PortfolioRegisterRow[]>("/portfolio/compliance/register");
+      const cell = (value: string | null) => `"${(value ?? "").replace(/"/g, '""')}"`;
+      const lines = [["Company", "Filing", "Period", "Area", "Due on", "Status", "Filed on", "Acknowledgement", "Late fee so far (₹, estimate)", "Late cost"].map(cell).join(","), ...rows.map((row) => [row.company, row.label, row.period, row.area, row.dueOn, dueName[row.status], row.filedOn, row.acknowledgement, row.lateFee, row.lateNote].map(cell).join(","))];
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([`\ufeff${lines.join("\n")}`], { type: "text/csv;charset=utf-8" }));
+      link.download = `filing-register-${todayIst()}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (failure) { toast.error(message(failure)); }
+  };
   const soon = open.filter((due) => due.status === "due_soon").length;
   const missing = list.reduce((sum, item) => sum + item.complianceGaps.filter((gap) => gap.kind === "missing").length, 0);
   return <>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Stat label="Past due, not confirmed" value={pastDue} tone={pastDue ? "danger" : "neutral"} />
+      <Stat label={`Past due, not confirmed${since ? ` since ${day(since)}` : ""}`} value={pastDue} tone={pastDue ? "danger" : "neutral"} />
       <Stat label="Due in the next 7 days" value={soon} tone={soon ? "warning" : "neutral"} />
       <Stat label="Registration details missing" value={missing} tone={missing ? "warning" : "neutral"} />
     </div>
+    {(pastDue > listed || fees > 0) && <p role="status" className="rounded-md border border-danger/30 bg-danger-muted px-3 py-2 text-sm">{pastDue > listed ? `${pastDue} filings are past due and not recorded as filed since ${since ? day(since) : "last April"}; ${listed} of them are in the last 90 days, listed below. ` : ""}{fees > 0 ? `Late fees on those listed come to about ${inr(fees)} so far (an estimate: interest on tax due is extra).` : ""}</p>}
+    <div className="flex justify-end"><Button size="sm" variant="outline" onClick={download}><Download className="mr-1 size-4" />Filing register (CSV)</Button></div>
     <p className="text-xs text-muted-foreground">Standard due dates for GST, TDS, PF and ESI, professional tax, advance tax and company or LLP filings, from 90 days back to 30 ahead. Janus is not linked to the government portals: a filing counts as filed only when someone records it here. Extensions and your AGM date can move dates, so confirm with your CA.</p>
     <div role="group" aria-label="Show" className="flex gap-2"><Button size="sm" variant={filter === "open" ? "default" : "outline"} aria-pressed={filter === "open"} onClick={() => setFilter("open")}>Still to file</Button><Button size="sm" variant={filter === "all" ? "default" : "outline"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>Everything, filed too</Button></div>
     {list.map((item) => {
@@ -88,7 +105,7 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
   return <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
     <div className="flex flex-wrap items-center gap-3">
       <Badge variant={dueTone[due.status]}>{dueName[due.status]}</Badge>
-      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}</span></span>
+      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}</span>{due.status === "overdue" && due.lateNote && <span className="block text-xs text-danger">{due.lateFee ? `Late fee so far about ${inr(Number(due.lateFee))} (estimate). ` : "Late cost: "}{due.lateNote}.</span>}</span>
       {canMark && (due.status === "filed" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(false)}>Undo</Button> : !recording && <Button size="sm" variant="outline" disabled={busy} onClick={() => setRecording(true)}>Record filing</Button>)}
     </div>
     {recording && <form className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface-2 p-2" onSubmit={(event) => { event.preventDefault(); void save(true); }}>

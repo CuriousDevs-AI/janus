@@ -55,6 +55,11 @@ export interface PortfolioCompany {
   complianceGaps: { kind: "missing" | "suggestion"; text: string; switch?: "tds" | "pfEsi" | "company" | null }[];
   /** False until at least one kind of filing is switched on for the company. */
   complianceSetUp: boolean;
+  /** Every filing past due and not recorded since unfiledSince (1 April of last financial year). */
+  unfiledCount: number;
+  unfiledSince: string | null;
+  /** GST from the books, for a role with money where GST is set up. */
+  gst: { gstin: string | null; lastMonth: PortfolioGstMonth; thisMonth: PortfolioGstMonth } | null;
 }
 export type EntityType = "pvt_ltd" | "public_ltd" | "opc" | "llp" | "partnership" | "proprietorship" | "other";
 export interface PortfolioRegistration {
@@ -99,7 +104,14 @@ export interface PortfolioComplianceDue {
   to: string;
   /** The portal's acknowledgement number, when it was recorded. */
   acknowledgement: string | null;
+  /** Past due: the late fee to date in rupees where it is a daily or flat fee (an estimate), and what the cost is made of. */
+  lateFee: string | null;
+  lateNote: string | null;
 }
+/** GST for one month from the books, rupees as decimal strings; payable below zero is credit left over. */
+export type PortfolioGstMonth = { month: string; label: string; output: string; input: string; payable: string; billsWithoutGst: number };
+/** One line of the filing register (GET /portfolio/compliance/register). */
+export type PortfolioRegisterRow = PortfolioComplianceDue & { companyId: string; company: string };
 export interface PortfolioCompliancePlan {
   gstin: string | null;
   gstFiling: "none" | "monthly" | "quarterly";

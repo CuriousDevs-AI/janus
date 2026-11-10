@@ -4,7 +4,7 @@ Portfolio owns no business records. It asks each module for its figures through 
 `overview` functions and puts them side by side; it never reads another module's tables.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import NamedTuple
 
@@ -235,6 +235,11 @@ async def company_summary(
     # A company tracking no filings is not "up to date": it is not set up. With people on its
     # payroll, TDS and PF or ESI usually apply, so that is urgent.
     out.complianceSetUp = compliance_plan.set_up(out.compliancePlan, out.registration)
+    everything, since = await compliance_plan.register(db, tenant_id, today)
+    out.unfiledCount = sum(due.status == "overdue" for due in everything)
+    out.unfiledSince = since.isoformat()
+    if money and out.compliancePlan.gstFiling != "none":
+        out.gst = await gst_position(db, tenant_id, today, out.compliancePlan.gstin)
     if not out.complianceSetUp and (staff.headcount or sales.leads or out.money):
         out.attention = attention.with_line(
             out.attention,
@@ -296,6 +301,32 @@ async def company_summary(
                 await finance.costs_by_vendor(db, tenant_id, *span_before),
             )
     return out
+
+
+async def gst_month(db: AsyncSession, tenant_id: int, first: date, last: date) -> schemas.GstMonth:
+    figures = await finance.gst(db, tenant_id, first, last)
+    return schemas.GstMonth(
+        month=f"{first:%Y-%m}",
+        label=f"{first:%b %Y}",
+        output=rupees(figures.output, paise=True),
+        input=rupees(figures.input, paise=True),
+        payable=rupees(figures.output - figures.input, paise=True),
+        billsWithoutGst=figures.bills_without_gst,
+    )
+
+
+async def gst_position(
+    db: AsyncSession, tenant_id: int, today: date, gstin: str | None
+) -> schemas.GstPosition:
+    """GST for last month (what GSTR-3B pays on the 20th) and this month so far, per GSTIN; a
+    company has one GSTIN in Janus."""
+    this_start = today.replace(day=1)
+    last_end = this_start - timedelta(days=1)
+    return schemas.GstPosition(
+        gstin=gstin,
+        lastMonth=await gst_month(db, tenant_id, last_end.replace(day=1), last_end),
+        thisMonth=await gst_month(db, tenant_id, this_start, today),
+    )
 
 
 async def books_for(db: AsyncSession, tenant_id: int, start: date, end: date) -> schemas.Books:

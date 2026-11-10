@@ -198,3 +198,61 @@ def status(
     if due_on < today:
         return "overdue"
     return "due_soon" if due_on <= today + timedelta(days=SOON) else "upcoming"
+
+
+# What a late filing costs, by its code: a fee per day (with a cap), a flat fee, or interest on an
+# amount Janus may not know. The standard rates; a CA confirms the exact figure.
+@dataclass(frozen=True)
+class LateRule:
+    per_day: int = 0
+    cap: int | None = None
+    flat: int = 0
+    note: str = ""
+
+
+LATE: dict[str, LateRule] = {
+    "gstr1": LateRule(50, 10000, note="₹50 a day (₹20 for a nil return), capped by turnover"),
+    "gstr1q": LateRule(50, 10000, note="₹50 a day (₹20 for a nil return), capped by turnover"),
+    "gstr3b": LateRule(
+        50, 10000, note="₹50 a day (₹20 for a nil return), plus 18% a year interest on the tax"
+    ),
+    "gstr3bq": LateRule(
+        50, 10000, note="₹50 a day (₹20 for a nil return), plus 18% a year interest on the tax"
+    ),
+    "gstr9": LateRule(200, None, note="₹200 a day, capped at 0.5% of turnover"),
+    "tds": LateRule(note="1.5% a month or part on the TDS not deposited"),
+    "tdsr": LateRule(200, None, note="₹200 a day, up to the TDS in the return"),
+    "pf": LateRule(note="12% a year interest plus damages on the PF due"),
+    "esi": LateRule(note="12% a year interest on the ESI due"),
+    "ptka": LateRule(note="Interest and penalty under Karnataka's professional tax law"),
+    "ptmh": LateRule(note="Interest and penalty under Maharashtra's professional tax law"),
+    "advtax": LateRule(note="1% a month interest on the instalment short"),
+    "dir3": LateRule(flat=5000, note="₹5,000 for each director, to reactivate the DIN"),
+    "taxaudit": LateRule(flat=150000, note="0.5% of turnover, up to ₹1.5 lakh"),
+    "itr": LateRule(flat=5000, note="₹5,000, plus 1% a month interest on tax unpaid"),
+    "aoc4": LateRule(100, None, note="₹100 a day, no upper limit"),
+    "mgt7": LateRule(100, None, note="₹100 a day, no upper limit"),
+    "llp11": LateRule(100, None, note="₹100 a day, no upper limit"),
+    "llp8": LateRule(100, None, note="₹100 a day, no upper limit"),
+}
+
+
+def late_cost(key: str, due_on: date, today: date) -> tuple[int | None, str]:
+    """A late filing's fee to date in rupees, where a daily or flat fee applies, and what it is
+    made of. None where the cost is interest on an amount Janus does not keep."""
+    rule = LATE.get(key.split("_")[0])
+    if rule is None or due_on >= today:
+        return None, ""
+    days = (today - due_on).days
+    if rule.per_day:
+        fee = rule.per_day * days
+        return (min(fee, rule.cap) if rule.cap else fee), rule.note
+    if rule.flat:
+        return rule.flat, rule.note
+    return None, rule.note
+
+
+def register_start(today: date) -> date:
+    """Where the filing register and the full unfiled count begin: 1 April of the previous
+    financial year, so last year's annual returns are counted."""
+    return date(_fy_start(today) - 1, 4, 1)

@@ -313,3 +313,40 @@ async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dic
         "collected",
     )
     return {day: DayMoney(**values) for day, values in days.items()}
+
+
+@dataclass(frozen=True)
+class Gst:
+    """GST in the books for a span of days, in paise: charged on invoices, and recorded on supplier
+    bills (input credit). Credit notes keep no GST of their own, so they are not taken off."""
+
+    output: int
+    input: int
+    # Supplier bills in the span recorded without their GST.
+    bills_without_gst: int
+
+
+async def gst(db: AsyncSession, tenant_id: int, start: date, end: date) -> Gst:
+    output = await db.scalar(
+        select(
+            func.coalesce(
+                func.sum(
+                    FinanceInvoice.cgst_paise
+                    + FinanceInvoice.sgst_paise
+                    + FinanceInvoice.igst_paise
+                ),
+                0,
+            )
+        ).where(
+            FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.invoice_date.between(start, end)
+        )
+    )
+    paid, missing = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(FinanceBill.gst_paise), 0),
+                func.count(FinanceBill.id).filter(FinanceBill.gst_paise == 0),
+            ).where(FinanceBill.tenant_id == tenant_id, FinanceBill.bill_date.between(start, end))
+        )
+    ).one()
+    return Gst(output=int(output or 0), input=int(paid or 0), bills_without_gst=int(missing or 0))

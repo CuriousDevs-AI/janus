@@ -56,8 +56,8 @@ Today Portfolio Intelligence is rules over the figures on the page. Janus alread
 
 | # | Gap | Effort |
 |---|---|---|
-| 27 | GST payable (output GST less input credit) per GSTIN, and TDS deducted against deposited, from invoices, bills and payroll. | M |
-| 28 | Challan amounts and late-fee or interest estimates on past-due filings; a count of every unfiled item, not only the last 90 days; export of the filing register. | M |
+| 27 ◐ | GST payable (output GST less input credit) per GSTIN, and TDS deducted against deposited, from invoices, bills and payroll. Done: GST payable per GSTIN from invoices and bills. Open: TDS, which Janus does not record yet (needs TDS on bills and salaries). | M |
+| 28 ✅ | Challan amounts and late-fee or interest estimates on past-due filings; a count of every unfiled item, not only the last 90 days; export of the filing register. | M |
 | 29 ✅ | Activity with numbers: the document number, customer and amount for roles with money; bursts grouped ("raised 6 invoices, ₹4.2L"); edits and deletions highlighted. | M |
 | 30 | Six Portfolio roles with a company scope (Portfolio owner, Portfolio administrator, Company administrator, Finance manager, Operations manager, Read-only). Today: Owner, Group finance, Group analyst. | L |
 | 31 | Sales between your own companies linked by record, not name, and a bill created automatically in the other company when one sells to the other. | M |

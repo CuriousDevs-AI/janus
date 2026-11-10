@@ -148,10 +148,10 @@ async def activity(
             if company is None or "portfolio:read" not in role.permissions:
                 continue
             money = "portfolio:finance" in role.permissions
-            actions = [
+            kinds = [
                 action for action, (area, _) in EVENTS.items() if money or area not in MONEY_AREAS
             ]
-            for event in await audit.recent(db, tenant_id, actions, since, PER_COMPANY):
+            for event in await audit.recent(db, tenant_id, kinds, since, PER_COMPANY):
                 found.append((tenant_id, company.name, event))
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)

@@ -170,6 +170,19 @@ def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
                 f"{n} money in from customers {inr(now.moneyIn)}, out to suppliers"
                 f" {inr(now.moneyOut)} this period.",
             )
+        if c.gst:
+            last = c.gst.lastMonth
+            add(
+                n,
+                f"{n} GST for {last.label} from the books: {inr(last.output)} charged, "
+                f"{inr(last.input)} input credit, {inr(last.payable)} to pay (an estimate).",
+            )
+        if c.unfiledCount:
+            add(
+                n,
+                f"{n} has {c.unfiledCount} filings past due and not recorded as filed since"
+                f" {c.unfiledSince}.",
+            )
         if c.people:
             pay = c.people.monthlyPayroll
             add(

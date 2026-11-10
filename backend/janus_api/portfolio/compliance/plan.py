@@ -10,8 +10,9 @@ from janus_api.audit.service import record
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
+from janus_api.org import overview as org
 from janus_api.portfolio import schemas
-from janus_api.portfolio.access import enter_company
+from janus_api.portfolio.access import enter_company, readable_companies
 from janus_api.portfolio.compliance import due_dates
 from janus_api.portfolio.models import CompanyRegistration, ComplianceFiling, ComplianceProfile
 from janus_api.portfolio.periods import today_ist
@@ -146,7 +147,51 @@ async def compliance_view(
         pfEsi=profile.pf_esi,
         company=profile.company,
     )
-    filed: dict[str, tuple[date, str | None]] = {
+    filed = await _filed(db, tenant_id)
+    first, last = due_dates.window(today)
+    return plan, [
+        _due_out(due, filed, today)
+        for due in due_dates.dues(_rules(profile, registration), first, last)
+    ]
+
+
+def _due_out(
+    due: due_dates.Due, filed: dict[str, tuple[date, str | None]], today: date
+) -> schemas.ComplianceDue:
+    done = due.key in filed
+    fee, note = (None, "") if done else due_dates.late_cost(due.key, due.due_on, today)
+    return schemas.ComplianceDue(
+        key=due.key,
+        label=due.label,
+        period=due.period,
+        area=due.area,
+        dueOn=due.due_on.isoformat(),
+        status=due_dates.status(due.due_on, done, today),
+        filedOn=filed[due.key][0].isoformat() if done else None,
+        acknowledgement=filed[due.key][1] if done else None,
+        to="/portfolio?view=compliance",
+        lateFee=str(fee) if fee is not None else None,
+        lateNote=note or None,
+    )
+
+
+async def register(
+    db: AsyncSession, tenant_id: int, today: date
+) -> tuple[list[schemas.ComplianceDue], date]:
+    """Every filing for the company from 1 April of the previous financial year to 30 days ahead,
+    filed or not: the filing register, and the full count of what is unfiled."""
+    profile = await _profile(db, tenant_id)
+    start = due_dates.register_start(today)
+    if profile is None:
+        return [], start
+    registration = await _registration(db, tenant_id)
+    filed = await _filed(db, tenant_id)
+    dues = due_dates.dues(_rules(profile, registration), start, today + timedelta(days=30))
+    return [_due_out(due, filed, today) for due in dues], start
+
+
+async def _filed(db: AsyncSession, tenant_id: int) -> dict[str, tuple[date, str | None]]:
+    return {
         key: (day, acknowledgement)
         for key, day, acknowledgement in (
             await db.execute(
@@ -158,21 +203,6 @@ async def compliance_view(
             )
         ).all()
     }
-    first, last = due_dates.window(today)
-    return plan, [
-        schemas.ComplianceDue(
-            key=due.key,
-            label=due.label,
-            period=due.period,
-            area=due.area,
-            dueOn=due.due_on.isoformat(),
-            status=due_dates.status(due.due_on, due.key in filed, today),
-            filedOn=filed[due.key][0].isoformat() if due.key in filed else None,
-            acknowledgement=filed[due.key][1] if due.key in filed else None,
-            to="/portfolio?view=compliance",
-        )
-        for due in due_dates.dues(_rules(profile, registration), first, last)
-    ]
 
 
 async def set_compliance_plan(
@@ -305,3 +335,36 @@ def set_up(plan: schemas.CompliancePlan, registration: schemas.Registration | No
     """Whether any kind of filing is tracked for the company."""
     llp = registration is not None and registration.entityType == "llp"
     return plan.gstFiling != "none" or plan.tds or plan.pfEsi or plan.company or llp
+
+
+async def register_all(
+    db: AsyncSession, user_id: int, current_tenant: int | None
+) -> list[schemas.RegisterRow]:
+    """The filing register of every company this person sees, for export."""
+    rows: list[schemas.RegisterRow] = []
+    today = today_ist()
+    try:
+        for tenant_id in await readable_companies(db, user_id):
+            await set_context(db, user_id=user_id, tenant_id=tenant_id)
+            company = await org.company(db, tenant_id)
+            dues, _ = await register(db, tenant_id, today)
+            rows += [
+                schemas.RegisterRow(
+                    companyId=str(tenant_id),
+                    company=company.name if company else "",
+                    key=due.key,
+                    label=due.label,
+                    period=due.period,
+                    area=due.area,
+                    dueOn=due.dueOn,
+                    status=due.status,
+                    filedOn=due.filedOn,
+                    acknowledgement=due.acknowledgement,
+                    lateFee=due.lateFee,
+                    lateNote=due.lateNote,
+                )
+                for due in dues
+            ]
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    return rows

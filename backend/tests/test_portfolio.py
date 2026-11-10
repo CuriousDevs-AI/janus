@@ -1286,3 +1286,89 @@ async def test_each_person_keeps_read_snoozed_and_red_thresholds_on_the_server(
     other = await signup(client, mailbox, "second@example.com")
     theirs = (await client.get("/v1/portfolio/preferences", headers=other.headers)).json()
     assert theirs["read"] == [] and theirs["thresholds"]["overdueMinimum"] == 0
+
+
+def test_late_fees_by_kind_of_filing() -> None:
+    from janus_api.portfolio.compliance.due_dates import late_cost, register_start
+
+    today = date(2026, 11, 10)
+    # GSTR-3B: ₹50 a day, capped at ₹10,000.
+    assert late_cost("gstr3b_2026-09", date(2026, 10, 20), today)[0] == 1050
+    assert late_cost("gstr3b_2025-09", date(2025, 10, 20), today)[0] == 10000
+    # MCA forms: ₹100 a day, no cap; DIR-3 KYC: a flat ₹5,000.
+    assert late_cost("aoc4_2025", date(2026, 10, 30), today)[0] == 1100
+    assert late_cost("dir3_2025", date(2026, 9, 30), today)[0] == 5000
+    # Interest on an amount Janus does not keep: no figure, only what it is.
+    fee, note = late_cost("tds_2026-09", date(2026, 10, 7), today)
+    assert fee is None and "1.5% a month" in note
+    assert late_cost("gstr3b_2026-10", date(2026, 11, 20), today) == (None, "")
+    assert register_start(today) == date(2025, 4, 1)
+
+
+async def test_gst_payable_unfiled_count_and_filing_register(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company_id = str(owner.tenant_id)
+    plan = await client.put(
+        f"/v1/portfolio/companies/{company_id}/compliance",
+        headers=owner.headers,
+        json={"gstin": "27AAPFU0939F1ZV", "gstFiling": "monthly"},
+    )
+    assert plan.status_code == 200, plan.text
+    today = today_ist()
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "gst-1"},
+        json={
+            "customer": "Kavita Rao",
+            "invoice_date": today.isoformat(),
+            "due_date": today.isoformat(),
+            "same_state": True,
+            "lines": [
+                {"item": "Cloth", "hsn": "5208", "qty": 1, "rate_paise": 100000, "gst_rate": 5}
+            ],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+    for key, gst in (("bill-gst", 1800), ("bill-none", 0)):
+        bill = await client.post(
+            "/v1/finance/bills",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "vendor": "Yarn Co",
+                "vendor_bill_no": key,
+                "bill_date": today.isoformat(),
+                "due_date": today.isoformat(),
+                "amount_paise": 11800,
+                "gst_paise": gst,
+            },
+        )
+        assert bill.status_code == 201, bill.text
+
+    company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+        "companies"
+    ][0]
+    gst = company["gst"]
+    assert gst["gstin"] == "27AAPFU0939F1ZV"
+    assert gst["thisMonth"] == {
+        "month": f"{today:%Y-%m}",
+        "label": f"{today:%b %Y}",
+        "output": "50.00",
+        "input": "18.00",
+        "payable": "32.00",
+        "billsWithoutGst": 1,
+    }
+    assert gst["lastMonth"]["payable"] == "0.00"
+    # Every unfiled return since 1 April last year, not only those in the 90-day list.
+    listed = [due for due in company["compliance"] if due["status"] == "overdue"]
+    assert company["unfiledCount"] > len(listed) > 0
+    assert company["unfiledSince"].endswith("-04-01")
+    late = listed[0]
+    assert late["lateFee"] and int(late["lateFee"]) > 0 and "₹50 a day" in late["lateNote"]
+
+    register = await client.get("/v1/portfolio/compliance/register", headers=owner.headers)
+    assert register.status_code == 200, register.text
+    rows = register.json()
+    assert sum(row["status"] == "overdue" for row in rows) == company["unfiledCount"]
+    assert {row["company"] for row in rows} == {"Mumbai Traders"}

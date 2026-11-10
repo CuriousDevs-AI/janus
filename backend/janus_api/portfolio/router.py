@@ -318,3 +318,8 @@ async def save_preferences(
     data: schemas.Preferences, actor: CurrentActor, db: Db
 ) -> schemas.Preferences:
     return await preferences.save(db, actor.user.id, data)
+
+
+@router.get("/compliance/register", response_model=list[schemas.RegisterRow])
+async def filing_register(actor: CurrentActor, db: Db) -> list[schemas.RegisterRow]:
+    return await compliance.register_all(db, actor.user.id, actor.session.tenant_id)

@@ -62,6 +62,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     : <SectionCard title="Company by company" description={`From each company's invoices, payments, credit notes and bills, ${period.label}. ${coverage}.`}>
       <ByCompany list={list} period={period} />
     </SectionCard>}
+    <GstCard list={list} />
   </>;
 }
 
@@ -89,4 +90,24 @@ function ByCompany({ list, period }: { list: WithMoney[]; period: PortfolioPerio
     <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th>{list.map((item) => <th key={item.id} className="px-3 py-2">{item.name}</th>)}</tr></thead><tbody>{rows.map(([label, value], index) => <tr key={index} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{label}</td>{list.map((item) => <td key={item.id} className="px-3 py-2.5 tabular-nums">{value(item)}</td>)}</tr>)}</tbody></table></div>
     <div className="mt-3 flex flex-wrap gap-2">{list.filter(owns).map((item) => <Button key={item.id} size="sm" variant="outline" onClick={() => openIn(item, "/workspace/finance-accounting?workspace=finance-accounting")}>Open {item.name.split(" ")[0]} Finance</Button>)}</div>
   </>;
+}
+
+
+/** GST to pay per GSTIN, from the books: GST charged on invoices less GST recorded on supplier
+ * bills. Each company has one GSTIN in Janus. TDS is not recorded in Janus, so it is not shown. */
+function GstCard({ list }: { list: WithMoney[] }) {
+  const withGst = list.filter((item) => item.gst);
+  if (withGst.length === 0) return null;
+  const pay = (value: string) => n(value) >= 0 ? inr(n(value)) : `${inr(-n(value))} credit`;
+  return <SectionCard title="GST to pay" description="From the books: GST charged on invoices, less GST recorded on supplier bills (input credit). Last month's is what GSTR-3B pays by the 20th. An estimate for your CA: credit carried from earlier months, blocked credit and credit notes are not counted.">
+    <ul className="flex flex-col divide-y divide-border">{withGst.map((item) => {
+      const gst = item.gst!;
+      return <li key={item.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 text-sm">
+        <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{item.name}</span><span className="text-xs text-muted-foreground">{gst.gstin ? `GSTIN ${gst.gstin}` : "No GSTIN recorded"}</span></p>
+        <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2">{[gst.lastMonth, gst.thisMonth].map((month, index) => <div key={month.month} className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">{month.label}{index === 1 ? " so far" : ""}</dt><dd className="tabular-nums"><span className="font-medium">{pay(month.payable)}</span> <span className="text-xs text-muted-foreground">({inr(n(month.output))} charged − {inr(n(month.input))} credit)</span></dd></div>)}</dl>
+        {(gst.lastMonth.billsWithoutGst + gst.thisMonth.billsWithoutGst) > 0 && <p className="text-xs text-warning">{gst.lastMonth.billsWithoutGst + gst.thisMonth.billsWithoutGst} supplier bills have no GST recorded, so the credit may be higher and the GST to pay lower.</p>}
+      </li>;
+    })}</ul>
+    <p className="mt-3 text-xs text-muted-foreground">TDS deducted and deposited is not recorded in Janus yet, so it is not shown here; the TDS filings are in Compliance.</p>
+  </SectionCard>;
 }
