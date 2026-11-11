@@ -19,7 +19,7 @@ from janus_api.auth.service import Actor
 from janus_api.core.config import get_settings
 from janus_api.core.deps import Db
 from janus_api.core.errors import ApiError
-from janus_api.org.models import Membership
+from janus_api.org import service as org_service
 from janus_api.team import schemas
 from janus_api.team.models import (
     TeamAttachment,
@@ -460,17 +460,7 @@ async def open_conversation(
         raise ApiError("no_people", "Choose at least one person.", 422)
     if actor.user.id in people:
         raise ApiError("self_conversation", "You cannot start a conversation with yourself.", 422)
-    active = set(
-        (
-            await db.scalars(
-                select(Membership.user_id).where(
-                    Membership.tenant_id == tenant_id,
-                    Membership.user_id.in_(people),
-                    Membership.status == "active",
-                )
-            )
-        ).all()
-    )
+    active = await org_service.active_user_ids(db, tenant_id, people)
     if active != people:
         raise ApiError("person_not_found", "That person is not a member of this company.", 404)
     everyone = people | {actor.user.id}
@@ -660,13 +650,8 @@ async def mark_read(db: Db, actor: Actor, space_id: int, data: schemas.ReadIn) -
 
 async def list_people(db: Db, actor: Actor) -> list[schemas.PersonOut]:
     """Everyone in the company who can be messaged. Any member can see this list."""
-    rows = await db.execute(
-        select(User.id, User.name)
-        .join(Membership, Membership.user_id == User.id)
-        .where(Membership.tenant_id == actor.session.tenant_id, Membership.status == "active")
-        .order_by(User.name)
-    )
-    return [schemas.PersonOut(id=user_id, name=name) for user_id, name in rows.all()]
+    people = await org_service.active_people(db, actor.session.tenant_id)
+    return [schemas.PersonOut(id=user_id, name=name) for user_id, name, _ in people]
 
 
 def _clean_name(raw: str | None) -> str:
@@ -1071,14 +1056,7 @@ def ice_for(label: str) -> schemas.IceConfigOut:
 
 
 async def _active_member(db: Db, tenant_id: int, user_id: int) -> bool:
-    found = await db.scalar(
-        select(Membership.user_id).where(
-            Membership.tenant_id == tenant_id,
-            Membership.user_id == user_id,
-            Membership.status == "active",
-        )
-    )
-    return found is not None
+    return await org_service.active_member(db, tenant_id, user_id)
 
 
 async def create_post(
@@ -1220,17 +1198,11 @@ async def mail_for(db: Db, actor: Actor, message: schemas.MessageOut) -> list[tu
     )
     tenant_id = actor.session.tenant_id
     if message.kind == "announcement":
-        rows = (
-            await db.execute(
-                select(User.email)
-                .join(Membership, Membership.user_id == User.id)
-                .where(
-                    Membership.tenant_id == tenant_id,
-                    Membership.status == "active",
-                    User.id != actor.user.id,
-                )
-            )
-        ).all()
+        rows = [
+            (email,)
+            for user_id, _, email in await org_service.active_people(db, tenant_id)
+            if user_id != actor.user.id
+        ]
         subject = f"Announcement: {message.title or (message.body or '')[:60]}"
         text = (
             f"{actor.user.name} posted an announcement.\n\n"

@@ -19,7 +19,7 @@ from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.finance.models import FinanceBill, FinanceBillPayment
-from janus_api.operations.models import OpsPoLine, OpsPurchaseOrder
+from janus_api.operations import service as operations
 from janus_api.rules.service import ensure_open, rules_for
 
 router = APIRouter(prefix="/v1/finance", tags=["Finance"])
@@ -95,11 +95,6 @@ def _round(value: Decimal) -> int:
     return int(value.quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
-async def _received_paise(db: Db, order: OpsPurchaseOrder) -> int:
-    lines = (await db.scalars(select(OpsPoLine).where(OpsPoLine.po_id == order.id))).all()
-    return sum(_round(line.received_qty * line.rate_paise) for line in lines)
-
-
 def _match(bill_paise: int, received_paise: int, tolerance_percent: Decimal) -> str:
     """The three-way match: the bill against the goods received on its order."""
     if received_paise <= 0:
@@ -110,15 +105,6 @@ def _match(bill_paise: int, received_paise: int, tolerance_percent: Decimal) -> 
     if bill_paise > received_paise:
         return "bill above goods received"
     return "goods above bill"
-
-
-async def _order(db: Db, tenant_id: int, po_key: str) -> OpsPurchaseOrder | None:
-    order: OpsPurchaseOrder | None = await db.scalar(
-        select(OpsPurchaseOrder).where(
-            OpsPurchaseOrder.tenant_id == tenant_id, OpsPurchaseOrder.po_key == po_key
-        )
-    )
-    return order
 
 
 async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
@@ -132,12 +118,10 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
     paid = sum(payment.amount_paise for payment in payments)
     match = "no order"
     if row.po_key is not None:
-        order = await _order(db, row.tenant_id, row.po_key)
+        order = await operations.received_order(db, row.tenant_id, row.po_key)
         rules = await rules_for(db, row.tenant_id)
         match = (
-            _match(
-                row.amount_paise, await _received_paise(db, order), rules.match_tolerance_percent
-            )
+            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )
@@ -217,13 +201,10 @@ async def record_bill(
         return await _bill_out(db, existing)
     order = None
     if data.po_key is not None:
-        order = await _order(db, tenant_id, data.po_key)
+        order = await operations.received_order(db, tenant_id, data.po_key)
         if order is None:
             raise ApiError("po_not_found", "The purchase order was not found.", 422)
-        if (
-            _match(data.amount_paise, await _received_paise(db, order), Decimal(0))
-            == "goods not received"
-        ):
+        if _match(data.amount_paise, order.received_paise, Decimal(0)) == "goods not received":
             raise ApiError(
                 "goods_not_received",
                 f"No goods have been received against {order.number} yet.",
@@ -290,12 +271,10 @@ async def pay_bill(
         response.status_code = 200
         return await _bill_out(db, row)
     if row.po_key is not None:
-        order = await _order(db, tenant_id, row.po_key)
+        order = await operations.received_order(db, tenant_id, row.po_key)
         rules = await rules_for(db, tenant_id)
         match = (
-            _match(
-                row.amount_paise, await _received_paise(db, order), rules.match_tolerance_percent
-            )
+            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )

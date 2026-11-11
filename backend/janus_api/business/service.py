@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from janus_api.audit.service import record
 from janus_api.auth.models import User
 from janus_api.business import schemas
+from janus_api.business.engine import enqueue_event as enqueue_event
 from janus_api.business.models import (
     AgentDefinition,
     AutomationExecution,

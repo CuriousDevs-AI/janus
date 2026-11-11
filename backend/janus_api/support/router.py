@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
-from janus_api.business.engine import enqueue_event
+from janus_api.business.service import enqueue_event
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.support.models import SupportTicket

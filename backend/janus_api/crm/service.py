@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth.models import User
-from janus_api.business.engine import enqueue_event
+from janus_api.business.service import enqueue_event
 from janus_api.core.errors import ApiError, ProcessingError
 from janus_api.core.security import now
 from janus_api.crm import schemas

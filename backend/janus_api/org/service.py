@@ -1,9 +1,11 @@
+from collections.abc import Iterable
 from datetime import timedelta
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import Select, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
+from janus_api.auth.models import User
 from janus_api.core.email import send_token
 from janus_api.core.errors import ApiError
 from janus_api.core.security import digest, now, random_token
@@ -856,6 +858,34 @@ async def active_member(db: AsyncSession, tenant_id: int, user_id: int) -> bool:
             )
         )
     )
+
+
+def active_user_select(tenant_id: int) -> Select[tuple[int]]:
+    """The user IDs of the company's active members, for use inside another module's query."""
+    return select(Membership.user_id).where(
+        Membership.tenant_id == tenant_id, Membership.status == "active"
+    )
+
+
+async def active_user_ids(
+    db: AsyncSession, tenant_id: int, user_ids: Iterable[int] | None = None
+) -> set[int]:
+    """Which of these people (or everyone, without a list) are active members of the company."""
+    query = active_user_select(tenant_id)
+    if user_ids is not None:
+        query = query.where(Membership.user_id.in_(list(user_ids)))
+    return set((await db.scalars(query)).all())
+
+
+async def active_people(db: AsyncSession, tenant_id: int) -> list[tuple[int, str, str]]:
+    """The company's active members as (user ID, name, email), by name."""
+    rows = await db.execute(
+        select(User.id, User.name, User.email)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.tenant_id == tenant_id, Membership.status == "active")
+        .order_by(User.name)
+    )
+    return [(user_id, name, email) for user_id, name, email in rows.all()]
 
 
 async def teammate_user_ids(db: AsyncSession, tenant_id: int, user_id: int) -> list[int]:

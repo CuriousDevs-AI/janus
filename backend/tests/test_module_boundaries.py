@@ -4,13 +4,33 @@ A module listed in BOUNDED may import another module only through that module's 
 `service` (`core`, `audit` and `auth` are shared by every module). Importing another module's
 `models`, or anything else inside it, is a failure. Add a module here once it has been moved to that
 shape, so it stays there.
+
+Not listed yet: business, calls, crm, sources and whatsapp, which still read each other's CRM and
+source tables. `worker` and `main.py` are not modules: they wire every module's jobs and routers
+together, so they import them directly.
 """
 
 import ast
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1] / "janus_api"
-BOUNDED = ("portfolio",)
+BOUNDED = (
+    "ai",
+    "finance",
+    "hr",
+    "it",
+    "operations",
+    "org",
+    "portfolio",
+    "projects",
+    "push",
+    "rules",
+    "state",
+    "support",
+    "team",
+    "timeline",
+    "vault",
+)
 SHARED = {"core", "audit", "auth"}
 ALLOWED = {"overview", "service"}
 

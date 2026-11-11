@@ -28,7 +28,7 @@ from janus_api.core.db import session_factory
 from janus_api.core.deps import Db
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
-from janus_api.org.models import Membership
+from janus_api.org import service as org_service
 from janus_api.push import schemas
 from janus_api.push.models import PushSubscription
 
@@ -184,18 +184,10 @@ async def send_to_people(
         return
     async with session_factory()() as db:
         await set_context(db, tenant_id=tenant_id)
-        query = (
-            select(PushSubscription)
-            .join(
-                Membership,
-                (Membership.user_id == PushSubscription.user_id)
-                & (Membership.tenant_id == PushSubscription.tenant_id),
-            )
-            .where(
-                PushSubscription.tenant_id == tenant_id,
-                PushSubscription.user_id != exclude,
-                Membership.status == "active",
-            )
+        query = select(PushSubscription).where(
+            PushSubscription.tenant_id == tenant_id,
+            PushSubscription.user_id != exclude,
+            PushSubscription.user_id.in_(org_service.active_user_select(tenant_id)),
         )
         if user_ids is not None:
             query = query.where(PushSubscription.user_id.in_(user_ids))

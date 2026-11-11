@@ -12,6 +12,7 @@ from janus_api.core.errors import ApiError
 from janus_api.finance.models import (
     FinanceBankLine,
     FinanceBill,
+    FinanceBudgetLine,
     FinanceHistoryCustomer,
     FinanceHistoryMonth,
     FinanceInvoice,
@@ -373,3 +374,14 @@ async def record_openings(
         details={"as_of": as_of.isoformat(), "invoices": added[0], "bills": added[1]},
     )
     return added[0], added[1]
+
+
+async def budget_left(db: AsyncSession, tenant_id: int, budget_line_key: str) -> int | None:
+    """Paise still undrawn on a budget line, or None when the company has no such line."""
+    line = await db.scalar(
+        select(FinanceBudgetLine).where(
+            FinanceBudgetLine.tenant_id == tenant_id,
+            FinanceBudgetLine.external_key == budget_line_key,
+        )
+    )
+    return None if line is None else line.allocated_paise - line.drawn_paise

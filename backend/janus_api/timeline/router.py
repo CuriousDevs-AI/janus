@@ -23,8 +23,8 @@ from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
-from janus_api.org.models import Membership
-from janus_api.projects.summary import closure_summary
+from janus_api.org import service as org_service
+from janus_api.projects.service import closure_summary
 from janus_api.timeline import service
 from janus_api.timeline.models import ProjectTimeline, ProjectTimelineEntry, ProjectTimelineMember
 
@@ -143,13 +143,8 @@ class DirectoryOut(BaseModel):
 @router.get("/directory", response_model=list[DirectoryOut])
 async def directory(actor: Manage, db: Db) -> list[DirectoryOut]:
     """Active people in this company, for choosing who joins a project. Names and IDs only."""
-    rows = await db.execute(
-        select(User.id, User.name)
-        .join(Membership, Membership.user_id == User.id)
-        .where(Membership.tenant_id == actor.session.tenant_id, Membership.status == "active")
-        .order_by(User.name)
-    )
-    return [DirectoryOut(user_id=str(user_id), name=name) for user_id, name in rows.all()]
+    people = await org_service.active_people(db, actor.session.tenant_id)
+    return [DirectoryOut(user_id=str(user_id), name=name) for user_id, name, _ in people]
 
 
 @router.get("/{project_key}", response_model=TimelineOut)
@@ -389,14 +384,7 @@ async def add_member(
         user_id = int(data.user_id)
     except ValueError as error:
         raise ApiError("invalid_user", "Choose a person from the company.", 422) from error
-    active = await db.scalar(
-        select(Membership.id).where(
-            Membership.tenant_id == tenant_id,
-            Membership.user_id == user_id,
-            Membership.status == "active",
-        )
-    )
-    if active is None:
+    if not await org_service.active_member(db, tenant_id, user_id):
         raise ApiError(
             "not_in_company", "That person is not an active member of this company.", 422
         )
