@@ -822,6 +822,31 @@ class LostCustomer(BaseModel):
     lastBought: str
 
 
+class SimilarCustomers(BaseModel):
+    """Two customer names that look alike; `into` is the one with more sales."""
+
+    name: str
+    into: str
+
+
+class CustomerMergeOut(BaseModel):
+    id: str
+    name: str
+    into: str
+
+
+CustomerName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)
+]
+
+
+class CustomerMergeIn(BaseModel):
+    """Count `name` as the customer `into` from now on."""
+
+    name: CustomerName
+    into: CustomerName
+
+
 class CustomerRetention(BaseModel):
     companyId: str
     company: str
@@ -836,6 +861,9 @@ class CustomerRetention(BaseModel):
     lost: list[LostCustomer]
     # Some months came from an imported customer-wise report.
     imported: bool
+    # Names that look like one customer, for the owner to merge, and the merges made so far.
+    similar: list[SimilarCustomers] = Field(default_factory=list)
+    merges: list[CustomerMergeOut] = Field(default_factory=list)
 
 
 class CustomerRetentionList(BaseModel):

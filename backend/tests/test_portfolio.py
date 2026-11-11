@@ -1932,6 +1932,89 @@ def test_customers_kept_new_and_lost() -> None:
     ]
 
 
+def test_customer_names_match_without_punctuation_or_company_suffixes() -> None:
+    from janus_api.portfolio.customers import customer_key, retention_for, similar_customers
+
+    same = ["M/s Gupta Traders Pvt. Ltd.", "GUPTA TRADERS", "Gupta  Traders Private Limited"]
+    assert {customer_key(name) for name in same} == {"gupta traders"}
+    assert customer_key("Shah & Sons LLP") == customer_key("shah and sons")
+    # A name that is only a suffix is kept as written.
+    assert customer_key("Ltd") == "ltd"
+    assert customer_key("Gupta Traders") != customer_key("Gupta Textiles")
+
+    before = (date(2024, 11, 1), date(2025, 10, 31))
+    recent = (date(2025, 11, 1), date(2026, 10, 31))
+    months = {
+        "M/s Gupta Traders Pvt. Ltd.": {date(2025, 3, 1): 90000},
+        "GUPTA TRADERS": {date(2026, 3, 1): 10000},
+        "Sai Fashions": {date(2025, 4, 1): 50000},
+        "Sai Fashion": {date(2026, 4, 1): 5000},
+        "Metro Mart": {date(2025, 5, 1): 20000},
+    }
+    # Gupta Traders is one customer, kept; the shown name is the spelling with the most sales.
+    earlier, kept, new, lost = retention_for(months, before, recent)
+    assert (earlier, kept, new) == (3, 1, 1)
+    assert [item.name for item in lost] == ["Sai Fashions", "Metro Mart"]
+    # The look-alike is offered, into the name with more sales.
+    assert [(item.name, item.into) for item in similar_customers(months)] == [
+        ("Sai Fashion", "Sai Fashions")
+    ]
+    # Once merged, it is one customer, kept, and no longer offered.
+    aliases = {customer_key("Sai Fashion"): "Sai Fashions"}
+    earlier, kept, new, lost = retention_for(months, before, recent, aliases=aliases)
+    assert (earlier, kept, new) == (3, 2, 0) and [item.name for item in lost] == ["Metro Mart"]
+    assert similar_customers(months, aliases=aliases) == []
+
+
+async def test_an_owner_merges_two_spellings_of_one_customer_and_can_undo_it(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    last = (today_ist().replace(day=1) - timedelta(days=1)).replace(day=1)
+    year_ago = date(last.year - 1, last.month, 1)
+    await client.post(
+        f"/v1/portfolio/companies/{company}/history/customers",
+        headers=owner.headers,
+        json={
+            "source": "tally",
+            "rows": [
+                {"month": f"{year_ago:%Y-%m}", "customer": "Sai Fashions", "sales": "50000"},
+                {"month": f"{last:%Y-%m}", "customer": "Sai Fashion", "sales": "5000"},
+            ],
+        },
+    )
+
+    async def mine() -> dict[str, Any]:
+        found = await client.get("/v1/portfolio/customers", headers=owner.headers)
+        return dict(found.json()["companies"][0])
+
+    first = await mine()
+    assert (first["before"], first["kept"], first["new"]) == (1, 0, 1)
+    assert first["similar"] == [{"name": "Sai Fashion", "into": "Sai Fashions"}]
+    url = f"/v1/portfolio/companies/{company}/customers/merges"
+    made = await client.post(url, headers=owner.headers, json=first["similar"][0])
+    assert made.status_code == 201, made.text
+    merged = await mine()
+    assert (merged["before"], merged["kept"], merged["new"], merged["rate"]) == (1, 1, 0, 100)
+    assert merged["similar"] == [] and merged["lost"] == []
+    assert merged["merges"] == [
+        {"id": made.json()["id"], "name": "Sai Fashion", "into": "Sai Fashions"}
+    ]
+    again = await client.post(url, headers=owner.headers, json=first["similar"][0])
+    assert again.status_code == 409 and again.json()["error"]["code"] == "already_merged"
+    same = await client.post(
+        url, headers=owner.headers, json={"name": "SAI FASHIONS", "into": "Sai Fashions"}
+    )
+    assert same.status_code == 422
+    undone = await client.delete(f"{url}/{made.json()['id']}", headers=owner.headers)
+    assert undone.status_code == 204
+    assert (await mine())["similar"] == first["similar"]
+    assert (
+        await client.delete(f"{url}/{made.json()['id']}", headers=owner.headers)
+    ).status_code == 404
+
+
 async def test_customer_retention_from_invoices_and_an_imported_report(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:

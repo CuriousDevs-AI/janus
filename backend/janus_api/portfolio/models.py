@@ -166,3 +166,15 @@ class CompanyDocument(Base):
     notes: Mapped[str | None] = mapped_column(String(400))
     updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CustomerMerge(Base):
+    """A customer name an owner said is the same as another, so it is counted once."""
+
+    __tablename__ = "portfolio_customer_merges"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    alias_key: Mapped[str] = mapped_column(String(160))
+    alias: Mapped[str] = mapped_column(String(160))
+    customer: Mapped[str] = mapped_column(String(160))
+    merged_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

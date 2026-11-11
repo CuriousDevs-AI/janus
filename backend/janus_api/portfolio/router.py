@@ -535,3 +535,25 @@ async def remove_opening_balance(
     await history.remove_opening(
         db, actor.user.id, actor.session.tenant_id, company_id, key, request_ip(request)
     )
+
+
+@router.post(
+    "/companies/{company_id}/customers/merges",
+    response_model=schemas.CustomerMergeOut,
+    status_code=201,
+)
+async def merge_customers(
+    company_id: str, data: schemas.CustomerMergeIn, actor: CurrentActor, db: Db, request: Request
+) -> schemas.CustomerMergeOut:
+    return await customers.merge(
+        db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
+    )
+
+
+@router.delete("/companies/{company_id}/customers/merges/{merge_id}", status_code=204)
+async def unmerge_customers(
+    company_id: str, merge_id: int, actor: CurrentActor, db: Db, request: Request
+) -> None:
+    await customers.unmerge(
+        db, actor.user.id, actor.session.tenant_id, company_id, merge_id, request_ip(request)
+    )

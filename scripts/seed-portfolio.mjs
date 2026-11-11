@@ -151,7 +151,10 @@ async function history(company, monthly) {
   await call("POST", `/portfolio/companies/${company}/history`, { source: "tally", months });
   // The same year customer by customer, as a party-wise sales register gives it. The last two
   // customers bought then and stopped, so the Portfolio has someone to name as lost.
-  const rows = months.flatMap((item) => CUSTOMERS.map((customer, index) => ({ month: item.month, customer, sales: String(Math.round(Number(item.sales) * (index < 6 ? 0.1 : 0.2) * (0.7 + rand() * 0.6))) })));
+  // Old ledgers spell some customers their own way: the first matches on its own (case, M/s,
+  // Pvt Ltd), the typo is offered to the owner to merge.
+  const LEDGER = { "Kavita Stores": "M/S KAVITA STORES PVT LTD", "Sharma Garments": "Sharma Garment" };
+  const rows = months.flatMap((item) => CUSTOMERS.map((customer, index) => ({ month: item.month, customer: LEDGER[customer] ?? customer, sales: String(Math.round(Number(item.sales) * (index < 6 ? 0.1 : 0.2) * (0.7 + rand() * 0.6))) })));
   await call("POST", `/portfolio/companies/${company}/history/customers`, { source: "tally", rows });
 }
 
