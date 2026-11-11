@@ -110,7 +110,9 @@ async function crm(company, count) {
 }
 
 async function people(company, count, prefix) {
-  const employee = (n) => ({ id: `${prefix}-${n}`, name: `${pick(FIRST)} ${pick(LAST)}`, email: `${prefix}${n}.${RUN}@example.com`, title: pick(["Sales executive", "Accountant", "Store manager", "Weaver", "Designer"]), department: pick(["Sales", "Finance", "Operations"]), managerId: null, status: "active", salaryMonthly: 18000 + Math.round(rand() * 40) * 1000 });
+  // The first person is a senior manager, paid enough for income tax (TDS) to apply; one joined
+  // this financial year, so their TDS is spread over fewer months. Branches set professional tax.
+  const employee = (n) => ({ id: `${prefix}-${n}`, name: `${pick(FIRST)} ${pick(LAST)}`, email: `${prefix}${n}.${RUN}@example.com`, title: n === 1 ? "General manager" : pick(["Sales executive", "Accountant", "Store manager", "Weaver", "Designer"]), department: n === 1 ? "Operations" : pick(["Sales", "Finance", "Operations"]), managerId: null, status: "active", branch: pick(["Pune", "Mumbai", "Surat", "Bengaluru"]), joiningDate: n === 2 ? iso(monthDay(5, 10)) : "2021-04-01", salaryMonthly: n === 1 ? 150000 : 18000 + Math.round(rand() * 40) * 1000 });
   await call("POST", "/hr/records/seed", { records: { employee: Array.from({ length: count }, (_, n) => employee(n + 1)) } });
 }
 
@@ -199,7 +201,7 @@ async function history(company, monthly) {
     await call("PUT", `/portfolio/companies/${company.id}/targets`, { leads: String(company.leads + 4), wonValue: String(company.plan.monthly), collected: String(Math.round(company.plan.monthly * 0.9)) });
     // Last month's salaries, posted to the books for all but the Retail company.
     // TDS on salaries is about 5% of the month's salaries here; a real figure comes from each person's tax.
-    if (company.id !== retail.id) await call("POST", `/portfolio/companies/${company.id}/payroll`, { month: monthKey(1), tds: String(company.staff * 1500) });
+    if (company.id !== retail.id) await call("POST", `/portfolio/companies/${company.id}/payroll`, { month: monthKey(1) });
   }
   // What was owed when the first company moved to Janus, about 13 months ago: one customer has paid
   // it since, one still owes it.

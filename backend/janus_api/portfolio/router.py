@@ -489,9 +489,15 @@ async def post_payroll(
         company_id,
         data.month,
         request_ip(request),
-        data.tds,
     )
     return {"posted": posted}
+
+
+@router.get("/companies/{company_id}/payroll/{month}", response_model=schemas.PayrollRunOut)
+async def payroll_run(
+    company_id: str, month: schemas.MonthKey, actor: CurrentActor, db: Db
+) -> schemas.PayrollRunOut:
+    return await payroll.preview(db, actor.user.id, actor.session.tenant_id, company_id, month)
 
 
 @router.post(

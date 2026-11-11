@@ -2269,9 +2269,14 @@ async def test_tds_deducted_on_bills_and_salaries_against_what_was_deposited(
     posted = await client.post(
         f"/v1/portfolio/companies/{company}/payroll",
         headers=owner.headers,
-        json={"month": f"{last:%Y-%m}", "tds": "25000"},
+        json={"month": f"{last:%Y-%m}"},
     )
     assert posted.status_code == 201, posted.text
+    # TDS on salaries is worked out by the payroll run, not typed: ₹2 lakh a month is ₹24 lakh
+    # for the year and ₹2,92,500 of tax with cess. Earlier months of the year had no run, so
+    # their share counts as deducted, and the rest is spread over this and the months left.
+    months_left = 12 - (last.month - 4) % 12
+    salary_tds = (292500 - 292500 * (12 - months_left) // 12) // months_left
 
     async def tds() -> dict[str, Any]:
         found = await client.get("/v1/portfolio/summary", headers=owner.headers)
@@ -2279,10 +2284,11 @@ async def test_tds_deducted_on_bills_and_salaries_against_what_was_deposited(
 
     position = await tds()
     assert position["label"] == f"{last:%b %Y}"
-    assert position["onBills"] == "10000.00" and position["onSalaries"] == "25000.00"
+    assert position["onBills"] == "10000.00" and position["onSalaries"] == f"{salary_tds}.00"
     assert position["bySection"] == {"194J": "10000.00"}
-    assert position["deducted"] == "35000.00" and position["deposited"] is None
-    assert position["toDeposit"] == "35000.00" and position["salariesPosted"] is True
+    deducted = 10000 + salary_tds
+    assert position["deducted"] == f"{deducted}.00" and position["deposited"] is None
+    assert position["toDeposit"] == f"{deducted}.00" and position["salariesPosted"] is True
     # The TDS payment recorded with a challan for part of it.
     challan = await client.put(
         f"/v1/portfolio/companies/{company}/filings/tds_{last:%Y-%m}",
@@ -2291,7 +2297,8 @@ async def test_tds_deducted_on_bills_and_salaries_against_what_was_deposited(
     )
     assert challan.status_code == 204, challan.text
     position = await tds()
-    assert position["deposited"] == "30000.00" and position["toDeposit"] == "5000.00"
+    assert position["deposited"] == "30000.00"
+    assert position["toDeposit"] == f"{deducted - 30000}.00"
 
 
 def test_customers_kept_new_and_lost() -> None:

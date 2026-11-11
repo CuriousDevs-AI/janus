@@ -120,7 +120,7 @@ Still open (limits, stated where they show):
 |---|---|
 | Janus Intelligence | Real model answers could not be tried from the cloud session, which cannot reach the providers; the free providers' model names and limits are examples, not checked against their sites. Test them with the Test button on a computer that can reach them. |
 | Cash | Bank statements are imported as CSV; there is no live bank feed (account aggregator). |
-| Salaries and TDS on them | Janus has no payroll run: posting a month takes HR's current salaries, and TDS on salaries is typed in when posting, not worked out per person. |
+| Payroll | The run uses the new tax regime and a fixed pay split (50% basic, 20% HRA); old-regime staff, declarations (80C, HRA exemption), arrears, bonuses and loss of pay are left to the accountant. Professional tax covers Karnataka and Maharashtra only. HR's own Payroll screen still shows payslips worked out in the browser. |
 | GST | GST to pay counts credit notes, carried credit and blocked credit; reverse charge, credit held back for bills unpaid after 180 days, and the GST cash already paid are not counted. It stays an estimate for the CA. |
 | Customers kept | Matched by name (without case, punctuation, M/s or Pvt Ltd) and by the merges an owner confirms; invoices hold no GSTIN, so a customer cannot yet be matched by GSTIN. |
 | Alerts | Red alerts go by email and browser notification, not WhatsApp; browser notifications need the server's push key (`JANUS_VAPID_PRIVATE_KEY`). People other than owners turn the weekly email and red alerts on themselves. |

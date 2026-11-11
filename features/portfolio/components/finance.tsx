@@ -148,21 +148,44 @@ function IntercompanyCard() {
 }
 
 /** Last month's salaries per company: posted to the books, or a button to post them from HR. */
+type PayrollRun = { month: string; label: string; kept: boolean; headcount: number; gross: string; pf: string; esi: string; pt: string; tds: string; net: string; notes: string[]; people: { name: string; paidDays: number; totalDays: number; gross: string; pf: string; esi: string; pt: string; tds: string | null; net: string; note: string | null }[] | null };
+
+/** Exact rupees for payslips: ₹1,50,000, not ₹1.5L. */
+const exact = (value: string) => `₹${Math.round(Number(value)).toLocaleString("en-IN")}`;
+
+/** The month's payroll for one company: totals, notes, and each person's pay where the viewer manages HR. */
+function PayrollDetail({ companyId, month }: { companyId: string; month: string }) {
+  const run = useApi<PayrollRun>(`/portfolio/companies/${companyId}/payroll/${month}`);
+  if (run.loading) return <p className="text-xs text-muted-foreground" role="status">Working out the payroll…</p>;
+  if (run.error || !run.data) return <p className="text-xs text-danger">{run.error}</p>;
+  const r = run.data;
+  return <div className="mt-2 w-full rounded-md border border-border bg-surface-2 p-3 text-xs">
+    <p className="tabular-nums">{r.headcount} {r.headcount === 1 ? "person" : "people"} · gross {inr(n(r.gross))} · PF {inr(n(r.pf))} · ESI {inr(n(r.esi))} · professional tax {inr(n(r.pt))} · <span className="font-medium">TDS {inr(n(r.tds))}</span> · net pay {inr(n(r.net))}{r.kept ? " · as run" : " · as it would run now"}</p>
+    {r.notes.map((note) => <p key={note} className="mt-1 text-warning">{note}</p>)}
+    {r.people ? <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[560px] tabular-nums"><thead><tr className="text-left text-muted-foreground"><th className="py-1 pr-2 font-normal">Person</th><th className="pr-2 font-normal">Days</th><th className="pr-2 text-right font-normal">Gross</th><th className="pr-2 text-right font-normal">PF</th><th className="pr-2 text-right font-normal">ESI</th><th className="pr-2 text-right font-normal">Prof. tax</th><th className="pr-2 text-right font-normal">TDS</th><th className="text-right font-normal">Net</th></tr></thead>
+      <tbody>{r.people.map((p, index) => <tr key={`${index}-${p.name}`} className="border-t border-border"><td className="py-1 pr-2">{p.name}{p.note && <span className="block text-muted-foreground">{p.note}</span>}</td><td className="pr-2">{p.paidDays}/{p.totalDays}</td><td className="pr-2 text-right">{exact(p.gross)}</td><td className="pr-2 text-right">{exact(p.pf)}</td><td className="pr-2 text-right">{exact(p.esi)}</td><td className="pr-2 text-right">{exact(p.pt)}</td><td className="pr-2 text-right">{p.tds === null ? "CA" : exact(p.tds)}</td><td className="text-right">{exact(p.net)}</td></tr>)}</tbody></table></div>
+      : <p className="mt-1 text-muted-foreground">Each person&apos;s pay is shown to people who manage HR in this company.</p>}
+  </div>;
+}
+
 function SalariesCard({ list }: { list: WithMoney[] }) {
   const { handlesMoney } = useRoles();
   const [posted, setPosted] = React.useState<Record<string, boolean>>({});
-  const [tds, setTds] = React.useState<Record<string, string>>({});
+  const [open, setOpen] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState<string | null>(null);
   const shown = list.filter((item) => item.payroll && (item.payroll.posted || n(item.payroll.fromHr) > 0));
   if (shown.length === 0) return null;
   const post = async (item: WithMoney) => {
-    try { await api(`/portfolio/companies/${item.id}/payroll`, { method: "POST", body: JSON.stringify({ month: item.payroll!.month, tds: tds[item.id] || "0" }) }); setPosted((current) => ({ ...current, [item.id]: true })); toast.success(`${item.payroll!.label} salaries posted for ${item.name}. Reload to see profit with them.`); }
-    catch (error) { toast.error(message(error)); }
+    setBusy(item.id);
+    try { await api(`/portfolio/companies/${item.id}/payroll`, { method: "POST", body: JSON.stringify({ month: item.payroll!.month }) }); setPosted((current) => ({ ...current, [item.id]: true })); toast.success(`${item.payroll!.label} payroll run and posted for ${item.name}. Reload to see profit and TDS with it.`); }
+    catch (error) { toast.error(message(error)); } finally { setBusy(null); }
   };
-  return <SectionCard title="Salaries in the books" description="Janus has no payroll run: HR keeps each person's monthly salary. Posting a finished month records those salaries as that month's expense, so profit after salaries is recorded instead of estimated. A month is posted once, with the salaries as they stand when you post.">
+  return <SectionCard title="Payroll and salaries in the books" description="Running a finished month works out each person's pay for the days worked and what is deducted from it: provident fund, ESI, professional tax by state, and TDS under the new tax regime, spread over the year so it adds up to the year's tax by March. Posting keeps those payslips and records the salaries and the TDS in the books, once. A calculation, not tax advice: your accountant should confirm special cases.">
     <ul className="flex flex-col divide-y divide-border">{shown.map((item) => { const pay = item.payroll!; const done = pay.posted ?? (posted[item.id] ? pay.fromHr : null); return <li key={item.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
       <Badge variant={done ? "success" : "warning"}>{done ? "Posted" : "Not posted"}</Badge>
       <span className="min-w-0 flex-1"><span className="font-medium">{item.name}</span> <span className="text-muted-foreground">· {pay.label} · {done ? `${inr(n(done))} posted` : `${inr(n(pay.fromHr))} from HR's salaries today`}</span></span>
-      {!done && handlesMoney(item) && <span className="flex items-center gap-2"><label className="flex items-center gap-1 text-xs text-muted-foreground">TDS on salaries (₹)<input aria-label={`TDS on ${item.name} salaries`} type="number" min={0} className="h-8 w-24 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground" value={tds[item.id] ?? ""} placeholder="0" onChange={(event) => setTds((current) => ({ ...current, [item.id]: event.target.value }))} /></label><Button size="sm" variant="outline" onClick={() => void post(item)}>Post {pay.label} salaries</Button></span>}
+      {handlesMoney(item) && <span className="flex items-center gap-2"><Button size="sm" variant="ghost" onClick={() => setOpen(open === item.id ? null : item.id)}>{open === item.id ? "Hide payroll" : "See payroll"}</Button>{!done && <Button size="sm" variant="outline" disabled={busy === item.id} onClick={() => void post(item)}>Run and post {pay.label}</Button>}</span>}
+      {open === item.id && <PayrollDetail key={`${item.id}-${done ? "done" : "open"}`} companyId={item.id} month={pay.month} />}
     </li>; })}</ul>
   </SectionCard>;
 }

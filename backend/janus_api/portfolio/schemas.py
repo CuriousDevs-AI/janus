@@ -789,10 +789,45 @@ class IntercompanyRecord(BaseModel):
     invoice: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
 
 
+MonthKey = Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+
+
 class PayrollPost(BaseModel):
-    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
-    # TDS deducted from the month's salaries (section 192), in rupees.
-    tds: Annotated[Decimal, Field(ge=0, le=10**12, decimal_places=2)] = Decimal(0)
+    month: MonthKey
+
+
+class PayslipOut(BaseModel):
+    """One person's pay for the month, in rupees. `tds` is None where it is left to the
+    accountant (the old tax regime)."""
+
+    name: str
+    paidDays: int
+    totalDays: int
+    gross: str
+    pf: str
+    esi: str
+    pt: str
+    tds: str | None
+    net: str
+    note: str | None
+
+
+class PayrollRunOut(BaseModel):
+    """A month's payroll, in rupees: kept once the month is posted, else as it would run now.
+    `people` is shown only to those who manage HR in the company."""
+
+    month: str
+    label: str
+    kept: bool
+    headcount: int
+    gross: str
+    pf: str
+    esi: str
+    pt: str
+    tds: str
+    net: str
+    notes: list[str]
+    people: list[PayslipOut] | None
 
 
 BankAmount = Annotated[str, StringConstraints(pattern=r"^-?\d{1,13}(\.\d{1,2})?$")]
