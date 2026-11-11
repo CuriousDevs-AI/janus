@@ -8,10 +8,13 @@ from sqlalchemy import text
 from janus_api.auth import models as auth_models
 from janus_api.business.engine import run_once as run_workflow_once
 from janus_api.core.db import check_database_role, session_factory
+from janus_api.portfolio.alerts import add_owner_defaults
 from janus_api.portfolio.alerts import run_once as alert_once
 from janus_api.portfolio.digest import run_once as digest_once
 from janus_api.whatsapp.worker import run_once as send_once
 from janus_api.worker.service import run_once
+
+DEFAULTS_EVERY = 600.0
 
 assert auth_models  # Register the users table referenced by lead ownership foreign keys.
 
@@ -36,8 +39,23 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
     logging.getLogger("janus").info(json.dumps({"event": "worker_started"}))
+    # Owners who never chose get the weekly email and red alerts; checked every ten minutes.
+    defaults_due = 0.0
     try:
         while not stop.is_set():
+            if loop.time() >= defaults_due:
+                defaults_due = loop.time() + DEFAULTS_EVERY
+                try:
+                    await add_owner_defaults(factory)
+                except Exception as error:
+                    logging.getLogger("janus").error(
+                        json.dumps(
+                            {
+                                "event": "owner_defaults_failed",
+                                "exception_type": type(error).__name__,
+                            }
+                        )
+                    )
             try:
                 ingested = await run_once(factory)
                 sent = await send_once(factory)

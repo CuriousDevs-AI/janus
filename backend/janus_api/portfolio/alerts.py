@@ -1,5 +1,6 @@
-"""Red alerts: an email to a person when one of their companies turns red, as soon as the worker
-sees it, not only in Monday's email.
+"""Red alerts: an email, and a notification on every browser the person allowed them on, when
+one of their companies turns red, as soon as the worker sees it, not only in Monday's email.
+Owners have them on unless they turn them off (`add_owner_defaults`).
 
 The worker checks each person who has alerts on about once an hour, with the same summary and the
 same thresholds as their Portfolio page, read company by company under each company's own context.
@@ -22,6 +23,7 @@ from janus_api.core.tenancy import set_context
 from janus_api.portfolio import schemas
 from janus_api.portfolio.models import PortfolioAlert
 from janus_api.portfolio.summary import summary
+from janus_api.push import service as push
 
 EVERY = timedelta(hours=1)
 
@@ -67,10 +69,31 @@ def message(name: str, turned: list[schemas.CompanySummary]) -> tuple[str, str]:
         lines += [f"{company.name} needs you now:", *[f"  - {reason}" for reason in reasons], ""]
     lines += [
         f"Open the Portfolio: {frontend}/portfolio?view=overview",
-        "You get this email when a company turns red. Turn it off on the Portfolio's"
+        "Owners get this email when a company turns red. Turn it off on the Portfolio's"
         " Notifications page.",
     ]
     return f"{names} turned red", "\n".join(lines)
+
+
+def notification(turned: list[schemas.CompanySummary]) -> dict[str, str]:
+    """The browser notification: who turned red and the first reason, opening the Overview."""
+    first = turned[0]
+    reason = first.health.reasons[0] if first.health and first.health.reasons else ""
+    more = f" and {len(turned) - 1} more" if len(turned) > 1 else ""
+    return {
+        "title": f"{first.name}{more} turned red",
+        "body": reason or "Open the Portfolio to see why.",
+        "url": "/portfolio?view=overview",
+        "tag": "portfolio-red",
+    }
+
+
+async def add_owner_defaults(factory: async_sessionmaker[AsyncSession]) -> int:
+    """Turns the weekly email and red alerts on for owners who have never chosen; returns how
+    many settings were added."""
+    async with factory() as db, db.begin():
+        added = await db.scalar(text("SELECT public.add_owner_portfolio_defaults()"))
+        return int(added or 0)
 
 
 async def run_once(factory: async_sessionmaker[AsyncSession]) -> bool:
@@ -97,11 +120,15 @@ async def run_once(factory: async_sessionmaker[AsyncSession]) -> bool:
                 row.next_check_at = now() + timedelta(minutes=10)
                 return True
             row.last_sent_at = now()
+            browsers = await push.send_to_user(
+                db, claim.user_id, [int(c.id) for c in view.companies], notification(turned)
+            )
+            await set_context(db, user_id=claim.user_id)
             record(
                 db,
                 "portfolio.alert_sent",
                 user_id=claim.user_id,
-                details={"companies": len(turned)},
+                details={"companies": len(turned), "browsers": browsers},
             )
         row.red = [c.id for c in red]
         row.checked_at = now()

@@ -5,6 +5,8 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
+import pytest
+from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
@@ -1545,6 +1547,110 @@ async def test_the_worker_emails_once_when_a_company_turns_red(
         body = mailbox.messages[-1][2]
         assert "over 60 days" in body and "/portfolio?view=overview" in body
         assert await check() == []
+    finally:
+        await engine.dispose()
+
+
+async def test_owners_get_the_weekly_email_and_red_alerts_unless_they_turn_them_off(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    from janus_api.portfolio.alerts import add_owner_defaults
+
+    owner = await signup(client, mailbox)
+    agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    second = await signup(client, mailbox, "second-owner@example.com")
+    off = await client.put("/v1/portfolio/digest", headers=second.headers, json={"enabled": False})
+    assert off.status_code == 200
+    engine = create_async_engine(os.environ["JANUS_TEST_WORKER_URL"])
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        assert await add_owner_defaults(factory) >= 3
+        # Run again, nothing more is added.
+        assert await add_owner_defaults(factory) == 0
+    finally:
+        await engine.dispose()
+
+    async def settings(headers: dict[str, str]) -> tuple[bool, bool]:
+        digest = (await client.get("/v1/portfolio/digest", headers=headers)).json()
+        alerts = (await client.get("/v1/portfolio/alerts", headers=headers)).json()
+        return digest["enabled"], alerts["enabled"]
+
+    assert await settings(owner.headers) == (True, True)
+    # The other owner turned the email off before, so it stays off; alerts were never chosen.
+    assert await settings(second.headers) == (False, True)
+    # Not an owner: nothing is turned on for them.
+    assert (await client.get("/v1/portfolio/alerts", headers=agent)).json() == {"enabled": False}
+
+
+async def test_a_red_alert_also_reaches_the_owners_browser(
+    client: httpx.AsyncClient,
+    mailbox: Mailbox,
+    admin_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from janus_api.core.config import get_settings
+    from janus_api.portfolio.alerts import run_once as alert_once
+    from tests.test_push import AUTH, FCM, P256DH, RFC_SERVER_PRIVATE
+
+    owner = await signup(client, mailbox)
+    monkeypatch.setattr(get_settings(), "vapid_private_key", SecretStr(RFC_SERVER_PRIVATE))
+    saved = await client.post(
+        "/v1/push/subscriptions",
+        headers=owner.headers,
+        json={"endpoint": FCM, "keys": {"p256dh": P256DH, "auth": AUTH}},
+    )
+    assert saved.status_code == 204, saved.text
+    await client.put("/v1/portfolio/alerts", headers=owner.headers, json={"enabled": True})
+    pushed: list[str] = []
+    real_post = httpx.AsyncClient.post
+
+    async def fake_post(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+        if not str(url).startswith(FCM):
+            return await real_post(self, url, **kwargs)
+        pushed.append(str(url))
+        return httpx.Response(201)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    engine = create_async_engine(os.environ["JANUS_TEST_WORKER_URL"])
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def check() -> None:
+        async with admin_engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE portfolio_alerts SET next_check_at = now() - interval '1 minute'")
+            )
+        assert await alert_once(factory)
+
+    try:
+        await check()  # notes what is red now
+        today = today_ist()
+        created = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": "red-push"},
+            json={
+                "customer": "Kavita Rao",
+                "invoice_date": (today - timedelta(days=100)).isoformat(),
+                "due_date": (today - timedelta(days=70)).isoformat(),
+                "same_state": True,
+                "lines": [
+                    {"item": "Tea", "hsn": "0902", "qty": 1, "rate_paise": 100000, "gst_rate": 0}
+                ],
+            },
+        )
+        assert created.status_code == 201, created.text
+        await check()
+        assert mailbox.messages[-1][1] == "Mumbai Traders turned red"
+        assert pushed == [FCM]
+        async with admin_engine.begin() as connection:
+            sent = (
+                await connection.execute(
+                    text(
+                        "SELECT details FROM audit_log WHERE action = 'portfolio.alert_sent' "
+                        "ORDER BY id DESC LIMIT 1"
+                    )
+                )
+            ).scalar_one()
+        assert sent["browsers"] == 1
     finally:
         await engine.dispose()
 

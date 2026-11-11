@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
+import { enablePush } from "@/lib/push";
 import { SectionCard } from "@/components/settings/section-ui";
 import { attentionOf, openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { severityName, severityTone } from "@/features/portfolio/lib/format";
@@ -70,17 +71,40 @@ export function Notifications({ list }: { list: PortfolioCompany[] }) {
   </SectionCard>;
 }
 
-/** An email as soon as a company turns red, besides Monday's email. */
+type BrowserPush = "unsupported" | "default" | "granted" | "denied" | "on";
+
+/** Notifications on this browser for red alerts: asks the browser once, then saves it. */
+function BrowserAlerts() {
+  // Rendered only once the setting has loaded in the browser, so reading the permission here is safe.
+  const [state, setState] = React.useState<BrowserPush>(() => ("Notification" in window && "PushManager" in window ? Notification.permission : "unsupported"));
+  React.useEffect(() => {
+    // Already allowed: save this browser again quietly, so the server knows it.
+    if (state === "granted") void enablePush().then((on) => setState(on ? "on" : "granted")).catch(() => undefined);
+  }, [state]);
+  if (state === "unsupported") return null;
+  if (state === "on") return <span className="block text-xs text-success">This browser shows them too.</span>;
+  if (state === "denied") return <span className="block text-xs text-muted-foreground">This browser blocks notifications from Janus; allow them in its site settings to get red alerts here.</span>;
+  return <Button size="sm" variant="outline" className="mt-1" onClick={() => void Notification.requestPermission().then(async (answer) => {
+    if (answer !== "granted") { setState(answer); return; }
+    const on = await enablePush().catch(() => false);
+    setState(on ? "on" : "granted");
+    if (on) toast.success("Red alerts will show on this browser too.");
+    else toast.error("Notifications are not set up on this server yet.");
+  })}>Show them on this browser too</Button>;
+}
+
+/** An email, and a notification on browsers that allowed it, as soon as a company turns red,
+ * besides Monday's email. Owners have it on unless they turn it off. */
 function AlertsSwitch() {
   const setting = useApi<{ enabled: boolean }>("/portfolio/alerts");
   const [enabled, setEnabled] = React.useState<boolean | null>(null);
   const on = enabled ?? setting.data?.enabled ?? false;
   const toggle = async (next: boolean) => {
     setEnabled(next);
-    try { await api("/portfolio/alerts", { method: "PUT", body: JSON.stringify({ enabled: next }) }); toast.success(next ? "You will get an email when a company turns red." : "Red alerts are off."); }
+    try { await api("/portfolio/alerts", { method: "PUT", body: JSON.stringify({ enabled: next }) }); toast.success(next ? "You will be told when a company turns red." : "Red alerts are off."); }
     catch (error) { setEnabled(!next); toast.error(message(error)); }
   };
-  return <label className="flex items-start gap-3 text-sm"><Switch checked={on} disabled={setting.loading} onCheckedChange={(value) => void toggle(value)} aria-label="Email me when a company turns red" /><span><span className="font-medium">Email me when a company turns red</span><span className="block text-xs text-muted-foreground">Checked about once an hour with these thresholds. A company that stays red is told once.</span></span></label>;
+  return <div><label className="flex items-start gap-3 text-sm"><Switch checked={on} disabled={setting.loading} onCheckedChange={(value) => void toggle(value)} aria-label="Email me when a company turns red" /><span><span className="font-medium">Tell me when a company turns red</span><span className="block text-xs text-muted-foreground">By email, and on browsers where you allow notifications. Checked about once an hour with these thresholds; a company that stays red is told once. Owners have this on unless they turn it off.</span></span></label>{on && <div className="ml-12 mt-1"><BrowserAlerts /></div>}</div>;
 }
 
 /** When a company turns red for this person: overdue money, approvals waiting and late bills. */

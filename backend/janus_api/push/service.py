@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Sequence
 from urllib.parse import urlsplit
 
 import httpx
@@ -21,6 +22,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.auth.service import Actor
 from janus_api.core.config import get_settings
@@ -171,6 +173,40 @@ async def unsubscribe(db: Db, actor: Actor, endpoint: str) -> None:
     )
 
 
+async def _deliver(
+    client: httpx.AsyncClient,
+    rows: Sequence[PushSubscription],
+    payload: bytes,
+    key: ec.EllipticCurvePrivateKey,
+) -> list[int]:
+    """Sends one payload to these browsers; returns the ones the push service no longer knows."""
+    gone: list[int] = []
+    for row in rows:
+        if not allowed_endpoint(row.endpoint):
+            gone.append(row.id)
+            continue
+        try:
+            response = await client.post(
+                row.endpoint,
+                content=encrypt(payload, row.p256dh, row.auth),
+                headers={
+                    "Authorization": _vapid_header(row.endpoint, key),
+                    "Content-Encoding": "aes128gcm",
+                    "Content-Type": "application/octet-stream",
+                    "TTL": str(TTL_SECONDS),
+                    "Urgency": "high",
+                },
+            )
+        except httpx.HTTPError:
+            log.warning("push delivery failed", exc_info=True)
+            continue
+        if response.status_code in (404, 410):
+            gone.append(row.id)
+        elif response.status_code >= 400:
+            log.warning("push refused: %s %s", response.status_code, response.text[:200])
+    return gone
+
+
 async def send_to_people(
     tenant_id: int, user_ids: list[int] | None, exclude: int, message: dict[str, str]
 ) -> None:
@@ -192,32 +228,38 @@ async def send_to_people(
         if user_ids is not None:
             query = query.where(PushSubscription.user_id.in_(user_ids))
         rows = (await db.scalars(query)).all()
-        payload = json.dumps(message).encode()
-        gone: list[int] = []
         async with httpx.AsyncClient(timeout=10) as client:
-            for row in rows:
-                if not allowed_endpoint(row.endpoint):
-                    gone.append(row.id)
-                    continue
-                try:
-                    response = await client.post(
-                        row.endpoint,
-                        content=encrypt(payload, row.p256dh, row.auth),
-                        headers={
-                            "Authorization": _vapid_header(row.endpoint, key),
-                            "Content-Encoding": "aes128gcm",
-                            "Content-Type": "application/octet-stream",
-                            "TTL": str(TTL_SECONDS),
-                            "Urgency": "high",
-                        },
-                    )
-                except httpx.HTTPError:
-                    log.warning("push delivery failed", exc_info=True)
-                    continue
-                if response.status_code in (404, 410):
-                    gone.append(row.id)
-                elif response.status_code >= 400:
-                    log.warning("push refused: %s %s", response.status_code, response.text[:200])
+            gone = await _deliver(client, rows, json.dumps(message).encode(), key)
         if gone:
             await db.execute(delete(PushSubscription).where(PushSubscription.id.in_(gone)))
         await db.commit()
+
+
+async def send_to_user(
+    db: AsyncSession, user_id: int, tenant_ids: list[int], message: dict[str, str]
+) -> int:
+    """Pushes one message to every browser one person allowed notifications on, in whichever of
+    these companies it was registered, using the caller's session (the worker's). Returns how many
+    browsers it went to; the context is left on the last company, for the caller to reset."""
+    key = _private_key()
+    if key is None:
+        return 0
+    rows: list[PushSubscription] = []
+    for tenant_id in tenant_ids:
+        await set_context(db, user_id=user_id, tenant_id=tenant_id)
+        rows += (
+            await db.scalars(
+                select(PushSubscription).where(
+                    PushSubscription.tenant_id == tenant_id, PushSubscription.user_id == user_id
+                )
+            )
+        ).all()
+    if not rows:
+        return 0
+    async with httpx.AsyncClient(timeout=10) as client:
+        gone = await _deliver(client, rows, json.dumps(message).encode(), key)
+    for row in rows:
+        if row.id in gone:
+            await set_context(db, user_id=user_id, tenant_id=row.tenant_id)
+            await db.execute(delete(PushSubscription).where(PushSubscription.id == row.id))
+    return len(rows) - len(gone)
