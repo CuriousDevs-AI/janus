@@ -308,11 +308,14 @@ export function SidebarNav({
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel>{currentUser.email}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {/* Settings and billing belong to one company. From the Portfolio they would open
-                whichever company the session is in, so each company's are reached from its page. */}
+            {/* Settings belong to one company, so from the Portfolio each company's are reached from
+                its page. The plan belongs to the account and lives in the Portfolio. */}
             {workspaceId === "portfolio" ? <>
               <DropdownMenuItem asChild>
-                <Link href="/portfolio?view=companies">Company settings and billing</Link>
+                <Link href="/portfolio?view=billing">Plan and billing</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/portfolio?view=companies">Company settings</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/portfolio?view=people">Portfolio access</Link>

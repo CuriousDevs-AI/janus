@@ -20,6 +20,7 @@ import { Finance } from "@/features/portfolio/components/finance";
 import { Intelligence } from "@/features/portfolio/components/intelligence";
 import { Overview } from "@/features/portfolio/components/overview";
 import { PeriodBar } from "@/features/portfolio/components/period-bar";
+import { Plan } from "@/features/portfolio/components/plan";
 import { PreviewRole, previewRoles, useOpenInRouter, withoutMoney, type WithMoney } from "@/features/portfolio/lib/companies";
 import { roleLabel } from "@/lib/access";
 import type { PortfolioPeriodKey, PortfolioSummary } from "@/features/portfolio/types";
@@ -47,6 +48,7 @@ const titles: Record<string, [string, string]> = {
   work: ["Work inbox", "Everything that needs someone to act, across your companies."],
   activity: ["Activity", "What happened lately, in every company."],
   people: ["Portfolio access", "Who else sees these companies together, and how much."],
+  billing: ["Plan and billing", "One plan for your account, covering every company you own."],
 };
 // The views that report on a period, and so show the period bar and the board pack.
 const periodViews = ["overview", "analytics", "finance"];
@@ -96,6 +98,7 @@ export function LivePortfolio() {
       case "intelligence": return <Intelligence list={list} period={summary.data.period} />;
       case "compliance": return <ComplianceView list={list} onChanged={summary.reload} />;
       case "work": return <WorkInbox list={list} />;
+      case "billing": return <Plan list={list} />;
       case "activity": return <Activity list={list} />;
       default: return <Overview list={list} owner={owner} period={summary.data.period} />;
     }

@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { useSession } from "@/components/auth/session-provider";
 import { companyProfile } from "@/lib/company-profile";
 import { demoMode } from "@/lib/demo-mode";
 
@@ -39,13 +41,9 @@ export function BillingSection() {
   const current = plans.find((item) => item.id === plan) ?? plans[1];
 
   function switchCycle() { const next = cycle === "annual" ? "monthly" : "annual"; setCycle(next); toast.success(`Switched to ${next} billing preview`); }
-  // Billing is not connected to a payment provider yet, so a real account has no plan, seats, usage or invoices to show.
-  if (!demoMode) return <div className="flex flex-col gap-5">
-    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Account</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Plan & Billing</h2></div>
-    <SectionCard title="Billing is not set up yet" description="No subscription, payment method or invoice is recorded for this company.">
-      <p className="text-sm text-muted-foreground">Plan changes, seats, payment methods and GST invoices will appear here once billing is connected. Nothing is charged until then.</p>
-    </SectionCard>
-  </div>;
+  // A plan belongs to the Owner's account and covers every company they own, so a company has no
+  // billing of its own: this page points to the account's, in the Portfolio.
+  if (!demoMode) return <AccountPlan />;
   function choosePlan(value: string) { setPlan(value); setPlanOpen(false); toast.success(`${value === "business" ? "Janus Business" : value[0].toUpperCase() + value.slice(1)} selected in this demo`); }
 
   return <div className="flex flex-col gap-5">
@@ -71,3 +69,15 @@ function PlanDialog({ open, current, onClose, onSelect }: { open: boolean; curre
 function SeatsDialog({ open, value, onClose, onChange, onSave }: { open: boolean; value: string; onClose: () => void; onChange: (value: string) => void; onSave: () => void }) { return <Dialog open={open} onOpenChange={(next) => !next && onClose()}><DialogContent><DialogHeader><DialogTitle>Add seats</DialogTitle><DialogDescription>Seat changes are prorated to your annual renewal.</DialogDescription></DialogHeader><FieldRow label="Total seats"><Input value={value} onChange={(e) => onChange(e.target.value)} type="number" min="1" /></FieldRow><div className="rounded-md border border-border bg-surface-2 p-3 text-xs text-muted-foreground">8 seats are currently available. Additional seats cost ₹999 per seat per year.</div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={onSave}>Add seats</Button></DialogFooter></DialogContent></Dialog>; }
 function PaymentDialog({ open, onClose }: { open: boolean; onClose: () => void }) { const [type, setType] = React.useState("UPI"); return <Dialog open={open} onOpenChange={(next) => !next && onClose()}><DialogContent><DialogHeader><DialogTitle>Add payment method</DialogTitle><DialogDescription>Payment details are stored with your billing provider.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Method"><select value={type} onChange={(e) => setType(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>UPI</option><option>Visa / Mastercard</option></select></FieldRow><FieldRow label={type === "UPI" ? "UPI ID" : "Card number"}><Input placeholder={type === "UPI" ? "business@bank" : "•••• •••• •••• 0000"} /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => { onClose(); toast.success("Payment method added"); }}>Add method</Button></DialogFooter></DialogContent></Dialog>; }
 function BillingDetailsDialog({ open, onClose }: { open: boolean; onClose: () => void }) { return <Dialog open={open} onOpenChange={(next) => !next && onClose()}><DialogContent><DialogHeader><DialogTitle>Edit billing details</DialogTitle><DialogDescription>These details appear on GST invoices.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Billed to"><Input defaultValue={profile.legalName} /></FieldRow><FieldRow label="GSTIN"><Input defaultValue={profile.gstin} /></FieldRow><FieldRow label="Billing email"><Input defaultValue={profile.billingEmail} type="email" /></FieldRow><FieldRow label="Address"><Input defaultValue={profile.address} /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => { onClose(); toast.success("Billing details saved"); }}>Save details</Button></DialogFooter></DialogContent></Dialog>; }
+
+function AccountPlan() {
+  const session = useSession();
+  const owner = session.tenants.some((item) => item.role === "owner" && item.status === "active");
+  return <div className="flex flex-col gap-5">
+    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Account</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Plan & Billing</h2></div>
+    <SectionCard title="The plan is for the account, not this company" description={`One plan covers every company its Owner owns, ${session.tenant.name} included.`}>
+      <p className="text-sm text-muted-foreground">{owner ? "Choose and manage it in the Portfolio, under Plan and billing. Billing is not connected yet, so nothing is charged." : "The Owner of this company chooses and pays for the plan. Nothing here is billed to this company."}</p>
+      {owner && <Button asChild size="sm" className="mt-3"><Link href="/portfolio?view=billing">Open Plan and billing</Link></Button>}
+    </SectionCard>
+  </div>;
+}

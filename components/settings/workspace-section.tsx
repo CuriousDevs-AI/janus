@@ -153,7 +153,7 @@ function AdministrationPanel({
     { title: "People & Access", description: "Members, invitations, roles, permissions and workspace access.", href: "/settings?tab=team&workspace=business", icon: UsersRound },
     { title: "Notifications", description: "Choose which business events and approvals reach your team.", href: "/settings?tab=notifications&workspace=business", icon: Bell },
     { title: "Security & Sessions", description: "Password, sign-in sessions, audit history and account protection.", href: "/settings?tab=security&workspace=business", icon: LockKeyhole },
-    { title: "Billing & Subscription", description: "Seats, usage, payment method, invoices and subscription controls.", href: "/settings?tab=workspace&view=administration&section=billing&workspace=business", icon: CreditCard },
+    { title: "Billing & Subscription", description: "The plan is for the Owner's account and covers all their companies.", href: "/settings?tab=workspace&view=administration&section=billing&workspace=business", icon: CreditCard },
   ];
 
   return <div className="flex flex-col gap-5">

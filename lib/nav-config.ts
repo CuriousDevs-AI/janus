@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  CreditCard,
   BarChart3,
   Bell,
   CalendarCheck,
@@ -149,6 +150,7 @@ export const portfolioNavSections: NavSection[] = [
   ] },
   { title: "Access", items: [
     { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
+    { label: "Plan and billing", href: "/portfolio?view=billing", icon: CreditCard },
   ] },
 ];
 
