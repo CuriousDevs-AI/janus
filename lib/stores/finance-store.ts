@@ -63,7 +63,7 @@ export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2
   return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
 }
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
-export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string }
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string; gst?: number; itcBlocked?: boolean }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;

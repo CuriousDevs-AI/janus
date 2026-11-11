@@ -23,6 +23,8 @@ interface ServerBill {
   bill_date: string;
   due_date: string;
   amount_paise: number;
+  gst_paise?: number;
+  itc_blocked?: boolean;
   po_key: string | null;
   match: string;
   paid_paise: number;
@@ -41,6 +43,8 @@ const toBill = (row: ServerBill): Bill => ({
   date: row.bill_date,
   dueDate: row.due_date,
   amount: row.amount_paise / 100,
+  gst: (row.gst_paise ?? 0) / 100,
+  itcBlocked: row.itc_blocked ?? false,
   payments: row.payments.map((payment) => ({
     id: payment.id,
     amount: payment.amount_paise / 100,
@@ -69,7 +73,7 @@ export async function syncBills(): Promise<void> {
 }
 
 export async function addBill(
-  input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; gst?: number; tds?: number; tdsSection?: string; poId?: string },
+  input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; gst?: number; tds?: number; tdsSection?: string; poId?: string; itcBlocked?: boolean },
   by: string,
 ): Promise<string | null> {
   if (demoMode) return useFinanceStore.getState().addBill(input, by);
@@ -86,6 +90,7 @@ export async function addBill(
         due_date: input.dueDate,
         amount_paise: toPaise(input.amount),
         gst_paise: input.gst ? toPaise(input.gst) : 0,
+        itc_blocked: Boolean(input.gst && input.itcBlocked),
         tds_paise: input.tds ? toPaise(input.tds) : 0,
         tds_section: input.tds ? input.tdsSection ?? null : null,
         po_key: input.poId ?? null,
@@ -95,6 +100,17 @@ export async function addBill(
     useFinanceStore.setState((state) => ({
       trail: withTrail(state.trail, trailEntry("finance", TODAY, by, `Recorded bill ${row.number} from ${row.vendor} · ₹${input.amount.toLocaleString("en-IN")}`)),
     }));
+    return null;
+  } catch (error: unknown) {
+    return message(error);
+  }
+}
+
+/** Marks whether a bill's GST is blocked credit (Section 17(5)), which changes GST to pay. */
+export async function setBlockedCredit(billId: string, blocked: boolean): Promise<string | null> {
+  if (demoMode) return "Blocked credit is recorded on a real account.";
+  try {
+    keep(await api<ServerBill>(`/finance/bills/${encodeURIComponent(billId)}/blocked-credit`, { method: "PUT", body: JSON.stringify({ blocked }) }));
     return null;
   } catch (error: unknown) {
     return message(error);

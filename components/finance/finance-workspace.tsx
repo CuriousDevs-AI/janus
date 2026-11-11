@@ -22,7 +22,7 @@ import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
-import { addBill, recordBillPayment, syncBills } from "@/lib/bill-records";
+import { addBill, recordBillPayment, setBlockedCredit, syncBills } from "@/lib/bill-records";
 import { addFundRequest, approveFundRequest, rejectFundRequest, syncFundRequests } from "@/lib/fund-records";
 import { setPeriodLock, syncCompanyRules } from "@/lib/company-rules-records";
 import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
@@ -102,6 +102,7 @@ function PayablesView({ me }: { me: string }) {
   const [vendor, setVendor] = React.useState("");
   const [vendorBillNo, setVendorBillNo] = React.useState("");
   const [gst, setGst] = React.useState("");
+  const [itcBlocked, setItcBlocked] = React.useState(false);
   const [tds, setTds] = React.useState("");
   const [tdsSection, setTdsSection] = React.useState("194C");
   const [amount, setAmount] = React.useState("");
@@ -123,10 +124,10 @@ function PayablesView({ me }: { me: string }) {
   }, []);
 
   async function create() {
-    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), gst: Number(gst) || 0, tds: Number(tds) || 0, tdsSection: Number(tds) > 0 ? tdsSection : undefined, poId: poId || undefined }, me);
+    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), gst: Number(gst) || 0, itcBlocked, tds: Number(tds) || 0, tdsSection: Number(tds) > 0 ? tdsSection : undefined, poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
-    setVendor(""); setVendorBillNo(""); setAmount(""); setGst(""); setTds(""); setPoId("");
+    setVendor(""); setVendorBillNo(""); setAmount(""); setGst(""); setItcBlocked(false); setTds(""); setPoId("");
   }
 
   async function pay(billId: string) {
@@ -134,6 +135,12 @@ function PayablesView({ me }: { me: string }) {
     if (problem) return toast.error(problem);
     toast.success("Payment recorded");
     setPayAmounts((current) => ({ ...current, [billId]: "" }));
+  }
+
+  async function toggleBlocked(billId: string, blocked: boolean) {
+    const problem = await setBlockedCredit(billId, blocked);
+    if (problem) return toast.error(problem);
+    toast.success(blocked ? "GST on this bill is now blocked credit, not taken." : "GST on this bill is taken as input credit.");
   }
 
   return (
@@ -146,7 +153,7 @@ function PayablesView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><select id="bill-vendor" className={selectClass} value={vendor} onChange={(e) => chooseVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount with GST (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-gst">GST in this bill (₹)</Label><Input id="bill-gst" type="number" min={0} placeholder="As on the bill" value={gst} onChange={(e) => setGst(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-gst">GST in this bill (₹)</Label><Input id="bill-gst" type="number" min={0} placeholder="As on the bill" value={gst} onChange={(e) => setGst(e.target.value)} /><label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" disabled={!(Number(gst) > 0)} checked={itcBlocked && Number(gst) > 0} onChange={(e) => setItcBlocked(e.target.checked)} />Credit blocked (food, cars, personal use)</label></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-tds">TDS deducted (₹)</Label><div className="flex gap-1"><Input id="bill-tds" type="number" min={0} placeholder="0" value={tds} onChange={(e) => setTds(e.target.value)} /><select aria-label="TDS section" className={selectClass} value={tdsSection} onChange={(e) => setTdsSection(e.target.value)}>{["194C", "194J", "194I", "194H", "194Q", "194A"].map((code) => <option key={code}>{code}</option>)}</select></div></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-po">Purchase order (optional)</Label><select id="bill-po" className={selectClass} value={poId} onChange={(e) => setPoId(e.target.value)}><option value="">No order</option>{purchaseOrders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.vendor}</option>)}</select></div>
@@ -171,7 +178,7 @@ function PayablesView({ me }: { me: string }) {
                   <tr key={bill.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{bill.number}<span className="block text-xs font-normal text-muted-foreground">{bill.vendor} · {bill.vendorBillNo}</span></td>
                     <td className="px-4 py-3">{bill.dueDate}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}{bill.gst ? <span className="block text-xs text-muted-foreground">GST {money(bill.gst)} · <button type="button" className="underline-offset-2 hover:underline" title="Section 17(5): GST on food, cars and personal use cannot be taken as input credit" onClick={() => void toggleBlocked(bill.id, !bill.itcBlocked)}>{bill.itcBlocked ? "credit blocked" : "credit taken"}</button></span> : null}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(owed)}</td>
                     <td className="px-4 py-3"><Badge variant={status === "paid" ? "success" : status === "overdue" ? "danger" : "warning"}>{status}</Badge></td>
                     <td className="px-4 py-3 text-xs">{order ? <span className={match.matched ? "text-success" : "text-warning"}>{order.number}: {match.status}</span> : <span className="text-muted-foreground">no order</span>}</td>

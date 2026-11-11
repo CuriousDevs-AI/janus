@@ -188,6 +188,8 @@ class FinanceBill(Base):
     # the section it is under (194C, 194J and so on).
     tds_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     tds_section: Mapped[str | None] = mapped_column(String(10))
+    # Its GST cannot be taken as input credit (Section 17(5): food, motor vehicles, personal use).
+    itc_blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # An opening balance owed to the supplier when the company moved to Janus: owed and paid like
     # any bill, but not a cost, so no cost, GST or TDS figure uses it.
     opening: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -121,7 +121,7 @@ Still open (limits, stated where they show):
 | Janus Intelligence | Real model answers could not be tried from the cloud session, which cannot reach the providers; the free providers' model names and limits are examples, not checked against their sites. Test them with the Test button on a computer that can reach them. |
 | Cash | Bank statements are imported as CSV; there is no live bank feed (account aggregator). |
 | Salaries and TDS on them | Janus has no payroll run: posting a month takes HR's current salaries, and TDS on salaries is typed in when posting, not worked out per person. |
-| GST | GST to pay is charged on invoices less GST on bills; credit carried from earlier months, blocked credit and credit notes' GST are not counted. |
+| GST | GST to pay counts credit notes, carried credit and blocked credit; reverse charge, credit held back for bills unpaid after 180 days, and the GST cash already paid are not counted. It stays an estimate for the CA. |
 | Documents | Numbers and dates only; the files themselves are not stored. |
 | Customers kept | Matched by name (without case, punctuation, M/s or Pvt Ltd) and by the merges an owner confirms; invoices hold no GSTIN, so a customer cannot yet be matched by GSTIN. |
 | Alerts | Red alerts and the weekly email go by email only, not push or WhatsApp; the weekly email is off until each person turns it on. |

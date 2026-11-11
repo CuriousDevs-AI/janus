@@ -125,7 +125,7 @@ export interface PortfolioComplianceDue {
   amount?: string | null;
 }
 /** GST for one month from the books, rupees as decimal strings; payable below zero is credit left over. */
-export type PortfolioGstMonth = { month: string; label: string; output: string; input: string; payable: string; billsWithoutGst: number };
+export type PortfolioGstMonth = { month: string; label: string; output: string; creditNotes: string; input: string; blocked: string; carriedIn: string; payable: string; billsWithoutGst: number };
 /** One line of the filing register (GET /portfolio/compliance/register). */
 export type PortfolioRegisterRow = PortfolioComplianceDue & { companyId: string; company: string };
 export interface PortfolioCompliancePlan {

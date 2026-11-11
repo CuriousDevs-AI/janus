@@ -1361,7 +1361,10 @@ async def test_gst_payable_unfiled_count_and_filing_register(
         "month": f"{today:%Y-%m}",
         "label": f"{today:%b %Y}",
         "output": "50.00",
+        "creditNotes": "0.00",
         "input": "18.00",
+        "blocked": "0.00",
+        "carriedIn": "0.00",
         "payable": "32.00",
         "billsWithoutGst": 1,
     }
@@ -1386,6 +1389,113 @@ async def test_gst_payable_unfiled_count_and_filing_register(
         json={"filedOn": oldest["dueOn"]},
     )
     assert marked.status_code == 204, marked.text
+
+
+async def test_gst_to_pay_counts_credit_notes_carried_credit_and_blocked_credit(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    second = await accept_new(
+        client, await invite(client, mailbox, owner, "approver@example.com", role="owner")
+    )
+    await client.put(
+        f"/v1/portfolio/companies/{owner.tenant_id}/compliance",
+        headers=owner.headers,
+        json={"gstin": "27AAPFU0939F1ZV", "gstFiling": "monthly"},
+    )
+    today = today_ist()
+    last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=5)
+
+    async def invoice(key: str, day: date, rate_paise: int) -> dict[str, Any]:
+        made = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "customer": "Kavita Stores",
+                "invoice_date": day.isoformat(),
+                "due_date": day.isoformat(),
+                "same_state": True,
+                "lines": [
+                    {
+                        "item": "Cloth",
+                        "hsn": "5208",
+                        "qty": 1,
+                        "rate_paise": rate_paise,
+                        "gst_rate": 5,
+                    }
+                ],
+            },
+        )
+        assert made.status_code == 201, made.text
+        return dict(made.json())
+
+    async def bill(key: str, day: date, gst_paise: int, blocked: bool = False) -> dict[str, Any]:
+        made = await client.post(
+            "/v1/finance/bills",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "vendor": "Yarn Co",
+                "vendor_bill_no": key,
+                "bill_date": day.isoformat(),
+                "due_date": day.isoformat(),
+                "amount_paise": gst_paise * 10,
+                "gst_paise": gst_paise,
+                "itc_blocked": blocked,
+            },
+        )
+        assert made.status_code == 201, made.text
+        return dict(made.json())
+
+    # Last month: ₹50 charged, ₹90 of credit, so ₹40 of credit is carried into this month.
+    await invoice("last-inv", last_month, 100000)
+    await bill("last-bill", last_month, 9000)
+    # This month: ₹100 charged, half the invoice credited back (₹50 of its GST), ₹30 of credit,
+    # and ₹20 of GST on a staff lunch, which is blocked credit.
+    sold = await invoice("this-inv", today, 200000)
+    await bill("this-bill", today, 3000)
+    lunch = await bill("lunch", today, 2000, blocked=True)
+    assert lunch["itc_blocked"] is True
+    note = await client.post(
+        f"/v1/finance/invoices/{sold['id']}/credit-notes",
+        headers={**owner.headers, "Idempotency-Key": "cn-gst"},
+        json={
+            "amount_paise": sold["total_paise"] // 2,
+            "kind": "credit",
+            "reason": "Half returned",
+            "noted_on": today.isoformat(),
+        },
+    )
+    assert note.status_code == 201, note.text
+    note_id = note.json()["credit_notes"][0]["id"]
+
+    async def gst() -> dict[str, Any]:
+        found = await client.get("/v1/portfolio/summary", headers=owner.headers)
+        return dict(found.json()["companies"][0]["gst"])
+
+    # A pending credit note gives nothing back yet.
+    assert (await gst())["thisMonth"]["creditNotes"] == "0.00"
+    approved = await client.post(f"/v1/finance/credit-notes/{note_id}/approve", headers=second)
+    assert approved.status_code == 200, approved.text
+    position = await gst()
+    assert position["lastMonth"]["payable"] == "-40.00"
+    assert {
+        k: position["thisMonth"][k]
+        for k in ("output", "creditNotes", "input", "blocked", "carriedIn", "payable")
+    } == {
+        "output": "100.00",
+        "creditNotes": "50.00",
+        "input": "30.00",
+        "blocked": "20.00",
+        "carriedIn": "40.00",
+        "payable": "-20.00",
+    }
+    # Unblocking the lunch would take its credit too; it is marked again as it was.
+    url = f"/v1/finance/bills/{lunch['id']}/blocked-credit"
+    freed = await client.put(url, headers=owner.headers, json={"blocked": False})
+    assert freed.status_code == 200 and freed.json()["itc_blocked"] is False
+    assert (await gst())["thisMonth"]["payable"] == "-40.00"
+    assert (await client.put(url, headers=owner.headers, json={"blocked": True})).status_code == 200
+    assert (await gst())["thisMonth"]["blocked"] == "20.00"
 
 
 async def test_the_worker_emails_once_when_a_company_turns_red(

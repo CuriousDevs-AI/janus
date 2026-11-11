@@ -391,14 +391,19 @@ async def tds_month(
     )
 
 
-async def gst_month(db: AsyncSession, tenant_id: int, first: date, last: date) -> schemas.GstMonth:
+async def gst_month(
+    db: AsyncSession, tenant_id: int, first: date, last: date, carried: int
+) -> schemas.GstMonth:
     figures = await finance.gst(db, tenant_id, first, last)
     return schemas.GstMonth(
         month=f"{first:%Y-%m}",
         label=f"{first:%b %Y}",
         output=rupees(figures.output, paise=True),
+        creditNotes=rupees(figures.credit_notes, paise=True),
         input=rupees(figures.input, paise=True),
-        payable=rupees(figures.output - figures.input, paise=True),
+        blocked=rupees(figures.blocked, paise=True),
+        carriedIn=rupees(carried, paise=True),
+        payable=rupees(figures.net - carried, paise=True),
         billsWithoutGst=figures.bills_without_gst,
     )
 
@@ -410,10 +415,15 @@ async def gst_position(
     company has one GSTIN in Janus."""
     this_start = today.replace(day=1)
     last_end = this_start - timedelta(days=1)
+    last_start = last_end.replace(day=1)
+    last = await gst_month(
+        db, tenant_id, last_start, last_end, await finance.gst_carried(db, tenant_id, last_start)
+    )
+    carried = max(0, -int(Decimal(last.payable) * 100))
     return schemas.GstPosition(
         gstin=gstin,
-        lastMonth=await gst_month(db, tenant_id, last_end.replace(day=1), last_end),
-        thisMonth=await gst_month(db, tenant_id, this_start, today),
+        lastMonth=last,
+        thisMonth=await gst_month(db, tenant_id, this_start, today, carried),
     )
 
 

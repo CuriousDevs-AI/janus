@@ -14,6 +14,7 @@ cited and the cost are kept for the person (their memory for follow-ups) and in 
 
 import re
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -197,10 +198,18 @@ def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
             )
         if c.gst:
             last = c.gst.lastMonth
+            payable = Decimal(last.payable)
+            left = (
+                f"{inr(payable)} to pay"
+                if payable >= 0
+                else f"{inr(-payable)} credit carried to next month"
+            )
             add(
                 n,
                 f"{n} GST for {last.label} from the books: {inr(last.output)} charged, "
-                f"{inr(last.input)} input credit, {inr(last.payable)} to pay (an estimate).",
+                f"{inr(last.creditNotes)} back on credit notes, {inr(last.input)} input credit, "
+                f"{inr(last.carriedIn)} credit carried in, {inr(last.blocked)} blocked credit "
+                f"not taken; {left} (an estimate).",
             )
         if c.cash and c.cash.total is not None:
             months = c.cash.runwayMonths

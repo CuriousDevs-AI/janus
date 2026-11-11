@@ -302,14 +302,20 @@ class Intercompany(BaseModel):
 
 
 class GstMonth(BaseModel):
-    """GST for one month from the books, in rupees: GST charged on invoices, GST paid on supplier
-    bills (input credit, where it was recorded), and the difference."""
+    """GST for one month from the books, in rupees: GST charged on invoices, less the GST share of
+    approved credit notes, less input credit on supplier bills (where recorded and not blocked)
+    and credit carried in from earlier months."""
 
     month: str
     label: str
     output: str
+    creditNotes: str
     input: str
-    # Output less input; negative is credit left over.
+    # GST on bills that cannot be taken as credit (Section 17(5)); not taken off.
+    blocked: str
+    # Input credit left over from earlier months.
+    carriedIn: str
+    # What is left to pay; negative is credit carried to the next month.
     payable: str
     # Supplier bills in the month recorded without their GST, so input credit may be higher.
     billsWithoutGst: int

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Numeric, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.finance.models import (
@@ -337,45 +337,126 @@ async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dic
 
 @dataclass(frozen=True)
 class Gst:
-    """GST in the books for a span of days, in paise: charged on invoices, and recorded on supplier
-    bills (input credit). Credit notes keep no GST of their own, so they are not taken off."""
+    """GST in the books for a span of days, in paise: charged on invoices, taken off by approved
+    credit notes (their share of the invoice's GST; write-offs give no GST back), and recorded on
+    supplier bills, split into input credit and credit blocked under Section 17(5)."""
 
     output: int
+    credit_notes: int
     input: int
+    blocked: int
     # Supplier bills in the span recorded without their GST.
     bills_without_gst: int
 
+    @property
+    def net(self) -> int:
+        """Output less credit notes and input credit, before credit carried in; below zero is
+        credit left over."""
+        return self.output - self.credit_notes - self.input
 
-async def gst(db: AsyncSession, tenant_id: int, start: date, end: date) -> Gst:
-    output = await db.scalar(
-        select(
-            func.coalesce(
-                func.sum(
-                    FinanceInvoice.cgst_paise
-                    + FinanceInvoice.sgst_paise
-                    + FinanceInvoice.igst_paise
-                ),
-                0,
-            )
-        ).where(
-            FinanceInvoice.tenant_id == tenant_id,
-            FinanceInvoice.opening.is_(False),
-            FinanceInvoice.invoice_date.between(start, end),
+
+async def _gst_by_month(
+    db: AsyncSession, tenant_id: int, start: date | None, end: date
+) -> dict[date, Gst]:
+    """The GST figures month by month, from `start` (or the first books) to `end`."""
+
+    def span(column: Any) -> Any:
+        return column <= end if start is None else column.between(start, end)
+
+    figures: dict[date, dict[str, int]] = {}
+
+    def add(month: Any, **values: Any) -> None:
+        day = month.date() if hasattr(month, "date") else month
+        row = figures.setdefault(
+            day, {"output": 0, "credit": 0, "input": 0, "blocked": 0, "bare": 0}
         )
+        for key, value in values.items():
+            row[key] += int(value or 0)
+
+    invoice_gst = FinanceInvoice.cgst_paise + FinanceInvoice.sgst_paise + FinanceInvoice.igst_paise
+    month = func.date_trunc("month", FinanceInvoice.invoice_date)
+    for first, paise in (
+        await db.execute(
+            select(month, func.sum(invoice_gst))
+            .where(
+                FinanceInvoice.tenant_id == tenant_id,
+                FinanceInvoice.opening.is_(False),
+                span(FinanceInvoice.invoice_date),
+            )
+            .group_by(month)
+        )
+    ).all():
+        add(first, output=paise)
+    month = func.date_trunc("month", FinanceCreditNote.noted_on)
+    share = func.round(
+        FinanceCreditNote.amount_paise
+        * invoice_gst.cast(Numeric)
+        / func.nullif(FinanceInvoice.total_paise, 0)
     )
-    paid, missing = (
+    for first, paise in (
+        await db.execute(
+            select(month, func.sum(share))
+            .join(FinanceInvoice, FinanceInvoice.id == FinanceCreditNote.invoice_id)
+            .where(
+                FinanceCreditNote.tenant_id == tenant_id,
+                FinanceCreditNote.status == "approved",
+                FinanceCreditNote.kind == "credit",
+                FinanceInvoice.opening.is_(False),
+                span(FinanceCreditNote.noted_on),
+            )
+            .group_by(month)
+        )
+    ).all():
+        add(first, credit=paise)
+    month = func.date_trunc("month", FinanceBill.bill_date)
+    for first, taken, blocked, bare in (
         await db.execute(
             select(
-                func.coalesce(func.sum(FinanceBill.gst_paise), 0),
+                month,
+                func.sum(FinanceBill.gst_paise).filter(FinanceBill.itc_blocked.is_(False)),
+                func.sum(FinanceBill.gst_paise).filter(FinanceBill.itc_blocked.is_(True)),
                 func.count(FinanceBill.id).filter(FinanceBill.gst_paise == 0),
-            ).where(
+            )
+            .where(
                 FinanceBill.tenant_id == tenant_id,
                 FinanceBill.opening.is_(False),
-                FinanceBill.bill_date.between(start, end),
+                span(FinanceBill.bill_date),
             )
+            .group_by(month)
         )
-    ).one()
-    return Gst(output=int(output or 0), input=int(paid or 0), bills_without_gst=int(missing or 0))
+    ).all():
+        add(first, input=taken, blocked=blocked, bare=bare)
+    return {
+        day: Gst(
+            output=row["output"],
+            credit_notes=row["credit"],
+            input=row["input"],
+            blocked=row["blocked"],
+            bills_without_gst=row["bare"],
+        )
+        for day, row in figures.items()
+    }
+
+
+async def gst(db: AsyncSession, tenant_id: int, start: date, end: date) -> Gst:
+    months = (await _gst_by_month(db, tenant_id, start, end)).values()
+    return Gst(
+        output=sum(m.output for m in months),
+        credit_notes=sum(m.credit_notes for m in months),
+        input=sum(m.input for m in months),
+        blocked=sum(m.blocked for m in months),
+        bills_without_gst=sum(m.bills_without_gst for m in months),
+    )
+
+
+async def gst_carried(db: AsyncSession, tenant_id: int, before: date) -> int:
+    """Input credit left over from the months before `before` (a month's first day), carried
+    into it: each month's credit beyond its GST charged is used against the next month's."""
+    carry = 0
+    months = await _gst_by_month(db, tenant_id, None, before - timedelta(days=1))
+    for first in sorted(months):
+        carry = max(0, carry - months[first].net)
+    return carry
 
 
 @dataclass(frozen=True)

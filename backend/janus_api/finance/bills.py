@@ -42,6 +42,8 @@ class BillCreate(BaseModel):
     tds_paise: int = Field(default=0, ge=0, le=MAX_PAISE)
     tds_section: str | None = Field(default=None, pattern=r"^[0-9]{3}[A-Z]{0,3}(\([a-z0-9]+\))?$")
     po_key: str | None = Field(default=None, max_length=64)
+    # Its GST cannot be taken as input credit (Section 17(5): food, cars, personal use).
+    itc_blocked: bool = False
 
     @model_validator(mode="after")
     def gst_within_amount(self) -> "BillCreate":
@@ -83,6 +85,7 @@ class BillOut(BaseModel):
     # An opening balance from before Janus, not a cost.
     opening: bool = False
     gst_paise: int = 0
+    itc_blocked: bool = False
     po_key: str | None
     match: str
     paid_paise: int
@@ -134,6 +137,7 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
         due_date=row.due_date,
         amount_paise=row.amount_paise,
         gst_paise=row.gst_paise,
+        itc_blocked=row.itc_blocked,
         tds_paise=row.tds_paise,
         tds_section=row.tds_section,
         opening=row.opening,
@@ -223,6 +227,7 @@ async def record_bill(
         due_date=data.due_date,
         amount_paise=data.amount_paise,
         gst_paise=data.gst_paise,
+        itc_blocked=data.itc_blocked,
         tds_paise=data.tds_paise,
         tds_section=data.tds_section,
         po_key=data.po_key,
@@ -240,6 +245,35 @@ async def record_bill(
         ip=request_ip(request),
         details={"bill": row.number, "amount_paise": data.amount_paise, "vendor": row.vendor[:160]},
     )
+    return await _bill_out(db, row)
+
+
+class BlockedCreditIn(BaseModel):
+    blocked: bool
+
+
+@router.put("/bills/{bill_id}/blocked-credit", response_model=BillOut)
+async def set_blocked_credit(
+    bill_id: int, data: BlockedCreditIn, actor: Billing, db: Db, request: Request
+) -> BillOut:
+    """Marks whether a bill's GST is blocked credit, in an open period only, since it changes
+    that month's GST."""
+    tenant_id = actor.session.tenant_id
+    row = await _bill(db, tenant_id, bill_id, lock=True)
+    if row.opening:
+        raise ApiError("opening_bill", "An opening balance has no GST credit of its own.", 422)
+    await ensure_open(db, tenant_id, row.bill_date)
+    if row.itc_blocked != data.blocked:
+        row.itc_blocked = data.blocked
+        await db.flush()
+        audit.record(
+            db,
+            "finance.bill_credit_blocked" if data.blocked else "finance.bill_credit_unblocked",
+            user_id=actor.user.id,
+            tenant_id=tenant_id,
+            ip=request_ip(request),
+            details={"bill": row.number, "gst_paise": row.gst_paise},
+        )
     return await _bill_out(db, row)
 
 
