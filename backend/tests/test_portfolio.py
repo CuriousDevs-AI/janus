@@ -2054,6 +2054,101 @@ async def test_opening_balances_are_owed_and_paid_but_are_not_sales(
     assert found["companies"][0]["money"]["overdue"] == "0.00"
 
 
+async def test_an_opening_balance_can_be_corrected_or_removed_until_it_is_settled(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    as_of = today_ist() - timedelta(days=30)
+    url = f"/v1/portfolio/companies/{company}/opening-balances"
+    await client.post(
+        url,
+        headers=owner.headers,
+        json={
+            "asOf": as_of.isoformat(),
+            "customers": [
+                {"name": "Kavita Stores", "amount": "50000"},
+                {"name": "Ravi Traders", "amount": "8000"},
+            ],
+            "suppliers": [{"name": "Surat Yarn Co", "amount": "20000"}],
+        },
+    )
+    listed = (await client.get(url, headers=owner.headers)).json()
+    assert [(row["kind"], row["name"], row["amount"]) for row in listed] == [
+        ("customer", "Kavita Stores", "50000.00"),
+        ("customer", "Ravi Traders", "8000.00"),
+        ("supplier", "Surat Yarn Co", "20000.00"),
+    ]
+    kavita, ravi, surat = listed
+    assert all(row["removable"] and row["settled"] == "0.00" for row in listed)
+
+    # Kavita pays part, so her balance can be corrected but not below what she paid.
+    invoice_id = kavita["id"].removeprefix("customer-")
+    await client.post(
+        f"/v1/finance/invoices/{invoice_id}/payments",
+        headers={**owner.headers, "Idempotency-Key": "ob-part"},
+        json={
+            "amount_paise": 1000000,
+            "method": "UPI",
+            "reference": "UPI-1",
+            "paid_on": today_ist().isoformat(),
+        },
+    )
+    due = (as_of + timedelta(days=15)).isoformat()
+    low = await client.patch(
+        f"{url}/{kavita['id']}",
+        headers=owner.headers,
+        json={"name": "Kavita Stores", "amount": "9000", "dueOn": due},
+    )
+    assert low.status_code == 409 and low.json()["error"]["code"] == "opening_below_settled"
+    changed = await client.patch(
+        f"{url}/{kavita['id']}",
+        headers=owner.headers,
+        json={"name": "Kavita Stores Pvt Ltd", "amount": "45000", "dueOn": due},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["settled"] == "10000.00" and not changed.json()["removable"]
+    summary = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    assert summary["companies"][0]["money"]["receivable"] == "43000.00"
+    # Renaming onto another party's balance for that day is refused.
+    clash = await client.patch(
+        f"{url}/{ravi['id']}",
+        headers=owner.headers,
+        json={"name": "kavita stores pvt ltd", "amount": "8000", "dueOn": due},
+    )
+    assert clash.status_code == 409 and clash.json()["error"]["code"] == "opening_exists"
+    early = await client.patch(
+        f"{url}/{ravi['id']}",
+        headers=owner.headers,
+        json={
+            "name": "Ravi Traders",
+            "amount": "8000",
+            "dueOn": (as_of - timedelta(days=1)).isoformat(),
+        },
+    )
+    assert early.status_code == 422
+
+    # A paid balance stays in the books; an unpaid one recorded by mistake can go.
+    kept = await client.delete(f"{url}/{kavita['id']}", headers=owner.headers)
+    assert kept.status_code == 409 and kept.json()["error"]["code"] == "opening_in_use"
+    gone = await client.delete(f"{url}/{surat['id']}", headers=owner.headers)
+    assert gone.status_code == 204
+    assert (await client.delete(f"{url}/{surat['id']}", headers=owner.headers)).status_code == 404
+    summary = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    assert summary["companies"][0]["money"]["payable"] == "0.00"
+    assert [row["name"] for row in (await client.get(url, headers=owner.headers)).json()] == [
+        "Kavita Stores Pvt Ltd",
+        "Ravi Traders",
+    ]
+    # Another company's balance cannot be reached through this one.
+    other = await _second_company(client, owner, "Pune Retail")
+    stray = await client.delete(
+        f"/v1/portfolio/companies/{other['id']}/opening-balances/{ravi['id']}",
+        headers=owner.headers,
+    )
+    assert stray.status_code == 404
+
+
 async def test_one_link_accepts_every_company_a_portfolio_share_covered(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:

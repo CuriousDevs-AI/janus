@@ -878,3 +878,23 @@ class OpeningIn(BaseModel):
 class OpeningOut(BaseModel):
     invoices: int
     bills: int
+
+
+class OpeningBalanceOut(BaseModel):
+    """One opening balance, with what has been paid or credited against it so far."""
+
+    id: str
+    kind: Literal["customer", "supplier"]
+    name: str
+    asOf: date
+    dueOn: date
+    amount: str
+    settled: str
+    # It can be removed only while nothing is paid, credited or noted against it.
+    removable: bool
+
+
+class OpeningChangeIn(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+    amount: OpeningAmount
+    dueOn: date

@@ -106,3 +106,67 @@ async def record_openings(
         return schemas.OpeningOut(invoices=invoices, bills=bills)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
+def _opening_out(row: finance_service.OpeningBalance) -> schemas.OpeningBalanceOut:
+    return schemas.OpeningBalanceOut(
+        id=row.key,
+        kind="customer" if row.kind == "customer" else "supplier",
+        name=row.party,
+        asOf=row.as_of,
+        dueOn=row.due,
+        amount=f"{Decimal(row.amount_paise) / 100:.2f}",
+        settled=f"{Decimal(row.settled_paise) / 100:.2f}",
+        removable=not row.settled_paise and not row.credit_notes,
+    )
+
+
+async def list_openings(
+    db: AsyncSession, user_id: int, current_tenant: int | None, company_id: str
+) -> list[schemas.OpeningBalanceOut]:
+    try:
+        tenant_id = await enter_company(db, user_id, company_id, "billing:manage")
+        return [_opening_out(row) for row in await finance_service.list_openings(db, tenant_id)]
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
+async def change_opening(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    company_id: str,
+    key: str,
+    data: schemas.OpeningChangeIn,
+    ip: str | None,
+) -> schemas.OpeningBalanceOut:
+    try:
+        tenant_id = await enter_company(db, user_id, company_id, "billing:manage")
+        row = await finance_service.change_opening(
+            db,
+            tenant_id,
+            user_id,
+            key,
+            party=data.name,
+            amount_paise=int(Decimal(data.amount) * 100),
+            due=data.dueOn,
+            ip=ip,
+        )
+        return _opening_out(row)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
+async def remove_opening(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    company_id: str,
+    key: str,
+    ip: str | None,
+) -> None:
+    try:
+        tenant_id = await enter_company(db, user_id, company_id, "billing:manage")
+        await finance_service.remove_opening(db, tenant_id, user_id, key, ip=ip)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)

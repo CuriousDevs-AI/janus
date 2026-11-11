@@ -227,6 +227,7 @@ function OpeningCard({ list }: { list: WithMoney[] }) {
   const [asOf, setAsOf] = React.useState("");
   const [rows, setRows] = React.useState<{ customers: OpeningRow[]; suppliers: OpeningRow[] }>({ customers: [], suppliers: [] });
   const [busy, setBusy] = React.useState(false);
+  const recorded = useApi<OpeningBalance[]>(companyId ? `/portfolio/companies/${companyId}/opening-balances` : null);
   if (editable.length === 0) return null;
   const read = async (file: File, side: "customers" | "suppliers") => {
     try { const parsed = parseOpening(await file.text()); setRows((current) => ({ ...current, [side]: parsed.rows })); toast.success(`${parsed.rows.length} ${side} read${parsed.skipped ? `; ${parsed.skipped} rows left out (totals or blank)` : ""}.`); }
@@ -239,6 +240,7 @@ function OpeningCard({ list }: { list: WithMoney[] }) {
       const result = await api<{ invoices: number; bills: number }>(`/portfolio/companies/${companyId}/opening-balances`, { method: "POST", body: JSON.stringify({ asOf, customers: rows.customers.map(({ name, amount, dueOn }) => ({ name, amount, dueOn })), suppliers: rows.suppliers.map(({ name, amount, dueOn }) => ({ name, amount, dueOn })) }) });
       toast.success(`${result.invoices} customer and ${result.bills} supplier balances recorded. Reload to see them in what is owed.`);
       setRows({ customers: [], suppliers: [] });
+      recorded.reload();
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   const upload = (side: "customers" | "suppliers", label: string) => <label className="inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm">{label}<input type="file" accept=".csv,text/csv" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void read(file, side); }} /></label>;
@@ -254,5 +256,56 @@ function OpeningCard({ list }: { list: WithMoney[] }) {
       <Button size="sm" disabled={busy || !asOf || !companyId} onClick={() => void save()}>Record opening balances</Button>
       {!asOf && <span className="text-xs text-warning">Choose the day the company moved to Janus.</span>}
     </div>}
+    {recorded.data && recorded.data.length > 0 && <div className="mt-4 grid gap-2">
+      <p className="text-xs text-muted-foreground">Recorded for {editable.find((item) => item.id === companyId)?.name}. Correct a wrong name, amount or due day here. A balance can be removed only while nothing has been paid or credited against it; after that, settle it instead. Changes show in what is owed after a reload.</p>
+      <ul className="divide-y divide-border rounded-md border border-border">
+        {recorded.data.map((row) => <OpeningLine key={row.id} companyId={companyId} row={row} onSaved={recorded.reload} />)}
+      </ul>
+    </div>}
+    {recorded.error && <p className="mt-3 text-xs text-destructive">{recorded.error}</p>}
   </SectionCard>;
+}
+
+type OpeningBalance = { id: string; kind: "customer" | "supplier"; name: string; asOf: string; dueOn: string; amount: string; settled: string; removable: boolean };
+
+function OpeningLine({ companyId, row, onSaved }: { companyId: string; row: OpeningBalance; onSaved: () => void }) {
+  const [editing, setEditing] = React.useState(false);
+  const [name, setName] = React.useState(row.name);
+  const [amount, setAmount] = React.useState(row.amount);
+  const [dueOn, setDueOn] = React.useState(row.dueOn);
+  const [busy, setBusy] = React.useState(false);
+  const url = `/portfolio/companies/${companyId}/opening-balances/${row.id}`;
+  const settled = Number(row.settled);
+  const save = async () => {
+    setBusy(true);
+    try { await api(url, { method: "PATCH", body: JSON.stringify({ name, amount, dueOn }) }); toast.success("Opening balance corrected."); setEditing(false); onSaved(); }
+    catch (error) { toast.error(message(error)); } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (!window.confirm(`Remove the opening balance for ${row.name}?`)) return;
+    setBusy(true);
+    try { await api(url, { method: "DELETE" }); toast.success("Opening balance removed."); onSaved(); }
+    catch (error) { toast.error(message(error)); } finally { setBusy(false); }
+  };
+  const field = "h-8 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground";
+  return <li className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm">
+    {editing ? <>
+      <label className="grid gap-0.5 text-xs text-muted-foreground">Name<input className={field} value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="grid gap-0.5 text-xs text-muted-foreground">Amount (₹)<input className={`${field} w-32`} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+      <label className="grid gap-0.5 text-xs text-muted-foreground">Due on<input type="date" className={field} min={row.asOf} value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label>
+      <div className="flex gap-2 self-end">
+        <Button size="sm" disabled={busy || name.trim().length < 2 || !/^\d{1,13}(\.\d{1,2})?$/.test(amount) || !dueOn} onClick={() => void save()}>Save</Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setEditing(false); setName(row.name); setAmount(row.amount); setDueOn(row.dueOn); }}>Cancel</Button>
+      </div>
+      {settled > 0 && <span className="basis-full text-xs text-muted-foreground">{inr(settled)} is already paid or credited, so the amount cannot go below that.</span>}
+    </> : <>
+      <span className="min-w-40 flex-1"><span className="font-medium">{row.name}</span> <Badge variant="outline" className="ml-1">{row.kind === "customer" ? "owes you" : "you owe"}</Badge></span>
+      <span className="tabular-nums">{inr(Number(row.amount))}</span>
+      <span className="text-xs text-muted-foreground">{settled >= Number(row.amount) ? "paid in full · " : settled > 0 ? `${inr(settled)} settled · ` : ""}due {day(row.dueOn)}</span>
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(true)}>Change</Button>
+        {row.removable && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove()}>Remove</Button>}
+      </div>
+    </>}
+  </li>;
 }

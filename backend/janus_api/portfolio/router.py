@@ -499,3 +499,39 @@ async def record_opening_balances(
         data,
         request_ip(request),
     )
+
+
+@router.get(
+    "/companies/{company_id}/opening-balances",
+    response_model=list[schemas.OpeningBalanceOut],
+)
+async def opening_balances(
+    company_id: str, actor: CurrentActor, db: Db
+) -> list[schemas.OpeningBalanceOut]:
+    return await history.list_openings(db, actor.user.id, actor.session.tenant_id, company_id)
+
+
+@router.patch(
+    "/companies/{company_id}/opening-balances/{key}",
+    response_model=schemas.OpeningBalanceOut,
+)
+async def change_opening_balance(
+    company_id: str,
+    key: str,
+    data: schemas.OpeningChangeIn,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.OpeningBalanceOut:
+    return await history.change_opening(
+        db, actor.user.id, actor.session.tenant_id, company_id, key, data, request_ip(request)
+    )
+
+
+@router.delete("/companies/{company_id}/opening-balances/{key}", status_code=204)
+async def remove_opening_balance(
+    company_id: str, key: str, actor: CurrentActor, db: Db, request: Request
+) -> None:
+    await history.remove_opening(
+        db, actor.user.id, actor.session.tenant_id, company_id, key, request_ip(request)
+    )

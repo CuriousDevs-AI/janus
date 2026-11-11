@@ -9,13 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit import service as audit
 from janus_api.core.errors import ApiError
+from janus_api.core.money import inr_exact
 from janus_api.finance.models import (
     FinanceBankLine,
     FinanceBill,
+    FinanceBillPayment,
     FinanceBudgetLine,
+    FinanceCreditNote,
     FinanceHistoryCustomer,
     FinanceHistoryMonth,
     FinanceInvoice,
+    FinancePayment,
     FinancePayrollPosting,
 )
 from janus_api.rules.service import ensure_open
@@ -312,7 +316,7 @@ async def record_openings(
             name = row.party.strip()[:160]
             if len(name) < 2 or row.amount_paise <= 0:
                 raise ApiError("invalid_opening", "Each balance needs a name and an amount.", 422)
-            key = f"opening:{as_of}:{hashlib.sha256(name.casefold().encode()).hexdigest()[:40]}"
+            key = _opening_key(as_of, name)
             model = FinanceInvoice if kind == "customer" else FinanceBill
             if await db.scalar(
                 select(model.id).where(model.tenant_id == tenant_id, model.idempotency_key == key)
@@ -374,6 +378,213 @@ async def record_openings(
         details={"as_of": as_of.isoformat(), "invoices": added[0], "bills": added[1]},
     )
     return added[0], added[1]
+
+
+@dataclass(frozen=True)
+class OpeningBalance:
+    key: str
+    kind: str
+    party: str
+    as_of: date
+    due: date
+    amount_paise: int
+    settled_paise: int
+    credit_notes: int
+
+
+def _opening_key(as_of: date, name: str) -> str:
+    return f"opening:{as_of}:{hashlib.sha256(name.casefold().encode()).hexdigest()[:40]}"
+
+
+async def _invoice_settled(db: AsyncSession, invoice_id: int) -> tuple[int, int]:
+    """Paise paid or credited on an invoice, and how many credit notes (any status) it has."""
+    paid = await db.scalar(
+        select(func.coalesce(func.sum(FinancePayment.amount_paise), 0)).where(
+            FinancePayment.invoice_id == invoice_id
+        )
+    )
+    credited = await db.scalar(
+        select(func.coalesce(func.sum(FinanceCreditNote.amount_paise), 0)).where(
+            FinanceCreditNote.invoice_id == invoice_id, FinanceCreditNote.status == "approved"
+        )
+    )
+    notes = await db.scalar(select(func.count()).where(FinanceCreditNote.invoice_id == invoice_id))
+    return int(paid or 0) + int(credited or 0), int(notes or 0)
+
+
+async def _bill_settled(db: AsyncSession, bill_id: int) -> int:
+    paid = await db.scalar(
+        select(func.coalesce(func.sum(FinanceBillPayment.amount_paise), 0)).where(
+            FinanceBillPayment.bill_id == bill_id
+        )
+    )
+    return int(paid or 0)
+
+
+async def _opening_out(db: AsyncSession, row: FinanceInvoice | FinanceBill) -> OpeningBalance:
+    if isinstance(row, FinanceInvoice):
+        settled, notes = await _invoice_settled(db, row.id)
+        return OpeningBalance(
+            key=f"customer-{row.id}",
+            kind="customer",
+            party=row.customer,
+            as_of=row.invoice_date,
+            due=row.due_date,
+            amount_paise=row.total_paise,
+            settled_paise=settled,
+            credit_notes=notes,
+        )
+    return OpeningBalance(
+        key=f"supplier-{row.id}",
+        kind="supplier",
+        party=row.vendor,
+        as_of=row.bill_date,
+        due=row.due_date,
+        amount_paise=row.amount_paise,
+        settled_paise=await _bill_settled(db, row.id),
+        credit_notes=0,
+    )
+
+
+async def list_openings(db: AsyncSession, tenant_id: int) -> list[OpeningBalance]:
+    """Every opening balance the company recorded, customers first, by name."""
+    invoices = (
+        await db.scalars(
+            select(FinanceInvoice)
+            .where(FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.opening.is_(True))
+            .order_by(FinanceInvoice.customer, FinanceInvoice.id)
+        )
+    ).all()
+    bills = (
+        await db.scalars(
+            select(FinanceBill)
+            .where(FinanceBill.tenant_id == tenant_id, FinanceBill.opening.is_(True))
+            .order_by(FinanceBill.vendor, FinanceBill.id)
+        )
+    ).all()
+    rows: list[FinanceInvoice | FinanceBill] = [*invoices, *bills]
+    return [await _opening_out(db, row) for row in rows]
+
+
+async def _opening_row(db: AsyncSession, tenant_id: int, key: str) -> FinanceInvoice | FinanceBill:
+    kind, _, raw_id = key.partition("-")
+    row: FinanceInvoice | FinanceBill | None = None
+    if raw_id.isdigit() and kind == "customer":
+        row = await db.scalar(
+            select(FinanceInvoice)
+            .where(
+                FinanceInvoice.tenant_id == tenant_id,
+                FinanceInvoice.id == int(raw_id),
+                FinanceInvoice.opening.is_(True),
+            )
+            .with_for_update()
+        )
+    elif raw_id.isdigit() and kind == "supplier":
+        row = await db.scalar(
+            select(FinanceBill)
+            .where(
+                FinanceBill.tenant_id == tenant_id,
+                FinanceBill.id == int(raw_id),
+                FinanceBill.opening.is_(True),
+            )
+            .with_for_update()
+        )
+    if row is None:
+        raise ApiError("opening_not_found", "That opening balance was not found.", 404)
+    return row
+
+
+async def change_opening(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    key: str,
+    *,
+    party: str,
+    amount_paise: int,
+    due: date,
+    ip: str | None,
+) -> OpeningBalance:
+    """Corrects an opening balance's name, amount or due day. It cannot drop below what has
+    already been paid or credited against it."""
+    row = await _opening_row(db, tenant_id, key)
+    current = await _opening_out(db, row)
+    await ensure_open(db, tenant_id, current.as_of)
+    name = party.strip()[:160]
+    if len(name) < 2 or amount_paise <= 0:
+        raise ApiError("invalid_opening", "Each balance needs a name and an amount.", 422)
+    if amount_paise < current.settled_paise:
+        raise ApiError(
+            "opening_below_settled",
+            f"{inr_exact(current.settled_paise)} has already been paid or credited against "
+            "this balance, so it cannot be less than that.",
+            409,
+        )
+    if due < current.as_of:
+        raise ApiError("invalid_opening", "It cannot fall due before the opening day.", 422)
+    new_key = _opening_key(current.as_of, name)
+    model = type(row)
+    if new_key != row.idempotency_key and await db.scalar(
+        select(model.id).where(model.tenant_id == tenant_id, model.idempotency_key == new_key)
+    ):
+        raise ApiError(
+            "opening_exists",
+            f"{name} already has an opening balance for that day; change that one instead.",
+            409,
+        )
+    row.idempotency_key = new_key
+    row.due_date = due
+    if isinstance(row, FinanceInvoice):
+        row.customer = row.customer_company = name
+        row.taxable_paise = row.total_paise = amount_paise
+    else:
+        row.vendor = name
+        row.amount_paise = amount_paise
+    await db.flush()
+    audit.record(
+        db,
+        "finance.opening_balance_changed",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={
+            "number": row.number,
+            "from_party": current.party,
+            "from_paise": current.amount_paise,
+            "from_due": str(current.due),
+            "to_party": name,
+            "to_paise": amount_paise,
+            "to_due": str(due),
+        },
+    )
+    return await _opening_out(db, row)
+
+
+async def remove_opening(
+    db: AsyncSession, tenant_id: int, user_id: int, key: str, *, ip: str | None
+) -> None:
+    """Removes an opening balance recorded by mistake. One that has been paid or has a credit
+    note stays: it is part of the books, and is settled instead."""
+    row = await _opening_row(db, tenant_id, key)
+    current = await _opening_out(db, row)
+    await ensure_open(db, tenant_id, current.as_of)
+    if current.settled_paise or current.credit_notes:
+        raise ApiError(
+            "opening_in_use",
+            "Payments or credit notes are recorded against this balance, so it stays in the "
+            "books. Change its amount instead.",
+            409,
+        )
+    await db.delete(row)
+    await db.flush()
+    audit.record(
+        db,
+        "finance.opening_balance_removed",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+        details={"number": row.number, "party": current.party, "paise": current.amount_paise},
+    )
 
 
 async def budget_left(db: AsyncSession, tenant_id: int, budget_line_key: str) -> int | None:

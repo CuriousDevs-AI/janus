@@ -123,7 +123,6 @@ Still open (limits, stated where they show):
 | Salaries and TDS on them | Janus has no payroll run: posting a month takes HR's current salaries, and TDS on salaries is typed in when posting, not worked out per person. |
 | GST | GST to pay is charged on invoices less GST on bills; credit carried from earlier months, blocked credit and credit notes' GST are not counted. |
 | Documents | Numbers and dates only; the files themselves are not stored. |
-| Opening balances | Added from outstanding reports; there is no screen to change or remove one (a payment or credit note settles it). |
 | Customers kept | Customers are matched by name, so one customer written two ways counts as two. |
 | Alerts | Red alerts and the weekly email go by email only, not push or WhatsApp; the weekly email is off until each person turns it on. |
 | Bills between your companies | Not created automatically when one company invoices another: a person records each, since the other may have recorded it already under another number. |
