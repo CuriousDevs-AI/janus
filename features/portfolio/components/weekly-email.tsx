@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { when } from "@/features/portfolio/lib/format";
 import type { PortfolioDigest } from "@/features/portfolio/types";
 
 /** The person's own Monday email of this page, with a preview of what it would say today. */
 export function WeeklyEmail() {
-  const setting = useApi<PortfolioDigest>("/portfolio/digest");
+  const setting = usePortfolioApi<PortfolioDigest>("/portfolio/digest");
   const [saving, setSaving] = React.useState(false);
   const [preview, setPreview] = React.useState<{ subject: string; body: string } | null>(null);
   const toggle = async (enabled: boolean) => {

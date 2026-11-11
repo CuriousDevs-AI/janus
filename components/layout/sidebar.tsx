@@ -308,12 +308,23 @@ export function SidebarNav({
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel>{currentUser.email}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings">Settings</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings?tab=billing">Billing</Link>
-            </DropdownMenuItem>
+            {/* Settings and billing belong to one company. From the Portfolio they would open
+                whichever company the session is in, so each company's are reached from its page. */}
+            {workspaceId === "portfolio" ? <>
+              <DropdownMenuItem asChild>
+                <Link href="/portfolio?view=companies">Company settings and billing</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/portfolio?view=people">Portfolio access</Link>
+              </DropdownMenuItem>
+            </> : <>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings?tab=billing">Billing</Link>
+              </DropdownMenuItem>
+            </>}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => void signOut()}>
               Sign out

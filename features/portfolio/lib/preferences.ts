@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 
 /** When a company turns red for this person; the Portfolio's own defaults until they change them. */
 export type Thresholds = { overdueRedAfterDays: 30 | 60; overdueMinimum: number; approvalsRedAbove: number; lateBillsRedShare: number };
@@ -14,7 +14,7 @@ export const defaultThresholds: Thresholds = { overdueRedAfterDays: 60, overdueM
 const empty: Preferences = { read: [], snoozed: {}, thresholds: defaultThresholds };
 
 export function usePreferences() {
-  const remote = useApi<Preferences>("/portfolio/preferences");
+  const remote = usePortfolioApi<Preferences>("/portfolio/preferences");
   const [changed, setChanged] = React.useState<Preferences | null>(null);
   const value = changed ?? remote.data ?? empty;
   const save = React.useCallback(async (next: Preferences) => {

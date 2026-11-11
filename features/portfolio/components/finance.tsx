@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Basis, Kpi } from "@/features/portfolio/components/figures";
 import { Delta, Waterfall } from "@/features/portfolio/components/market";
@@ -126,7 +126,7 @@ function GstCard({ list }: { list: WithMoney[] }) {
 /** Invoices between your own companies, each with the bill the buying company recorded for it.
  * A missing bill is recorded in one step, so both sides of the group agree. */
 function IntercompanyCard() {
-  const links = useApi<PortfolioIntercompanyLink[]>("/portfolio/intercompany");
+  const links = usePortfolioApi<PortfolioIntercompanyLink[]>("/portfolio/intercompany");
   const [busy, setBusy] = React.useState<string | null>(null);
   const record = async (link: PortfolioIntercompanyLink) => {
     setBusy(link.invoice);
@@ -155,7 +155,7 @@ const exact = (value: string) => `₹${Math.round(Number(value)).toLocaleString(
 
 /** The month's payroll for one company: totals, notes, and each person's pay where the viewer manages HR. */
 function PayrollDetail({ companyId, month }: { companyId: string; month: string }) {
-  const run = useApi<PayrollRun>(`/portfolio/companies/${companyId}/payroll/${month}`);
+  const run = usePortfolioApi<PayrollRun>(`/portfolio/companies/${companyId}/payroll/${month}`);
   if (run.loading) return <p className="text-xs text-muted-foreground" role="status">Working out the payroll…</p>;
   if (run.error || !run.data) return <p className="text-xs text-danger">{run.error}</p>;
   const r = run.data;
@@ -250,7 +250,7 @@ function OpeningCard({ list }: { list: WithMoney[] }) {
   const [asOf, setAsOf] = React.useState("");
   const [rows, setRows] = React.useState<{ customers: OpeningRow[]; suppliers: OpeningRow[] }>({ customers: [], suppliers: [] });
   const [busy, setBusy] = React.useState(false);
-  const recorded = useApi<OpeningBalance[]>(companyId ? `/portfolio/companies/${companyId}/opening-balances` : null);
+  const recorded = usePortfolioApi<OpeningBalance[]>(companyId ? `/portfolio/companies/${companyId}/opening-balances` : null);
   if (editable.length === 0) return null;
   const read = async (file: File, side: "customers" | "suppliers") => {
     try { const parsed = parseOpening(await file.text()); setRows((current) => ({ ...current, [side]: parsed.rows })); toast.success(`${parsed.rows.length} ${side} read${parsed.skipped ? `; ${parsed.skipped} rows left out (totals or blank)` : ""}.`); }

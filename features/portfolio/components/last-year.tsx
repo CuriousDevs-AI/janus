@@ -4,7 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import { inr } from "@/features/portfolio/lib/format";
 import { parseHistory } from "@/features/portfolio/lib/history-csv";
@@ -14,7 +14,7 @@ import type { PortfolioCompany, PortfolioTrends } from "@/features/portfolio/typ
  * records or months imported from Tally or Zoho Books. */
 export function LastYear({ list }: { list: PortfolioCompany[] }) {
   const { handlesMoney } = useRoles();
-  const trends = useApi<PortfolioTrends>("/portfolio/trends?unit=month&count=25");
+  const trends = usePortfolioApi<PortfolioTrends>("/portfolio/trends?unit=month&count=25");
   const editable = list.filter((item) => handlesMoney(item));
   const [companyId, setCompanyId] = React.useState(editable[0]?.id ?? "");
   const [source, setSource] = React.useState<"tally" | "zoho" | "other">("tally");
@@ -39,7 +39,7 @@ export function LastYear({ list }: { list: PortfolioCompany[] }) {
   }).filter((row) => row.money);
   if (!list.some((item) => item.books)) return null;
   return <SectionCard title="Against last year" description="Sales before GST over the last twelve finished months, against the twelve before, from Janus's records and months imported from Tally or Zoho Books where Janus has none.">
-    {trends.loading ? <p className="text-sm text-muted-foreground" role="status">Loading…</p> : <ul className="flex flex-col divide-y divide-border">{rows.map((row) => <li key={row.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm first:pt-0 last:pb-0">
+    {trends.loading ? <div role="status" aria-label="Loading" className="h-40 animate-pulse rounded-md bg-surface-2" /> : <ul className="flex flex-col divide-y divide-border">{rows.map((row) => <li key={row.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm first:pt-0 last:pb-0">
       <span className="font-medium">{row.name}</span>
       <span className="tabular-nums">{inr(row.now)}</span>
       <span className="text-muted-foreground">{row.known ? `against ${inr(row.then)} the year before` : "no sales on record for the year before"}</span>

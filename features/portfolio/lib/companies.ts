@@ -1,6 +1,7 @@
 /** Reading the companies in a summary: who may do what in each, and adding up across them. */
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { message } from "@/lib/api/client";
@@ -54,7 +55,20 @@ export function useRoles() {
 }
 
 /** Opens a screen inside a company, moving the session there first when it is another one. */
-export const openIn = (item: PortfolioCompany, to: string = businessHome) => item.current ? window.location.assign(to) : switchTenant(item.id, to).catch((error) => toast.error(message(error)));
+/** How the Portfolio moves to a page of the company the session is already in: without a reload. */
+let navigate: ((to: string) => void) | null = null;
+export function useOpenInRouter() {
+  const router = useRouter();
+  React.useEffect(() => {
+    navigate = (to) => router.push(to);
+    return () => { navigate = null; };
+  }, [router]);
+}
+/** Opens a page of one company: at once in the company the session is in, otherwise after switching
+ * the session to it, with "Opening …" shown while the page reloads into it. */
+export const openIn = (item: PortfolioCompany, to: string = businessHome) => item.current
+  ? navigate ? navigate(to) : window.location.assign(to)
+  : switchTenant(item.id, to, item.name).catch((error) => toast.error(message(error)));
 
 /** Won ÷ (won + lost), all time. Null with no closed deal. */
 export const winRate = (item: PortfolioCompany) => { const closed = item.crm.wonDeals + item.crm.lostDeals; return closed ? Math.round((item.crm.wonDeals / closed) * 100) : null; };

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import { inr } from "@/features/portfolio/lib/format";
 import { parseCustomerHistory } from "@/features/portfolio/lib/history-csv";
@@ -17,7 +17,7 @@ const monthName = (value: string) => new Date(`${value.length === 7 ? `${value}-
  * before, with the customers who stopped buying, largest first. */
 export function CustomersKept({ list }: { list: PortfolioCompany[] }) {
   const { handlesMoney } = useRoles();
-  const data = useApi<PortfolioRetention>("/portfolio/customers");
+  const data = usePortfolioApi<PortfolioRetention>("/portfolio/customers");
   const editable = list.filter((item) => handlesMoney(item));
   const [companyId, setCompanyId] = React.useState(editable[0]?.id ?? "");
   const [source, setSource] = React.useState<"tally" | "zoho" | "other">("tally");
@@ -45,7 +45,7 @@ export function CustomersKept({ list }: { list: PortfolioCompany[] }) {
   };
   const span = data.data ? `${monthName(data.data.recentStart)} – ${monthName(data.data.recentEnd)} against ${monthName(data.data.beforeStart)} – ${monthName(data.data.beforeEnd)}` : "";
   return <SectionCard title="Customers kept" description={`Of the customers who bought in the twelve months before, how many bought again in the last twelve, who is new, and who stopped buying. ${span}. From invoices, and a customer-wise report imported from Tally or Zoho Books for the time before Janus.`}>
-    {data.loading ? <p className="text-sm text-muted-foreground" role="status">Loading…</p>
+    {data.loading ? <div role="status" aria-label="Loading" className="h-40 animate-pulse rounded-md bg-surface-2" />
       : data.error ? <p className="text-sm text-danger">{data.error}</p>
       : <ul className="flex flex-col divide-y divide-border">{(data.data?.companies ?? []).map((item) => <li key={item.companyId} className="flex flex-col gap-2 py-3 text-sm first:pt-0 last:pb-0">
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1"><span className="font-medium">{item.company}</span>

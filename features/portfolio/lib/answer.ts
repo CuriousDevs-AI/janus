@@ -119,9 +119,10 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     return { text: first?.health && first.health.status !== "green" ? `${first.name} needs you most: ${first.health.reasons[0]}.` : "Every company is on track right now.", rows: ranked.map((item) => [item.name, item.health ? `${healthWord[item.health.status]}${item.health.reasons.length ? ` · ${item.health.reasons.join("; ")}` : ""}` : "—"]) };
   }
   if (/profit|margin|profitab/.test(q)) {
-    const withBooks = scope.filter((item) => item.books);
-    if (!withBooks.length) return { text: "Profit comes from the books, and money is not shared with your role." };
-    return { text: "Profit this period: sales before GST less supplier bills, then less salaries where they are in HR (an estimate, as salaries are not booked yet).", rows: withBooks.map((item) => { const sales = Number(item.books!.current.netSales), profit = Number(item.books!.current.profitBeforePayroll); const pay = period ? payrollFor(item, period) : null; return [item.name, `${inr(profit)} before salaries on ${inr(sales)} of sales${sales > 0 ? ` (${Math.round((profit / sales) * 100)}% margin)` : ""}${pay === null ? " · salaries unknown" : ` · about ${inr(profit - pay)} after ${inr(pay)} of salaries`}`]; }) };
+    const withBooks = scope.filter((item) => item.books && sells(item));
+    const notSelling = scope.filter((item) => item.books && !sells(item));
+    if (!withBooks.length) return { text: notSelling.length ? `None of these companies sells, so there is no profit from sales to compare: ${notSelling.map((item) => `${item.name} (${businessName(item).toLowerCase()})`).join(", ")}.` : "Profit comes from the books, and money is not shared with your role." };
+    return { text: `Profit this period: sales before GST less supplier bills, then less salaries where they are in HR (an estimate, as salaries are not booked yet).${notSelling.length ? ` Left out, as they do not sell: ${notSelling.map((item) => `${item.name} (${businessName(item).toLowerCase()})`).join(", ")}.` : ""}`, rows: withBooks.map((item) => { const sales = Number(item.books!.current.netSales), profit = Number(item.books!.current.profitBeforePayroll); const pay = period ? payrollFor(item, period) : null; return [item.name, `${inr(profit)} before salaries on ${inr(sales)} of sales${sales > 0 ? ` (${Math.round((profit / sales) * 100)}% margin)` : ""}${pay === null ? " · salaries unknown" : ` · about ${inr(profit - pay)} after ${inr(pay)} of salaries`}`]; }) };
   }
   if (/attention|urgent|need|worry|problem|health|red/.test(q)) {
     const items = attentionOf(scope);

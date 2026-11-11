@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useSession } from "@/components/auth/session-provider";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { Access } from "@/features/portfolio/components/access";
 import { Activity } from "@/features/portfolio/components/activity";
 import { WorkInbox } from "@/features/portfolio/components/work-inbox";
@@ -20,7 +20,7 @@ import { Finance } from "@/features/portfolio/components/finance";
 import { Intelligence } from "@/features/portfolio/components/intelligence";
 import { Overview } from "@/features/portfolio/components/overview";
 import { PeriodBar } from "@/features/portfolio/components/period-bar";
-import { PreviewRole, previewRoles, withoutMoney, type WithMoney } from "@/features/portfolio/lib/companies";
+import { PreviewRole, previewRoles, useOpenInRouter, withoutMoney, type WithMoney } from "@/features/portfolio/lib/companies";
 import { roleLabel } from "@/lib/access";
 import type { PortfolioPeriodKey, PortfolioSummary } from "@/features/portfolio/types";
 
@@ -58,8 +58,10 @@ export function LivePortfolio() {
   const view = params.get("view") ?? "overview";
   const [adding, setAdding] = React.useState(params.get("add") === "1");
   const period: PortfolioPeriodKey = (["month", "quarter", "fy"] as const).find((key) => key === params.get("period")) ?? "month";
-  const summary = useApi<PortfolioSummary>(`/portfolio/summary?period=${period}`);
+  // A new period keeps the figures on screen, dimmed, until its own arrive.
+  const summary = usePortfolioApi<PortfolioSummary>(`/portfolio/summary?period=${period}`, { keepPrevious: true });
   const session = useSession();
+  useOpenInRouter();
   // Only an Owner adds companies and shares the Portfolio; a group role only reads it.
   const realOwner = session.tenants.some((item) => item.role === "owner" && item.status === "active");
   // An Owner can look at the Portfolio as a group role would see it.
@@ -78,7 +80,7 @@ export function LivePortfolio() {
   const withMoney = list.filter((item): item is WithMoney => item.money !== null);
 
   function body() {
-    if (summary.loading) return <p className="text-sm text-muted-foreground" role="status">Loading your companies…</p>;
+    if (summary.loading) return <PortfolioSkeleton />;
     if (summary.error) return <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{summary.error}<Button size="sm" variant="secondary" onClick={summary.reload}>Try again</Button></div>;
     if (!summary.data || list.length === 0) return <p className="text-sm text-muted-foreground" role="status">The Portfolio shows the companies you own, and those an Owner shared with you. There are none yet.</p>;
     switch (view) {
@@ -103,9 +105,19 @@ export function LivePortfolio() {
     {preview && <div role="status" className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-sm print:hidden"><span>You are seeing the Portfolio as a <strong>{roleLabel(preview)}</strong> would, on every page until you exit. {preview === "group_analyst" ? "Money from the books is hidden: sales, costs, profit, what customers owe, bills and salaries. Deal values from CRM stay visible, as they are for this role." : "Money is shown."} They cannot open the companies or change anything.</span><Button size="sm" variant="secondary" onClick={() => { writePreview(null); router.replace("/portfolio?view=people"); }}>Exit preview</Button></div>}
     <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && periodViews.includes(view) && <ExportButtons list={list} period={summary.data.period} />}</div>} />
     <div className="flex flex-col gap-6 px-6 pb-10">
-      {!summary.loading && !summary.error && summary.data && list.length > 0 && periodViews.includes(view) && <PeriodBar period={summary.data.period} />}
-      {body()}
+      {!summary.loading && !summary.error && summary.data && list.length > 0 && periodViews.includes(view) && <PeriodBar period={summary.data.period} chosen={period} updating={summary.stale} />}
+      <div aria-busy={summary.stale} className={`flex flex-col gap-6 transition-opacity duration-200 ${summary.stale ? "pointer-events-none opacity-50" : ""}`}>{body()}</div>
     </div>
     {adding && <AddCompany onClose={() => setAdding(false)} />}
   </div></PreviewRole.Provider>;
+}
+
+/** The shape of a Portfolio page while its first figures load, so nothing jumps when they arrive. */
+function PortfolioSkeleton() {
+  const block = "animate-pulse rounded-xl border border-border bg-surface-2";
+  return <div role="status" aria-label="Loading your companies" className="flex flex-col gap-6">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[0, 1, 2, 3].map((index) => <div key={index} className={`${block} h-[104px]`} />)}</div>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((index) => <div key={index} className={`${block} h-[76px]`} />)}</div>
+    <div className={`${block} h-[280px]`} />
+  </div>;
 }

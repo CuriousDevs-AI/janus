@@ -11,7 +11,7 @@ import Link from "next/link";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { businessName, salesName, sells } from "@/features/portfolio/lib/business";
 import { inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioTrends } from "@/features/portfolio/types";
@@ -53,7 +53,7 @@ export function Sparkline({ values, label, up }: { values: number[]; label: stri
 
 /** One tile per company: this period's figure, its change, and the last 30 days. Opens the company. */
 export function TickerRow({ list, money }: { list: PortfolioCompany[]; money: boolean }) {
-  const days = useApi<PortfolioTrends>("/portfolio/trends?unit=day&count=30");
+  const days = usePortfolioApi<PortfolioTrends>("/portfolio/trends?unit=day&count=30");
   const series = (id: string) => days.data?.companies.find((company) => company.id === id)?.points.map((point) => money ? n(point.netSales) : point.leads) ?? [];
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="list" aria-label="Companies at a glance">
     {list.map((item) => {
@@ -84,7 +84,7 @@ export function GroupLine({ money, onOpen }: { money: boolean; onOpen?: (company
   const [range, setRange] = React.useState<(typeof ranges)[number]>(ranges[0]);
   const [, unit, count] = range;
   // Twice the range: the second half is now, the first half the same range before.
-  const data = useApi<PortfolioTrends>(`/portfolio/trends?unit=${unit}&count=${count * 2}`);
+  const data = usePortfolioApi<PortfolioTrends>(`/portfolio/trends?unit=${unit}&count=${count * 2}`, { keepPrevious: true });
   const pick = (point: Point) => money ? n(point.netSales) : n(point.wonValue);
   const total = (index: number) => data.data?.companies.reduce((sum, company) => sum + pick(company.points[index]), 0) ?? 0;
   const rows = data.data ? data.data.labels.slice(count).map((label, index) => ({ label, now: total(count + index), before: total(index) })) : [];
@@ -92,7 +92,7 @@ export function GroupLine({ money, onOpen }: { money: boolean; onOpen?: (company
   const up = now >= before;
   const leader = data.data?.companies.map((company) => ({ id: company.id, name: company.name, value: company.points.slice(count).reduce((sum, point) => sum + pick(point), 0) })).sort((a, b) => b.value - a.value)[0];
   return <SectionCard title={money ? "Group sales" : "Group value won"} description={`${money ? "Invoiced before GST, every company as it recorded them (sales between your companies included)" : "Deals won, all companies together"}, over the ${({ "1M": "last 30 days", "3M": "last 13 weeks", "6M": "last 6 months", "1Y": "last 12 months" } as Record<string, string>)[range[0]]}, against the same stretch just before (dashed). Not the period chosen above.`} action={<div role="group" aria-label="Range" className="flex gap-1">{ranges.map((entry) => <Button key={entry[0]} size="sm" variant={range[0] === entry[0] ? "default" : "outline"} aria-pressed={range[0] === entry[0]} onClick={() => setRange(entry)}>{entry[0]}</Button>)}</div>}>
-    {data.loading ? <p className="text-sm text-muted-foreground" role="status">Loading…</p> : data.error ? <p role="alert" className="text-sm text-danger">{data.error}</p> : <>
+    {data.loading ? <div role="status" aria-label="Loading" className="h-[276px] animate-pulse rounded-md bg-surface-2" /> : data.error ? <p role="alert" className="text-sm text-danger">{data.error}</p> : <>
       <div className="mb-3 flex flex-wrap items-baseline gap-3"><span className="text-2xl font-semibold tabular-nums">{inr(now)}</span><Delta now={now} before={before} />{leader && leader.value > 0 && <button type="button" className="text-xs text-accent hover:underline" onClick={() => onOpen?.(leader.id)}>Most from {leader.name}</button>}</div>
       {rows.every((row) => !row.now && !row.before) ? <p className="flex h-[220px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">Nothing recorded in this range yet.</p>
         : <ResponsiveContainer width="100%" height={240}><LineChart data={rows} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
@@ -133,8 +133,8 @@ export function Waterfall({ sales, costs, salaries }: { sales: number; costs: nu
 export function SalesHeatmap({ money }: { money: boolean }) {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
   const dayOfMonth = Number(today.slice(8, 10));
-  const data = useApi<PortfolioTrends>(`/portfolio/trends?unit=day&count=${Math.max(2, dayOfMonth)}`);
-  if (!data.data) return null;
+  const data = usePortfolioApi<PortfolioTrends>(`/portfolio/trends?unit=day&count=${Math.max(2, dayOfMonth)}`);
+  if (!data.data) return <div aria-hidden className="h-[260px] w-full animate-pulse rounded-xl border border-border bg-surface-2 xl:w-[392px]" />;
   const pick = (point: Point) => money ? n(point.netSales) : point.leads;
   const days = data.data.months.map((iso, index) => ({ iso, value: data.data!.companies.reduce((sum, company) => sum + pick(company.points[index]), 0) })).filter((entry) => entry.iso.slice(0, 7) === today.slice(0, 7));
   const max = Math.max(1, ...days.map((entry) => entry.value));

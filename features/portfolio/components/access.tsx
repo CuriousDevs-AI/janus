@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { SectionCard } from "@/components/settings/section-ui";
 import { roleLabel } from "@/lib/access";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import type { PortfolioAccessResult, PortfolioCompany, PortfolioPerson, PortfolioRole } from "@/features/portfolio/types";
 
@@ -33,12 +33,12 @@ const outcome = (result: PortfolioAccessResult, verb: string) => [result.done.le
 /** Who else sees the Portfolio. Only an Owner opens this view. */
 export function Access({ list, owner = true }: { list: PortfolioCompany[]; owner?: boolean }) {
   const router = useRouter();
-  const people = useApi<{ people: PortfolioPerson[] }>("/portfolio/access");
+  const people = usePortfolioApi<{ people: PortfolioPerson[] }>("/portfolio/access");
   const [adding, setAdding] = React.useState(false);
   const [removing, setRemoving] = React.useState<PortfolioPerson | null>(null);
   return <>
     <SectionCard title="Who else sees the Portfolio" description="Each person joins the companies you choose with the role you give them, from an email invitation." action={<Button size="sm" onClick={() => setAdding(true)}><Plus className="mr-1 size-4" />Add person</Button>}>
-      {people.loading ? <p className="text-sm text-muted-foreground" role="status">Loading…</p>
+      {people.loading ? <div role="status" aria-label="Loading" className="h-40 animate-pulse rounded-md bg-surface-2" />
         : people.error ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{people.error}<Button size="sm" variant="secondary" onClick={people.reload}>Try again</Button></div>
         : (people.data?.people.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground">Only you so far.</p>
         : <ul className="divide-y divide-border">{people.data!.people.map((person) => <li key={person.email} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">

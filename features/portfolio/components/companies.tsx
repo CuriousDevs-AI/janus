@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Building2, Globe, Mail, MapPin, Pencil, Phone, Plus, Search, Settings2, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, CreditCard, Globe, Mail, MapPin, Pencil, Phone, Plus, Search, Settings2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,8 +43,9 @@ export function Companies({ list, period, onAdd, onSaved }: { list: PortfolioCom
   return <><CompanyTable list={list} period={period} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} />{editor}</>;
 }
 
-/** The company's own settings, in its Business Management. */
+/** The company's own settings and billing, in its Business Management: always this company's. */
 const settingsOf = (item: PortfolioCompany) => openIn(item, "/settings?tab=workspace&view=settings&workspace=business");
+const billingOf = (item: PortfolioCompany) => openIn(item, "/settings?tab=workspace&view=administration&section=billing&workspace=business");
 
 function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: PortfolioCompany[]; period: PortfolioPeriod; onAdd?: () => void; onOpen: (id: string) => void; onEdit: (item: PortfolioCompany) => void; canEdit: (item: PortfolioCompany) => boolean }) {
   const { owns } = useRoles();
@@ -134,7 +135,8 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
       <Button size="sm" variant="ghost" onClick={onBack}><ArrowLeft className="size-3.5" />All companies</Button>
       <div className="flex flex-wrap gap-2">
         {onEdit && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="size-3.5" />Edit details</Button>}
-        {owns(item) && <Button size="sm" variant="outline" onClick={() => settingsOf(item)}><Settings2 className="size-3.5" />Settings</Button>}
+        {owns(item) && <Button size="sm" variant="outline" title={`Opens ${item.name}'s settings`} onClick={() => settingsOf(item)}><Settings2 className="size-3.5" />Settings</Button>}
+        {owns(item) && <Button size="sm" variant="outline" title={`Opens ${item.name}'s plan and billing`} onClick={() => billingOf(item)}><CreditCard className="size-3.5" />Billing</Button>}
         {owns(item) && <Button size="sm" onClick={() => openIn(item)}>Open company<ArrowRight className="ml-1 size-3.5" /></Button>}
       </div>
     </div>
@@ -223,7 +225,7 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
     }
     toast.success(`${created.name} added. Opening it to finish setup.`);
     try {
-      await switchTenant(created.id, "/setup");
+      await switchTenant(created.id, "/setup", created.name);
     } catch (failure) {
       // The company exists, so the form must not offer to add it again. A full load lists it everywhere,
       // the switcher included, since the session's companies are read once per load.

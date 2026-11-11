@@ -69,7 +69,7 @@ export function CommandPalette() {
             </CommandGroup>}
             {!demoMode && session.tenants.length > 0 && <CommandGroup heading="Switch company">
               {workspaceId !== "portfolio" && session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role)) && <CommandItem onSelect={() => { setOpen(false); router.push(portfolioHome); }}><LayoutGrid className="size-4" />Portfolio · all companies</CommandItem>}
-              {session.tenants.filter((item) => item.status === "active" && item.id !== session.tenant.id).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchTenant(item.id, businessHome).catch((error) => toast.error(message(error))); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
+              {session.tenants.filter((item) => item.status === "active" && item.id !== session.tenant.id).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchTenant(item.id, businessHome, item.name).catch((error) => toast.error(message(error))); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
             </CommandGroup>}
             {navSections.map((section) => (
               <CommandGroup key={section.title} heading={section.title}>

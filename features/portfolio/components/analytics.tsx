@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
 import { CustomersKept } from "@/features/portfolio/components/customers-kept";
 import { LastYear } from "@/features/portfolio/components/last-year";
@@ -27,7 +27,7 @@ const sourceName = (source: string) => ({ webhook: "Website and forms", whatsapp
 export function Analytics({ list, period }: { list: PortfolioCompany[]; period: PortfolioPeriod }) {
   const router = useRouter();
   const [months, setMonths] = React.useState(6);
-  const trends = useApi<PortfolioTrends>(`/portfolio/trends?months=${months}`);
+  const trends = usePortfolioApi<PortfolioTrends>(`/portfolio/trends?months=${months}`, { keepPrevious: true });
   const money = list.some((item) => item.books);
   // A company keeps its colour by its place in the Portfolio.
   const color = new Map(list.map((item, index) => [item.id, palette[index % palette.length]]));
@@ -67,9 +67,9 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
       <h2 className="text-sm font-semibold">Month by month</h2>
       <div role="group" aria-label="How many months" className="flex gap-1">{[6, 12].map((value) => <Button key={value} size="sm" variant={months === value ? "default" : "outline"} aria-pressed={months === value} onClick={() => setMonths(value)}>{value} months</Button>)}</div>
     </div>
-    {trends.loading ? <p className="text-sm text-muted-foreground" role="status">Loading the months…</p>
+    {trends.loading ? <div role="status" aria-label="Loading the months" className="grid gap-4 lg:grid-cols-2">{[0, 1, 2, 3].map((index) => <div key={index} className="h-[340px] animate-pulse rounded-xl border border-border bg-surface-2" />)}</div>
       : trends.error ? <div role="alert" className="flex items-center gap-3 text-sm text-danger">{trends.error}<Button size="sm" variant="secondary" onClick={trends.reload}>Try again</Button></div>
-      : trends.data && <Trends data={trends.data} money={money} color={color} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} />}
+      : trends.data && <div className={`transition-opacity duration-200 ${trends.stale ? "opacity-50" : ""}`}><Trends data={trends.data} money={money} color={color} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} /></div>}
 
     <div className="grid gap-4 lg:grid-cols-2">
       {money && <Share list={list} color={color} period={period} />}

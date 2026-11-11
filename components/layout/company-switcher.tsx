@@ -81,7 +81,7 @@ export function LiveCompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: b
   const companies = session.tenants.filter((item) => item.status === "active");
   const open = async (id: string) => {
     setBusy(true);
-    try { await switchTenant(id, businessHome); } catch (error) { toast.error(message(error)); setBusy(false); }
+    try { await switchTenant(id, businessHome, companies.find((item) => item.id === id)?.name); } catch (error) { toast.error(message(error)); setBusy(false); }
   };
   const label = inPortfolio ? "Portfolio" : session.tenant.name;
   const caption = inPortfolio ? `${companies.length} ${companies.length === 1 ? "company" : "companies"}` : "Switch company";

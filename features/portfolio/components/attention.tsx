@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { enablePush } from "@/lib/push";
 import { SectionCard } from "@/components/settings/section-ui";
 import { attentionOf, openIn, useRoles } from "@/features/portfolio/lib/companies";
@@ -96,7 +96,7 @@ function BrowserAlerts() {
 /** An email, and a notification on browsers that allowed it, as soon as a company turns red,
  * besides Monday's email. Owners have it on unless they turn it off. */
 function AlertsSwitch() {
-  const setting = useApi<{ enabled: boolean }>("/portfolio/alerts");
+  const setting = usePortfolioApi<{ enabled: boolean }>("/portfolio/alerts");
   const [enabled, setEnabled] = React.useState<boolean | null>(null);
   const on = enabled ?? setting.data?.enabled ?? false;
   const toggle = async (next: boolean) => {

@@ -40,9 +40,16 @@ export class UnsavedChangesError extends Error {
 }
 
 /** Opens another company. Refused while this one still has edits waiting to be saved. */
-export async function switchTenant(id: string, to: string) {
+export async function switchTenant(id: string, to: string, name?: string) {
   if (hasUnsavedStores()) throw new UnsavedChangesError();
-  await api("/me/switch-tenant", { method: "POST", body: JSON.stringify({ tenant_id: Number(id) }) });
+  // The page reloads into the other company; say so over it instead of leaving a blank screen.
+  const cover = showOpening(name);
+  try {
+    await api("/me/switch-tenant", { method: "POST", body: JSON.stringify({ tenant_id: Number(id) }) });
+  } catch (error) {
+    cover.remove();
+    throw error;
+  }
   forgetStoreCopies();
   try {
     window.localStorage.setItem(TENANT_KEY, id);
@@ -50,4 +57,14 @@ export async function switchTenant(id: string, to: string) {
     /* private mode */
   }
   window.location.assign(to);
+}
+
+/** A cover saying which company is opening, left in place until the next page replaces it. */
+function showOpening(name?: string) {
+  const cover = document.createElement("div");
+  cover.setAttribute("role", "status");
+  cover.style.cssText = "position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--background) 82%, transparent);backdrop-filter:blur(2px);font-size:14px;color:var(--foreground)";
+  cover.textContent = name ? `Opening ${name}…` : "Opening the company…";
+  document.body.appendChild(cover);
+  return cover;
 }

@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
-import { useApi } from "@/lib/api/use-api";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import type { AiProvider, PortfolioAsked, PortfolioCompany, PortfolioKnowledgeItem, PortfolioModels } from "@/features/portfolio/types";
 
@@ -19,7 +19,7 @@ import type { AiProvider, PortfolioAsked, PortfolioCompany, PortfolioKnowledgeIt
 export function KnowledgeCard({ list }: { list: PortfolioCompany[] }) {
   const roles = useRoles();
   const owned = list.filter((item) => roles.owns(item));
-  const items = useApi<PortfolioKnowledgeItem[]>("/portfolio/knowledge");
+  const items = usePortfolioApi<PortfolioKnowledgeItem[]>("/portfolio/knowledge");
   const [companyId, setCompanyId] = React.useState(owned[0]?.id ?? "");
   const [kind, setKind] = React.useState<"fact" | "document">("fact");
   const [title, setTitle] = React.useState("");
