@@ -1601,6 +1601,18 @@ async def test_a_red_alert_also_reaches_the_owners_browser(
     )
     assert saved.status_code == 204, saved.text
     await client.put("/v1/portfolio/alerts", headers=owner.headers, json={"enabled": True})
+    # A document with its scan, so the worker reads the register as the summary shows it.
+    doc = await client.post(
+        f"/v1/portfolio/companies/{owner.tenant_id}/documents",
+        headers=owner.headers,
+        json={"kind": "licence", "name": "Trade licence"},
+    )
+    scan = await client.put(
+        f"/v1/portfolio/companies/{owner.tenant_id}/documents/{doc.json()['id']}/file",
+        headers=owner.headers,
+        files={"file": ("licence.pdf", b"%PDF-1.4 scan", "application/pdf")},
+    )
+    assert scan.status_code == 200, scan.text
     pushed: list[str] = []
     real_post = httpx.AsyncClient.post
 
