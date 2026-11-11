@@ -14,11 +14,12 @@ import { switchTenant } from "@/lib/live-company";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { RegistrationCard } from "@/features/portfolio/components/compliance";
 import { DocumentsCard } from "@/features/portfolio/components/documents";
-import { CompanyEditor, entityNames, PeopleList } from "@/features/portfolio/components/company-editor";
+import { BusinessModelSelect, CompanyEditor, entityNames, PeopleList } from "@/features/portfolio/components/company-editor";
 import { TargetsForm } from "@/features/portfolio/components/targets";
+import { businessModels, businessName, businessOrder, focus, sells, type Measure } from "@/features/portfolio/lib/business";
 import { openIn, payrollFor, useRoles, winRateText } from "@/features/portfolio/lib/companies";
 import { healthName, healthTone, inr } from "@/features/portfolio/lib/format";
-import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
+import type { BusinessModel, PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const healthOrder = { red: 0, amber: 1, green: 2 } as const;
@@ -49,12 +50,14 @@ function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: 
   const { owns } = useRoles();
   const [query, setQuery] = React.useState("");
   const [health, setHealth] = React.useState("all");
+  const [kind, setKind] = React.useState("all");
   const [sort, setSort] = React.useState<SortKey>("health");
   const [compare, setCompare] = React.useState<string[]>([]);
   const money = list.some((item) => item.books);
   const shown = list
-    .filter((item) => `${item.name} ${item.industry} ${item.registration?.legalName ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .filter((item) => `${item.name} ${item.industry} ${businessName(item)} ${item.registration?.legalName ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))
     .filter((item) => health === "all" || item.health?.status === health)
+    .filter((item) => kind === "all" || item.businessModel === kind)
     .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name)
       : sort === "health" ? (healthOrder[a.health?.status ?? "green"] - healthOrder[b.health?.status ?? "green"]) || a.name.localeCompare(b.name)
       : sort === "sales" ? n(b.books?.current.netSales) - n(a.books?.current.netSales)
@@ -66,15 +69,16 @@ function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden /><Input aria-label="Search companies" className="pl-8" placeholder="Search by name or industry" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <select aria-label="Health" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={health} onChange={(event) => setHealth(event.target.value)}><option value="all">Any health</option><option value="red">Needs you</option><option value="amber">Watch</option><option value="green">On track</option></select>
+        <select aria-label="Kind of business" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={kind} onChange={(event) => setKind(event.target.value)}><option value="all">Any kind of business</option>{businessOrder.filter((id) => list.some((item) => item.businessModel === id)).map((id) => <option key={id} value={id}>{businessModels[id].name}</option>)}{list.some((item) => !item.businessModel) && <option value="">Not set</option>}</select>
         <select aria-label="Sort" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>{sorts.filter(([key]) => money || key !== "sales").map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
       </div>
       {shown.length === 0 ? <p className="text-sm text-muted-foreground">No company matches.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="w-8 py-2"><span className="sr-only">Compare</span></th><th className="py-2 pr-3">Company</th><th className="px-3 py-2">Health</th>{money && <th className="px-3 py-2">Sales</th>}<th className="px-3 py-2">Open pipeline</th><th className="px-3 py-2">People</th><th className="px-3 py-2">Filings past due</th><th className="py-2 pl-3" /></tr></thead>
         <tbody>{shown.map((item) => <tr key={item.id} className="border-b border-border last:border-0">
           <td className="py-2.5"><input type="checkbox" aria-label={`Compare ${item.name}`} checked={compare.includes(item.id)} disabled={!compare.includes(item.id) && compare.length >= 4} onChange={() => toggle(item.id)} /></td>
-          <td className="py-2.5 pr-3"><button type="button" className="text-left font-medium text-accent hover:underline" onClick={() => onOpen(item.id)}>{item.name}</button><p className="text-xs text-muted-foreground">{item.industry || "Industry not set"}{item.current ? " · open now" : ""}</p></td>
+          <td className="py-2.5 pr-3"><button type="button" className="text-left font-medium text-accent hover:underline" onClick={() => onOpen(item.id)}>{item.name}</button><p className="text-xs text-muted-foreground">{businessName(item)}{item.industry ? ` · ${item.industry}` : ""}{item.current ? " · open now" : ""}</p></td>
           <td className="px-3">{item.health ? <Badge variant={healthTone[item.health.status]} title={item.health.reasons.join("\n") || "Nothing needs attention"}>{healthName[item.health.status]}</Badge> : "—"}</td>
-          {money && <td className="px-3 tabular-nums">{item.books ? inr(n(item.books.current.netSales)) : "Not shared"}</td>}
+          {money && <td className="px-3 tabular-nums">{!sells(item) ? <span className="text-xs text-muted-foreground">No sales</span> : item.books ? inr(n(item.books.current.netSales)) : "Not shared"}</td>}
           <td className="px-3 tabular-nums">{inr(n(item.crm.pipelineValue))}</td>
           <td className="px-3 tabular-nums">{item.people?.headcount ?? 0}</td>
           <td className={`px-3 tabular-nums ${pastDue(item) ? "text-danger" : item.complianceSetUp ? "" : "text-warning"}`}>{pastDue(item) || (item.complianceSetUp ? 0 : "Not set up")}</td>
@@ -93,8 +97,9 @@ function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: 
 
 function Compare({ list, period, onClear }: { list: PortfolioCompany[]; period: PortfolioPeriod; onClear: () => void }) {
   const rows: [string, (item: PortfolioCompany) => string][] = [
+    ["Kind of business", businessName],
     ["Health", (item) => item.health ? healthName[item.health.status] : "—"],
-    ["Sales this period", (item) => item.books ? inr(n(item.books.current.netSales)) : "Not shared"],
+    ["Sales this period", (item) => !sells(item) ? "No sales" : item.books ? inr(n(item.books.current.netSales)) : "Not shared"],
     ["Profit before salaries", (item) => item.books ? inr(n(item.books.current.profitBeforePayroll)) : "Not shared"],
     ["Profit after salaries (est.)", (item) => { const pay = payrollFor(item, period); return !item.books ? "Not shared" : pay === null ? "Salaries unknown" : inr(n(item.books.current.profitBeforePayroll) - pay); }],
     ["Customers owe", (item) => item.money ? inr(n(item.money.receivable)) : "Not shared"],
@@ -138,7 +143,7 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
       <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-foreground text-lg font-semibold text-background" aria-hidden>{item.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold">{item.name}</h2>{item.health && <Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>}{item.current && <Badge variant="neutral">Open now</Badge>}</div>
-        <p className="mt-0.5 text-sm text-muted-foreground">{[reg?.legalName && reg.legalName !== item.name ? reg.legalName : null, reg?.entityType ? entityNames[reg.entityType] : null, item.industry || "Industry not set", item.companySize || null, reg?.incorporatedOn ? `founded ${reg.incorporatedOn.slice(0, 4)}` : null].filter(Boolean).join(" · ")}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{[reg?.legalName && reg.legalName !== item.name ? reg.legalName : null, reg?.entityType ? entityNames[reg.entityType] : null, businessName(item), item.industry || null, item.companySize || null, reg?.incorporatedOn ? `founded ${reg.incorporatedOn.slice(0, 4)}` : null].filter(Boolean).join(" · ")}</p>
         <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm">{contact.map(([icon, text, href], index) => <li key={index} className={`flex items-center gap-1.5 ${text ? "" : "text-muted-foreground/70"}`}>{icon}{text ? href ? <a className="text-accent hover:underline" href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">{text}</a> : text : "Not recorded"}</li>)}</ul>
         {reg?.registeredAddress && <p className="mt-2 text-xs text-muted-foreground">Registered office: {reg.registeredAddress}</p>}
       </div>
@@ -146,14 +151,13 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
 
     {item.health && item.health.reasons.length > 0 && <SectionCard title="Needs attention" description="From this company's own records."><ul className="grid gap-1 text-sm">{item.health.reasons.map((reason) => <li key={reason}>• {reason}</li>)}</ul></SectionCard>}
 
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      {item.books ? <Kpi label={`Sales, ${period.label}`} value={inr(n(item.books.current.netSales))} detail={`${inr(n(item.books.previous.netSales))} in the same days before`} /> : <Kpi label="Leads this period" value={String(item.period.current.leads)} detail={`${item.period.previous.leads} in the same days before`} />}
-      {item.books ? payroll !== null
-        ? <Kpi label="Profit after salaries" value={inr(n(item.books.current.profitBeforePayroll) - payroll)} detail={`Estimate · ${inr(n(item.books.current.profitBeforePayroll))} before ${inr(payroll)} of salaries`} />
-        : <Kpi label="Profit before salaries" value={inr(n(item.books.current.profitBeforePayroll))} detail="Salaries unknown: no salaries in HR" /> : <Kpi label="Deals won this period" value={String(item.period.current.wonDeals)} detail={`Worth ${inr(n(item.period.current.wonValue))}`} />}
-      <Kpi label="Open pipeline" value={inr(n(item.crm.pipelineValue))} detail={`${item.crm.openDeals} open deals · win rate ${winRateText(item)}`} />
-      {item.money ? <Kpi label="Customers owe" value={inr(n(item.money.receivable))} detail={n(item.money.overdue) ? `${inr(n(item.money.overdue))} past due` : "Nothing past due"} /> : <Kpi label="Open tickets" value={String(item.openTickets)} detail="Customer support" />}
-    </div>
+    <FocusCard item={item} extra={[
+      ...(item.books && sells(item) ? [payroll !== null
+        ? { label: "Profit after salaries", value: inr(n(item.books.current.profitBeforePayroll) - payroll), detail: `Estimate · ${inr(n(item.books.current.profitBeforePayroll))} before ${inr(payroll)} of salaries` }
+        : { label: "Profit before salaries", value: inr(n(item.books.current.profitBeforePayroll)), detail: "Salaries unknown: no salaries in HR" }] : []),
+      ...(!item.books ? [{ label: "Leads this period", value: String(item.period.current.leads), detail: `${item.period.previous.leads} in the same days before` }, { label: "Deals won this period", value: String(item.period.current.wonDeals), detail: `Worth ${inr(n(item.period.current.wonValue))}` }] : []),
+      ...(item.crm.openDeals ? [{ label: "Open pipeline", value: inr(n(item.crm.pipelineValue)), detail: `${item.crm.openDeals} open deals · win rate ${winRateText(item)}` }] : []),
+    ]} period={period} />
 
     <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
       <SectionCard title="Founders and directors" description="Who started and runs the company." action={onEdit && <Button size="sm" variant="ghost" onClick={onEdit}><Pencil className="size-3.5" />Edit</Button>}>
@@ -186,9 +190,22 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
   </>;
 }
 
+/** The measures that fit this kind of business, and what Janus does not record for it. */
+function FocusCard({ item, extra, period }: { item: PortfolioCompany; extra: Measure[]; period: PortfolioPeriod }) {
+  const { measures, notRecorded } = focus(item);
+  // Without money, the measures that need it read "—" and are left out; leads and deals lead instead.
+  const shown = [...(item.books ? measures : measures.filter((measure) => measure.value !== "—")), ...extra];
+  return <SectionCard title={item.businessModel ? `What matters for ${businessModels[item.businessModel].name.toLowerCase()}` : "What matters for this business"} description={item.businessModel ? businessModels[item.businessModel].hint : "The kind of business is not chosen yet, so these are the measures for trading."}>
+    <p className="mb-3 text-xs text-muted-foreground">{period.label}, against the same days before where a figure has one.</p>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">{shown.map((measure) => <Kpi key={measure.label} label={measure.label} value={measure.value} detail={measure.detail} />)}</div>
+    {notRecorded.length > 0 && <ul className="mt-3 grid gap-1 text-xs text-muted-foreground">{notRecorded.map((text) => <li key={text}>{text}</li>)}</ul>}
+  </SectionCard>;
+}
+
 export function AddCompany({ onClose }: { onClose: () => void }) {
   const [name, setName] = React.useState("");
   const [industry, setIndustry] = React.useState("");
+  const [model, setModel] = React.useState<BusinessModel>("");
   const [saving, setSaving] = React.useState(false);
   const [touched, setTouched] = React.useState(false);
   const error = name.trim().length < 2 ? "Give the company a name." : "";
@@ -198,7 +215,7 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
     setSaving(true);
     let created: { id: string; name: string };
     try {
-      created = await api("/portfolio/companies", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: industry.trim() }) });
+      created = await api("/portfolio/companies", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), businessModel: model }) });
     } catch (failure) {
       toast.error(message(failure));
       setSaving(false);
@@ -217,7 +234,8 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
   return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Add a company</DialogTitle><DialogDescription>You become its Owner. It starts empty, with its own people, records and settings, and you set it up next.</DialogDescription></DialogHeader>
     <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label className="grid gap-1.5 text-xs text-muted-foreground">Name<Input autoFocus value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></label>
-      <label className="grid gap-1.5 text-xs text-muted-foreground">Industry (optional)<Input value={industry} maxLength={120} onChange={(event) => setIndustry(event.target.value)} /></label>
+      <label className="grid gap-1.5 text-xs text-muted-foreground">Kind of business<BusinessModelSelect value={model} onChange={setModel} /><span className="text-[11px]">{model ? businessModels[model].hint : "Decides which figures lead for it: a holding company is not shown sales."}</span></label>
+      <label className="grid gap-1.5 text-xs text-muted-foreground">Industry (optional)<Input value={industry} maxLength={120} placeholder="Textiles" onChange={(event) => setIndustry(event.target.value)} /></label>
       {touched && error && <p role="alert" className="text-xs text-danger">{error}</p>}
       <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add company"}</Button></DialogFooter>
     </form></DialogContent></Dialog>;

@@ -12,6 +12,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContaine
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
+import { businessName, salesName, sells } from "@/features/portfolio/lib/business";
 import { inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioTrends } from "@/features/portfolio/types";
 
@@ -56,6 +57,12 @@ export function TickerRow({ list, money }: { list: PortfolioCompany[]; money: bo
   const series = (id: string) => days.data?.companies.find((company) => company.id === id)?.points.map((point) => money ? n(point.netSales) : point.leads) ?? [];
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="list" aria-label="Companies at a glance">
     {list.map((item) => {
+      // A company that does not sell (a holding company, one not trading yet) shows its cash, not a flat ₹0 line.
+      if (!sells(item)) return <Link key={item.id} role="listitem" href={`/portfolio?view=companies&company=${item.id}`} className="flex flex-col justify-center rounded-xl border border-border bg-surface p-3 transition-colors hover:bg-surface-2">
+        <p className="truncate text-xs font-semibold" title={item.name}>{item.name}</p>
+        <p className="mt-1 text-lg font-semibold tabular-nums">{item.cash?.total != null ? inr(n(item.cash.total)) : "No sales"}</p>
+        <p className="text-xs text-muted-foreground">{item.cash?.total != null ? `Cash in the bank · ${businessName(item).toLowerCase()}` : businessName(item)}</p>
+      </Link>;
       const now = money ? n(item.books?.current.netSales) : item.period.current.leads;
       const before = money ? n(item.books?.previous.netSales) : item.period.previous.leads;
       return <Link key={item.id} role="listitem" href={`/portfolio?view=companies&company=${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3 transition-colors hover:bg-surface-2">
@@ -64,7 +71,7 @@ export function TickerRow({ list, money }: { list: PortfolioCompany[]; money: bo
           <p className="mt-1 text-lg font-semibold tabular-nums">{money ? inr(now) : `${now} leads`}</p>
           <Delta now={now} before={before} format={money ? inr : String} compact />
         </div>
-        <Sparkline values={series(item.id)} label={`${item.name} ${money ? "sales" : "leads"}`} up={now === before ? null : now > before} />
+        <Sparkline values={series(item.id)} label={`${item.name} ${money ? salesName(item).toLowerCase() : "leads"}`} up={now === before ? null : now > before} />
       </Link>;
     })}
   </div>;

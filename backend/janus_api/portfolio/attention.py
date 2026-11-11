@@ -31,6 +31,7 @@ def attention(
     stock: schemas.Stock,
     dues: list[schemas.ComplianceDue],
     limits: schemas.Thresholds | None = None,
+    business_model: str = "",
 ) -> list[schemas.AttentionItem]:
     """What needs the owner, most urgent first, red where the person's thresholds say."""
     limits = limits or schemas.Thresholds()
@@ -51,6 +52,16 @@ def attention(
             f"{inr(money.overdue)} overdue from customers on {money.overdueInvoices}"
             f" invoice{'' if money.overdueInvoices == 1 else 's'}"
             + (f", {inr(old)} over {days} days" if old > 0 else ""),
+            f"{FINANCE}?view=receivables&workspace=finance-accounting",
+        )
+    # An exporter must bring export money in within nine months of shipping (FEMA); after that the
+    # bank reports it to the RBI. Invoices carry no export flag, so every invoice that old counts.
+    if business_model == "import_export" and money and money.unpaidOver9MonthsInvoices:
+        add(
+            "high",
+            f"{inr(money.unpaidOver9Months)} on {money.unpaidOver9MonthsInvoices}"
+            f" invoice{'' if money.unpaidOver9MonthsInvoices == 1 else 's'} unpaid for over"
+            " 9 months: export money must come in within 9 months under FEMA",
             f"{FINANCE}?view=receivables&workspace=finance-accounting",
         )
     bills_late, bills_week = (

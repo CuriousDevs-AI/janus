@@ -40,12 +40,29 @@ class Money:
     # Unpaid bills past their due date, and those due within 7 days including the late ones.
     payable_late: int
     payable_due_this_week: int
+    # Still unpaid more than nine months after the invoice date: for an exporter, the time FEMA
+    # allows for export money to come in.
+    unpaid_9_months: int
+    unpaid_9_months_invoices: int
 
 
 @dataclass(frozen=True)
 class Flow:
     invoiced: int
     collected: int
+    # Invoices raised in the span, leaving out opening balances: the number of bills a store cut.
+    invoices: int
+
+
+def months_before(day: date, months: int) -> date:
+    """The same day `months` earlier, or the month's last day where that month is shorter."""
+    index = day.year * 12 + day.month - 1 - months
+    year, month = index // 12, index % 12 + 1
+    following = date(year + month // 12, month % 12 + 1, 1)
+    return min(
+        day.replace(year=year, month=month, day=1) + timedelta(days=day.day - 1),
+        following - timedelta(days=1),
+    )
 
 
 async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
@@ -71,6 +88,7 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
         await db.execute(
             select(
                 FinanceInvoice.due_date,
+                FinanceInvoice.invoice_date,
                 FinanceInvoice.total_paise
                 - func.coalesce(paid.c.paise, 0)
                 - func.coalesce(credited.c.paise, 0),
@@ -80,13 +98,17 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
             .where(FinanceInvoice.tenant_id == tenant_id)
         )
     ).all()
-    receivable = overdue = count = 0
+    receivable = overdue = count = old = old_count = 0
     buckets = [0, 0, 0]
-    for due, balance in invoices:
+    nine_months_ago = months_before(today, 9)
+    for due, raised, balance in invoices:
         balance = int(balance)
         if balance <= 0:
             continue
         receivable += balance
+        if raised < nine_months_ago:
+            old += balance
+            old_count += 1
         late = (today - due).days
         if late > 0:
             overdue += balance
@@ -122,6 +144,8 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
         payable=sum(max(0, int(balance)) for _, balance in bills),
         payable_late=sum(max(0, int(balance)) for due, balance in bills if due < today),
         payable_due_this_week=sum(max(0, int(balance)) for due, balance in bills if due <= week),
+        unpaid_9_months=old,
+        unpaid_9_months_invoices=old_count,
     )
 
 
@@ -137,7 +161,16 @@ async def flow(db: AsyncSession, tenant_id: int, start: date, end: date) -> Flow
             FinancePayment.tenant_id == tenant_id, FinancePayment.paid_on.between(start, end)
         )
     )
-    return Flow(invoiced=int(invoiced or 0), collected=int(collected or 0))
+    raised = await db.scalar(
+        select(func.count(FinanceInvoice.id)).where(
+            FinanceInvoice.tenant_id == tenant_id,
+            FinanceInvoice.opening.is_(False),
+            FinanceInvoice.invoice_date.between(start, end),
+        )
+    )
+    return Flow(
+        invoiced=int(invoiced or 0), collected=int(collected or 0), invoices=int(raised or 0)
+    )
 
 
 async def pending_approvals(db: AsyncSession, tenant_id: int) -> dict[str, int]:

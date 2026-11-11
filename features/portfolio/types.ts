@@ -1,11 +1,15 @@
 /** What the /portfolio API returns. Money is a decimal string in rupees. */
 
+export type BusinessModel = "" | "trading" | "retail" | "import_export" | "manufacturing" | "services" | "warehousing" | "holding" | "not_started";
+
 /** One company in GET /portfolio/summary. Money is a decimal string in rupees. */
 export interface PortfolioCompany {
   id: string;
   name: string;
   industry: string;
   companySize: string;
+  /** What kind of business it runs; "" until its Owner chooses. Decides which measures lead. */
+  businessModel: BusinessModel;
   createdAt: string;
   /** The company this session is in. */
   current: boolean;
@@ -24,6 +28,9 @@ export interface PortfolioCompany {
     payableLate: string;
     /** Bills due within seven days, including those already late. */
     payableDueThisWeek: string;
+    /** Invoices unpaid more than nine months after their date: export money must come in by then (FEMA). */
+    unpaidOver9Months: string;
+    unpaidOver9MonthsInvoices: number;
   };
   /** What happened in the chosen period to date, and in the same days of the period before. */
   period: { current: PortfolioPeriodFigures; previous: PortfolioPeriodFigures };
@@ -142,6 +149,8 @@ export interface PortfolioPeriodFigures {
   wonValue: string;
   invoiced: string | null;
   collected: string | null;
+  /** Invoices raised in the span, not counting opening balances. Null where the role does not include money. */
+  invoices: number | null;
 }
 export type PortfolioPeriodKey = "month" | "quarter" | "fy";
 /** Days are inclusive, in India time. Quarters and years follow the financial year from 1 April. */

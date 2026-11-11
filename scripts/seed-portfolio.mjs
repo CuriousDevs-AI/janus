@@ -6,8 +6,10 @@
 //   SEED_URL=http://localhost:3011 ...        (default http://localhost:3000, as dev-up starts it)
 //
 // Sign up and verify the account first (dev-up prints the verification link). The account's own
-// company becomes the first of three; two more are added: "<first word> Retail" and
-// "<first word> Exports". It adds about 13 months of invoices, payments, supplier bills with GST,
+// company becomes the first of four, a manufacturer; three more are added: "<first word> Retail" (a
+// store), "<first word> Exports" (import and export, with one export unpaid past nine months) and
+// "<first word> Holdings" (a holding company with cash and no sales). It adds about 13 months of
+// invoices, payments, supplier bills with GST,
 // leads and deals, employees with salaries, the filing plan with most filings recorded, registration
 // details, documents (one expiring, one expired), a bank statement, months from before Janus as if
 // imported from Tally, an invoice between the companies, and monthly targets.
@@ -120,7 +122,7 @@ async function people(company, count, prefix) {
 }
 
 async function compliance(company, details) {
-  await call("PUT", `/portfolio/companies/${company}/compliance`, { gstin: details.gstin, gstFiling: "monthly", tds: true, pfEsi: true, company: true });
+  await call("PUT", `/portfolio/companies/${company}/compliance`, details.plan ?? { gstin: details.gstin, gstFiling: "monthly", tds: true, pfEsi: true, company: true });
   await call("PUT", `/portfolio/companies/${company}/registration`, details.registration);
   // Every filing since last April is recorded as filed with an acknowledgement, except the newest
   // few left open on purpose.
@@ -174,8 +176,10 @@ async function history(company, monthly) {
     process.exit(1);
   }
   console.log(`Seeding the Portfolio of ${EMAIL} at ${BASE}, starting from ${first.name}.`);
-  const retail = await call("POST", "/portfolio/companies", { name: `${word} Retail`, industry: "Retail" });
-  const exports = await call("POST", "/portfolio/companies", { name: `${word} Exports`, industry: "Textiles" });
+  // Each company says what kind of business it is, so the Portfolio picks the measures that fit it.
+  await call("PUT", `/portfolio/companies/${first.id}/details`, { name: first.name, industry: "Textiles", businessModel: "manufacturing" });
+  const retail = await call("POST", "/portfolio/companies", { name: `${word} Retail`, industry: "Retail", businessModel: "retail" });
+  const exports = await call("POST", "/portfolio/companies", { name: `${word} Exports`, industry: "Textiles", businessModel: "import_export" });
   const companies = [
     { ...first, plan: { monthly: 900000, growth: 0.02, gst: 5, hsn: "5208", items: ["Cotton fabric", "Printed cotton", "Linen blend"], costShare: 0.55, lateCustomers: true, lateBills: false }, staff: 9, leads: 14,
       customers: ["Kavita Stores", "Sharma Garments", "Metro Mart", "Sai Fashions", "Gupta Traders", "Lakshmi Silks", "Royal Retail", "Annapurna Textiles"], lost: 2,
@@ -226,6 +230,18 @@ async function history(company, monthly) {
     const date = monthDay(back, back ? 12 : Math.max(1, today.getDate() - 1));
     await call("POST", "/finance/invoices", { customer: "Purchase", customer_company: retail.name, invoice_date: iso(date), due_date: iso(date), same_state: true, lines: [{ item: "Cotton fabric", hsn: "5208", qty: 1, rate_paise: 18000000 + n * 2000000, gst_rate: 5 }] }, keyed(`ic-${n}`));
   }
+  // An export shipped ten months ago and still unpaid: past the nine months FEMA allows.
+  await enter(exports.id);
+  const shipped = monthDay(10, 5);
+  await call("POST", "/finance/invoices", { customer: "Accounts", customer_company: "Lagos Wear", invoice_date: iso(shipped), due_date: iso(monthDay(9, 5)), same_state: false, lines: [{ item: "Export denim", hsn: "5209", qty: 1, rate_paise: 46000000, gst_rate: 0 }] }, keyed("exports-late-shipment"));
+  // A holding company: it owns the others' shares and sells nothing, so it is shown by its cash.
+  const holding = await call("POST", "/portfolio/companies", { name: `${word} Holdings`, industry: "Investments", businessModel: "holding" });
+  await enter(holding.id);
+  try { await call("POST", "/workspaces", { type: "finance_accounting" }); } catch { /* already on */ }
+  CUSTOMERS = [`${first.name} DIVIDEND`, `${exports.name} INTEREST`];
+  await compliance(holding.id, { plan: { gstin: null, gstFiling: "none", tds: false, pfEsi: false, company: true }, registration: { entityType: "pvt_ltd", legalName: `${holding.name} Private Limited`, cin: "U65990MH2012PTC234567", pan: "AABCN3456K", city: "Mumbai", state: "Maharashtra", incorporatedOn: "2012-04-02", directors: [{ name: "Owner", roles: ["founder", "director"] }] }, leaveUnfiled: 0 });
+  await documents(holding.id, [{ kind: "registration", name: "Certificate of incorporation", number: "U65990MH2012PTC234567", expiresOn: null }]);
+  await bank(holding.id, 8500000, 60000, 45000);
   const links = await call("GET", "/portfolio/intercompany");
   const older = links.filter((link) => !link.bill).sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate))[0];
   if (older) await call("POST", "/portfolio/intercompany/bills", { sellerId: older.sellerId, invoice: older.invoice });

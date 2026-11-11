@@ -29,6 +29,7 @@ async def create_company(
     try:
         tenant_id = await org_service.create_workspace(db, user_id, data.name)
         await org_service.set_industry(db, tenant_id, data.industry)
+        await org_service.set_business_model(db, tenant_id, data.businessModel)
         record(
             db,
             "portfolio.company_created",
@@ -53,10 +54,12 @@ async def update_details(
     data: schemas.CompanyDetails,
     ip: str,
 ) -> schemas.CompanyDetails:
-    """Renames a company and sets its industry and size. Only its Owner does this."""
+    """Renames a company and sets its industry, size and kind of business. Only its Owner may."""
     try:
         tenant_id = await enter_company(db, user_id, company_id, "owner")
-        await org_service.update_profile(db, tenant_id, data.name, data.industry, data.companySize)
+        await org_service.update_profile(
+            db, tenant_id, data.name, data.industry, data.companySize, data.businessModel
+        )
         record(db, "portfolio.company_updated", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
     finally:

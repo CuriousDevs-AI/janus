@@ -6,6 +6,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { message } from "@/lib/api/client";
 import { businessHome } from "@/lib/company";
 import { switchTenant } from "@/lib/live-company";
+import { sells } from "@/features/portfolio/lib/business";
 import type { PortfolioCompany, PortfolioPeriodFigures } from "@/features/portfolio/types";
 
 /** While an Owner previews the Portfolio as a group role, the role being previewed. */
@@ -99,7 +100,8 @@ export const salariesRecorded = (list: PortfolioCompany[]) =>
 export function groupProfitAfterSalaries(list: PortfolioCompany[], period: { start: string; end: string }) {
   const known = list.filter((item) => item.books && payrollFor(item, period) !== null);
   const salaries = known.reduce((total, item) => total + (payrollFor(item, period) ?? 0), 0);
-  const unknown = list.filter((item) => item.books && payrollFor(item, period) === null).length;
+  // A holding company or one not trading yet with nobody in HR most likely pays no salaries: not "unknown".
+  const unknown = list.filter((item) => item.books && payrollFor(item, period) === null && (sells(item) || (item.people?.headcount ?? 0) > 0)).length;
   return { salaries, unknown, profit: groupBooks(list, "current").profit - salaries };
 }
 

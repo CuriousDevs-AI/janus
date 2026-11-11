@@ -10,6 +10,7 @@ import { Kpi, palette } from "@/features/portfolio/components/figures";
 import { CustomersKept } from "@/features/portfolio/components/customers-kept";
 import { LastYear } from "@/features/portfolio/components/last-year";
 import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
+import { sells } from "@/features/portfolio/lib/business";
 import { groupBooks, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { change, healthName, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioPeriod, PortfolioTrends } from "@/features/portfolio/types";
@@ -80,7 +81,9 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
 }
 
 /** Who leads on each measure this period, so the standouts are visible without reading tables. */
-function Leaders({ list, money }: { list: PortfolioCompany[]; money: boolean }) {
+function Leaders({ list: all, money }: { list: PortfolioCompany[]; money: boolean }) {
+  // A holding company or one not trading yet is not ranked on sales, pipeline or margin.
+  const list = all.filter(sells);
   if (list.length < 2) return null;
   const best = (pick: (item: PortfolioCompany) => number | null, format: (value: number) => string, low = false) => {
     const scored = list.map((item) => ({ item, value: pick(item) })).filter((entry): entry is { item: PortfolioCompany; value: number } => entry.value !== null && Number.isFinite(entry.value));

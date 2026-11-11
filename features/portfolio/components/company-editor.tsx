@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, message } from "@/lib/api/client";
-import type { EntityType, LeaderRole, PortfolioCompany, PortfolioPersonRecord, PortfolioRegistration } from "@/features/portfolio/types";
+import { businessModels, businessOrder } from "@/features/portfolio/lib/business";
+import type { BusinessModel, EntityType, LeaderRole, PortfolioCompany, PortfolioPersonRecord, PortfolioRegistration } from "@/features/portfolio/types";
 
 export const entityNames: Record<EntityType, string> = { pvt_ltd: "Private limited", public_ltd: "Public limited", opc: "One person company", llp: "LLP", partnership: "Partnership", proprietorship: "Proprietorship", other: "Other" };
 export const roleNames: Record<LeaderRole, string> = { founder: "Founder", cofounder: "Co-founder", director: "Director" };
@@ -24,6 +25,7 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
   const [name, setName] = React.useState(item.name);
   const [industry, setIndustry] = React.useState(item.industry);
   const [size, setSize] = React.useState(item.companySize);
+  const [model, setModel] = React.useState<BusinessModel>(item.businessModel);
   const [form, setForm] = React.useState<PortfolioRegistration>(() => ({ ...emptyRegistration, ...item.registration, directors: (item.registration?.directors ?? []).map((person) => ({ ...person, roles: person.roles?.length ? person.roles : ["director"] })) }));
   const [saving, setSaving] = React.useState(false);
   const set = (key: keyof PortfolioRegistration, value: string) => setForm({ ...form, [key]: value === "" ? null : value });
@@ -42,8 +44,8 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
   async function save() {
     setSaving(true);
     try {
-      if (basics && (name.trim() !== item.name || industry.trim() !== item.industry || size !== item.companySize)) {
-        await api(`/portfolio/companies/${item.id}/details`, { method: "PUT", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), companySize: size }) });
+      if (basics && (name.trim() !== item.name || industry.trim() !== item.industry || size !== item.companySize || model !== item.businessModel)) {
+        await api(`/portfolio/companies/${item.id}/details`, { method: "PUT", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), companySize: size, businessModel: model }) });
       }
       await api(`/portfolio/companies/${item.id}/registration`, { method: "PUT", body: JSON.stringify({ ...form, directors: people.map((person) => ({ name: person.name.trim(), din: person.din?.trim() || null, roles: person.roles, title: person.title?.trim() || null })) }) });
       toast.success(`${basics ? name.trim() : item.name} saved.`);
@@ -58,10 +60,11 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
       {heading("The company")}
       {basics ? <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-xs text-muted-foreground">Name<Input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></label>
+        <label className="grid gap-1 text-xs text-muted-foreground">Kind of business<BusinessModelSelect value={model} onChange={setModel} className={select} /></label>
         <label className="grid gap-1 text-xs text-muted-foreground">Industry<Input value={industry} maxLength={120} placeholder="Textiles" onChange={(event) => setIndustry(event.target.value)} /></label>
         <label className="grid gap-1 text-xs text-muted-foreground">Size<select className={select} value={size} onChange={(event) => setSize(event.target.value)}><option value="">Not chosen</option>{[...new Set([...sizes, ...(size ? [size] : [])])].map((value) => <option key={value}>{value}</option>)}</select></label>
         {field("incorporatedOn", "Founded or incorporated on", "", "date")}
-      </div> : <p className="text-xs text-muted-foreground">Only the company&apos;s Owner changes its name, industry and size.</p>}
+      </div> : <p className="text-xs text-muted-foreground">Only the company&apos;s Owner changes its name, kind of business, industry and size.</p>}
 
       {heading("How to reach it")}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -103,6 +106,14 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
       <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving || errors.length > 0}>{saving ? "Saving…" : "Save"}</Button></DialogFooter>
     </form>
   </DialogContent></Dialog>;
+}
+
+/** Choosing what kind of business a company is: the choice decides which measures lead for it. */
+export function BusinessModelSelect({ value, onChange, className }: { value: BusinessModel; onChange: (value: BusinessModel) => void; className?: string }) {
+  return <select aria-label="Kind of business" className={className ?? "h-9 rounded-md border border-input bg-surface-2 px-2 text-sm text-foreground"} value={value} onChange={(event) => onChange(event.target.value as BusinessModel)}>
+    <option value="">Not chosen</option>
+    {businessOrder.map((id) => <option key={id} value={id}>{businessModels[id].name}</option>)}
+  </select>;
 }
 
 /** The company's people, grouped by role, with titles and DINs. */

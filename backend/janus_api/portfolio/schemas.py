@@ -8,6 +8,21 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max
 Industry = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
 
 
+# What kind of business a company runs; "" until its Owner chooses. It decides which measures
+# lead for the company, so a holding company is not judged on sales.
+BusinessModel = Literal[
+    "",
+    "trading",
+    "retail",
+    "import_export",
+    "manufacturing",
+    "services",
+    "warehousing",
+    "holding",
+    "not_started",
+]
+
+
 class CrmSummary(BaseModel):
     leads: int
     openDeals: int
@@ -36,6 +51,10 @@ class MoneySummary(BaseModel):
     # Bills past their due date; payableDueThisWeek includes these.
     payableLate: str = "0.00"
     payableDueThisWeek: str
+    # Invoices still unpaid more than nine months after their date, and how many: for an exporter,
+    # export money must come in within nine months (FEMA).
+    unpaidOver9Months: str = "0.00"
+    unpaidOver9MonthsInvoices: int = 0
 
 
 PeriodKey = Literal["week", "month", "quarter", "fy"]
@@ -59,6 +78,8 @@ class PeriodFigures(BaseModel):
     # None where the person's role does not include money.
     invoiced: str | None
     collected: str | None
+    # Invoices raised, leaving out opening balances. None without money.
+    invoices: int | None = None
 
 
 class PeriodCompare(BaseModel):
@@ -376,6 +397,7 @@ class CompanySummary(BaseModel):
     name: str
     industry: str
     companySize: str = ""
+    businessModel: BusinessModel = ""
     createdAt: str
     current: bool
     members: int
@@ -427,12 +449,15 @@ class PortfolioSummary(BaseModel):
 class CompanyCreate(BaseModel):
     name: Name
     industry: Industry = ""
+    businessModel: BusinessModel = ""
 
 
 class CompanyDetails(BaseModel):
     name: Name
     industry: Industry = ""
     companySize: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] = ""
+    # Left out, the kind of business stays as it is.
+    businessModel: BusinessModel | None = None
 
 
 class CompanyOut(BaseModel):

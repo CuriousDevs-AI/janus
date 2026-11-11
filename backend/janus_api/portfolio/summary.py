@@ -99,6 +99,7 @@ async def period_figures(
         wonValue=rupees(sales.won_value),
         invoiced=rupees(flow.invoiced, paise=True) if flow else None,
         collected=rupees(flow.collected, paise=True) if flow else None,
+        invoices=flow.invoices if flow else None,
     )
 
 
@@ -116,6 +117,8 @@ async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schema
         payable=rupees(owed.payable, paise=True),
         payableLate=rupees(owed.payable_late, paise=True),
         payableDueThisWeek=rupees(owed.payable_due_this_week, paise=True),
+        unpaidOver9Months=rupees(owed.unpaid_9_months, paise=True),
+        unpaidOver9MonthsInvoices=owed.unpaid_9_months_invoices,
     )
 
 
@@ -161,6 +164,7 @@ async def company_summary(
         name=company.name,
         industry=company.industry,
         companySize=company.company_size,
+        businessModel=company.business_model,
         createdAt=company.created_on.isoformat(),
         current=current,
         members=await org.active_member_count(db, tenant_id),
@@ -231,7 +235,14 @@ async def company_summary(
     )
     out.targets = await targets_view(db, tenant_id, money=money)
     out.attention = attention.attention(
-        out.money, out.approvals, out.delivery, out.support, out.stock, out.compliance, limits
+        out.money,
+        out.approvals,
+        out.delivery,
+        out.support,
+        out.stock,
+        out.compliance,
+        limits,
+        company.business_model,
     )
     # A company tracking no filings is not "up to date": it is not set up. With people on its
     # payroll, TDS and PF or ESI usually apply, so that is urgent.

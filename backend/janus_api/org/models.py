@@ -25,6 +25,8 @@ class Tenant(Base):
     timezone: Mapped[str] = mapped_column(default="Asia/Kolkata")
     industry: Mapped[str] = mapped_column(String(120), server_default="")
     company_size: Mapped[str] = mapped_column(String(80), server_default="")
+    # What kind of business it runs (trading, retail, import_export, ...); "" until chosen.
+    business_model: Mapped[str] = mapped_column(String(20), server_default="")
     # Opening hours, and the setup wizard's finished steps (a list) under "setup_steps".
     business_hours: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text('\'{"start":"09:00","end":"18:00"}\'::jsonb')

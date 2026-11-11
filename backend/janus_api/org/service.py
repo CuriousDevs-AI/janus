@@ -967,13 +967,27 @@ async def set_industry(db: AsyncSession, tenant_id: int, industry: str) -> None:
 
 
 async def update_profile(
-    db: AsyncSession, tenant_id: int, name: str, industry: str, company_size: str
+    db: AsyncSession,
+    tenant_id: int,
+    name: str,
+    industry: str,
+    company_size: str,
+    business_model: str | None = None,
 ) -> None:
-    """Renames the company and sets its industry and size."""
+    """Renames the company and sets its industry and size, and its kind of business when given."""
     tenant = await db.get(Tenant, tenant_id)
     if tenant is None:
         raise ApiError("not_found", "Company not found.", 404)
     tenant.name, tenant.industry, tenant.company_size = name, industry, company_size
+    if business_model is not None:
+        tenant.business_model = business_model
+
+
+async def set_business_model(db: AsyncSession, tenant_id: int, business_model: str) -> None:
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant.business_model = business_model
 
 
 async def set_workspace_access(

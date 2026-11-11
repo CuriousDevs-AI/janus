@@ -415,6 +415,7 @@ async def test_the_period_counts_what_happened_in_it(
             "wonValue": "750.00",
             "invoiced": "1000.00",
             "collected": "250.00",
+            "invoices": 1,
         }
         assert figures["previous"]["leads"] == 0
     bad = await client.get("/v1/portfolio/summary?period=day", headers=owner.headers)
@@ -2685,3 +2686,66 @@ async def test_an_invitation_with_another_role_is_not_accepted_with_a_share(
     person = await _join(client, mailbox, "cfo@example.com")
     seen = (await client.get("/v1/portfolio/summary", headers=person)).json()["companies"]
     assert [item["name"] for item in seen] == ["Pune Retail"]
+
+
+async def test_the_kind_of_business_decides_the_export_payment_warning(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    url = f"/v1/portfolio/companies/{owner.tenant_id}"
+    today = today_ist()
+    shipped = today - timedelta(days=300)
+    invoice = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "bm-inv"},
+        json={
+            "customer": "Al Noor Trading",
+            "invoice_date": shipped.isoformat(),
+            "due_date": (shipped + timedelta(days=60)).isoformat(),
+            "same_state": False,
+            "lines": [
+                {"item": "Denim", "hsn": "5209", "qty": 1, "rate_paise": 500000, "gst_rate": 0}
+            ],
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+
+    async def company() -> dict[str, Any]:
+        body = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+        return dict(body["companies"][0])
+
+    before = await company()
+    assert before["businessModel"] == ""
+    assert before["money"]["unpaidOver9Months"] == "5000.00"
+    assert before["money"]["unpaidOver9MonthsInvoices"] == 1
+    # Not an exporter (yet): the invoice is only overdue, with no FEMA line.
+    assert not any("9 months" in item["text"] for item in before["attention"])
+
+    # Leaving businessModel out keeps it; naming it sets it.
+    for body, expected in (
+        ({"name": "Neema Exports", "industry": "Textiles"}, ""),
+        ({"name": "Neema Exports", "businessModel": "import_export"}, "import_export"),
+        ({"name": "Neema Exports", "industry": "Textiles"}, "import_export"),
+    ):
+        saved = await client.put(f"{url}/details", headers=owner.headers, json=body)
+        assert saved.status_code == 200, saved.text
+        assert (await company())["businessModel"] == expected
+    after = await company()
+    line = next(item for item in after["attention"] if "9 months" in item["text"])
+    assert line["severity"] == "high" and "FEMA" in line["text"] and "₹5,000" in line["text"]
+
+    refused = await client.put(
+        f"{url}/details", headers=owner.headers, json={"name": "X Ltd", "businessModel": "casino"}
+    )
+    assert refused.status_code == 422
+    added = await client.post(
+        "/v1/portfolio/companies",
+        headers=owner.headers,
+        json={"name": "Neema Holdings", "businessModel": "holding"},
+    )
+    assert added.status_code == 201, added.text
+    listed = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    assert {item["name"]: item["businessModel"] for item in listed["companies"]} == {
+        "Neema Exports": "import_export",
+        "Neema Holdings": "holding",
+    }

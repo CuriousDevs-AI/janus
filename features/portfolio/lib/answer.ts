@@ -1,4 +1,5 @@
 import { attentionOf, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
+import { businessName, sells } from "@/features/portfolio/lib/business";
 import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 
 /** "Kavita Stores'" and "Neema Textiles'", "Asha's". */
@@ -60,8 +61,11 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   }
   // Performance is profit and sales; "needs you most" (below) is what is wrong today. A question can ask either.
   if (/perform|worst|weakest|best|strongest|doing (well|badly|poorly)/.test(q) && !/need|attention|win rate|pipeline|lead|customer/.test(q)) {
-    const withBooks = scope.filter((item) => item.books);
-    if (!withBooks.length) return { text: "Performance is judged on sales and profit from the books, and money is not shared with your role. Ask which company needs you most instead." };
+    // A holding company or one not trading yet is not ranked on sales; it is named as left out.
+    const withBooks = scope.filter((item) => item.books && sells(item));
+    const leftOut = scope.filter((item) => item.books && !sells(item));
+    const outText = leftOut.length ? ` Left out, as they do not sell: ${leftOut.map((item) => `${item.name} (${businessName(item).toLowerCase()})`).join(", ")}.` : "";
+    if (!withBooks.length) return { text: leftOut.length ? `None of these companies sells, so none is ranked on sales and profit.${outText} Ask which company needs you most instead.` : "Performance is judged on sales and profit from the books, and money is not shared with your role. Ask which company needs you most instead." };
     const best = /best|strongest|well/.test(q);
     const scored = withBooks.map((item) => {
       const now = Number(item.books!.current.netSales), before = Number(item.books!.previous.netSales), profit = Number(item.books!.current.profitBeforePayroll);
@@ -77,7 +81,7 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const profitText = (row: typeof pick) => row.pay === null ? `${inr(row.profit)} profit, salaries unknown` : `about ${inr(row.after)} after ${inr(row.pay)} of salaries (estimate)`;
     const reasons = [`sales ${inr(pick.now)} (${change(pick)})`, margin(pick), profitText(pick), ...(pick.mover && (best ? pick.mover.diff > 0 : pick.mover.diff < 0) ? [`its biggest ${best ? "rise" : "fall"} is ${pick.mover.name}, ${best ? "+" : "−"}${inr(Math.abs(pick.mover.diff))}`] : [])];
     return {
-      text: `${unsupported}${withBooks.length === 1 ? `${pick.item.name} in ${period?.label ?? "this period"}` : `${pick.item.name} is performing ${best ? "best" : "worst"} in ${period?.label ?? "this period"}, ranked on profit after salaries`}: ${reasons.join("; ")}. Sales are invoices before GST, as each company recorded them.`,
+      text: `${unsupported}${withBooks.length === 1 ? `${pick.item.name} in ${period?.label ?? "this period"}` : `${pick.item.name} is performing ${best ? "best" : "worst"} in ${period?.label ?? "this period"}, ranked on profit after salaries`}: ${reasons.join("; ")}. Sales are invoices before GST, as each company recorded them.${outText}`,
       rows: ranked.map((row): [string, string] => [row.item.name, `${profitText(row)} · sales ${inr(row.now)}, ${change(row)} · ${margin(row)}`]),
     };
   }
