@@ -1,5 +1,5 @@
-import { attentionOf, payrollFor } from "@/features/portfolio/lib/companies";
-import { day, inr } from "@/features/portfolio/lib/format";
+import { attentionOf, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
+import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 
 /** "Kavita Stores'" and "Neema Textiles'", "Asha's". */
 const whose = (name: string) => name.endsWith("s") ? `${name}'` : `${name}'s`;
@@ -58,7 +58,57 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     });
     return { text: "Leads against the same days before, by the channel they came from.", rows };
   }
-  if (/worst|weakest|struggl|behind|needs? (me|you|us) most|most attention|which company.*(attention|first|help)/.test(q)) {
+  // Performance is profit and sales; "needs you most" (below) is what is wrong today. A question can ask either.
+  if (/perform|worst|weakest|best|strongest|doing (well|badly|poorly)/.test(q) && !/need|attention|win rate|pipeline|lead|customer/.test(q)) {
+    const withBooks = scope.filter((item) => item.books);
+    if (!withBooks.length) return { text: "Performance is judged on sales and profit from the books, and money is not shared with your role. Ask which company needs you most instead." };
+    const best = /best|strongest|well/.test(q);
+    const scored = withBooks.map((item) => {
+      const now = Number(item.books!.current.netSales), before = Number(item.books!.previous.netSales), profit = Number(item.books!.current.profitBeforePayroll);
+      const pay = period ? payrollFor(item, period) : null;
+      // The customer who moved sales most in the direction asked about: the biggest rise for "best", fall for "worst".
+      const mover = [...item.customers].map((customer) => ({ name: customer.name, diff: Number(customer.current) - Number(customer.previous) })).sort((a, b) => best ? b.diff - a.diff : a.diff - b.diff)[0];
+      return { item, now, before, profit, pay, after: pay === null ? profit : profit - pay, mover };
+    });
+    const ranked = scored.sort((a, b) => best ? b.after - a.after : a.after - b.after);
+    const pick = ranked[0];
+    const change = (row: typeof pick) => row.before > 0 ? `${row.now >= row.before ? "+" : "−"}${Math.abs(Math.round(((row.now - row.before) / row.before) * 100))}% on the same days before` : "nothing in the same days before";
+    const margin = (row: typeof pick) => row.now > 0 ? `${Math.round((row.profit / row.now) * 100)}% margin before salaries` : "no sales";
+    const profitText = (row: typeof pick) => row.pay === null ? `${inr(row.profit)} profit, salaries unknown` : `about ${inr(row.after)} after ${inr(row.pay)} of salaries (estimate)`;
+    const reasons = [`sales ${inr(pick.now)} (${change(pick)})`, margin(pick), profitText(pick), ...(pick.mover && (best ? pick.mover.diff > 0 : pick.mover.diff < 0) ? [`its biggest ${best ? "rise" : "fall"} is ${pick.mover.name}, ${best ? "+" : "−"}${inr(Math.abs(pick.mover.diff))}`] : [])];
+    return {
+      text: `${unsupported}${withBooks.length === 1 ? `${pick.item.name} in ${period?.label ?? "this period"}` : `${pick.item.name} is performing ${best ? "best" : "worst"} in ${period?.label ?? "this period"}, ranked on profit after salaries`}: ${reasons.join("; ")}. Sales are invoices before GST, as each company recorded them.`,
+      rows: ranked.map((row): [string, string] => [row.item.name, `${profitText(row)} · sales ${inr(row.now)}, ${change(row)} · ${margin(row)}`]),
+    };
+  }
+  if (/risk|exposure|threat|danger|vulnerab/.test(q)) {
+    const today = todayIst();
+    const risks = scope.flatMap((item): { company: string; text: string; amount: number }[] => {
+      const found: { company: string; text: string; amount: number }[] = [];
+      const add = (amount: number, text: string) => { if (amount > 0) found.push({ company: item.name, text, amount }); };
+      if (item.money) {
+        add(Number(item.money.ageing.over60), `${inr(Number(item.money.ageing.over60))} owed by customers more than 60 days late (${inr(Number(item.money.overdue))} past due in all)`);
+        add(Number(item.money.payableLate), `${inr(Number(item.money.payableLate))} of supplier bills already late`);
+      }
+      if (item.cash?.runwayMonths !== null && item.cash?.runwayMonths !== undefined && item.cash.runwayMonths < 3 && item.cash.monthlyBurn) {
+        add(Number(item.cash.monthlyBurn) * 3 - Number(item.cash.total ?? 0), `cash lasts about ${item.cash.runwayMonths.toFixed(1)} months: ${inr(Number(item.cash.total ?? 0))} in the bank, ${inr(Number(item.cash.monthlyBurn))} a month more going out than coming in`);
+      }
+      if (item.books && period) {
+        const pay = payrollFor(item, period);
+        const after = Number(item.books.current.profitBeforePayroll) - (pay ?? 0);
+        add(-after, `losing about ${inr(-after)} in ${period.label} ${pay === null ? "before salaries" : "after salaries (estimate)"}`);
+      }
+      if (item.tds && item.tds.dueOn < today) add(Number(item.tds.toDeposit), `${inr(Number(item.tds.toDeposit))} of TDS for ${item.tds.label} not deposited, due ${day(item.tds.dueOn)}: interest runs at 1.5% a month`);
+      if (item.gst) add(Number(item.gst.lastMonth.payable), `${inr(Number(item.gst.lastMonth.payable))} of GST for ${item.gst.lastMonth.label} to pay with GSTR-3B`);
+      const top = item.customers[0], sales = Number(item.books?.current.netSales ?? 0);
+      if (top && sales > 0 && Number(top.current) / sales > 0.4) add(Number(top.current), `${Math.round((Number(top.current) / sales) * 100)}% of sales come from one customer, ${top.name}`);
+      return found;
+    }).sort((a, b) => b.amount - a.amount);
+    if (!scope.some((item) => item.money || item.books)) return { text: "Financial risks come from the books, and money is not shared with your role." };
+    const asOf = /quarter|year|month/.test(q) ? "These are as of today, not by period: what is owed, late or short right now. " : "";
+    return { text: risks.length ? `${asOf}${risks.length} financial risk${risks.length === 1 ? "" : "s"} across ${named ? named.name : "your companies"}, largest amount first.` : `${asOf}No financial risk shows in the figures: nothing more than 60 days late, no late bills, no loss, cash for at least 3 months, and no tax left to deposit.`, rows: risks.map((risk) => [risk.company, risk.text]) };
+  }
+  if (/struggl|behind|needs? (me|you|us) most|most attention|which company.*(attention|first|help)/.test(q)) {
     const order = { red: 0, amber: 1, green: 2 };
     const ranked = [...scope].sort((a, b) => order[a.health?.status ?? "green"] - order[b.health?.status ?? "green"] || (b.health?.reasons.length ?? 0) - (a.health?.reasons.length ?? 0));
     const first = ranked[0];
@@ -96,9 +146,15 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const rows = scope.flatMap((item) => item.compliance.filter((due) => due.status === "overdue" || due.status === "due_soon").map((due): [string, string] => [item.name, `${due.label} for ${due.period}, due ${day(due.dueOn)}${due.status === "overdue" ? " (past due, not recorded as filed)" : ""}`]));
     return { text: rows.length ? "Filings past due or due this week." : "No filing is past due or due this week.", rows };
   }
-  if (/lead|pipeline|deal|won|sales|revenue|win rate|best|compare/.test(q)) {
+  if (/win rate|conversion|close rate/.test(q)) {
+    // Ranked only from RATE_MINIMUM closed deals, as on Analytics: one won deal is not a 100% win rate.
+    const ranked = scope.filter((item) => item.crm.wonDeals + item.crm.lostDeals >= RATE_MINIMUM).sort((a, b) => (winRate(b) ?? 0) - (winRate(a) ?? 0));
+    const pick = /worst|lowest|weakest/.test(q) ? ranked[ranked.length - 1] : ranked[0];
+    return { text: named ? `${named.name} wins ${winRateText(named)} of the deals it has closed, all time.` : pick ? `${pick.name} has the ${/worst|lowest|weakest/.test(q) ? "lowest" : "best"} win rate, ${winRate(pick)}% of ${pick.crm.wonDeals + pick.crm.lostDeals} closed deals, all time.` : `No company has ${RATE_MINIMUM} closed deals yet, so no win rate is ranked.`, rows: scope.map((item) => [item.name, `${winRateText(item)} · ${item.crm.wonDeals} won, ${item.crm.lostDeals} lost`]) };
+  }
+  if (/lead|pipeline|deal|won|sales|revenue|best|compare/.test(q)) {
     const best = top((item) => item.crm, (item) => Number(item.crm.pipelineValue));
     return { text: named ? `${named.name} has ${inr(Number(named.crm.pipelineValue))} open in ${named.crm.openDeals} deals and has won ${inr(Number(named.crm.wonValue))}.` : `${best?.name} holds the largest open pipeline, ${inr(Number(best?.crm.pipelineValue ?? 0))}.`, rows: scope.map((item) => [item.name, `${item.period.current.leads} leads this period · ${inr(Number(item.crm.pipelineValue))} open · ${inr(Number(item.crm.wonValue))} won`]) };
   }
-  return { text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company needs you most, profit, what needs you, approvals, money owed, people and payroll, stock, delivery and filings. Name a company to narrow it." };
+  return { text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, money owed, people and payroll, stock, delivery and filings. Name a company to narrow it." };
 }

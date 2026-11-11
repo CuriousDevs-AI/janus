@@ -53,7 +53,10 @@ let state = 7;
 const rand = () => { state = (state * 48271) % 2147483647; return state / 2147483647; };
 const pick = (items) => items[Math.floor(rand() * items.length)];
 
-const CUSTOMERS = ["Kavita Stores", "Sharma Garments", "Metro Mart", "Sai Fashions", "Gupta Traders", "Lakshmi Silks", "Royal Retail", "Annapurna Textiles"];
+// Each company sells to its own customers; the last `lost` of them bought only before Janus. The
+// company being seeded sets these, so its invoices, leads, bank lines and history name its own.
+let CUSTOMERS = [];
+let ACTIVE = [];
 const SUPPLIERS = ["Surat Yarn Co", "Bhiwandi Dyeing Works", "Ludhiana Packaging", "Tiruppur Knits", "Ahmedabad Cotton Mills"];
 const FIRST = ["Ravi", "Meena", "Arjun", "Pooja", "Imran", "Sneha", "Vikram", "Asha", "Karan", "Divya", "Rahul", "Nisha"];
 const LAST = ["Patel", "Sharma", "Iyer", "Khan", "Reddy", "Joshi", "Nair", "Gupta"];
@@ -71,7 +74,7 @@ async function sales(company, plan) {
       const due = new Date(date); due.setDate(due.getDate() + 30);
       const rate = Math.round(plan.monthly * (0.18 + rand() * 0.2) * (1 + (12 - back) * plan.growth) * 100);
       const invoice = await call("POST", "/finance/invoices", {
-        customer: "Accounts", customer_company: pick(CUSTOMERS.slice(0, 6)), invoice_date: iso(date), due_date: iso(due), same_state: rand() > 0.3,
+        customer: "Accounts", customer_company: pick(ACTIVE), invoice_date: iso(date), due_date: iso(due), same_state: rand() > 0.3,
         lines: [{ item: pick(plan.items), hsn: plan.hsn, qty: 1, rate_paise: rate, gst_rate: plan.gst }],
       }, keyed(`${company}-inv-${back}-${n}`));
       // Paid unless recent, or one of the few left unpaid on purpose (overdue for the money views).
@@ -151,12 +154,12 @@ async function history(company, monthly) {
   const months = [];
   for (let back = 24; back >= 13; back--) months.push({ month: monthKey(back), sales: String(Math.round(monthly * (0.75 + rand() * 0.3))), costs: String(Math.round(monthly * 0.55 * (0.8 + rand() * 0.3))) });
   await call("POST", `/portfolio/companies/${company}/history`, { source: "tally", months });
-  // The same year customer by customer, as a party-wise sales register gives it. The last two
-  // customers bought then and stopped, so the Portfolio has someone to name as lost.
+  // The same year customer by customer, as a party-wise sales register gives it. The last ones
+  // bought then and stopped, so the Portfolio has someone to name as lost.
   // Old ledgers spell some customers their own way: the first matches on its own (case, M/s,
   // Pvt Ltd), the typo is offered to the owner to merge.
-  const LEDGER = { "Kavita Stores": "M/S KAVITA STORES PVT LTD", "Sharma Garments": "Sharma Garment" };
-  const rows = months.flatMap((item) => CUSTOMERS.map((customer, index) => ({ month: item.month, customer: LEDGER[customer] ?? customer, sales: String(Math.round(Number(item.sales) * (index < 6 ? 0.1 : 0.2) * (0.7 + rand() * 0.6))) })));
+  const LEDGER = { [CUSTOMERS[0]]: `M/S ${CUSTOMERS[0].toUpperCase()} PVT LTD`, [CUSTOMERS[1]]: CUSTOMERS[1].replace(/s$/, "") };
+  const rows = months.flatMap((item) => CUSTOMERS.map((customer, index) => ({ month: item.month, customer: LEDGER[customer] ?? customer, sales: String(Math.round(Number(item.sales) * (index < ACTIVE.length ? 0.1 : 0.2) * (0.7 + rand() * 0.6))) })));
   await call("POST", `/portfolio/companies/${company}/history/customers`, { source: "tally", rows });
 }
 
@@ -175,14 +178,17 @@ async function history(company, monthly) {
   const exports = await call("POST", "/portfolio/companies", { name: `${word} Exports`, industry: "Textiles" });
   const companies = [
     { ...first, plan: { monthly: 900000, growth: 0.02, gst: 5, hsn: "5208", items: ["Cotton fabric", "Printed cotton", "Linen blend"], costShare: 0.55, lateCustomers: true, lateBills: false }, staff: 9, leads: 14,
+      customers: ["Kavita Stores", "Sharma Garments", "Metro Mart", "Sai Fashions", "Gupta Traders", "Lakshmi Silks", "Royal Retail", "Annapurna Textiles"], lost: 2,
       bank: [1800000, 950000, 1000000], gstin: "27AABCN1234F1Z5", leave: 1,
       registration: { entityType: "pvt_ltd", legalName: `${first.name} Private Limited`, cin: "U17110MH2015PTC123456", pan: "AABCN1234F", tan: "MUMN12345B", ptState: "MH", city: "Mumbai", state: "Maharashtra", incorporatedOn: "2015-06-12", directors: [{ name: "Owner", roles: ["founder", "director"] }] },
       docs: [{ kind: "licence", name: "Shop and establishment licence", number: "MH-SE-2021-55821", expiresOn: daysAgo(-20) }, { kind: "insurance", name: "Fire and stock insurance", number: "POL/FIRE/88213", expiresOn: daysAgo(-210) }] },
     { id: retail.id, name: retail.name, plan: { monthly: 450000, growth: -0.01, gst: 12, hsn: "6204", items: ["Kurtas", "Sarees", "Dress material"], costShare: 0.7, lateCustomers: false, lateBills: true }, staff: 6, leads: 10,
+      customers: ["Bansal Boutique", "Rekha Sarees", "Pune Wedding House", "Anand Collections", "Shree Ganesh Emporium", "Kothari Stores", "Navya Ethnic"], lost: 1,
       bank: [600000, 420000, 520000], gstin: "27AABCN5678G1Z2", leave: 3,
       registration: { entityType: "llp", legalName: `${retail.name} LLP`, pan: "AABFN5678G", city: "Pune", state: "Maharashtra", incorporatedOn: "2019-01-20" },
       docs: [{ kind: "licence", name: "Trade licence", number: "PMC/TL/44120", expiresOn: daysAgo(4) }] },
     { id: exports.id, name: exports.name, plan: { monthly: 1300000, growth: 0.04, gst: 5, hsn: "5209", items: ["Export denim", "Twill fabric"], costShare: 0.62, lateCustomers: false, lateBills: false }, staff: 12, leads: 8,
+      customers: ["Al Noor Trading LLC", "Denim Works", "Bristol Apparel Ltd", "Hamburg Textil GmbH", "Osaka Fabrics", "Lagos Wear", "Dubai Garment Hub", "Colombo Knit Mills", "Cape Town Clothing"], lost: 3,
       bank: [3500000, 1400000, 1250000], gstin: "24AABCN9012H1Z8", leave: 0,
       registration: { entityType: "pvt_ltd", legalName: `${exports.name} Private Limited`, cin: "U17120GJ2018PTC098765", pan: "AABCN9012H", tan: "AHMN54321C", city: "Ahmedabad", state: "Gujarat", incorporatedOn: "2018-09-03" },
       docs: [{ kind: "registration", name: "Import Export Code (IEC)", number: "0318012345", expiresOn: null }, { kind: "trademark", name: "Brand trademark, class 24", number: "TM-4412890", expiresOn: daysAgo(-400) }] },
@@ -190,6 +196,8 @@ async function history(company, monthly) {
   for (const company of companies) {
     console.log(`· ${company.name}`);
     await enter(company.id);
+    CUSTOMERS = company.customers;
+    ACTIVE = CUSTOMERS.slice(0, CUSTOMERS.length - company.lost);
     for (const type of ["finance_accounting", "hr_people", "operations_inventory"]) { try { await call("POST", "/workspaces", { type }); } catch { /* already on */ } }
     await crm(company.id, company.leads);
     await sales(company.id, company.plan);

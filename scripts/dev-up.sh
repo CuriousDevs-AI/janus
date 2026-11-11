@@ -78,8 +78,10 @@ fi
 say "Python packages and migrations"
 (cd "$BACKEND" && uv sync --frozen && uv run --env-file "$RUN_ENV" alembic upgrade head)
 
-# npm ci installs exactly what package-lock.json says and never rewrites it.
-if [ ! -d "$ROOT/node_modules" ]; then
+# npm ci installs exactly what package-lock.json says and never rewrites it. It runs again when the
+# lock file is newer than the last install (npm writes node_modules/.package-lock.json), as after
+# checking out a branch that updated packages.
+if [ ! -f "$ROOT/node_modules/.package-lock.json" ] || [ "$ROOT/package-lock.json" -nt "$ROOT/node_modules/.package-lock.json" ]; then
   say "Web packages"
   (cd "$ROOT" && npm ci --no-audit --no-fund)
 fi
