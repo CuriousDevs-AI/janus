@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Request, Response
+from typing import Annotated
+from urllib.parse import quote
+
+from fastapi import APIRouter, File, Request, Response, UploadFile
 
 from janus_api.ai import service as ai
 from janus_api.core.deps import CurrentActor, Db, request_ip
@@ -400,6 +403,61 @@ async def remove_document(
     company_id: str, document_id: str, actor: CurrentActor, db: Db, request: Request
 ) -> Response:
     await documents.remove(
+        db, actor.user.id, actor.session.tenant_id, company_id, document_id, request_ip(request)
+    )
+    return Response(status_code=204)
+
+
+@router.put(
+    "/companies/{company_id}/documents/{document_id}/file",
+    response_model=schemas.CompanyDocumentOut,
+)
+async def attach_document_file(
+    company_id: str,
+    document_id: str,
+    file: Annotated[UploadFile, File()],
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.CompanyDocumentOut:
+    data = await file.read(documents.MAX_FILE + 1)
+    return await documents.attach_file(
+        db,
+        actor.user.id,
+        actor.session.tenant_id,
+        company_id,
+        document_id,
+        file.filename,
+        data,
+        request_ip(request),
+        today_ist(),
+    )
+
+
+@router.get("/companies/{company_id}/documents/{document_id}/file")
+async def download_document_file(
+    company_id: str, document_id: str, actor: CurrentActor, db: Db
+) -> Response:
+    found = await documents.read_file(
+        db, actor.user.id, actor.session.tenant_id, company_id, document_id
+    )
+    # Images and PDFs open in the browser; nothing is sniffed into another type.
+    return Response(
+        content=found.data,
+        media_type=found.content_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(found.filename)}",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@router.delete("/companies/{company_id}/documents/{document_id}/file", status_code=204)
+async def remove_document_file(
+    company_id: str, document_id: str, actor: CurrentActor, db: Db, request: Request
+) -> Response:
+    await documents.remove_file(
         db, actor.user.id, actor.session.tenant_id, company_id, document_id, request_ip(request)
     )
     return Response(status_code=204)

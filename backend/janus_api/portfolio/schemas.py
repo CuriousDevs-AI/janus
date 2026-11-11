@@ -744,6 +744,12 @@ class CompanyDocumentIn(BaseModel):
     notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=400)] | None = None
 
 
+class DocumentFileOut(BaseModel):
+    name: str
+    size: int
+    contentType: str
+
+
 class CompanyDocumentOut(BaseModel):
     id: str
     kind: DocumentKind
@@ -755,6 +761,8 @@ class CompanyDocumentOut(BaseModel):
     # Days until it expires; negative once it has. None without an expiry date.
     daysLeft: int | None
     status: Literal["valid", "expiring", "expired", "no_expiry"]
+    # The document's file, where one is kept: named for everyone who sees the register.
+    file: DocumentFileOut | None = None
 
 
 class IntercompanyLink(BaseModel):

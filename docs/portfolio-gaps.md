@@ -122,7 +122,6 @@ Still open (limits, stated where they show):
 | Cash | Bank statements are imported as CSV; there is no live bank feed (account aggregator). |
 | Salaries and TDS on them | Janus has no payroll run: posting a month takes HR's current salaries, and TDS on salaries is typed in when posting, not worked out per person. |
 | GST | GST to pay counts credit notes, carried credit and blocked credit; reverse charge, credit held back for bills unpaid after 180 days, and the GST cash already paid are not counted. It stays an estimate for the CA. |
-| Documents | Numbers and dates only; the files themselves are not stored. |
 | Customers kept | Matched by name (without case, punctuation, M/s or Pvt Ltd) and by the merges an owner confirms; invoices hold no GSTIN, so a customer cannot yet be matched by GSTIN. |
 | Alerts | Red alerts go by email and browser notification, not WhatsApp; browser notifications need the server's push key (`JANUS_VAPID_PRIVATE_KEY`). People other than owners turn the weekly email and red alerts on themselves. |
 | Bills between your companies | Recorded with one click, not automatically: a bill found under another number for the same amount within 10 days is shown as probable for a person to check. |

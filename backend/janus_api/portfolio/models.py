@@ -2,7 +2,18 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    Numeric,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -178,3 +189,21 @@ class CustomerMerge(Base):
     customer: Mapped[str] = mapped_column(String(160))
     merged_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CompanyDocumentFile(Base):
+    """The file of a company document: a PDF or image up to 5 MB. Only the download reads `data`."""
+
+    __tablename__ = "company_document_files"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("company_documents.id", ondelete="CASCADE"), unique=True
+    )
+    filename: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    uploaded_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

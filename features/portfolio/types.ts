@@ -207,7 +207,7 @@ export type PortfolioAsked = { id: string; question: string; answer: string; mod
 export type PortfolioKnowledgeItem = { id: string; companyId: string; company: string; kind: "fact" | "document"; status: "approved" | "suggested"; title: string; body: string; document: string | null; passage: number; createdAt: string };
 
 export type PortfolioDocumentKind = "registration" | "licence" | "insurance" | "trademark" | "contract" | "other";
-export type PortfolioDocument = { id: string; kind: PortfolioDocumentKind; name: string; number: string | null; issuedOn: string | null; expiresOn: string | null; notes: string | null; daysLeft: number | null; status: "valid" | "expiring" | "expired" | "no_expiry" };
+export type PortfolioDocument = { id: string; kind: PortfolioDocumentKind; name: string; number: string | null; issuedOn: string | null; expiresOn: string | null; notes: string | null; daysLeft: number | null; status: "valid" | "expiring" | "expired" | "no_expiry"; file: { name: string; size: number; contentType: string } | null };
 /** An invoice one of your companies raised to another, and the bill recorded for it there. */
 export type PortfolioIntercompanyLink = { sellerId: string; seller: string; buyerId: string; buyer: string; invoice: string; invoiceDate: string; amount: string; gst: string; bill: string | null; billProbable: boolean; canRecord: boolean };
 /** GET /portfolio/customers: customers kept, new and lost per company, last twelve finished months against the twelve before. */

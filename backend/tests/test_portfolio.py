@@ -1655,6 +1655,80 @@ async def test_a_red_alert_also_reaches_the_owners_browser(
         await engine.dispose()
 
 
+async def test_a_document_keeps_its_file_for_those_who_may_change_documents(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    made = await client.post(
+        f"/v1/portfolio/companies/{company}/documents",
+        headers=owner.headers,
+        json={"kind": "licence", "name": "FSSAI licence", "number": "11519999000123"},
+    )
+    doc = made.json()
+    assert doc["file"] is None
+    url = f"/v1/portfolio/companies/{company}/documents/{doc['id']}/file"
+    pdf = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
+    attached = await client.put(
+        url,
+        headers=owner.headers,
+        files={"file": ("C:\\scans\\fssai licence.PDF", pdf, "application/octet-stream")},
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["file"] == {
+        "name": "fssai licence.pdf",
+        "size": len(pdf),
+        "contentType": "application/pdf",
+    }
+    got = await client.get(url, headers=owner.headers)
+    assert got.status_code == 200 and got.content == pdf
+    assert got.headers["content-type"] == "application/pdf"
+    assert got.headers["x-content-type-options"] == "nosniff"
+
+    # The type is told by the bytes: a program named .pdf is refused, and so is a large file.
+    program = await client.put(
+        url,
+        headers=owner.headers,
+        files={"file": ("licence.pdf", b"MZ\x90\x00" * 10, "application/pdf")},
+    )
+    assert program.status_code == 422 and program.json()["error"]["code"] == "invalid_file"
+    large = await client.put(
+        url,
+        headers=owner.headers,
+        files={"file": ("big.pdf", b"%PDF-" + b"0" * (5 * 1024 * 1024), "application/pdf")},
+    )
+    assert large.status_code == 413
+    # A new scan replaces the old one.
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    replaced = await client.put(
+        url, headers=owner.headers, files={"file": ("photo", png, "image/png")}
+    )
+    assert replaced.json()["file"]["name"] == "photo.png"
+    assert (await client.get(url, headers=owner.headers)).content == png
+
+    # A read-only analyst sees that there is a file, but cannot open it.
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "analyst@example.com", "role": "group_analyst", "companies": [company]},
+    )
+    assert shared.status_code in (200, 201), shared.text
+    analyst = await _join(client, mailbox, "analyst@example.com")
+    seen = (await client.get("/v1/portfolio/summary", headers=analyst)).json()
+    assert seen["companies"][0]["documents"][0]["file"]["name"] == "photo.png"
+    assert (await client.get(url, headers=analyst)).status_code == 403
+    assert (await client.delete(url, headers=analyst)).status_code == 403
+
+    assert (await client.delete(url, headers=owner.headers)).status_code == 204
+    assert (await client.get(url, headers=owner.headers)).status_code == 404
+    # Removing the document removes its file with it.
+    await client.put(url, headers=owner.headers, files={"file": ("a.pdf", pdf, "application/pdf")})
+    removed = await client.delete(
+        f"/v1/portfolio/companies/{company}/documents/{doc['id']}", headers=owner.headers
+    )
+    assert removed.status_code == 204
+
+
 async def test_documents_that_expire_need_the_owner(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Paperclip, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,10 @@ const word = (doc: PortfolioDocument) => doc.status === "expired" ? `Expired ${-
 type Draft = { kind: PortfolioDocumentKind; name: string; number: string; issuedOn: string; expiresOn: string; notes: string };
 const blank: Draft = { kind: "licence", name: "", number: "", issuedOn: "", expiresOn: "", notes: "" };
 
-/** A company's documents that expire, with renewals 30 days ahead. Numbers and dates only, no files. */
+const size = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+/** A company's documents that expire, with renewals 30 days ahead, and the scan of each (PDF or
+ * image, up to 5 MB), which only people who may change documents can open. */
 export function DocumentsCard({ item, canEdit, onSaved }: { item: PortfolioCompany; canEdit: boolean; onSaved: () => void }) {
   const [editing, setEditing] = React.useState<{ id: string | null; draft: Draft } | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -35,12 +38,28 @@ export function DocumentsCard({ item, canEdit, onSaved }: { item: PortfolioCompa
     try { await api(`/portfolio/companies/${item.id}/documents/${doc.id}`, { method: "DELETE" }); onSaved(); }
     catch (error) { toast.error(message(error)); }
   };
+  const attach = async (doc: PortfolioDocument, file: File) => {
+    if (file.size > 5 * 1024 * 1024) { toast.error("Attach a file no larger than 5 MB."); return; }
+    setBusy(true);
+    const form = new FormData();
+    form.append("file", file);
+    try { await api(`/portfolio/companies/${item.id}/documents/${doc.id}/file`, { method: "PUT", body: form }); onSaved(); toast.success(`File kept with ${doc.name}.`); }
+    catch (error) { toast.error(message(error)); } finally { setBusy(false); }
+  };
+  const detach = async (doc: PortfolioDocument) => {
+    if (!window.confirm(`Remove the file of ${doc.name}? The document stays.`)) return;
+    try { await api(`/portfolio/companies/${item.id}/documents/${doc.id}/file`, { method: "DELETE" }); onSaved(); }
+    catch (error) { toast.error(message(error)); }
+  };
+  const picker = (doc: PortfolioDocument, label: string) => <label className={`inline-flex h-7 cursor-pointer items-center rounded-md border border-border px-2 text-xs ${busy ? "opacity-50" : ""}`}><Paperclip className="mr-1 size-3.5" />{label}<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="sr-only" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void attach(doc, file); }} /></label>;
   const set = (patch: Partial<Draft>) => setEditing((current) => current && { ...current, draft: { ...current.draft, ...patch } });
-  return <SectionCard title="Documents and renewals" description="Registrations, licences, insurance and trademarks with their expiry dates. Janus flags a renewal 30 days ahead, and an expired document turns the company red." action={canEdit && !editing ? <Button size="sm" variant="outline" onClick={() => setEditing({ id: null, draft: blank })}><Plus className="mr-1 size-4" />Add document</Button> : undefined}>
+  return <SectionCard title="Documents and renewals" description="Registrations, licences, insurance and trademarks with their expiry dates and the scan of each (PDF or image, up to 5 MB). Janus flags a renewal 30 days ahead, and an expired document turns the company red. Everyone who sees the company sees the register; only people who may change documents open the scans." action={canEdit && !editing ? <Button size="sm" variant="outline" onClick={() => setEditing({ id: null, draft: blank })}><Plus className="mr-1 size-4" />Add document</Button> : undefined}>
     {docs.length === 0 && !editing && <p className="text-sm text-muted-foreground">No documents recorded. Add licences, insurance and registrations that need renewing, such as FSSAI, trade licence, shop and establishment, or fire insurance.</p>}
     {docs.length > 0 && <ul className="flex flex-col divide-y divide-border">{docs.map((doc) => <li key={doc.id} className="flex flex-wrap items-center gap-3 py-2.5 first:pt-0 last:pb-0">
       <Badge variant={tone[doc.status]}>{word(doc)}</Badge>
-      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{doc.name}</span> <span className="text-muted-foreground">· {kinds[doc.kind]}{doc.number ? ` · ${doc.number}` : ""}{doc.expiresOn ? ` · expires ${day(doc.expiresOn)}` : ""}</span>{doc.notes && <span className="block text-xs text-muted-foreground">{doc.notes}</span>}</span>
+      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{doc.name}</span> <span className="text-muted-foreground">· {kinds[doc.kind]}{doc.number ? ` · ${doc.number}` : ""}{doc.expiresOn ? ` · expires ${day(doc.expiresOn)}` : ""}</span>{doc.notes && <span className="block text-xs text-muted-foreground">{doc.notes}</span>}
+        {doc.file ? <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Paperclip className="size-3.5" />{canEdit ? <a className="text-foreground underline-offset-2 hover:underline" href={`/api/backend/portfolio/companies/${item.id}/documents/${doc.id}/file`} target="_blank" rel="noopener noreferrer">{doc.file.name}</a> : <span title="Only people who may change documents can open the file">{doc.file.name}</span>} · {size(doc.file.size)}{canEdit && <>{picker(doc, "Replace")}<button type="button" className="hover:text-foreground hover:underline" onClick={() => void detach(doc)}>Remove file</button></>}</span>
+          : canEdit && <span className="mt-1 block">{picker(doc, "Attach the scan")}</span>}</span>
       {canEdit && <span className="flex gap-1"><Button size="sm" variant="ghost" aria-label={`Edit ${doc.name}`} onClick={() => setEditing({ id: doc.id, draft: { kind: doc.kind, name: doc.name, number: doc.number ?? "", issuedOn: doc.issuedOn ?? "", expiresOn: doc.expiresOn ?? "", notes: doc.notes ?? "" } })}><Pencil className="size-4" /></Button><Button size="sm" variant="ghost" aria-label={`Remove ${doc.name}`} onClick={() => void remove(doc)}><Trash2 className="size-4" /></Button></span>}
     </li>)}</ul>}
     {editing && <form className="mt-3 grid gap-2 rounded-md border border-border bg-surface-2 p-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void save(); }}>
