@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import Numeric, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from janus_api.core.names import document_key, party_key
 from janus_api.finance.models import (
     FinanceBankLine,
     FinanceBill,
@@ -475,28 +476,31 @@ async def invoices_to(
     db: AsyncSession, tenant_id: int, names: list[str], since: date
 ) -> list[InvoiceRef]:
     """Invoices since a day to customers with one of these names (the customer's company, or the
-    customer where no company is given), compared without case."""
-    wanted = [name.strip().casefold() for name in names]
-    party = func.lower(
-        func.coalesce(func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer)
+    customer where no company is given), matched as `party_key` matches them."""
+    wanted = {party_key(name) for name in names}
+    party = func.coalesce(func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer)
+    recent = (
+        FinanceInvoice.tenant_id == tenant_id,
+        FinanceInvoice.opening.is_(False),
+        FinanceInvoice.invoice_date >= since,
     )
+    parties = [
+        str(name)
+        for name in (await db.scalars(select(party).where(*recent).distinct())).all()
+        if party_key(str(name)) in wanted
+    ]
+    if not parties:
+        return []
     rows = await db.execute(
         select(
             FinanceInvoice.number,
-            func.coalesce(
-                func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer
-            ),
+            party,
             FinanceInvoice.invoice_date,
             FinanceInvoice.due_date,
             FinanceInvoice.cgst_paise + FinanceInvoice.sgst_paise + FinanceInvoice.igst_paise,
             FinanceInvoice.total_paise,
         )
-        .where(
-            FinanceInvoice.tenant_id == tenant_id,
-            FinanceInvoice.opening.is_(False),
-            FinanceInvoice.invoice_date >= since,
-            func.trim(party).in_(wanted),
-        )
+        .where(*recent, party.in_(parties))
         .order_by(FinanceInvoice.invoice_date.desc(), FinanceInvoice.id.desc())
         .limit(500)
     )
@@ -513,21 +517,81 @@ async def invoices_to(
     ]
 
 
+@dataclass(frozen=True)
+class BillMatch:
+    """The buyer's bill for a supplier invoice: Janus's bill number, and whether it was found by
+    the invoice number (or only by the same amount within a few days of the invoice)."""
+
+    number: str
+    by_number: bool
+
+
+# A bill for the same amount this many days either side of an invoice is probably it.
+PROBABLE_DAYS = 10
+
+
 async def bills_for_invoices(
-    db: AsyncSession, tenant_id: int, vendor: str, numbers: list[str]
-) -> dict[str, str]:
-    """Of these supplier invoice numbers from one supplier, those already recorded as bills: the
-    supplier's invoice number and Janus's own bill number."""
-    if not numbers:
+    db: AsyncSession, tenant_id: int, vendor: str, invoices: list[InvoiceRef]
+) -> dict[str, BillMatch]:
+    """Of these invoices from one supplier, those already recorded as bills, by invoice number
+    without case or separators, or else by the same amount within PROBABLE_DAYS of the invoice;
+    each bill is matched to one invoice only. Keyed by the supplier's invoice number."""
+    if not invoices:
         return {}
-    rows = await db.execute(
-        select(FinanceBill.vendor_bill_no, FinanceBill.number).where(
-            FinanceBill.tenant_id == tenant_id,
-            func.lower(func.trim(FinanceBill.vendor)) == vendor.strip().casefold(),
-            FinanceBill.vendor_bill_no.in_(numbers),
+    vendors = [
+        str(name)
+        for name in (
+            await db.scalars(
+                select(FinanceBill.vendor)
+                .where(FinanceBill.tenant_id == tenant_id, FinanceBill.opening.is_(False))
+                .distinct()
+            )
+        ).all()
+        if party_key(str(name)) == party_key(vendor)
+    ]
+    if not vendors:
+        return {}
+    first = min(invoice.invoice_date for invoice in invoices) - timedelta(days=PROBABLE_DAYS)
+    bills = (
+        await db.execute(
+            select(
+                FinanceBill.number,
+                FinanceBill.vendor_bill_no,
+                FinanceBill.bill_date,
+                FinanceBill.amount_paise,
+            ).where(
+                FinanceBill.tenant_id == tenant_id,
+                FinanceBill.opening.is_(False),
+                FinanceBill.vendor.in_(vendors),
+                FinanceBill.bill_date >= first,
+            )
         )
-    )
-    return {str(supplier_no): str(own) for supplier_no, own in rows.all()}
+    ).all()
+    found: dict[str, BillMatch] = {}
+    used: set[str] = set()
+    by_key = {document_key(str(row.vendor_bill_no)): row for row in bills}
+    for invoice in invoices:
+        row = by_key.get(document_key(invoice.number))
+        if row is not None:
+            found[invoice.number] = BillMatch(number=str(row.number), by_number=True)
+            used.add(str(row.number))
+    for invoice in invoices:
+        if invoice.number in found:
+            continue
+        near = sorted(
+            (
+                row
+                for row in bills
+                if str(row.number) not in used
+                and int(row.amount_paise) == invoice.total
+                and abs((row.bill_date - invoice.invoice_date).days) <= PROBABLE_DAYS
+            ),
+            key=lambda row: abs((row.bill_date - invoice.invoice_date).days),
+        )
+        if near:
+            found[invoice.number] = BillMatch(number=str(near[0].number), by_number=False)
+            used.add(str(near[0].number))
+    return found
 
 
 async def payroll_posted(

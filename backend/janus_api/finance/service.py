@@ -25,6 +25,16 @@ from janus_api.finance.models import (
 from janus_api.rules.service import ensure_open
 
 
+async def bill_with_key(db: AsyncSession, tenant_id: int, idempotency_key: str) -> str | None:
+    """The number of the bill recorded with this key, if one was."""
+    found = await db.scalar(
+        select(FinanceBill.number).where(
+            FinanceBill.tenant_id == tenant_id, FinanceBill.idempotency_key == idempotency_key
+        )
+    )
+    return None if found is None else str(found)
+
+
 async def record_bill(
     db: AsyncSession,
     tenant_id: int,

@@ -138,10 +138,10 @@ function IntercompanyCard() {
   const all = links.data ?? [];
   const missing = all.filter((link) => !link.bill).length;
   if (!links.loading && all.length === 0) return null;
-  return <SectionCard title="Between your companies" description={`Invoices one of your companies raised to another since last April, each with the bill the other recorded for it (linked by the invoice number). ${missing ? `${missing} bill${missing === 1 ? " is" : "s are"} missing, so the group's costs and GST credit are short.` : "Every one has its bill."}`}>
+  return <SectionCard title="Between your companies" description={`Invoices one of your companies raised to another since last April, each with the bill the other recorded for it: linked by the invoice number written any way, or else a bill from that company for the same amount within 10 days, marked as probable so you can check it. A bill already there is never recorded twice. ${missing ? `${missing} bill${missing === 1 ? " is" : "s are"} missing, so the group's costs and GST credit are short.` : "Every one has its bill."}`}>
     {links.error ? <p className="text-sm text-danger">{links.error}</p> : <ul className="flex flex-col divide-y divide-border">{all.slice(0, 50).map((link) => <li key={`${link.sellerId}-${link.invoice}`} className="flex flex-wrap items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
-      <Badge variant={link.bill ? "success" : "warning"}>{link.bill ? "Matched" : "Bill missing"}</Badge>
-      <span className="min-w-0 flex-1"><span className="font-medium">{link.seller} → {link.buyer}</span> <span className="text-muted-foreground">· {link.invoice} · {day(link.invoiceDate)} · {inr(n(link.amount))} with {inr(n(link.gst))} GST{link.bill ? ` · bill ${link.bill}` : ""}</span></span>
+      <Badge variant={link.bill ? (link.billProbable ? "outline" : "success") : "warning"}>{link.bill ? (link.billProbable ? "Probably matched" : "Matched") : "Bill missing"}</Badge>
+      <span className="min-w-0 flex-1"><span className="font-medium">{link.seller} → {link.buyer}</span> <span className="text-muted-foreground">· {link.invoice} · {day(link.invoiceDate)} · {inr(n(link.amount))} with {inr(n(link.gst))} GST{link.bill ? ` · bill ${link.bill}${link.billProbable ? " (same amount, under another number: check it is this invoice)" : ""}` : ""}</span></span>
       {!link.bill && link.canRecord && <Button size="sm" variant="outline" disabled={busy === link.invoice} onClick={() => void record(link)}>Record the bill in {link.buyer}</Button>}
     </li>)}</ul>}
   </SectionCard>;

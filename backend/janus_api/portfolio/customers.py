@@ -9,7 +9,6 @@ the same customer; names that look alike are offered to be merged. Money is read
 person's role holds it.
 """
 
-import re
 from collections import defaultdict
 from datetime import date, timedelta
 from difflib import SequenceMatcher
@@ -19,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.core.errors import ApiError
+from janus_api.core.names import party_key as customer_key
 from janus_api.core.tenancy import set_context
 from janus_api.finance import overview as finance
 from janus_api.org import overview as org
@@ -30,33 +30,6 @@ from janus_api.portfolio.periods import rupees, today_ist
 
 LOST_SHOWN = 8
 SIMILAR_SHOWN = 5
-# Words a company name ends with that do not change who the customer is.
-SUFFIXES = (
-    ("private", "limited"),
-    ("pvt", "ltd"),
-    ("pvt", "limited"),
-    ("private", "ltd"),
-    ("pvt",),
-    ("ltd",),
-    ("limited",),
-    ("llp",),
-    ("opc",),
-)
-
-
-def customer_key(name: str) -> str:
-    """A customer name as it is matched: "M/s Gupta Traders Pvt. Ltd." and "GUPTA TRADERS" alike."""
-    text = re.sub(r"^\s*m\s*/\s*s\b\.?", "", name.casefold().replace("&", " and "))
-    words = re.sub(r"[^\w\s]", " ", text).split()
-    trimmed = True
-    while trimmed:
-        trimmed = False
-        for suffix in SUFFIXES:
-            if len(words) > len(suffix) and tuple(words[-len(suffix) :]) == suffix:
-                words = words[: -len(suffix)]
-                trimmed = True
-                break
-    return " ".join(words) or name.strip().casefold()
 
 
 def _grouped(

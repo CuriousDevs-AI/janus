@@ -12,6 +12,7 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.core.errors import ApiError
+from janus_api.core.names import party_key
 from janus_api.core.tenancy import set_context
 from janus_api.finance import overview as finance
 from janus_api.finance import service as finance_service
@@ -43,20 +44,18 @@ async def links(
     found: list[schemas.IntercompanyLink] = []
     try:
         companies = await _money_companies(db, user_id)
-        by_name = {name.strip().casefold(): tenant for tenant, (name, _) in companies.items()}
+        by_name = {party_key(name): tenant for tenant, (name, _) in companies.items()}
         for seller, (seller_name, _) in companies.items():
             others = [name for tenant, (name, _) in companies.items() if tenant != seller]
             if not others:
                 continue
             await set_context(db, user_id=user_id, tenant_id=seller)
             invoices = await finance.invoices_to(db, seller, others, since)
-            for buyer in {by_name[i.customer.strip().casefold()] for i in invoices}:
+            for buyer in {by_name[party_key(i.customer)] for i in invoices}:
                 buyer_name, can_bill = companies[buyer]
-                theirs = [i for i in invoices if by_name[i.customer.strip().casefold()] == buyer]
+                theirs = [i for i in invoices if by_name[party_key(i.customer)] == buyer]
                 await set_context(db, user_id=user_id, tenant_id=buyer)
-                bills = await finance.bills_for_invoices(
-                    db, buyer, seller_name, [i.number for i in theirs]
-                )
+                bills = await finance.bills_for_invoices(db, buyer, seller_name, theirs)
                 found += [
                     schemas.IntercompanyLink(
                         sellerId=str(seller),
@@ -67,7 +66,9 @@ async def links(
                         invoiceDate=invoice.invoice_date.isoformat(),
                         amount=rupees(invoice.total, paise=True),
                         gst=rupees(invoice.gst, paise=True),
-                        bill=bills.get(invoice.number),
+                        bill=bills[invoice.number].number if invoice.number in bills else None,
+                        billProbable=invoice.number in bills
+                        and not bills[invoice.number].by_number,
                         canRecord=can_bill,
                     )
                     for invoice in theirs
@@ -110,9 +111,22 @@ async def record_bill(
         buyer = next(
             tenant
             for tenant, (name, _) in companies.items()
-            if name.strip().casefold() == invoice.customer.strip().casefold()
+            if party_key(name) == party_key(invoice.customer)
         )
         await enter_company(db, user_id, str(buyer), "billing:manage")
+        key = f"intercompany:{seller}:{invoice.number}"
+        recorded = await finance.bills_for_invoices(db, buyer, seller_name, [invoice])
+        # A retry of this same request gets the bill it recorded; any other bill for the invoice
+        # means it is already in the books.
+        if invoice.number in recorded and not await finance_service.bill_with_key(db, buyer, key):
+            raise ApiError(
+                "already_recorded",
+                f"{companies[buyer][0]} already has {recorded[invoice.number].number} for this "
+                "invoice"
+                + ("" if recorded[invoice.number].by_number else " (the same amount, days apart)")
+                + ", so it is not recorded twice.",
+                409,
+            )
         number = await finance_service.record_bill(
             db,
             buyer,
@@ -124,7 +138,7 @@ async def record_bill(
             due_date=invoice.due_date,
             amount_paise=invoice.total,
             gst_paise=invoice.gst,
-            idempotency_key=f"intercompany:{seller}:{invoice.number}",
+            idempotency_key=key,
             ip=ip,
         )
         return schemas.IntercompanyLink(

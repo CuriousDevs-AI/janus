@@ -770,6 +770,8 @@ class IntercompanyLink(BaseModel):
     amount: str
     gst: str
     bill: str | None
+    # The bill was found by the same amount a few days from the invoice, not by its number.
+    billProbable: bool = False
     # Whether this person may record the missing bill in the buying company.
     canRecord: bool
 

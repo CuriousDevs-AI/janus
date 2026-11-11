@@ -1677,6 +1677,94 @@ async def test_an_invoice_between_own_companies_gets_its_bill_in_one_step(
     assert missing.status_code == 404
 
 
+async def test_a_bill_recorded_by_hand_is_found_so_it_is_not_recorded_twice(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    retail = await _second_company(client, owner, "Pune Retail")
+    today = today_ist()
+
+    async def invoice(key: str, rate_paise: int) -> dict[str, Any]:
+        made = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "customer": "Accounts",
+                # The buyer's name as the sales team typed it.
+                "customer_company": "PUNE RETAIL PVT. LTD.",
+                "invoice_date": today.isoformat(),
+                "due_date": today.isoformat(),
+                "same_state": True,
+                "lines": [
+                    {
+                        "item": "Cloth",
+                        "hsn": "5208",
+                        "qty": 1,
+                        "rate_paise": rate_paise,
+                        "gst_rate": 5,
+                    }
+                ],
+            },
+        )
+        assert made.status_code == 201, made.text
+        return dict(made.json())
+
+    by_number = await invoice("ic-a", 1000000)
+    by_amount = await invoice("ic-b", 2000000)
+    missing = await invoice("ic-c", 3000000)
+    switched = await client.post(
+        "/v1/me/switch-tenant", headers=owner.headers, json={"tenant_id": int(retail["id"])}
+    )
+    in_retail = _bearer(switched.json())
+
+    async def hand_bill(key: str, number: str, amount_paise: int, days_later: int) -> str:
+        made = await client.post(
+            "/v1/finance/bills",
+            headers={**in_retail, "Idempotency-Key": key},
+            json={
+                "vendor": "M/s Mumbai Traders Pvt Ltd",
+                "vendor_bill_no": number,
+                "bill_date": (today + timedelta(days=days_later)).isoformat(),
+                "due_date": (today + timedelta(days=30)).isoformat(),
+                "amount_paise": amount_paise,
+            },
+        )
+        assert made.status_code == 201, made.text
+        return str(made.json()["number"])
+
+    # The first under its number written another way; the second under the supplier's challan
+    # number, for the same amount three days later.
+    first = await hand_bill("hand-a", by_number["number"].lower().replace("-", "/"), 1050000, 0)
+    second = await hand_bill("hand-b", "DC-77", by_amount["total_paise"], 3)
+    links = {
+        link["invoice"]: link
+        for link in (await client.get("/v1/portfolio/intercompany", headers=in_retail)).json()
+    }
+    assert set(links) == {by_number["number"], by_amount["number"], missing["number"]}
+    assert (links[by_number["number"]]["bill"], links[by_number["number"]]["billProbable"]) == (
+        first,
+        False,
+    )
+    assert (links[by_amount["number"]]["bill"], links[by_amount["number"]]["billProbable"]) == (
+        second,
+        True,
+    )
+    assert links[missing["number"]]["bill"] is None
+    for number in (by_number["number"], by_amount["number"]):
+        twice = await client.post(
+            "/v1/portfolio/intercompany/bills",
+            headers=in_retail,
+            json={"sellerId": str(owner.tenant_id), "invoice": number},
+        )
+        assert twice.status_code == 409 and twice.json()["error"]["code"] == "already_recorded"
+    made = await client.post(
+        "/v1/portfolio/intercompany/bills",
+        headers=in_retail,
+        json={"sellerId": str(owner.tenant_id), "invoice": missing["number"]},
+    )
+    assert made.status_code == 201 and made.json()["buyer"] == "Pune Retail"
+
+
 async def test_last_months_salaries_are_posted_to_the_books_once(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.business import overview as business
+from janus_api.core.names import party_key
 from janus_api.core.tenancy import set_context
 from janus_api.crm import overview as crm
 from janus_api.finance import overview as finance
@@ -452,20 +453,20 @@ async def books_for(db: AsyncSession, tenant_id: int, start: date, end: date) ->
 def intercompany(companies: list[schemas.CompanySummary], trade: dict[int, Trade]) -> None:
     """Marks each company's sales to, and bills from, the other companies shown together, in the
     period and in the same days before, by matching the name on the invoice or bill to a company's
-    name. Only companies whose money the person sees take part, so no total reveals a company they
-    cannot see. Both periods are matched the same way, so a group growth rate compares like with
-    like."""
-    names = {item.name.strip().casefold(): item for item in companies if int(item.id) in trade}
+    name as `party_key` matches it. Only companies whose money the person sees take part, so no
+    total reveals a company they cannot see. Both periods are matched the same way, so a group
+    growth rate compares like with like."""
+    names = {party_key(item.name): item for item in companies if int(item.id) in trade}
     for item in companies:
         if int(item.id) not in trade:
             continue
-        own = item.name.strip().casefold()
+        own = party_key(item.name)
 
         def ours(amounts: dict[str, int], own: str = own) -> dict[str, int]:
             return {
                 name: amount
                 for name, amount in amounts.items()
-                if name.strip().casefold() in names and name.strip().casefold() != own
+                if party_key(name) in names and party_key(name) != own
             }
 
         books = trade[int(item.id)]
@@ -475,7 +476,7 @@ def intercompany(companies: list[schemas.CompanySummary], trade: dict[int, Trade
             purchases=rupees(sum(bought.values()), paise=True),
             salesBefore=rupees(sum(ours(books.sales_before).values()), paise=True),
             purchasesBefore=rupees(sum(ours(books.bills_before).values()), paise=True),
-            partners=sorted({names[name.strip().casefold()].name for name in [*sold, *bought]}),
+            partners=sorted({names[party_key(name)].name for name in [*sold, *bought]}),
         )
 
 

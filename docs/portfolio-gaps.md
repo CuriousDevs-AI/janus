@@ -125,5 +125,5 @@ Still open (limits, stated where they show):
 | Documents | Numbers and dates only; the files themselves are not stored. |
 | Customers kept | Matched by name (without case, punctuation, M/s or Pvt Ltd) and by the merges an owner confirms; invoices hold no GSTIN, so a customer cannot yet be matched by GSTIN. |
 | Alerts | Red alerts and the weekly email go by email only, not push or WhatsApp; the weekly email is off until each person turns it on. |
-| Bills between your companies | Not created automatically when one company invoices another: a person records each, since the other may have recorded it already under another number. |
+| Bills between your companies | Recorded with one click, not automatically: a bill found under another number for the same amount within 10 days is shown as probable for a person to check. |
 
