@@ -122,7 +122,6 @@ export const businessNavSections: NavSection[] = [
       { label: "Profile", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRoundPlus, requiredPermission: "settings:manage" },
       { label: "Security & Sessions", href: "/settings?tab=security&workspace=business", icon: ShieldCheck, requiredPermission: "settings:manage" },
       { label: "Notifications", href: "/settings?tab=notifications&workspace=business", icon: Bell, requiredPermission: "settings:manage" },
-      { label: "Billing & Subscription", href: "/settings?tab=workspace&view=administration&section=billing&workspace=business", icon: WalletCards, requiredPermission: "settings:manage" },
     ],
   },
   {
@@ -232,7 +231,6 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Financial Reports", href: "/workspace/finance-accounting?view=reports", icon: BarChart3 },
       { label: "GST Summary", href: "/workspace/finance-accounting?view=gst", icon: FileText },
       { label: "Finance AI Chat", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "Finance Settings", href: "/settings?tab=billing", icon: Settings2, requiredPermission: "billing:manage" },
     ] },
   ],
   "projects-delivery": [

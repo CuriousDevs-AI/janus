@@ -324,9 +324,6 @@ export function SidebarNav({
               <DropdownMenuItem asChild>
                 <Link href="/settings">Settings</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings?tab=billing">Billing</Link>
-              </DropdownMenuItem>
             </>}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => void signOut()}>

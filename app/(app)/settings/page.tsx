@@ -12,7 +12,6 @@ import {
   Workflow,
   Bell,
   Lock,
-  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -26,7 +25,6 @@ import { KnowledgeSection } from "@/components/settings/knowledge-section";
 import { AutomationSection } from "@/components/settings/automation-section";
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { SecuritySection } from "@/components/settings/security-section";
-import { BillingSection } from "@/components/settings/billing-section";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { BusinessPeopleAccess } from "@/components/business/people-access";
 
@@ -39,8 +37,7 @@ type SettingsTab =
   | "knowledge"
   | "automation"
   | "notifications"
-  | "security"
-  | "billing";
+  | "security";
 
 const TABS: { value: SettingsTab; label: string; icon: LucideIcon }[] = [
   { value: "workspace", label: "Workspace", icon: Building2 },
@@ -52,7 +49,6 @@ const TABS: { value: SettingsTab; label: string; icon: LucideIcon }[] = [
   { value: "automation", label: "Automation", icon: Workflow },
   { value: "notifications", label: "Notifications", icon: Bell },
   { value: "security", label: "Security", icon: Lock },
-  { value: "billing", label: "Billing", icon: CreditCard },
 ];
 
 const TAB_VALUES = TABS.map((t) => t.value);
@@ -143,7 +139,6 @@ function SettingsPageInner() {
           <div className={activeTab === "automation" ? "" : "hidden"}><AutomationSection /></div>
           <div className={activeTab === "notifications" ? "" : "hidden"}><NotificationsSection /></div>
           <div className={activeTab === "security" ? "" : "hidden"}><SecuritySection /></div>
-          <div className={activeTab === "billing" ? "" : "hidden"}><BillingSection /></div>
         </div>
       </div>
     </div>

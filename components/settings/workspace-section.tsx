@@ -7,7 +7,7 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, Bell, CreditCard, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
+import { ArrowRight, Bell, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { tenant } from "@/lib/mock-data";
 import { SectionCard, FieldRow } from "@/components/settings/section-ui";
@@ -101,7 +101,7 @@ export function WorkspaceSection() {
   if (view === "overview") return <BusinessOverviewPanel />;
   if (view === "workspaces") return <WorkspacesPanel />;
   if (view === "administration") return <AdministrationPanel section={requestedSection} session={session} name={profileName} phone={profilePhone} timezone={profileTimezone} language={profileLanguage} onNameChange={setProfileName} onPhoneChange={setProfilePhone} onTimezoneChange={setProfileTimezone} onLanguageChange={setProfileLanguage} onSave={handleProfileSave} />;
-  // Keep old deep links working while Billing now lives under Administration.
+  // The plan is the account's and lives in the Portfolio; an old link here says so.
   if (view === "settings" && requestedSection === "billing") return <BillingSection />;
 
   const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
@@ -153,7 +153,6 @@ function AdministrationPanel({
     { title: "People & Access", description: "Members, invitations, roles, permissions and workspace access.", href: "/settings?tab=team&workspace=business", icon: UsersRound },
     { title: "Notifications", description: "Choose which business events and approvals reach your team.", href: "/settings?tab=notifications&workspace=business", icon: Bell },
     { title: "Security & Sessions", description: "Password, sign-in sessions, audit history and account protection.", href: "/settings?tab=security&workspace=business", icon: LockKeyhole },
-    { title: "Billing & Subscription", description: "The plan is for the Owner's account and covers all their companies.", href: "/settings?tab=workspace&view=administration&section=billing&workspace=business", icon: CreditCard },
   ];
 
   return <div className="flex flex-col gap-5">
