@@ -98,7 +98,7 @@ export function LivePortfolio() {
       case "intelligence": return <Intelligence list={list} period={summary.data.period} />;
       case "compliance": return <ComplianceView list={list} onChanged={summary.reload} />;
       case "work": return <WorkInbox list={list} />;
-      case "billing": return <Plan list={list} />;
+      case "billing": return <Plan />;
       case "activity": return <Activity list={list} />;
       default: return <Overview list={list} owner={owner} period={summary.data.period} />;
     }

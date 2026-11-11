@@ -221,3 +221,8 @@ export type PortfolioDocument = { id: string; kind: PortfolioDocumentKind; name:
 export type PortfolioIntercompanyLink = { sellerId: string; seller: string; buyerId: string; buyer: string; invoice: string; invoiceDate: string; amount: string; gst: string; bill: string | null; billProbable: boolean; canRecord: boolean };
 /** GET /portfolio/customers: customers kept, new and lost per company, last twelve finished months against the twelve before. */
 export type PortfolioRetention = { beforeStart: string; beforeEnd: string; recentStart: string; recentEnd: string; companies: { companyId: string; company: string; before: number; kept: number; new: number; rate: number | null; lostCount: number; lost: { name: string; salesBefore: string; lastBought: string }[]; imported: boolean; similar: { name: string; into: string }[]; merges: { id: string; name: string; into: string }[] }[] };
+/** GET /billing: the account's plan, what it uses, the plans offered and its invoices. Money is rupees as decimal strings. */
+export type BillingPlanId = "free" | "startup" | "growth" | "enterprise";
+export interface BillingPlan { id: BillingPlanId; name: string; tagline: string; price: string | null; companies: number | null; logins: number | null; features: string[] }
+export interface BillingInvoice { number: string; plan: string; issuedOn: string; periodStart: string; periodEnd: string; amount: string; gst: string; total: string; status: "paid" | "due"; paidOn: string | null; sample: boolean }
+export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean }

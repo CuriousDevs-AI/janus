@@ -246,5 +246,8 @@ async function history(company, monthly) {
   const older = links.filter((link) => !link.bill).sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate))[0];
   if (older) await call("POST", "/portfolio/intercompany/bills", { sellerId: older.sellerId, invoice: older.invoice });
   await call("POST", "/portfolio/knowledge", { companyId: first.id, kind: "fact", title: "Payments", body: "Kavita Stores pays on the 20th of each month; GST returns are filed by our CA, Mehta and Co." });
+  // The account's plan: Startup, with six months of sample invoices (no payments are connected).
+  await call("PUT", "/billing/plan", { plan: "startup" });
+  await call("POST", "/billing/sample-invoices", { months: 6 });
   console.log("Done. Open the Portfolio to see it.");
 })().catch((error) => { console.error(error.message); process.exit(1); });
