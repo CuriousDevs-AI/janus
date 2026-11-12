@@ -16,10 +16,11 @@ import { RegistrationCard } from "@/features/portfolio/components/compliance";
 import { DocumentsCard } from "@/features/portfolio/components/documents";
 import { BusinessModelSelect, CompanyEditor, entityNames, PeopleList } from "@/features/portfolio/components/company-editor";
 import { TargetsForm } from "@/features/portfolio/components/targets";
+import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { businessModels, businessName, businessOrder, focus, sells, type Measure } from "@/features/portfolio/lib/business";
 import { openIn, payrollFor, useRoles, winRateText } from "@/features/portfolio/lib/companies";
 import { healthName, healthTone, inr } from "@/features/portfolio/lib/format";
-import type { BusinessModel, PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
+import type { Billing, BusinessModel, PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const healthOrder = { red: 0, amber: 1, green: 2 } as const;
@@ -40,7 +41,7 @@ export function Companies({ list, period, onAdd, onSaved }: { list: PortfolioCom
   const editor = editing && <CompanyEditor item={editing} basics={owns(editing)} onClose={() => setEditing(null)} onSaved={onSaved} />;
   const canEdit = (item: PortfolioCompany) => handlesMoney(item);
   if (profile) return <><CompanyProfile item={profile} period={period} onBack={() => go(null)} onSaved={onSaved} onEdit={canEdit(profile) ? () => setEditing(profile) : undefined} />{editor}</>;
-  return <><CompanyTable list={list} period={period} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} />{editor}</>;
+  return <><CompanyTable list={list} period={period} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} /><ArchivedByPlan owner={Boolean(onAdd)} />{editor}</>;
 }
 
 /** The company's own settings, in its Business Management: always this company's. The plan is the
@@ -240,4 +241,15 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
       {touched && error && <p role="alert" className="text-xs text-danger">{error}</p>}
       <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add company"}</Button></DialogFooter>
     </form></DialogContent></Dialog>;
+}
+
+/** Companies the plan holds no room for: kept as they were, not shown above, back when the plan has room. */
+function ArchivedByPlan({ owner }: { owner: boolean }) {
+  const billing = usePortfolioApi<Billing>(owner ? "/billing" : null);
+  const archived = billing.data?.archived ?? [];
+  if (!archived.length) return null;
+  return <SectionCard title="Archived by your plan" description="Kept as they were, with their people and records. Nobody can open them until your plan has room; they come back on their own when you move up.">
+    <ul className="flex flex-col divide-y divide-border">{archived.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0"><span className="flex items-center gap-2"><Building2 className="size-4 text-muted-foreground" aria-hidden />{item.name}</span><Badge variant="neutral">Archived by your plan</Badge></li>)}</ul>
+    <Button size="sm" variant="outline" className="mt-3" asChild><a href="/portfolio?view=billing">Plan and billing</a></Button>
+  </SectionCard>;
 }

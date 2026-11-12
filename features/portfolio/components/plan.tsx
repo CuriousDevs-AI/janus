@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SectionCard } from "@/components/settings/section-ui";
-import { useSession } from "@/components/auth/session-provider";
+import { sessionChanged, useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { day } from "@/features/portfolio/lib/format";
@@ -102,7 +102,7 @@ export function Plan() {
         </table></div>}
     </SectionCard>
 
-    {moving && <ChangePlan from={current} to={moving} pay={data.payments === "razorpay" && moving.price !== null && Number(moving.price) > 0} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); }} />}
+    {moving && <ChangePlan from={current} to={moving} pay={data.payments === "razorpay" && moving.price !== null && Number(moving.price) > 0} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); window.dispatchEvent(new Event(sessionChanged)); }} />}
     {viewing && <InvoiceView invoice={viewing} gstRate={data.gstRate} onClose={() => setViewing(null)} />}
   </>;
 }
@@ -189,8 +189,8 @@ export function ChangePlan({ from, to, pay, first = false, onClose, onDone }: { 
   const tooMany = limit !== null && chosen.length > limit;
   const list = (title: string, items: { name: string; company?: string }[], tone: "warn" | "good") => items.length > 0 && <div><p className={`text-xs font-semibold ${tone === "warn" ? "text-warning" : "text-success"}`}>{title}</p><ul className="mt-1 grid gap-0.5 text-sm">{items.map((item, index) => <li key={index}>{item.name}{item.company ? <span className="text-muted-foreground"> · {item.company}</span> : null}</li>)}</ul></div>;
   return <Dialog open onOpenChange={(open) => !open && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-    <DialogHeader><DialogTitle>{first ? `Start on ${to.name}?` : `Move from ${from.name} to ${to.name}?`}</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`}{first ? "" : " Nothing is deleted: what does not fit is archived, and comes back when your plan has room again."}</DialogDescription></DialogHeader>
-    {!seen ? <div role="status" aria-label="Working out the change" className="h-40 animate-pulse rounded-lg bg-surface-2" /> : <div className={`grid gap-4 text-sm transition-opacity ${preview.stale ? "opacity-60" : ""}`}>
+    <DialogHeader><DialogTitle>{first ? `Start on ${to.name}?` : `Move from ${from.name} to ${to.name}?`}</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`}{first || !seen || (seen.archiveCompanies.length + seen.archivePeople.length + seen.withdrawInvitations.length === 0 && !tooMany) ? "" : " Nothing is deleted: what does not fit is archived, and comes back when your plan has room again."}</DialogDescription></DialogHeader>
+    {!seen ? <div role="status" className="flex h-40 items-center justify-center rounded-lg bg-surface-2 text-sm text-muted-foreground">Working out what changes for your companies and people…</div> : <div className={`grid gap-4 text-sm transition-opacity ${preview.stale ? "opacity-60" : ""}`}>
       {seen.archiveCompanies.length > 0 || tooMany ? <fieldset className="grid gap-1.5 rounded-lg border border-warning/30 bg-warning-muted/40 p-3">
         <legend className="px-1 text-xs font-semibold text-warning">{to.name} holds {limit} {limit === 1 ? "company" : "companies"}. Choose which to keep</legend>
         {seen.companies.map((item) => <label key={item.id} className="flex items-center gap-2"><input type="checkbox" checked={item.current || chosen.includes(item.id)} disabled={item.current || saving} onChange={() => toggle(item.id)} />{item.name}{item.current && <span className="text-xs text-muted-foreground">(open now, always kept)</span>}</label>)}
@@ -198,6 +198,7 @@ export function ChangePlan({ from, to, pay, first = false, onClose, onDone }: { 
       </fieldset> : null}
       {list("Archived", seen.archiveCompanies, "warn")}
       {list("People archived (they cannot sign in to that company)", seen.archivePeople, "warn")}
+      {list("Lose access with the archived companies", seen.loseAccess ?? [], "warn")}
       {list("Invitations withdrawn", seen.withdrawInvitations, "warn")}
       {list("Coming back", seen.restoreCompanies, "good")}
       {list("People coming back", seen.restorePeople, "good")}

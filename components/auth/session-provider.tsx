@@ -29,6 +29,8 @@ const demoSession = (): Me => ({
   permissions: ["*"],
   tenants: readCompanies().map((item) => ({ id: item.id, name: item.name, role: "Owner", status: "active", timezone: "Asia/Kolkata" })),
 });
+/** Fired to re-read the session, e.g. after a plan change archives or restores a company. */
+export const sessionChanged = "janus-session-changed";
 export function useSession() {
   const value = useContext(SessionContext);
   if (!value) throw new Error("Session unavailable");
@@ -95,6 +97,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [attempt]);
+  // Something that changes which companies a person may open (a plan change archiving one) asks for
+  // the session again; the page stays as it is while it loads.
+  useEffect(() => {
+    const again = () => setAttempt((value) => value + 1);
+    window.addEventListener(sessionChanged, again);
+    return () => window.removeEventListener(sessionChanged, again);
+  }, []);
   const tenantId = demoMode ? null : session?.tenant.id ?? null;
   useEffect(() => (tenantId ? watchTenant(tenantId) : undefined), [tenantId]);
   if (!session || !shown)

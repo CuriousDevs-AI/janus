@@ -89,6 +89,8 @@ class ChangePreview(BaseModel):
     companies: list[KeepOption]
     archiveCompanies: list[Company]
     archivePeople: list[Person]
+    # People in the companies being archived, who cannot open them until they come back.
+    loseAccess: list[Person] = Field(default_factory=list)
     withdrawInvitations: list[Person]
     restoreCompanies: list[Company]
     restorePeople: list[Person]

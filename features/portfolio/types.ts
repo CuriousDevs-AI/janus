@@ -234,7 +234,7 @@ export interface BillingRefund { invoice: string; plan: string; daysUnused: numb
 export interface BillingPreview {
   plan: BillingPlanId; companyLimit: number | null; peopleLimit: number | null;
   companies: { id: string; name: string; current: boolean; keep: boolean }[];
-  archiveCompanies: { id: string; name: string }[]; archivePeople: { name: string; company: string }[]; withdrawInvitations: { name: string; company: string }[];
+  archiveCompanies: { id: string; name: string }[]; archivePeople: { name: string; company: string }[]; loseAccess?: { name: string; company: string }[]; withdrawInvitations: { name: string; company: string }[];
   restoreCompanies: { id: string; name: string }[]; restorePeople: { name: string; company: string }[];
   refund: { invoice: string; plan: string; daysUsed: number; daysTotal: number; daysUnused: number; amount: string; method: "razorpay" | "test" } | null;
   charge: string | null;

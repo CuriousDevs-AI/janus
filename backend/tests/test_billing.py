@@ -291,8 +291,20 @@ async def test_moving_down_archives_what_does_not_fit_and_refunds_the_unused_day
         f"/v1/billing/preview?plan=free&keep={other}", headers=owner.headers
     )
     assert too_many.status_code == 422
+    # A CA shared only Pune Retail loses it with the company, and the popup says so by name.
+    shared = await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "ca@example.com", "role": "group_analyst", "companies": [other]},
+    )
+    assert shared.status_code in (200, 201), shared.text
+    await client.post(
+        f"/v1/invitations/{mailbox.token('ca@example.com', 'invite')}/accept",
+        json={"name": "Mehta and Co", "password": "Correct-Horse-9!"},
+    )
     seen = (await client.get("/v1/billing/preview?plan=free", headers=owner.headers)).json()
     assert [item["name"] for item in seen["archiveCompanies"]] == ["Pune Retail", "Surat Exports"]
+    assert seen["loseAccess"] == [{"name": "Mehta and Co", "company": "Pune Retail"}]
     assert [item["name"] for item in seen["withdrawInvitations"]] == ["late@example.com"]
     # Owner, three members and an invitation are five seats: the invitation goes, then one member.
     assert len(seen["archivePeople"]) == 1

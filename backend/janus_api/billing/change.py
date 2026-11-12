@@ -145,6 +145,15 @@ async def _reckon(
             archive_companies=to_archive,
             restore_companies=owners_back,
         )
+        cut_off: list[_Seat] = []
+        for cid in to_archive:
+            await set_context(db, user_id=user_id, tenant_id=cid)
+            members, _ = await org.seat_holders(db, cid)
+            cut_off += [
+                _Seat(cid, names[cid], member_id, member_user, is_owner)
+                for member_id, member_user, status, is_owner in members
+                if status == "active" and not is_owner
+            ]
         used = len(seats) + len(invites)
         people = target.logins
         if people is not None and used > people:
@@ -160,8 +169,14 @@ async def _reckon(
             plan.restore_people = sorted(dormant, key=lambda item: item.member)[:room]
 
         profiles = await _names(
-            db, user_id, [seat.user for seat in plan.archive_people + plan.restore_people]
+            db,
+            user_id,
+            [seat.user for seat in plan.archive_people + plan.restore_people + cut_off],
         )
+        plan.preview.loseAccess = [
+            schemas.Person(name=profiles.get(seat.user, "A member"), company=seat.company)
+            for seat in cut_off
+        ]
         plan.preview.archivePeople = [
             schemas.Person(name=profiles.get(seat.user, "A member"), company=seat.company)
             for seat in plan.archive_people
