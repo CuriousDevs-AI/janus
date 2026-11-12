@@ -48,22 +48,23 @@ async def test_the_plan_is_the_owners_and_covers_every_company(
         "/v1/billing/sample-invoices", headers=owner.headers, json={"months": 3}
     )
     assert billed.status_code == 200, billed.text
-    # The move itself recorded today's month, paid, as a sample; then three monthly ones, the
-    # newest of which is still due.
+    # The move itself recorded a month from today, paid, as a sample; this calendar month overlaps
+    # it, so only the two months before are added, never billing the same days twice.
     invoices = billed.json()["invoices"]
-    assert len(invoices) == 4 and all(item["sample"] for item in invoices)
+    assert len(invoices) == 3 and all(item["sample"] for item in invoices)
     assert (
         invoices[0]["status"] == "paid" and invoices[0]["periodStart"] == moved.json()["startedOn"]
     )
     monthly = invoices[1:]
-    assert monthly[0]["status"] == "due" and {item["status"] for item in monthly[1:]} == {"paid"}
+    assert {item["status"] for item in monthly} == {"paid"}
+    assert all(item["periodEnd"] < invoices[0]["periodStart"] for item in monthly)
     assert monthly[0]["amount"] == "1999.00" and monthly[0]["gst"] == "359.82"
     assert monthly[0]["total"] == "2358.82"
     # A month already invoiced is not invoiced twice.
     again = await client.post(
         "/v1/billing/sample-invoices", headers=owner.headers, json={"months": 3}
     )
-    assert len(again.json()["invoices"]) == 4
+    assert len(again.json()["invoices"]) == 3
 
     # Someone who owns no company sees that the plan is the Owner's, and cannot change it.
     member = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
