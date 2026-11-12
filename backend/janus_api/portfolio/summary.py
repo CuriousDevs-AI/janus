@@ -253,12 +253,12 @@ async def company_summary(
     # the 9-month limit, by count only, so a CA sharing the Portfolio sees the risk.
     if not money and company.business_model == "import_export":
         owed = await finance.money(db, tenant_id, today)
-        late, months = owed.unpaid_9_months_invoices, owed.unpaid_oldest_months
+        late, oldest = owed.unpaid_9_months_invoices, owed.unpaid_oldest_months
         if late:
             age = (
-                f"unpaid {months} months"
+                f"unpaid {oldest} months"
                 if late == 1
-                else f"unpaid over 9 months, the oldest {months} months"
+                else f"unpaid over 9 months, the oldest {oldest} months"
             )
             out.attention = attention.with_line(
                 out.attention,
