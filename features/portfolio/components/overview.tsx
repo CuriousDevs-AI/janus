@@ -46,6 +46,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
       <Kpi label="To do" value={String(work.length)} detail={urgent.length ? `${urgent.length} urgent` : "Nothing urgent"} />
     </div>
 
+    {!money && <p className="text-xs text-muted-foreground">Sales, profit and money owed come from each company&apos;s books, which your role does not see, so leads, deals and pipeline are shown instead. Ask the Owner for a role with money if you need them.</p>}
     <TickerRow list={list} money={money} />
 
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">

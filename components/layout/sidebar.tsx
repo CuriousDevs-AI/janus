@@ -230,6 +230,7 @@ export function SidebarNav({
                   <Link
                     href={appendWorkspace(item.href, workspaceId)}
                     onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition-colors",
                       collapsed && "justify-center px-0 py-2",

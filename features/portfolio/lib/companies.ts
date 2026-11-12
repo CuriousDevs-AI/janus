@@ -34,7 +34,10 @@ export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
     // payables, a loss after salaries), then health
     // follows the same rule (red with anything high, amber with anything medium).
     ...(() => {
-      const attention = item.attention.filter((entry) => !/view=(receivables|payables|overview)&workspace=finance/.test(entry.to));
+      const late = item.businessModel === "import_export" ? item.money?.unpaidOver9MonthsInvoices ?? 0 : 0;
+      // Cash in the bank is money too; FEMA stays, by count only, as the server sends it.
+      const kept = item.attention.filter((entry) => !/view=(receivables|payables|overview)&workspace=finance|\/portfolio\?view=finance/.test(entry.to));
+      const attention = late ? [{ severity: "high" as const, text: `${late} export invoice${late === 1 ? "" : "s"} unpaid over 9 months, past FEMA's 9-month limit`, to: `/portfolio?view=compliance&company=${item.id}` }, ...kept] : kept;
       const high = attention.filter((entry) => entry.severity === "high").map((entry) => entry.text);
       const medium = attention.filter((entry) => entry.severity === "medium").map((entry) => entry.text);
       return { attention, health: item.health && (high.length ? { status: "red" as const, reasons: high } : medium.length ? { status: "amber" as const, reasons: medium } : { status: "green" as const, reasons: [] }) };

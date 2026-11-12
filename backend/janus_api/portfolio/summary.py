@@ -248,6 +248,18 @@ async def company_summary(
         limits,
         company.business_model,
     )
+    # FEMA is a compliance matter too: a role without money still learns an export payment is past
+    # the 9-month limit, by count only, so a CA sharing the Portfolio sees the risk.
+    if not money and company.business_model == "import_export":
+        late = (await finance.money(db, tenant_id, today)).unpaid_9_months_invoices
+        if late:
+            out.attention = attention.with_line(
+                out.attention,
+                "high",
+                f"{late} export invoice{'' if late == 1 else 's'} unpaid over 9 months, past"
+                " FEMA's 9-month limit",
+                f"/portfolio?view=compliance&company={tenant_id}",
+            )
     # A company tracking no filings is not "up to date": it is not set up. With people on its
     # payroll, TDS and PF or ESI usually apply, so that is urgent.
     out.complianceSetUp = compliance_plan.set_up(out.compliancePlan, out.registration)

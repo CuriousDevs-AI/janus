@@ -17,7 +17,7 @@ import type { PortfolioAccessResult, PortfolioCompany, PortfolioPerson, Portfoli
 /** The six Portfolio roles, and Group finance kept for people it was shared with before. Each is
  * held company by company, so its scope is the companies chosen. */
 const accessRoles: [PortfolioRole, string][] = [
-  ["group_analyst", "Read-only. Sees sales, people, support and compliance, not money. Cannot change anything."],
+  ["group_analyst", "Read-only. Sees leads, deals, people, support and compliance, including FEMA and filing risks. Not money from the books: sales, costs, profit and what is owed. Cannot change anything."],
   ["group_finance", "Sees every view here, money included. Cannot change anything in the companies."],
   ["operations_manager", "Sees the Portfolio without money, and in each company runs stock, projects and approvals."],
   ["finance_manager", "Sees the Portfolio with money, and in each company records bills and decides approvals."],

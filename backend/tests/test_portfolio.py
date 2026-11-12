@@ -2736,6 +2736,19 @@ async def test_the_kind_of_business_decides_the_export_payment_warning(
     # The FEMA breach is the worst of it, so it leads the red reasons, ahead of the overdue line.
     assert after["attention"][0] == line and after["health"]["reasons"][0] == line["text"]
 
+    # Read-only sees no money, but FEMA is compliance: the risk shows, by count only.
+    await client.post(
+        "/v1/portfolio/access",
+        headers=owner.headers,
+        json={"email": "ca@example.com", "role": "group_analyst"},
+    )
+    ca = await _join(client, mailbox, "ca@example.com")
+    seen = (await client.get("/v1/portfolio/summary", headers=ca)).json()["companies"][0]
+    assert seen["money"] is None and seen["books"] is None
+    fema = next(item for item in seen["attention"] if "FEMA" in item["text"])
+    assert fema["severity"] == "high" and fema["text"].startswith("1 export invoice unpaid")
+    assert "₹" not in fema["text"] and seen["health"]["status"] == "red"
+
     refused = await client.put(
         f"{url}/details", headers=owner.headers, json={"name": "X Ltd", "businessModel": "casino"}
     )

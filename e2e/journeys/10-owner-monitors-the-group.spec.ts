@@ -34,6 +34,22 @@ test.describe("Vikram monitors all three companies from the Portfolio", () => {
     expect((await apiStatus("anita", "POST", "/invitations", { email: "x@example.com", role: "agent" })).status).toBe(403);
   });
 
+  test("previewing as Read-only shows what a Read-only person sees, and nothing more", async ({ browser }) => {
+    const vikram = await signIn(browser, "vikram");
+    await open(vikram.page, "/portfolio?view=overview&preview=group_analyst");
+    await expectVisibleText(vikram.page, "Read-only", "your role does not see");
+    await expect(vikram.page.locator("nav a[aria-current=page]"), "one page is highlighted").toHaveCount(1);
+    await expect(vikram.page.locator("nav a[aria-current=page]")).toHaveText(/Overview/);
+    await open(vikram.page, "/portfolio?view=notifications");
+    await expect(vikram.page.locator("main"), "no money in a Read-only preview").not.toContainText(/Cash in the bank lasts|overdue from customers|supplier bills already late/);
+    await open(vikram.page, "/portfolio?view=billing");
+    await expectVisibleText(vikram.page, "The plan belongs to the Owner's account");
+    await expect(vikram.page.getByRole("button", { name: /Move to/ })).toHaveCount(0);
+    await expect(vikram.page.locator("nav a[aria-current=page]")).toHaveText(/Plan and billing/);
+    expectNoProblems(vikram);
+    await vikram.context.close();
+  });
+
   test("an employee cannot see the Portfolio, or another company's records", async () => {
     expect((await apiStatus("priya", "POST", "/portfolio/companies", { name: "Not allowed" })).status).toBe(403);
     const summary = await apiStatus("priya", "GET", "/portfolio/summary");

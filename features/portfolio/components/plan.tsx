@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { SectionCard } from "@/components/settings/section-ui";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
+import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { day } from "@/features/portfolio/lib/format";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import type { Billing, BillingCheckout, BillingInvoice, BillingPlan, BillingPreview } from "@/features/portfolio/types";
@@ -42,10 +43,12 @@ export function Plan() {
   const billing = usePortfolioApi<Billing>("/billing");
   const [moving, setMoving] = React.useState<BillingPlan | null>(null);
   const [viewing, setViewing] = React.useState<BillingInvoice | null>(null);
+  // A previewed role sees what that person would: the plan is the Owner's, not theirs.
+  const preview = React.useContext(PreviewRole);
   if (billing.loading) return <div role="status" aria-label="Loading your plan" className="h-[420px] animate-pulse rounded-xl border border-border bg-surface-2" />;
   if (billing.error || !billing.data) return <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-danger">{billing.error}<Button size="sm" variant="secondary" onClick={billing.reload}>Try again</Button></div>;
   const data = billing.data;
-  if (!data.owner) return <SectionCard title="Plan and billing" description="The plan belongs to the Owner's account.">
+  if (!data.owner || preview) return <SectionCard title="Plan and billing" description="The plan belongs to the Owner's account.">
     <p className="text-sm text-muted-foreground">The Owner of these companies chooses and pays for the plan. Nothing here is billed to you.</p>
   </SectionCard>;
   const current = data.plans.find((plan) => plan.id === data.plan) ?? data.plans[0];
