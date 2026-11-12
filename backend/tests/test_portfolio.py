@@ -2894,3 +2894,57 @@ async def test_the_weekly_email_says_what_the_overview_says(
     # Late bills and bills due soon are told apart, not added together as "due".
     assert "Supplier bills: ₹50,000 already late, ₹20,000 more due in the next 7 days" in body
     assert "Bills due in the next 7 days" not in body
+
+
+async def test_a_tds_payment_short_of_the_tds_deducted_stays_past_due(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    company = str(owner.tenant_id)
+    await client.put(
+        f"/v1/portfolio/companies/{company}/compliance",
+        headers=owner.headers,
+        json={"gstFiling": "none", "tds": True},
+    )
+    today = today_ist()
+    last = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    made = await client.post(
+        "/v1/finance/bills",
+        headers={**owner.headers, "Idempotency-Key": "short-1"},
+        json={
+            "vendor": "Design Studio",
+            "vendor_bill_no": "DS-9",
+            "bill_date": last.isoformat(),
+            "due_date": (last + timedelta(days=10)).isoformat(),
+            "amount_paise": 11800000,
+            "gst_paise": 1800000,
+            "tds_paise": 1000000,
+            "tds_section": "194J",
+        },
+    )
+    assert made.status_code == 201, made.text
+    key = f"tds_{last:%Y-%m}"
+
+    async def due() -> dict[str, Any]:
+        found = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+        dues = found["companies"][0]["compliance"]
+        return next(item for item in dues if item["key"] == key)
+
+    # A challan for less than the ₹10,000 deducted: recorded, but not done.
+    await client.put(
+        f"/v1/portfolio/companies/{company}/filings/{key}",
+        headers=owner.headers,
+        json={"filedOn": today.isoformat(), "acknowledgement": "CIN-1", "amount": "7614"},
+    )
+    short = await due()
+    assert short["status"] != "filed" and short["filedOn"] == today.isoformat()
+    assert "₹2,386 short of the ₹10,000 deducted" in (short["lateNote"] or "")
+    register = (await client.get("/v1/portfolio/compliance/register", headers=owner.headers)).json()
+    assert next(item for item in register if item["key"] == key)["status"] == short["status"]
+    # The rest deposited: the payment is done.
+    await client.put(
+        f"/v1/portfolio/companies/{company}/filings/{key}",
+        headers=owner.headers,
+        json={"filedOn": today.isoformat(), "acknowledgement": "CIN-2", "amount": "10000"},
+    )
+    assert (await due())["status"] == "filed"

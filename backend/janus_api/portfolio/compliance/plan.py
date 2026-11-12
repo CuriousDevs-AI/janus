@@ -1,6 +1,7 @@
 """Which filings apply to a company, and marking them filed."""
 
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy import select
@@ -10,6 +11,7 @@ from janus_api.audit.service import record
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
+from janus_api.finance import overview as finance
 from janus_api.org import overview as org
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import enter_company, readable_companies
@@ -151,17 +153,32 @@ async def compliance_view(
         company=profile.company,
     )
     filed = await _filed(db, tenant_id)
+    short = await _short_tds(db, tenant_id, filed)
     first, last = due_dates.window(today)
     return plan, [
-        _due_out(due, filed, today)
+        _due_out(due, filed, today, short)
         for due in due_dates.dues(_rules(profile, registration), first, last)
     ]
 
 
-def _due_out(due: due_dates.Due, filed: Filed, today: date) -> schemas.ComplianceDue:
-    done = due.key in filed
-    paid = filed[due.key][2] if done else None
-    fee, note = (None, "") if done else due_dates.late_cost(due.key, due.due_on, today)
+def _due_out(
+    due: due_dates.Due, filed: Filed, today: date, short: dict[str, tuple[int, int]] | None = None
+) -> schemas.ComplianceDue:
+    recorded = due.key in filed
+    paid = filed[due.key][2] if recorded else None
+    gap = (short or {}).get(due.key)
+    # A TDS payment whose challan is less than the TDS deducted is not done: the rest is late.
+    done = recorded and gap is None
+    if gap is not None:
+        missing, deducted = gap
+        late_months = max(1, -(-((today - due.due_on).days) // 30)) if today > due.due_on else 0
+        interest = missing * 15 * late_months // 1000
+        fee: object = Decimal(interest) / 100 if late_months else None
+        note = f"₹{missing / 100:,.0f} short of the ₹{deducted / 100:,.0f} deducted" + (
+            f"; interest about ₹{interest / 100:,.0f} so far (1.5% a month)" if late_months else ""
+        )
+    else:
+        fee, note = (None, "") if done else due_dates.late_cost(due.key, due.due_on, today)
     return schemas.ComplianceDue(
         key=due.key,
         label=due.label,
@@ -169,8 +186,8 @@ def _due_out(due: due_dates.Due, filed: Filed, today: date) -> schemas.Complianc
         area=due.area,
         dueOn=due.due_on.isoformat(),
         status=due_dates.status(due.due_on, done, today),
-        filedOn=filed[due.key][0].isoformat() if done else None,
-        acknowledgement=filed[due.key][1] if done else None,
+        filedOn=filed[due.key][0].isoformat() if recorded else None,
+        acknowledgement=filed[due.key][1] if recorded else None,
         to="/portfolio?view=compliance",
         lateFee=str(fee) if fee is not None else None,
         lateNote=note or None,
@@ -189,8 +206,28 @@ async def register(
         return [], start
     registration = await _registration(db, tenant_id)
     filed = await _filed(db, tenant_id)
+    short = await _short_tds(db, tenant_id, filed)
     dues = due_dates.dues(_rules(profile, registration), start, today + timedelta(days=30))
-    return [_due_out(due, filed, today) for due in dues], start
+    return [_due_out(due, filed, today, short) for due in dues], start
+
+
+async def _short_tds(db: AsyncSession, tenant_id: int, filed: Filed) -> dict[str, tuple[int, int]]:
+    """TDS payments recorded with a challan for less than the month's TDS: the shortfall and the
+    amount deducted, in paise, by filing key (tds_2026-10)."""
+    out: dict[str, tuple[int, int]] = {}
+    for key, (_, _, paid) in filed.items():
+        if not key.startswith("tds_") or paid is None:
+            continue
+        try:
+            first = date.fromisoformat(f"{key[4:]}-01")
+        except ValueError:
+            continue
+        last = (first.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        figures = await finance.tds(db, tenant_id, first, last)
+        deducted = figures.on_bills + figures.on_salaries
+        if deducted > paid:
+            out[key] = (deducted - paid, deducted)
+    return out
 
 
 async def _filed(db: AsyncSession, tenant_id: int) -> Filed:
