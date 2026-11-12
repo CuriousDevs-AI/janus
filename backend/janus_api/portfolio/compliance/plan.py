@@ -174,8 +174,9 @@ def _due_out(
         late_months = max(1, -(-((today - due.due_on).days) // 30)) if today > due.due_on else 0
         interest = missing * 15 * late_months // 1000
         fee: object = Decimal(interest) / 100 if late_months else None
-        note = f"₹{missing / 100:,.0f} short of the ₹{deducted / 100:,.0f} deducted" + (
-            f"; interest about ₹{interest / 100:,.0f} so far (1.5% a month)" if late_months else ""
+        # The interest is the late cost (lateFee); the note says what it is charged on.
+        note = (
+            f"₹{missing / 100:,.0f} short of the ₹{deducted / 100:,.0f} deducted, at 1.5% a month"
         )
     else:
         fee, note = (None, "") if done else due_dates.late_cost(due.key, due.due_on, today)
