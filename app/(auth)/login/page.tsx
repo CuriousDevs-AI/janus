@@ -16,7 +16,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { demoAccounts, checkLogin } from "@/lib/demo-accounts";
 import { homeFor, signIn } from "@/lib/demo-persona";
 import type { Me } from "@/lib/api/types";
-import { homeForPermissions, managesBusiness } from "@/lib/access";
+import { PORTFOLIO_ROLES, homeForPermissions, managesBusiness } from "@/lib/access";
 
 const schema = z.object({
   // An email, or the username chosen at signup. The preview's accounts sign in by email only.
@@ -53,6 +53,13 @@ export default function LoginPage() {
       const me = await api<Me>("/me");
       if (!me.user.email_verified_at) {
         router.replace(`/verify-email?email=${encodeURIComponent(me.user.email)}`);
+        return;
+      }
+      // Someone who owns or oversees two or more companies starts on the Portfolio, across them;
+      // a single new company still starts on its own setup.
+      const overseen = me.tenants.filter((item) => item.status === "active" && PORTFOLIO_ROLES.includes(item.role));
+      if (overseen.length >= 2) {
+        router.replace("/portfolio?view=overview");
         return;
       }
       if (!managesBusiness(me.permissions)) {
