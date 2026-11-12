@@ -2749,3 +2749,50 @@ async def test_the_kind_of_business_decides_the_export_payment_warning(
         "Neema Exports": "import_export",
         "Neema Holdings": "holding",
     }
+
+
+async def test_the_biggest_customer_is_the_biggest_in_the_period(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    period = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["period"]
+    today, before = date.fromisoformat(period["end"]), date.fromisoformat(period["previousStart"])
+
+    async def sell(customer: str, day: date, rupees: int, key: str) -> None:
+        made = await client.post(
+            "/v1/finance/invoices",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "customer": "Accounts",
+                "customer_company": customer,
+                "invoice_date": day.isoformat(),
+                "due_date": (day + timedelta(days=30)).isoformat(),
+                "same_state": True,
+                "lines": [
+                    {
+                        "item": "Denim",
+                        "hsn": "5209",
+                        "qty": 1,
+                        "rate_paise": rupees * 100,
+                        "gst_rate": 0,
+                    }
+                ],
+            },
+        )
+        assert made.status_code == 201, made.text
+
+    # Osaka bought more last month; Al Noor buys more now. Gone Ltd bought only before.
+    await sell("Osaka Fabrics", before, 800000, "bc-1")
+    await sell("Osaka Fabrics", today, 490000, "bc-2")
+    await sell("Al Noor Trading", before, 100000, "bc-3")
+    await sell("Al Noor Trading", today, 600000, "bc-4")
+    await sell("Gone Ltd", before, 900000, "bc-5")
+    company = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+        "companies"
+    ][0]
+    assert [item["name"] for item in company["customers"]] == [
+        "Al Noor Trading",
+        "Osaka Fabrics",
+        "Gone Ltd",
+    ]
+    assert company["customers"][0]["current"] == "600000.00"

@@ -326,17 +326,21 @@ async def company_summary(
         )
         sales_now = await finance.sales_by_customer(db, tenant_id, *span_now)
         sales_before = await finance.sales_by_customer(db, tenant_id, *span_before)
-        # The customers who moved most, so a change in sales can be explained by name.
+        # Biggest in this period first, so the first is "the biggest customer" everywhere; then
+        # those who bought only before, so a fall in sales can still be explained by name.
+        ranked = sorted(
+            sales_now.keys() | sales_before.keys(),
+            key=lambda name: (-sales_now.get(name, 0), -sales_before.get(name, 0), name),
+        )
+        buying = [name for name in ranked if sales_now.get(name, 0) > 0][:8]
+        stopped = [name for name in ranked if sales_now.get(name, 0) <= 0][:4]
         out.customers = [
             schemas.CustomerMove(
                 name=name,
                 current=rupees(sales_now.get(name, 0), paise=True),
                 previous=rupees(sales_before.get(name, 0), paise=True),
             )
-            for name in sorted(
-                sales_now.keys() | sales_before.keys(),
-                key=lambda name: -max(sales_now.get(name, 0), sales_before.get(name, 0)),
-            )[:8]
+            for name in buying + stopped
         ]
         if trade is not None:
             trade[tenant_id] = Trade(
