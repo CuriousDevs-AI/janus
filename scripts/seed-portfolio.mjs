@@ -176,6 +176,8 @@ async function history(company, monthly) {
     process.exit(1);
   }
   console.log(`Seeding the Portfolio of ${EMAIL} at ${BASE}, starting from ${first.name}.`);
+  // Four companies need more than the Free or Startup plan holds; Growth covers ten.
+  await call("PUT", "/billing/plan", { plan: "growth" });
   // Each company says what kind of business it is, so the Portfolio picks the measures that fit it.
   await call("PUT", `/portfolio/companies/${first.id}/details`, { name: first.name, industry: "Textiles", businessModel: "manufacturing" });
   const retail = await call("POST", "/portfolio/companies", { name: `${word} Retail`, industry: "Retail", businessModel: "retail" });
@@ -246,8 +248,7 @@ async function history(company, monthly) {
   const older = links.filter((link) => !link.bill).sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate))[0];
   if (older) await call("POST", "/portfolio/intercompany/bills", { sellerId: older.sellerId, invoice: older.invoice });
   await call("POST", "/portfolio/knowledge", { companyId: first.id, kind: "fact", title: "Payments", body: "Kavita Stores pays on the 20th of each month; GST returns are filed by our CA, Mehta and Co." });
-  // The account's plan: Startup, with six months of sample invoices (no payments are connected).
-  await call("PUT", "/billing/plan", { plan: "startup" });
+  // Six months of sample invoices for the Growth plan (no payments are connected in test mode).
   await call("POST", "/billing/sample-invoices", { months: 6 });
   console.log("Done. Open the Portfolio to see it.");
 })().catch((error) => { console.error(error.message); process.exit(1); });

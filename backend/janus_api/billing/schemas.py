@@ -47,8 +47,10 @@ class BillingOut(BaseModel):
     gstRate: int
     plans: list[PlanOut]
     invoices: list[InvoiceOut]
-    # Whether the plan can be changed here. Payments are not connected, so only outside production.
+    # Whether the plan can be changed here without paying: outside production only (test mode).
     canChange: bool
+    # How a paid plan is bought: through Razorpay, in test mode with nothing charged, or not at all.
+    payments: Literal["razorpay", "test", "off"]
 
 
 class PlanChange(BaseModel):
@@ -57,3 +59,27 @@ class PlanChange(BaseModel):
 
 class SampleInvoices(BaseModel):
     months: int = Field(default=6, ge=1, le=12)
+
+
+class Checkout(BaseModel):
+    plan: Literal["startup", "growth"]
+
+
+class CheckoutOut(BaseModel):
+    """What Razorpay Checkout needs in the browser. The key id is public; the secret stays here."""
+
+    keyId: str
+    orderId: str
+    # In paise, GST included.
+    amount: int
+    currency: Literal["INR"]
+    plan: str
+    description: str
+    name: str
+    email: str
+
+
+class CheckoutVerify(BaseModel):
+    orderId: str = Field(max_length=40)
+    paymentId: str = Field(max_length=40)
+    signature: str = Field(max_length=128)

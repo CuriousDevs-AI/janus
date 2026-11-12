@@ -27,3 +27,31 @@ async def sample_invoices(
     return await service.add_sample_invoices(
         db, actor.user.id, actor.session.tenant_id, data.months, request_ip(request)
     )
+
+
+@router.post("/checkout", response_model=schemas.CheckoutOut)
+async def checkout(
+    data: schemas.Checkout, actor: CurrentActor, db: Db, request: Request
+) -> schemas.CheckoutOut:
+    return await service.checkout(
+        db, actor.user.id, actor.user.name, actor.user.email, data.plan, request_ip(request)
+    )
+
+
+@router.post("/checkout/verify", response_model=schemas.BillingOut)
+async def verify(
+    data: schemas.CheckoutVerify, actor: CurrentActor, db: Db, request: Request
+) -> schemas.BillingOut:
+    return await service.verify(
+        db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
+    )
+
+
+@router.post("/razorpay/webhook", status_code=204)
+async def razorpay_webhook(request: Request, db: Db) -> None:
+    await service.webhook(
+        db,
+        await request.body(),
+        request.headers.get("x-razorpay-signature", ""),
+        request_ip(request),
+    )

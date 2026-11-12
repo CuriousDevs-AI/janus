@@ -27,6 +27,8 @@ test.describe("Vikram starts his three companies on Janus", () => {
     remember((state) => { state.companies.textiles = String(me.tenant.id); });
     await api("vikram", "PATCH", "/business/setup", { businessName: COMPANIES[0].name, industry: COMPANIES[0].industry, companySize: "51–200 employees", timezone: "Asia/Kolkata", completedSteps: ["business_details", "workspaces", "members", "data_connections"] });
     for (const type of WORKSPACES) await api("vikram", "POST", "/workspaces", { type });
+    // Three companies and about twenty people need more than the Free plan holds.
+    await api("vikram", "PUT", "/billing/plan", { plan: "growth" });
     const vikram = await signIn(browser, "vikram");
     await open(vikram.page, "/settings?tab=workspace&view=overview&workspace=business");
     await expect(vikram.page).not.toHaveURL(/\/setup/);

@@ -3,6 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
+from janus_api.billing import service as billing
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
 from janus_api.org import overview as org
@@ -24,6 +25,7 @@ async def create_company(
     owned = await org.owned_tenants(db, user_id)
     if current_tenant not in owned:
         raise ApiError("forbidden", "Only an Owner can add a company.", 403)
+    await billing.check_room(db, current_tenant, company=True)
     if len(owned) >= MAX_COMPANIES:
         raise ApiError("company_limit", f"One login can own up to {MAX_COMPANIES} companies.", 409)
     try:

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth.models import User
+from janus_api.billing import service as billing
 from janus_api.core.email import send_token
 from janus_api.core.errors import ApiError
 from janus_api.core.security import digest, now, random_token
@@ -221,6 +222,7 @@ async def create_invitation(
     if caller_role.name != "owner" and not set(role.permissions) <= set(caller_role.permissions):
         raise ApiError("forbidden", "That role can do more than yours. Ask an Owner.", 403)
     await check_invitee(db, tenant_id, email.casefold())
+    await billing.check_room(db, tenant_id)
     token = random_token()
     invite = Invitation(
         tenant_id=tenant_id,

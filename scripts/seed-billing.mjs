@@ -7,8 +7,8 @@
 //   SEED_PLAN=growth SEED_MONTHS=12 ...    (default startup and 6 months)
 //   SEED_URL=http://localhost:3011 ...     (default http://localhost:3000, as dev-up starts it)
 //
-// The account must own a company. Running it again changes the plan and adds only months not
-// invoiced yet; it never deletes anything.
+// The account must own a company, and the plan must hold the companies it already has. Running it
+// again changes the plan and adds only months not invoiced yet; it never deletes anything.
 
 const BASE = (process.env.SEED_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const EMAIL = process.env.SEED_EMAIL;

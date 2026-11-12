@@ -11,7 +11,23 @@ import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { day } from "@/features/portfolio/lib/format";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
-import type { Billing, BillingInvoice, BillingPlan } from "@/features/portfolio/types";
+import type { Billing, BillingCheckout, BillingInvoice, BillingPlan } from "@/features/portfolio/types";
+
+type RazorpayResponse = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
+type RazorpayCheckout = { open: () => void; on: (event: "payment.failed", handler: (failure: { error?: { description?: string } }) => void) => void };
+declare global { interface Window { Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckout } }
+
+/** Loads Razorpay's Checkout script once, when someone first pays. */
+function loadRazorpay(): Promise<void> {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Razorpay's checkout could not be loaded. Check the connection and try again."));
+    document.body.appendChild(script);
+  });
+}
 
 /** Exact rupees, as on an invoice: ₹2,358.82. */
 const rupees = (value: string | number) => Number(value).toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: Number(value) % 1 ? 2 : 0, maximumFractionDigits: 2 });
@@ -36,7 +52,8 @@ export function Plan() {
   const rank = (plan: BillingPlan) => data.plans.findIndex((item) => item.id === plan.id);
   return <>
     <CurrentPlan data={data} plan={current} />
-    {data.canChange && <p className="rounded-lg border border-warning/30 bg-warning-muted px-3 py-2 text-xs text-warning">Test mode: payments are not connected yet, so a change here takes effect at once and nothing is charged. Invoices marked Sample were made for testing.</p>}
+    {data.payments === "test" && <p className="rounded-lg border border-warning/30 bg-warning-muted px-3 py-2 text-xs text-warning">Test mode: payments are not connected yet, so a change here takes effect at once and nothing is charged. Invoices marked Sample were made for testing.</p>}
+    {data.payments === "razorpay" && <p className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">Paid plans are paid through Razorpay, by card, UPI or net banking, a month at a time. The plan changes once the payment is confirmed, and a GST invoice is issued.</p>}
 
     <div>
       <h2 className="mb-3 text-sm font-semibold">Plans</h2>
@@ -51,7 +68,7 @@ export function Plan() {
           <ul className="mt-3 flex flex-1 flex-col gap-1.5 text-[13px]">{plan.features.map((feature) => <li key={feature} className="flex items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />{feature}</li>)}</ul>
           <div className="mt-4">{here ? <Button size="sm" variant="secondary" className="w-full" disabled>Current plan</Button>
             : plan.id === "enterprise" ? <Button size="sm" variant="outline" className="w-full" onClick={() => toast.message("Enterprise is set up with the Janus team, on agreed terms.", { description: "Tell us how many companies and people you run, and we will get in touch." })}>Talk to us</Button>
-            : <Button size="sm" variant={up ? "default" : "outline"} className="w-full" disabled={!data.canChange} title={data.canChange ? undefined : "Plan changes open once payments are connected"} onClick={() => setMoving(plan)}>{up ? <><ArrowUp className="size-3.5" />Upgrade to {plan.name}</> : <><ArrowDown className="size-3.5" />Move to {plan.name}</>}</Button>}</div>
+            : <Button size="sm" variant={up ? "default" : "outline"} className="w-full" disabled={data.payments === "off" && plan.id !== "free"} title={data.payments === "off" && plan.id !== "free" ? "Paid plans open once payments are connected" : undefined} onClick={() => setMoving(plan)}>{up ? <><ArrowUp className="size-3.5" />Upgrade to {plan.name}</> : <><ArrowDown className="size-3.5" />Move to {plan.name}</>}</Button>}</div>
         </section>;
       })}</div>
     </div>
@@ -71,7 +88,7 @@ export function Plan() {
         </table></div>}
     </SectionCard>
 
-    {moving && <ChangePlan from={current} to={moving} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); }} />}
+    {moving && <ChangePlan from={current} to={moving} pay={data.payments === "razorpay" && moving.price !== null && Number(moving.price) > 0} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); }} />}
     {viewing && <InvoiceView invoice={viewing} gstRate={data.gstRate} onClose={() => setViewing(null)} />}
   </>;
 }
@@ -105,16 +122,39 @@ function CurrentPlan({ data, plan }: { data: Billing; plan: BillingPlan }) {
   </section>;
 }
 
-function ChangePlan({ from, to, onClose, onDone }: { from: BillingPlan; to: BillingPlan; onClose: () => void; onDone: () => void }) {
+function ChangePlan({ from, to, pay, onClose, onDone }: { from: BillingPlan; to: BillingPlan; pay: boolean; onClose: () => void; onDone: () => void }) {
   const [saving, setSaving] = React.useState(false);
+  const total = to.price === null ? 0 : Number(to.price) * 1.18;
   async function confirm() {
     setSaving(true);
-    try { await api("/billing/plan", { method: "PUT", body: JSON.stringify({ plan: to.id }) }); toast.success(`You are on the ${to.name} plan.`); onDone(); }
-    catch (error) { toast.error(message(error)); setSaving(false); }
+    if (!pay) {
+      try { await api("/billing/plan", { method: "PUT", body: JSON.stringify({ plan: to.id }) }); toast.success(`You are on the ${to.name} plan.`); onDone(); }
+      catch (error) { toast.error(message(error)); setSaving(false); }
+      return;
+    }
+    try {
+      const order = await api<BillingCheckout>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan: to.id }) });
+      await loadRazorpay();
+      const checkout = new window.Razorpay!({
+        key: order.keyId, order_id: order.orderId, amount: order.amount, currency: order.currency,
+        name: "Janus", description: order.description, prefill: { name: order.name, email: order.email },
+        theme: { color: "#2563eb" },
+        handler: async (paid: RazorpayResponse) => {
+          try {
+            await api("/billing/checkout/verify", { method: "POST", body: JSON.stringify({ orderId: paid.razorpay_order_id, paymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature }) });
+            toast.success(`Paid. You are on the ${to.name} plan.`);
+            onDone();
+          } catch (error) { toast.error(`Razorpay took the payment, but Janus could not confirm it yet: ${message(error)} It will be confirmed when Razorpay notifies Janus.`); setSaving(false); }
+        },
+        modal: { ondismiss: () => setSaving(false) },
+      });
+      checkout.on("payment.failed", (failure) => { toast.error(failure.error?.description ?? "The payment did not go through."); setSaving(false); });
+      checkout.open();
+    } catch (error) { toast.error(message(error)); setSaving(false); }
   }
-  return <Dialog open onOpenChange={(open) => !open && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Move from {from.name} to {to.name}?</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`} Payments are not connected yet, so nothing is charged.</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={(open) => !open && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Move from {from.name} to {to.name}?</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`} {pay ? `You pay ${rupees(total.toFixed(2))} now through Razorpay, GST included.` : to.price !== null && Number(to.price) > 0 ? "Payments are not connected yet, so nothing is charged." : ""}</DialogDescription></DialogHeader>
     <ul className="grid gap-1.5 text-sm">{to.features.slice(0, 4).map((feature) => <li key={feature} className="flex items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />{feature}</li>)}</ul>
-    <DialogFooter><Button variant="outline" disabled={saving} onClick={onClose}>Keep {from.name}</Button><Button disabled={saving} onClick={() => void confirm()}>{saving ? "Moving…" : `Move to ${to.name}`}</Button></DialogFooter>
+    <DialogFooter><Button variant="outline" disabled={saving} onClick={onClose}>Keep {from.name}</Button><Button disabled={saving} onClick={() => void confirm()}>{saving ? (pay ? "Opening Razorpay…" : "Moving…") : pay ? `Pay ${rupees(total.toFixed(2))}` : `Move to ${to.name}`}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
 

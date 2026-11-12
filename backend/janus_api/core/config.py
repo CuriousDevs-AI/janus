@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # Portfolio questions to a language model: a monthly spend cap per company key, in US dollars,
     # and a daily number of questions per person.
     portfolio_ai_monthly_usd: Decimal = Decimal("5")
+    # The account's plan limits companies and seats. Off only for tests that are not about plans.
+    plan_limits: bool = True
+    # Razorpay, for paying for a plan. Left empty, payments are not connected.
+    razorpay_key_id: str = ""
+    razorpay_key_secret: SecretStr = SecretStr("")
+    razorpay_webhook_secret: SecretStr = SecretStr("")
     portfolio_ai_daily_questions: int = 100
     meta_graph_version: str = Field(default="", pattern=r"^(?:v[0-9]{1,3}\.0)?$")
     form_limit_per_minute: int = Field(default=10, ge=1, le=120)

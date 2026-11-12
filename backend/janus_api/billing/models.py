@@ -35,3 +35,17 @@ class AccountInvoice(Base):
     # Made for testing (no payment provider is connected), and shown as such.
     sample: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AccountPayment(Base):
+    """A Razorpay order for one month of a plan, and its payment once Razorpay confirms it."""
+
+    __tablename__ = "account_payments"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    plan: Mapped[str] = mapped_column(String(20))
+    order_id: Mapped[str] = mapped_column(String(40), unique=True)
+    payment_id: Mapped[str | None] = mapped_column(String(40))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(10), default="created")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

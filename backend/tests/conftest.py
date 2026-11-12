@@ -73,3 +73,10 @@ async def client(mailbox: Mailbox) -> AsyncIterator[httpx.AsyncClient]:
         headers={"user-agent": "Janus tests"},
     ) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def no_plan_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests set up more companies and people than the Free plan holds; the billing tests turn
+    the plan limits back on."""
+    monkeypatch.setattr(get_settings(), "plan_limits", False)

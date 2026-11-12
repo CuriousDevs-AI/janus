@@ -225,4 +225,7 @@ export type PortfolioRetention = { beforeStart: string; beforeEnd: string; recen
 export type BillingPlanId = "free" | "startup" | "growth" | "enterprise";
 export interface BillingPlan { id: BillingPlanId; name: string; tagline: string; price: string | null; companies: number | null; logins: number | null; features: string[] }
 export interface BillingInvoice { number: string; plan: string; issuedOn: string; periodStart: string; periodEnd: string; amount: string; gst: string; total: string; status: "paid" | "due"; paidOn: string | null; sample: boolean }
-export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean }
+/** payments: "razorpay" buys a paid plan through Razorpay; "test" changes it at once with nothing charged (never in production); "off" cannot buy one yet. */
+export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean; payments: "razorpay" | "test" | "off" }
+/** POST /billing/checkout: what Razorpay Checkout needs. Amount in paise, GST included. */
+export interface BillingCheckout { keyId: string; orderId: string; amount: number; currency: "INR"; plan: string; description: string; name: string; email: string }
