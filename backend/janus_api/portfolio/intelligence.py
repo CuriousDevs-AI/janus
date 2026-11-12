@@ -89,6 +89,9 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
         )
     ]
     companies: list[schemas.AiCompany] = []
+    portfolio_keys = await ai_keys.keys(db, user_id, current_tenant)
+    # A company's copy of a Portfolio key is the same key: it is offered once, as the Portfolio's.
+    copies = {(item.id, held.provider) for held in portfolio_keys for item in held.copiedTo}
     try:
         for tenant_id in await readable_companies(db, user_id):
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
@@ -117,7 +120,7 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
                 )
             )
             for key in keys:
-                if not key.enabled:
+                if not key.enabled or (str(tenant_id), key.provider) in copies:
                     continue
                 local = _local(key.baseUrl)
                 # A free provider's model, or a ":free" OpenRouter one; Gemini's free tier too.
@@ -149,7 +152,6 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
                 )
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
-    portfolio_keys = await ai_keys.keys(db, user_id, current_tenant)
     here = await org.company(db, current_tenant) if current_tenant else None
     for held in portfolio_keys:
         free_tier = held.model.endswith(":free") or any(

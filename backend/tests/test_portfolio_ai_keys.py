@@ -93,6 +93,11 @@ async def test_a_portfolio_key_is_kept_once_and_copied_into_chosen_companies(
         ["0001"],
         ["0001"],
     ]
+    # The copies are the same key: "Answer with" offers it once, as the Portfolio's.
+    offered = (await client.get("/v1/portfolio/intelligence/models", headers=owner.headers)).json()[
+        "options"
+    ]
+    assert [option["id"] for option in offered] == ["rules", "portfolio:openrouter"]
     company_test = await client.post(
         f"/v1/portfolio/companies/{pune}/ai/openrouter/test", headers=owner.headers
     )
