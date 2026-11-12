@@ -12,6 +12,7 @@ from sqlalchemy import (
     LargeBinary,
     Numeric,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -207,3 +208,18 @@ class CompanyDocumentFile(Base):
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class PortfolioAiKey(Base):
+    """An AI key kept by the Portfolio for one person's account, and the companies it was copied
+    into, which use it as their own."""
+
+    __tablename__ = "portfolio_ai_keys"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(200))
+    secret_encrypted: Mapped[str] = mapped_column(Text)
+    key_last_four: Mapped[str] = mapped_column(String(4))
+    copied_to: Mapped[list[int]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  KeyRound,
   CreditCard,
   BarChart3,
   Bell,
@@ -144,6 +145,7 @@ export const portfolioNavSections: NavSection[] = [
   { title: "Manage", items: [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
     { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
+    { label: "AI models & keys", href: "/portfolio?view=ai-keys", icon: KeyRound },
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
     { label: "Compliance", href: "/portfolio?view=compliance", icon: CalendarCheck },
   ] },

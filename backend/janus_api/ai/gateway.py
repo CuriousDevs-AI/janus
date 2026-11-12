@@ -6,7 +6,17 @@ from time import monotonic
 
 import httpx
 import litellm
-from litellm.exceptions import AuthenticationError, RateLimitError, Timeout
+from litellm.exceptions import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PaymentRequiredError,
+    PermissionDeniedError,
+    RateLimitError,
+    ServiceUnavailableError,
+    Timeout,
+)
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from openai import AsyncOpenAI
 
@@ -116,15 +126,76 @@ def capture_usage(row: AIUsage, response: litellm.ModelResponse) -> None:
         pass  # Unknown model prices remain NULL; successful calls still return their output.
 
 
+def _reason(error: Exception) -> str:
+    """The provider's own words, without LiteLLM's prefixes, short, and with nothing like a key."""
+    text = str(getattr(error, "message", None) or error)
+    # Some providers (Google) answer in JSON: their own "message" is the part worth reading.
+    found = re.search(r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+    if found:
+        text = found.group(1)
+    text = re.sub(r"^(litellm\.)?\w+Error:\s*", "", text)
+    text = re.sub(r"^(\w+Error:\s*)?\w*Exception\s*-\s*", "", text)
+    text = re.sub(r"(sk|rk|gsk|csk|nvapi|hf|ghp|github_pat)[-_][A-Za-z0-9_-]{8,}", "[key]", text)
+    return text.strip().splitlines()[0][:180] if text.strip() else ""
+
+
 def provider_error(error: Exception) -> ApiError:
+    """What went wrong, in words a person can act on. Providers answer a wrong key or model in
+    different ways (Groq says 400 "Invalid API Key"), so the reason is read, not only the type."""
     if isinstance(error, ApiError):
         return error
-    if isinstance(error, AuthenticationError):
-        return ApiError("ai_authentication_failed", "The provider rejected its API key.", 502)
+    reason = _reason(error)
+    lowered = reason.lower()
+    if isinstance(error, (AuthenticationError, PermissionDeniedError)) or any(
+        word in lowered
+        for word in ("api key", "api_key", "authentication", "unauthorized", "auth header")
+    ):
+        return ApiError(
+            "ai_authentication_failed",
+            "The provider rejected the API key. Check it was copied whole and is still active.",
+            502,
+        )
+    if isinstance(error, NotFoundError) or (
+        "model" in lowered
+        and any(
+            word in lowered
+            for word in (
+                "not found",
+                "does not exist",
+                "not a valid model",
+                "decommissioned",
+                "no endpoints",
+                "not supported",
+                "unknown model",
+            )
+        )
+    ):
+        return ApiError(
+            "ai_model_not_found",
+            "The provider has no model by that name. Pick one from its list."
+            + (f" It said: {reason}" if reason else ""),
+            502,
+        )
+    if isinstance(error, PaymentRequiredError) or "credit" in lowered or "billing" in lowered:
+        return ApiError(
+            "ai_billing", "The provider wants credit or billing set up on this key first.", 402
+        )
+    if isinstance(error, ServiceUnavailableError) or any(
+        word in lowered for word in ("high demand", "overloaded", "unavailable", "try again later")
+    ):
+        return ApiError(
+            "ai_busy",
+            "The provider is busy with this model right now. Try again shortly, or pick another.",
+            503,
+        )
     if isinstance(error, RateLimitError):
-        return ApiError("ai_rate_limited", "The provider's rate or billing limit was reached.", 429)
+        return ApiError("ai_rate_limited", "The provider's rate or usage limit was reached.", 429)
     if isinstance(error, (TimeoutError, Timeout)):
         return ApiError("ai_timeout", "The provider did not respond in time.", 504)
+    if isinstance(error, APIConnectionError):
+        return ApiError("ai_unreachable", "The provider could not be reached.", 502)
+    if isinstance(error, BadRequestError) and reason:
+        return ApiError("ai_provider_error", f"The provider refused the request: {reason}", 502)
     return ApiError(
         "ai_provider_error", "The AI request failed. Check the provider and model settings.", 502
     )

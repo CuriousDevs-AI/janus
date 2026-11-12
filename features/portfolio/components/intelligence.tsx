@@ -10,7 +10,8 @@ import { api, message } from "@/lib/api/client";
 import { answerLive, type Answer } from "@/features/portfolio/lib/answer";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
-import { KnowledgeCard, ModelSetup } from "@/features/portfolio/components/intelligence-setup";
+import { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
+import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
 import type { PortfolioAsked, PortfolioCompany, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
 
 const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
@@ -22,7 +23,7 @@ const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["Any GST or TDS due?", FileCheck2],
 ];
 const RULES = "rules";
-const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [] };
+const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [], portfolioKeys: [], canAddKeys: false };
 
 /** One turn: Janus rules answer on the page; a model answers on the server with the facts it cited. */
 type Turn = { q: string; rules?: Answer; ai?: PortfolioAsked; pending?: boolean; error?: string };
@@ -42,7 +43,8 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
   const setTurns = (change: (current: Turn[]) => Turn[]) => setTurnsState((current) => { const next = change(current); conversations.set(who, next); return next; });
   const [q, setQ] = React.useState("");
   const [cleared, setCleared] = React.useState(false);
-  const [panel, setPanel] = React.useState<"knowledge" | "models" | null>(null);
+  const [panel, setPanel] = React.useState<"knowledge" | null>(null);
+  const [settingUp, setSettingUp] = React.useState(false);
   const earlier = cleared ? [] : (history.data ?? []);
   const shown: Turn[] = [...earlier.map((item) => ({ q: item.question, ai: item })), ...turns];
   const busy = turns.some((turn) => turn.pending);
@@ -121,7 +123,8 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
             <SelectContent>{available.options.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}{option.company ? ` · ${option.company}` : ""}{option.free ? " · free" : ""}</SelectItem>)}</SelectContent>
           </Select>
           <p className="mt-2 text-xs text-muted-foreground">{preview ? "Only Janus rules while previewing a role: a model would be asked as you, with your figures." : model.note}</p>
-          {!preview && <Button size="sm" variant="outline" className="mt-3 w-full" aria-expanded={panel === "models"} onClick={() => setPanel(panel === "models" ? null : "models")}>{available.options.length === 1 ? "Set up a free AI model" : "Manage AI models"}</Button>}
+          {!preview && <Button size="sm" variant="outline" className="mt-3 w-full" disabled={!models.data} onClick={() => setSettingUp(true)}>Set up model</Button>}
+          {!preview && available.options.length > 1 && <a className="mt-2 block text-center text-xs text-accent hover:underline" href="/portfolio?view=ai-keys">Manage AI keys</a>}
         </div>
         {shown.length > 0 && <div className="rounded-xl border border-border bg-surface p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Try asking</p>
@@ -136,7 +139,7 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
       </aside>
     </div>
     {!preview && panel === "knowledge" && <KnowledgeCard list={list} />}
-    {!preview && panel === "models" && models.data && <ModelSetup models={models.data} onChange={models.reload} />}
+    {settingUp && models.data && <SetupModelDialog models={models.data} onClose={() => setSettingUp(false)} onSaved={(id) => { setSettingUp(false); setChosen(id); models.reload(); }} />}
   </div>;
 }
 

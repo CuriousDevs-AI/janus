@@ -10,6 +10,7 @@ from janus_api.core.tenancy import set_context
 from janus_api.portfolio import (
     access,
     activity,
+    ai_keys,
     alerts,
     bank,
     companies,
@@ -235,6 +236,118 @@ async def save_ai_key(
             provider,
             data.model_dump(exclude_none=True),
             request_ip(request),
+        )
+    finally:
+        await set_context(db, user_id=actor.user.id, tenant_id=current)
+    return schemas.AiKey(
+        provider=saved.provider,
+        model=saved.model,
+        keyLastFour=saved.keyLastFour,
+        baseUrl=saved.baseUrl,
+        enabled=saved.enabled,
+    )
+
+
+@router.get("/ai-models/{provider}", response_model=list[str])
+async def free_models(provider: schemas.AiProvider, actor: CurrentActor) -> list[str]:
+    """The provider's free models now, for the setup popup."""
+    return await ai.free_models(provider)
+
+
+@router.put("/ai-keys/{provider}", response_model=list[schemas.PortfolioKeyOut])
+async def save_portfolio_key(
+    provider: schemas.AiProvider,
+    data: schemas.PortfolioKeyPut,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> list[schemas.PortfolioKeyOut]:
+    return await ai_keys.save(
+        db, actor.user.id, actor.session.tenant_id, provider, data, request_ip(request)
+    )
+
+
+@router.post("/ai-keys/{provider}/test", response_model=schemas.AskOut)
+async def test_portfolio_key(
+    provider: schemas.AiProvider, actor: CurrentActor, db: Db
+) -> schemas.AskOut:
+    model, answer = await ai_keys.test(db, actor.user.id, actor.session.tenant_id, provider)
+    return schemas.AskOut(
+        id="test",
+        question="Connection test",
+        answer=answer,
+        model=model,
+        sources=[],
+        grounded=False,
+        costUsd=None,
+        suggested=[],
+        createdAt=today_ist().isoformat(),
+    )
+
+
+@router.put("/ai-keys/{provider}/companies", response_model=list[schemas.PortfolioKeyOut])
+async def portfolio_key_companies(
+    provider: schemas.AiProvider,
+    data: schemas.PortfolioKeyCompanies,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> list[schemas.PortfolioKeyOut]:
+    return await ai_keys.set_companies(
+        db, actor.user.id, actor.session.tenant_id, provider, data, request_ip(request)
+    )
+
+
+@router.post("/ai-keys/{provider}/revoke", response_model=list[schemas.PortfolioKeyOut])
+async def revoke_portfolio_key(
+    provider: schemas.AiProvider,
+    data: schemas.PortfolioKeyRevoke,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> list[schemas.PortfolioKeyOut]:
+    return await ai_keys.revoke(
+        db,
+        actor.user.id,
+        actor.session.tenant_id,
+        provider,
+        data.fromCompanies,
+        request_ip(request),
+    )
+
+
+@router.post("/companies/{company_id}/ai/{provider}/move", response_model=schemas.AiKey)
+async def move_ai_key(
+    company_id: str,
+    provider: schemas.AiProvider,
+    data: schemas.AiKeyMove,
+    actor: CurrentActor,
+    db: Db,
+    request: Request,
+) -> schemas.AiKey:
+    """The key leaves one company and is kept, encrypted, by the other, which is then billed for
+    it. Both companies need the person to manage AI. The key itself is never sent back."""
+    if data.to == company_id:
+        raise ApiError("same_company", "Choose another company.", 422)
+    current, ip = actor.session.tenant_id, request_ip(request)
+    try:
+        target = await enter_company(db, actor.user.id, data.to, "ai:manage")
+        taken = await ai.has_credential(db, provider)
+        if taken and not data.replace:
+            raise ApiError(
+                "key_exists", "That company already has a key for this provider. Replace it?", 409
+            )
+        source = await enter_company(db, actor.user.id, company_id, "ai:manage")
+        model, key, base_url = await ai.credential_to_move(db, provider)
+        await ai.delete_credential(db, source, actor.user.id, provider, ip)
+        await set_context(db, user_id=actor.user.id, tenant_id=target)
+        saved = await ai.save_key(
+            db,
+            target,
+            actor.user.id,
+            provider,
+            {"model": model, "apiKey": key, **({"baseUrl": base_url} if base_url else {})},
+            ip,
         )
     finally:
         await set_context(db, user_id=actor.user.id, tenant_id=current)

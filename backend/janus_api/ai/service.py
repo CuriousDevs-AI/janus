@@ -1,7 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from time import monotonic
 
+import httpx
 from cryptography.fernet import InvalidToken
 from pydantic import ValidationError
 from sqlalchemy import func, select
@@ -205,3 +207,82 @@ def free_providers() -> tuple[catalog.FreeProvider, ...]:
 
 def providers() -> tuple[str, ...]:
     return catalog.PROVIDERS
+
+
+async def credential_to_move(db: AsyncSession, provider: str) -> tuple[str, str, str | None]:
+    """The company's model, key and endpoint for one provider, decrypted, so another company can
+    keep the same key. For moving a key between companies only; never sent to a browser."""
+    row = await get_credential(db, provider)  # type: ignore[arg-type]
+    try:
+        key = cipher().decrypt(row.secret_encrypted.encode()).decode()
+    except InvalidToken as error:
+        raise ApiError(
+            "encryption_unavailable", "AI credential cannot be decrypted.", 503
+        ) from error
+    return row.model, key, row.base_url
+
+
+async def has_credential(db: AsyncSession, provider: str) -> bool:
+    return (
+        await db.scalar(select(AICredential.id).where(AICredential.provider == provider))
+    ) is not None
+
+
+async def converse_with_key(
+    tenant_id: int,
+    provider: str,
+    model: str,
+    key: str,
+    system: str | None,
+    turns: list[tuple[str, str]],
+    *,
+    feature: str,
+    max_tokens: int = 700,
+) -> schemas.CompletionOut:
+    """One answer from a key that is not a company's own, such as the Portfolio's, recorded in the
+    company's AI usage like its own calls. A built-in provider only, at its official endpoint."""
+    if provider not in catalog.PROVIDERS or provider == "openai_compatible":
+        raise ApiError("not_found", "Unknown AI provider.", 404)
+    credential = AICredential(tenant_id=tenant_id, provider=provider, model=model, base_url=None)
+    messages = [schemas.Message(role="system", content=system)] if system else []
+    messages += [
+        schemas.Message(role="user" if r == "user" else "assistant", content=t) for r, t in turns
+    ]
+    return await gateway.complete(credential, key, messages, feature=feature, max_tokens=max_tokens)
+
+
+def connection_test_prompt() -> str:
+    return Path(__file__).with_name("prompts").joinpath("connection_test.txt").read_text()
+
+
+# OpenRouter's free models change often, so the list is read from its public catalog (no key
+# needed) and kept for an hour; the built-in examples stand in when it cannot be reached.
+_live: dict[str, tuple[float, list[str]]] = {}
+
+
+async def free_models(provider: str) -> list[str]:
+    """The provider's free models as it lists them now, or the built-in examples."""
+    fallback = next((list(item.models) for item in catalog.FREE if item.provider == provider), [])
+    if provider != "openrouter":
+        return fallback
+    cached = _live.get(provider)
+    if cached and monotonic() - cached[0] < 3600:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=8, trust_env=False) as client:
+            response = await client.get("https://openrouter.ai/api/v1/models")
+        found = sorted(
+            item["id"]
+            for item in response.json()["data"]
+            if str(item.get("id", "")).endswith(":free")
+        )
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return fallback
+    if not found:
+        return fallback
+    # The examples Janus suggests, where still free, first; then the rest.
+    ordered = [item for item in fallback if item in found] + [
+        item for item in found if item not in fallback
+    ]
+    _live[provider] = (monotonic(), ordered)
+    return ordered

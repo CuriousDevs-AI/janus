@@ -27,7 +27,7 @@ from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
 from janus_api.org import overview as org
 from janus_api.org import service as org_service
-from janus_api.portfolio import knowledge, schemas
+from janus_api.portfolio import ai_keys, knowledge, schemas
 from janus_api.portfolio import summary as portfolio
 from janus_api.portfolio.access import enter_company, readable_companies
 from janus_api.portfolio.models import PortfolioQuestion
@@ -149,6 +149,31 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
                 )
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    portfolio_keys = await ai_keys.keys(db, user_id, current_tenant)
+    here = await org.company(db, current_tenant) if current_tenant else None
+    for held in portfolio_keys:
+        free_tier = held.model.endswith(":free") or any(
+            item.provider == held.provider for item in ai.free_providers()
+        )
+        options.insert(
+            1,
+            schemas.ModelOption(
+                id=f"portfolio:{held.provider}",
+                label=held.model,
+                provider=held.provider,
+                company="Portfolio key",
+                free=free_tier,
+                note=(
+                    "Your Portfolio key"
+                    + (", on the provider's free tier." if free_tier else ".")
+                    + (
+                        f" Its use is recorded in {here.name}, the company open now."
+                        if here
+                        else ""
+                    )
+                ),
+            ),
+        )
     free = [
         schemas.FreeProvider(
             id=item.id,
@@ -162,7 +187,13 @@ async def models(db: AsyncSession, user_id: int, current_tenant: int | None) -> 
         )
         for item in ai.free_providers()
     ]
-    return schemas.ModelsOut(options=options, companies=companies, free=free)
+    return schemas.ModelsOut(
+        options=options,
+        companies=companies,
+        free=free,
+        portfolioKeys=portfolio_keys,
+        canAddKeys=bool(await org.owned_tenants(db, user_id)),
+    )
 
 
 def facts_for(view: schemas.PortfolioSummary) -> list[schemas.Source]:
@@ -379,7 +410,16 @@ async def ask(
                     )
                 )
 
-        tenant_id = await enter_company(db, user_id, company_id, "ai:manage")
+        key_row = None
+        if company_id == "portfolio":
+            # The Portfolio's own key: its use is recorded in, and capped by, the company open now.
+            await set_context(db, user_id=user_id, tenant_id=current_tenant)
+            key_row = await ai_keys.portfolio_key(db, user_id, provider)
+            if key_row is None or current_tenant is None:
+                raise ApiError("not_found", "That model is not set up.", 404)
+            tenant_id = current_tenant
+        else:
+            tenant_id = await enter_company(db, user_id, company_id, "ai:manage")
         spent = await ai.spent_since(db, FEATURE, _month_start())
         if spent >= settings.portfolio_ai_monthly_usd:
             raise ApiError(
@@ -399,12 +439,24 @@ async def ask(
             facts="\n".join(f"[{s.id}] {s.text}" for s in sources) or "(none)",
         )
         turns = [t for q in history for t in (("user", q.question), ("assistant", q.answer))]
-        result = await ai.converse(
-            db,
-            provider,  # type: ignore[arg-type]
-            system[:60000],
-            [*turns, ("user", data.question)],
-            feature=FEATURE,
+        result = (
+            await ai.converse_with_key(
+                tenant_id,
+                provider,
+                key_row.model,
+                ai_keys.secret(key_row),
+                system[:60000],
+                [*turns, ("user", data.question)],
+                feature=FEATURE,
+            )
+            if key_row is not None
+            else await ai.converse(
+                db,
+                provider,  # type: ignore[arg-type]
+                system[:60000],
+                [*turns, ("user", data.question)],
+                feature=FEATURE,
+            )
         )
 
         text = result.text.strip()

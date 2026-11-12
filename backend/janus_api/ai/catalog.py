@@ -33,11 +33,10 @@ FREE: tuple[FreeProvider, ...] = (
         provider="openrouter",
         base_url="https://openrouter.ai/api/v1",
         models=(
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "deepseek/deepseek-chat-v3-0324:free",
-            "qwen/qwen-2.5-72b-instruct:free",
-            "google/gemma-3-27b-it:free",
-            "mistralai/mistral-small-3.1-24b-instruct:free",
+            "google/gemma-4-31b-it:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "nvidia/nemotron-3.5-lightning:free",
         ),
         limits="Models whose name ends in :free cost nothing, within OpenRouter's daily limits.",
         key_url="https://openrouter.ai/keys",
@@ -49,8 +48,10 @@ FREE: tuple[FreeProvider, ...] = (
         provider="gemini",
         base_url=None,
         models=(
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
+            # Google's "-latest" names follow its current models; dated names retire.
+            "gemini-flash-latest",
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
         ),
         limits="Free tier with Google's rate limits.",
         key_url="https://aistudio.google.com/apikey",

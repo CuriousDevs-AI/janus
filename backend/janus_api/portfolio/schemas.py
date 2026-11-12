@@ -627,10 +627,48 @@ class FreeProvider(BaseModel):
     modelsUrl: str
 
 
+class CompanyRef(BaseModel):
+    id: str
+    name: str
+
+
+class PortfolioKeyOut(BaseModel):
+    """A key the Portfolio keeps for the account; only its last four characters are ever sent."""
+
+    provider: str
+    model: str
+    keyLastFour: str
+    # The companies it was copied into, which use it as their own key.
+    copiedTo: list[CompanyRef]
+
+
 class ModelsOut(BaseModel):
     options: list[ModelOption]
     companies: list[AiCompany]
     free: list[FreeProvider] = []
+    portfolioKeys: list[PortfolioKeyOut] = []
+    # Whether this person may keep keys for the Portfolio: an Owner of at least one company.
+    canAddKeys: bool = False
+
+
+class PortfolioKeyPut(BaseModel):
+    model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    # Left out to keep the saved key and change only the model.
+    apiKey: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=8, max_length=400)]
+        | None
+    ) = None
+
+
+class PortfolioKeyCompanies(BaseModel):
+    """The companies that should hold a copy of the key: added where missing, removed elsewhere."""
+
+    companies: list[str] = Field(default_factory=list, max_length=50)
+
+
+class PortfolioKeyRevoke(BaseModel):
+    # Also remove the copies from the companies it was copied into.
+    fromCompanies: bool = True
 
 
 AiProvider = Literal[
@@ -654,6 +692,14 @@ class AiKeyPut(BaseModel):
     apiKey: str | None = None
     baseUrl: str | None = None
     enabled: bool = True
+
+
+class AiKeyMove(BaseModel):
+    """Moves a company's key for one provider to another company the person may manage AI in."""
+
+    to: str
+    # The other company already has a key for this provider: replace it.
+    replace: bool = False
 
 
 class AskIn(BaseModel):
