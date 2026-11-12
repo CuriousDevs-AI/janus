@@ -2719,7 +2719,7 @@ async def test_the_kind_of_business_decides_the_export_payment_warning(
     assert before["money"]["unpaidOver9Months"] == "5000.00"
     assert before["money"]["unpaidOver9MonthsInvoices"] == 1
     # Not an exporter (yet): the invoice is only overdue, with no FEMA line.
-    assert not any("9 months" in item["text"] for item in before["attention"])
+    assert not any("FEMA" in item["text"] for item in before["attention"])
 
     # Leaving businessModel out keeps it; naming it sets it.
     for body, expected in (
@@ -2731,8 +2731,14 @@ async def test_the_kind_of_business_decides_the_export_payment_warning(
         assert saved.status_code == 200, saved.text
         assert (await company())["businessModel"] == expected
     after = await company()
-    line = next(item for item in after["attention"] if "9 months" in item["text"])
-    assert line["severity"] == "high" and "FEMA" in line["text"] and "₹5,000" in line["text"]
+    line = next(item for item in after["attention"] if "FEMA" in item["text"])
+    assert line["severity"] == "high" and "₹5,000" in line["text"]
+    # It says how old the invoice is, in whole months since it was raised.
+    months = (
+        (today.year - shipped.year) * 12 + today.month - shipped.month - (today.day < shipped.day)
+    )
+    assert after["money"]["unpaidOldestMonths"] == months
+    assert line["text"].startswith(f"₹5,000 unpaid {months} months on 1 invoice")
     # The FEMA breach is the worst of it, so it leads the red reasons, ahead of the overdue line.
     assert after["attention"][0] == line and after["health"]["reasons"][0] == line["text"]
 
@@ -2746,7 +2752,8 @@ async def test_the_kind_of_business_decides_the_export_payment_warning(
     seen = (await client.get("/v1/portfolio/summary", headers=ca)).json()["companies"][0]
     assert seen["money"] is None and seen["books"] is None
     fema = next(item for item in seen["attention"] if "FEMA" in item["text"])
-    assert fema["severity"] == "high" and fema["text"].startswith("1 export invoice unpaid")
+    assert fema["severity"] == "high"
+    assert fema["text"].startswith(f"1 export invoice unpaid {months} months")
     assert "₹" not in fema["text"] and seen["health"]["status"] == "red"
 
     refused = await client.put(

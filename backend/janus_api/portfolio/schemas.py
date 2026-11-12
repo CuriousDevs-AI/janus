@@ -55,6 +55,8 @@ class MoneySummary(BaseModel):
     # export money must come in within nine months (FEMA).
     unpaidOver9Months: str = "0.00"
     unpaidOver9MonthsInvoices: int = 0
+    # Whole months since the oldest of them was raised: "unpaid 10 months".
+    unpaidOldestMonths: int = 0
 
 
 PeriodKey = Literal["week", "month", "quarter", "fy"]

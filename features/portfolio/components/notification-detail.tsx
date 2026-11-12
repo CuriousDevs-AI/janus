@@ -90,7 +90,7 @@ export function NotificationDetail({ item, read, onMarkRead, onClose }: { item: 
       ? ["Some of the company's registration details are not recorded.", "Open Compliance and fill in what is missing, such as PAN, TAN or the EPF and ESI codes."]
       : guidance[category] ?? guidance.Other;
   const money = item.company.money;
-  const rows: [string, string][] = fema && money ? [["Unpaid over 9 months", `${inr(n(money.unpaidOver9Months))} on ${money.unpaidOver9MonthsInvoices} invoice${money.unpaidOver9MonthsInvoices === 1 ? "" : "s"}`], ["Past due in all", `${inr(n(money.overdue))} on ${money.overdueInvoices} invoice${money.overdueInvoices === 1 ? "" : "s"}`], ["Customers owe", inr(n(money.receivable))]] : facts(category, item.company);
+  const rows: [string, string][] = fema && money ? [["Unpaid over 9 months", `${inr(n(money.unpaidOver9Months))} on ${money.unpaidOver9MonthsInvoices} invoice${money.unpaidOver9MonthsInvoices === 1 ? "" : "s"}`], ...(money.unpaidOldestMonths ? [["Oldest unpaid for", `${money.unpaidOldestMonths} months (the limit is 9)`]] as [string, string][] : []), ["Past due in all", `${inr(n(money.overdue))} on ${money.overdueInvoices} invoice${money.overdueInvoices === 1 ? "" : "s"}`], ["Customers owe", inr(n(money.receivable))]] : facts(category, item.company);
   const to = forCompany(item.to, item.company);
   const inPortfolio = to.startsWith("/portfolio");
   const canGo = inPortfolio || owns(item.company);

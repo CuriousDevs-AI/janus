@@ -31,6 +31,8 @@ export interface PortfolioCompany {
     /** Invoices unpaid more than nine months after their date: export money must come in by then (FEMA). */
     unpaidOver9Months: string;
     unpaidOver9MonthsInvoices: number;
+    /** Whole months since the oldest of them was raised. */
+    unpaidOldestMonths?: number;
   };
   /** What happened in the chosen period to date, and in the same days of the period before. */
   period: { current: PortfolioPeriodFigures; previous: PortfolioPeriodFigures };

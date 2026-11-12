@@ -20,6 +20,7 @@ from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import readable_companies
+from janus_api.portfolio.attention import fema_text
 from janus_api.portfolio.models import PortfolioDigest
 from janus_api.portfolio.periods import inr, today_ist
 from janus_api.portfolio.summary import summary
@@ -166,8 +167,12 @@ def company_lines(company: schemas.CompanySummary) -> list[str]:
         ]
         if company.businessModel == "import_export" and money.unpaidOver9MonthsInvoices:
             lines.append(
-                f"  Export money: {inr(money.unpaidOver9Months)} unpaid for over 9 months, past"
-                " the limit FEMA allows"
+                "  Export money: "
+                + fema_text(
+                    inr(money.unpaidOver9Months),
+                    money.unpaidOver9MonthsInvoices,
+                    money.unpaidOldestMonths,
+                )
             )
         cash = company.cash
         if cash is not None and cash.total is not None:

@@ -44,6 +44,8 @@ class Money:
     # allows for export money to come in.
     unpaid_9_months: int
     unpaid_9_months_invoices: int
+    # Whole months since the oldest of those invoices was raised.
+    unpaid_oldest_months: int = 0
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,7 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
         )
     ).all()
     receivable = overdue = count = old = old_count = 0
+    oldest: date | None = None
     buckets = [0, 0, 0]
     nine_months_ago = months_before(today, 9)
     for due, raised, balance in invoices:
@@ -109,6 +112,7 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
         if raised < nine_months_ago:
             old += balance
             old_count += 1
+            oldest = raised if oldest is None or raised < oldest else oldest
         late = (today - due).days
         if late > 0:
             overdue += balance
@@ -146,7 +150,12 @@ async def money(db: AsyncSession, tenant_id: int, today: date) -> Money:
         payable_due_this_week=sum(max(0, int(balance)) for due, balance in bills if due <= week),
         unpaid_9_months=old,
         unpaid_9_months_invoices=old_count,
+        unpaid_oldest_months=_whole_months(oldest, today) if oldest else 0,
     )
+
+
+def _whole_months(start: date, end: date) -> int:
+    return (end.year - start.year) * 12 + end.month - start.month - (end.day < start.day)
 
 
 async def flow(db: AsyncSession, tenant_id: int, start: date, end: date) -> Flow:

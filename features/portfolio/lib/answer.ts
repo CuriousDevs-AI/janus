@@ -1,4 +1,4 @@
-import { attentionOf, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
+import { attentionOf, femaAge, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { businessName, sells } from "@/features/portfolio/lib/business";
 import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 
@@ -93,7 +93,7 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const risks = scope.flatMap((item): Risk[] => {
       const found: Risk[] = [];
       const add = (amount: number, text: string, tier = 1) => { if (amount > 0) found.push({ company: item.name, text, amount, tier }); };
-      if (item.businessModel === "import_export" && item.money?.unpaidOver9MonthsInvoices) add(Number(item.money.unpaidOver9Months), `${inr(Number(item.money.unpaidOver9Months))} of export money unpaid over 9 months on ${item.money.unpaidOver9MonthsInvoices} invoice${item.money.unpaidOver9MonthsInvoices === 1 ? "" : "s"}, past FEMA's 9-month limit: the bank reports it to the RBI`, 0);
+      if (item.businessModel === "import_export" && item.money?.unpaidOver9MonthsInvoices) add(Number(item.money.unpaidOver9Months), `${inr(Number(item.money.unpaidOver9Months))} of export money ${femaAge(item.money.unpaidOver9MonthsInvoices, item.money.unpaidOldestMonths ?? 0)} on ${item.money.unpaidOver9MonthsInvoices} invoice${item.money.unpaidOver9MonthsInvoices === 1 ? "" : "s"}, past FEMA's 9-month limit: the bank reports it to the RBI`, 0);
       if (item.money) {
         add(Number(item.money.ageing.over60), `${inr(Number(item.money.ageing.over60))} owed by customers more than 60 days late (${inr(Number(item.money.overdue))} past due in all)`);
         add(Number(item.money.payableLate), `${inr(Number(item.money.payableLate))} of supplier bills already late`);

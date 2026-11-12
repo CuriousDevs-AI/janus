@@ -23,6 +23,18 @@ def _day(iso: str) -> str:
     return f"{value.day} {value:%b}"
 
 
+def fema_text(amount: str, invoices: int, months: int) -> str:
+    """'₹4.6L unpaid 10 months, past FEMA's 9-month limit', for one invoice or several."""
+    if invoices == 1:
+        age = f"unpaid {months} months" if months >= 9 else "unpaid over 9 months"
+        return f"{amount} {age} on 1 invoice, past FEMA's 9-month limit for export money"
+    oldest = f", the oldest {months} months" if months >= 9 else ""
+    return (
+        f"{amount} unpaid over 9 months on {invoices} invoices{oldest}, past FEMA's 9-month"
+        " limit for export money"
+    )
+
+
 def attention(
     money: schemas.MoneySummary | None,
     approvals: list[schemas.Approval],
@@ -59,10 +71,11 @@ def attention(
     if business_model == "import_export" and money and money.unpaidOver9MonthsInvoices:
         add(
             "high",
-            f"{inr(money.unpaidOver9Months)} unpaid over 9 months on"
-            f" {money.unpaidOver9MonthsInvoices}"
-            f" invoice{'' if money.unpaidOver9MonthsInvoices == 1 else 's'}, past FEMA's"
-            " 9-month limit for export money",
+            fema_text(
+                inr(money.unpaidOver9Months),
+                money.unpaidOver9MonthsInvoices,
+                money.unpaidOldestMonths,
+            ),
             f"{FINANCE}?view=receivables&workspace=finance-accounting",
         )
     bills_late, bills_week = (

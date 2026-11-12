@@ -119,6 +119,7 @@ async def money_summary(db: AsyncSession, tenant_id: int, today: date) -> schema
         payableDueThisWeek=rupees(owed.payable_due_this_week, paise=True),
         unpaidOver9Months=rupees(owed.unpaid_9_months, paise=True),
         unpaidOver9MonthsInvoices=owed.unpaid_9_months_invoices,
+        unpaidOldestMonths=owed.unpaid_oldest_months,
     )
 
 
@@ -251,13 +252,18 @@ async def company_summary(
     # FEMA is a compliance matter too: a role without money still learns an export payment is past
     # the 9-month limit, by count only, so a CA sharing the Portfolio sees the risk.
     if not money and company.business_model == "import_export":
-        late = (await finance.money(db, tenant_id, today)).unpaid_9_months_invoices
+        owed = await finance.money(db, tenant_id, today)
+        late, months = owed.unpaid_9_months_invoices, owed.unpaid_oldest_months
         if late:
+            age = (
+                f"unpaid {months} months"
+                if late == 1
+                else f"unpaid over 9 months, the oldest {months} months"
+            )
             out.attention = attention.with_line(
                 out.attention,
                 "high",
-                f"{late} export invoice{'' if late == 1 else 's'} unpaid over 9 months, past"
-                " FEMA's 9-month limit",
+                f"{late} export invoice{'' if late == 1 else 's'} {age}, past FEMA's 9-month limit",
                 f"/portfolio?view=compliance&company={tenant_id}",
             )
     # A company tracking no filings is not "up to date": it is not set up. With people on its

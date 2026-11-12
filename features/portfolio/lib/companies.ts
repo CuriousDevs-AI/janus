@@ -15,6 +15,9 @@ export const PreviewRole = React.createContext<string | null>(null);
 export const previewRoles = ["group_finance", "group_analyst"] as const;
 
 /** What a role without money would receive from the server: every money figure left out. */
+/** How old unpaid export money is, as the server words it: "unpaid 10 months". */
+export const femaAge = (invoices: number, months: number) => invoices === 1 ? (months >= 9 ? `unpaid ${months} months` : "unpaid over 9 months") : `unpaid over 9 months${months >= 9 ? `, the oldest ${months} months` : ""}`;
+
 export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
   return {
     ...item,
@@ -37,7 +40,7 @@ export function withoutMoney(item: PortfolioCompany): PortfolioCompany {
       const late = item.businessModel === "import_export" ? item.money?.unpaidOver9MonthsInvoices ?? 0 : 0;
       // Cash in the bank is money too; FEMA stays, by count only, as the server sends it.
       const kept = item.attention.filter((entry) => !/view=(receivables|payables|overview)&workspace=finance|\/portfolio\?view=finance/.test(entry.to));
-      const attention = late ? [{ severity: "high" as const, text: `${late} export invoice${late === 1 ? "" : "s"} unpaid over 9 months, past FEMA's 9-month limit`, to: `/portfolio?view=compliance&company=${item.id}` }, ...kept] : kept;
+      const attention = late ? [{ severity: "high" as const, text: `${late} export invoice${late === 1 ? "" : "s"} ${femaAge(late, item.money?.unpaidOldestMonths ?? 0)}, past FEMA's 9-month limit`, to: `/portfolio?view=compliance&company=${item.id}` }, ...kept] : kept;
       const high = attention.filter((entry) => entry.severity === "high").map((entry) => entry.text);
       const medium = attention.filter((entry) => entry.severity === "medium").map((entry) => entry.text);
       return { attention, health: item.health && (high.length ? { status: "red" as const, reasons: high } : medium.length ? { status: "amber" as const, reasons: medium } : { status: "green" as const, reasons: [] }) };
