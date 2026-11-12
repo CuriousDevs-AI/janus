@@ -226,9 +226,11 @@ export type PortfolioRetention = { beforeStart: string; beforeEnd: string; recen
 /** GET /billing: the account's plan, what it uses, the plans offered and its invoices. Money is rupees as decimal strings. */
 export type BillingPlanId = "free" | "startup" | "growth" | "enterprise";
 export interface BillingPlan { id: BillingPlanId; name: string; tagline: string; price: string | null; companies: number | null; logins: number | null; features: string[] }
-export interface BillingInvoice { number: string; plan: string; issuedOn: string; periodStart: string; periodEnd: string; amount: string; gst: string; total: string; status: "paid" | "due"; paidOn: string | null; sample: boolean }
+export interface BillingInvoice { number: string; plan: string; issuedOn: string; periodStart: string; periodEnd: string; amount: string; gst: string; total: string; status: "paid" | "due"; paidOn: string | null; sample: boolean; cgst?: string | null; sgst?: string | null; igst?: string | null }
 /** payments: "razorpay" buys a paid plan through Razorpay; "test" changes it at once with nothing charged (never in production); "off" cannot buy one yet. */
-export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number; byCompany: { id: string; name: string; people: number; invited: number }[] }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean; payments: "razorpay" | "test" | "off"; chosen: boolean; refunds: BillingRefund[]; archived: { id: string; name: string }[] }
+export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number; byCompany: { id: string; name: string; people: number; invited: number }[] }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean; payments: "razorpay" | "test" | "off"; chosen: boolean; refunds: BillingRefund[]; archived: { id: string; name: string }[]; billTo?: BillingDetails | null; seller?: { legalName: string; gstin: string | null; stateCode: string | null; address: string | null; sac: string } | null }
+/** Who Janus bills, as its GST tax invoices name them. */
+export interface BillingDetails { legalName: string; gstin: string | null; stateCode: string; address: string | null }
 export interface BillingRefund { invoice: string; plan: string; daysUnused: number; daysTotal: number; amount: string; status: "refunded" | "test" | "failed"; createdOn: string }
 /** GET /billing/preview: what moving to a plan does, before it is done. */
 export interface BillingPreview {

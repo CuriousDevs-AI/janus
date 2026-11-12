@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     razorpay_key_secret: SecretStr = SecretStr("")
     razorpay_webhook_secret: SecretStr = SecretStr("")
     portfolio_ai_daily_questions: int = 100
+    # Janus as the seller on its own tax invoices. Set before taking payments in production.
+    janus_legal_name: str = "Janus"
+    janus_gstin: str = ""
+    janus_state_code: str = ""
+    janus_address: str = ""
     meta_graph_version: str = Field(default="", pattern=r"^(?:v[0-9]{1,3}\.0)?$")
     form_limit_per_minute: int = Field(default=10, ge=1, le=120)
     frontend_url: str = "http://localhost:3000"

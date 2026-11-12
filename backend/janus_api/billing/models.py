@@ -69,3 +69,15 @@ class AccountRefund(Base):
     status: Mapped[str] = mapped_column(String(10))
     razorpay_refund_id: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AccountBillingDetails(Base):
+    """Who Janus bills: the legal name, GSTIN and state on the account's tax invoices."""
+
+    __tablename__ = "account_billing_details"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), unique=True)
+    legal_name: Mapped[str] = mapped_column(String(160))
+    gstin: Mapped[str | None] = mapped_column(String(15))
+    state_code: Mapped[str] = mapped_column(String(2))
+    address: Mapped[str | None] = mapped_column(String(400))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

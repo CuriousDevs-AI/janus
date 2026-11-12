@@ -20,6 +20,15 @@ async def change_plan(
     )
 
 
+@router.put("/details", response_model=schemas.BillingOut)
+async def set_details(
+    data: schemas.BillingDetails, actor: CurrentActor, db: Db, request: Request
+) -> schemas.BillingOut:
+    return await service.set_details(
+        db, actor.user.id, actor.session.tenant_id, data, request_ip(request)
+    )
+
+
 @router.get("/preview", response_model=schemas.ChangePreview)
 async def preview(
     actor: CurrentActor, db: Db, plan: schemas.PlanId, keep: str = ""

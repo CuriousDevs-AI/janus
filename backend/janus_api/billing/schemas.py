@@ -16,6 +16,27 @@ class PlanOut(BaseModel):
     features: list[str]
 
 
+GSTIN = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$"
+
+
+class BillingDetails(BaseModel):
+    """Who Janus bills, as a GST tax invoice names them."""
+
+    legalName: str = Field(min_length=2, max_length=160)
+    gstin: str | None = Field(default=None, pattern=GSTIN)
+    # The GST state code (two digits): the place of supply. Taken from the GSTIN when there is one.
+    stateCode: str = Field(pattern=r"^[0-9]{2}$")
+    address: str | None = Field(default=None, max_length=400)
+
+
+class Seller(BaseModel):
+    legalName: str
+    gstin: str | None
+    stateCode: str | None
+    address: str | None
+    sac: str
+
+
 class InvoiceOut(BaseModel):
     number: str
     plan: str
@@ -28,6 +49,11 @@ class InvoiceOut(BaseModel):
     status: Literal["paid", "due"]
     paidOn: str | None
     sample: bool
+    # The GST split by place of supply: CGST and SGST within Janus's state, IGST otherwise. None
+    # until both states are known.
+    cgst: str | None = None
+    sgst: str | None = None
+    igst: str | None = None
 
 
 class CompanyUsage(BaseModel):
@@ -159,3 +185,6 @@ class BillingOut(BaseModel):
     refunds: list[RefundOut]
     # Companies archived because the plan holds fewer; they come back when it has room.
     archived: list[Company]
+    # The buyer and seller on Janus's tax invoices; the buyer is asked once.
+    billTo: BillingDetails | None = None
+    seller: Seller | None = None

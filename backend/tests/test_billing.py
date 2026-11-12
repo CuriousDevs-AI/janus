@@ -338,3 +338,58 @@ async def test_moving_down_archives_what_does_not_fit_and_refunds_the_unused_day
         == 3
     )
     assert (await client.get("/v1/me", headers=members[2])).status_code == 200
+
+
+async def test_invoices_carry_both_gstins_the_sac_and_the_place_of_supply(
+    client: httpx.AsyncClient, mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "janus_gstin", "29AAACJ1234K1Z5")
+    monkeypatch.setattr(settings, "janus_state_code", "29")
+    owner = await signup(client, mailbox)
+    await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "growth"})
+    await client.post("/v1/billing/sample-invoices", headers=owner.headers, json={"months": 1})
+    before = (await client.get("/v1/billing", headers=owner.headers)).json()
+    assert before["billTo"] is None and before["seller"]["gstin"] == "29AAACJ1234K1Z5"
+    assert before["seller"]["sac"] and before["invoices"][0]["igst"] is None
+
+    bad = await client.put(
+        "/v1/billing/details",
+        headers=owner.headers,
+        json={"legalName": "Malhotra Textiles Pvt Ltd", "gstin": "27BAD", "stateCode": "27"},
+    )
+    assert bad.status_code == 422
+    # The GSTIN decides the state: Maharashtra, another state than Janus's, so IGST.
+    saved = await client.put(
+        "/v1/billing/details",
+        headers=owner.headers,
+        json={
+            "legalName": "Malhotra Textiles Pvt Ltd",
+            "gstin": "27AAPFU0939F1ZV",
+            "stateCode": "29",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["billTo"]["stateCode"] == "27" and body["billTo"]["gstin"] == "27AAPFU0939F1ZV"
+    invoice = body["invoices"][0]
+    assert invoice["igst"] == invoice["gst"] and invoice["cgst"] is None
+
+    # Within Janus's state, the GST is split into CGST and SGST.
+    local = await client.put(
+        "/v1/billing/details",
+        headers=owner.headers,
+        json={"legalName": "Malhotra Textiles Pvt Ltd", "stateCode": "29"},
+    )
+    invoice = local.json()["invoices"][0]
+    assert invoice["igst"] is None
+    assert float(invoice["cgst"]) + float(invoice["sgst"]) == float(invoice["gst"])
+
+    # Only an Owner keeps the account's billing details.
+    member = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    refused = await client.put(
+        "/v1/billing/details",
+        headers=member,
+        json={"legalName": "Someone Else", "stateCode": "29"},
+    )
+    assert refused.status_code == 403

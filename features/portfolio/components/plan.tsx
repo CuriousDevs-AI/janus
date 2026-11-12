@@ -12,7 +12,11 @@ import { api, message } from "@/lib/api/client";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { day } from "@/features/portfolio/lib/format";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
-import type { Billing, BillingCheckout, BillingInvoice, BillingPlan, BillingPreview } from "@/features/portfolio/types";
+import type { Billing, BillingCheckout, BillingDetails, BillingInvoice, BillingPlan, BillingPreview } from "@/features/portfolio/types";
+
+/** GST state codes, for the place of supply. */
+const states: Record<string, string> = { "01": "Jammu and Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh", "05": "Uttarakhand", "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh", "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur", "15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam", "19": "West Bengal", "20": "Jharkhand", "21": "Odisha", "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat", "26": "Dadra and Nagar Haveli and Daman and Diu", "27": "Maharashtra", "29": "Karnataka", "30": "Goa", "31": "Lakshadweep", "32": "Kerala", "33": "Tamil Nadu", "34": "Puducherry", "35": "Andaman and Nicobar Islands", "36": "Telangana", "37": "Andhra Pradesh", "38": "Ladakh" };
+const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 
 type RazorpayResponse = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 type RazorpayCheckout = { open: () => void; on: (event: "payment.failed", handler: (failure: { error?: { description?: string } }) => void) => void };
@@ -87,6 +91,8 @@ export function Plan() {
       </li>)}</ul>
     </SectionCard>}
 
+    <BillToCard details={data.billTo ?? null} onSaved={billing.reload} />
+
     <SectionCard title="Invoices" description={`Monthly, from Janus to your account, with ${data.gstRate}% GST.`}>
       {data.invoices.length === 0 ? <p className="text-sm text-muted-foreground">No invoices yet.</p>
         : <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm">
@@ -103,7 +109,7 @@ export function Plan() {
     </SectionCard>
 
     {moving && <ChangePlan from={current} to={moving} pay={data.payments === "razorpay" && moving.price !== null && Number(moving.price) > 0} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); window.dispatchEvent(new Event(sessionChanged)); }} />}
-    {viewing && <InvoiceView invoice={viewing} gstRate={data.gstRate} onClose={() => setViewing(null)} />}
+    {viewing && <InvoiceView invoice={viewing} gstRate={data.gstRate} billTo={data.billTo ?? null} seller={data.seller ?? null} onClose={() => setViewing(null)} />}
   </>;
 }
 
@@ -212,15 +218,48 @@ export function ChangePlan({ from, to, pay, first = false, onClose, onDone }: { 
   </DialogContent></Dialog>;
 }
 
-function InvoiceView({ invoice, gstRate, onClose }: { invoice: BillingInvoice; gstRate: number; onClose: () => void }) {
+/** Who the invoices are billed to, asked once: the legal name, GSTIN and state a GST tax invoice
+ * needs so the business can claim the input credit. */
+function BillToCard({ details, onSaved }: { details: BillingDetails | null; onSaved: () => void }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState<BillingDetails>(details ?? { legalName: "", gstin: "", stateCode: "", address: "" });
+  const [saving, setSaving] = React.useState(false);
+  const gstin = (draft.gstin ?? "").trim().toUpperCase();
+  const bad = gstin !== "" && !GSTIN.test(gstin);
+  const state = gstin && !bad ? gstin.slice(0, 2) : draft.stateCode;
+  async function save() {
+    setSaving(true);
+    try { await api("/billing/details", { method: "PUT", body: JSON.stringify({ legalName: draft.legalName.trim(), gstin: gstin || null, stateCode: state, address: draft.address?.trim() || null }) }); toast.success("Billing details saved. Invoices now carry them."); setEditing(false); onSaved(); }
+    catch (error) { toast.error(message(error)); }
+    setSaving(false);
+  }
+  const field = "h-9 rounded-md border border-input bg-surface px-3 text-sm text-foreground";
+  if (details && !editing) return <SectionCard title="Billed to" description="On every Janus invoice, so your CA can claim the GST input credit." action={<Button size="sm" variant="ghost" onClick={() => { setDraft(details); setEditing(true); }}>Edit</Button>}>
+    <p className="text-sm"><span className="font-medium">{details.legalName}</span>{details.gstin ? ` · GSTIN ${details.gstin}` : " · No GSTIN"} · {states[details.stateCode] ?? details.stateCode}</p>
+    {details.address && <p className="text-xs text-muted-foreground">{details.address}</p>}
+  </SectionCard>;
+  return <SectionCard title="Who should the invoices be billed to?" description="Asked once. A GST tax invoice needs the legal name and GSTIN of the business paying, and its state as the place of supply, so your CA can claim the input credit.">
+    <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <label className="grid gap-1 text-xs text-muted-foreground">Legal name<input className={field} required minLength={2} maxLength={160} value={draft.legalName} placeholder="Malhotra Textiles Private Limited" onChange={(event) => setDraft({ ...draft, legalName: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">GSTIN (leave empty if not registered)<input className={field} maxLength={15} value={draft.gstin ?? ""} placeholder="27AAPFU0939F1ZV" aria-invalid={bad} onChange={(event) => setDraft({ ...draft, gstin: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">State (place of supply)<select className={field} required value={state} disabled={Boolean(gstin) && !bad} onChange={(event) => setDraft({ ...draft, stateCode: event.target.value })}><option value="">Choose…</option>{Object.entries(states).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">Address (optional)<input className={field} maxLength={400} value={draft.address ?? ""} onChange={(event) => setDraft({ ...draft, address: event.target.value })} /></label>
+      {bad && <p role="alert" className="text-xs text-danger sm:col-span-2">That GSTIN does not have the right format.</p>}
+      <span className="flex gap-2 sm:col-span-2"><Button type="submit" size="sm" disabled={saving || bad || draft.legalName.trim().length < 2 || !state}>{saving ? "Saving…" : "Save billing details"}</Button>{details && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}</span>
+    </form>
+  </SectionCard>;
+}
+
+function InvoiceView({ invoice, gstRate, billTo, seller, onClose }: { invoice: BillingInvoice; gstRate: number; billTo: BillingDetails | null; seller: Billing["seller"]; onClose: () => void }) {
   const session = useSession();
   const row = (label: string, value: string, strong = false) => <div className={`flex justify-between gap-4 py-1.5 ${strong ? "border-t border-border pt-2 font-semibold" : ""}`}><span className={strong ? "" : "text-muted-foreground"}>{label}</span><span className="tabular-nums">{value}</span></div>;
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Invoice {invoice.number}</DialogTitle><DialogDescription>{invoice.sample ? "A sample made for testing: no payment was taken." : `Issued ${day(invoice.issuedOn)}.`}</DialogDescription></DialogHeader>
     <div className="grid gap-4 text-sm">
-      <div className="grid grid-cols-2 gap-3"><div><p className="text-xs text-muted-foreground">Billed to</p><p className="font-medium">{session.user.name}</p><p className="text-xs text-muted-foreground">{session.user.email}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Issued</p><p className="font-medium">{day(invoice.issuedOn)}</p><p className="text-xs text-muted-foreground">{invoice.status === "paid" ? `Paid ${invoice.paidOn ? day(invoice.paidOn) : ""}` : "Due"}</p></div></div>
+      <div className="grid grid-cols-2 gap-3"><div><p className="text-xs text-muted-foreground">From</p><p className="font-medium">{seller?.legalName ?? "Janus"}</p><p className="text-xs text-muted-foreground">{seller?.gstin ? `GSTIN ${seller.gstin}` : "Janus GSTIN not set yet"}{seller?.address ? ` · ${seller.address}` : ""}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Tax invoice</p><p className="font-medium">SAC {seller?.sac ?? "997331"}</p><p className="text-xs text-muted-foreground">Place of supply: {billTo ? `${states[billTo.stateCode] ?? billTo.stateCode} (${billTo.stateCode})` : "not given"}</p></div></div>
+      <div className="grid grid-cols-2 gap-3"><div><p className="text-xs text-muted-foreground">Billed to</p>{billTo ? <><p className="font-medium">{billTo.legalName}</p><p className="text-xs text-muted-foreground">{billTo.gstin ? `GSTIN ${billTo.gstin}` : "Not GST registered"}{billTo.address ? ` · ${billTo.address}` : ""}</p></> : <><p className="font-medium">{session.user.name}</p><p className="text-xs text-warning">Add your legal name and GSTIN under Billed to so this is a full tax invoice.</p></>}</div><div className="text-right"><p className="text-xs text-muted-foreground">Issued</p><p className="font-medium">{day(invoice.issuedOn)}</p><p className="text-xs text-muted-foreground">{invoice.status === "paid" ? `Paid ${invoice.paidOn ? day(invoice.paidOn) : ""}` : "Due"}</p></div></div>
       <div className="rounded-lg border border-border px-3 py-2">
         {row(`Janus ${invoice.plan} plan, ${day(invoice.periodStart)} to ${day(invoice.periodEnd)}`, rupees(invoice.amount))}
-        {row(`GST at ${gstRate}%`, rupees(invoice.gst))}
+        {invoice.igst ? row(`IGST at ${gstRate}%`, rupees(invoice.igst)) : invoice.cgst && invoice.sgst ? <>{row(`CGST at ${gstRate / 2}%`, rupees(invoice.cgst))}{row(`SGST at ${gstRate / 2}%`, rupees(invoice.sgst))}</> : row(`GST at ${gstRate}%`, rupees(invoice.gst))}
         {row("Total", rupees(invoice.total), true)}
       </div>
     </div>

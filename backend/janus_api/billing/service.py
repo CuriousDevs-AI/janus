@@ -21,8 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.billing import change, schemas
-from janus_api.billing.models import AccountInvoice, AccountPayment, AccountPlan, AccountRefund
-from janus_api.billing.plans import BY_ID, GST_RATE, PLANS, Plan
+from janus_api.billing.models import (
+    AccountBillingDetails,
+    AccountInvoice,
+    AccountPayment,
+    AccountPlan,
+    AccountRefund,
+)
+from janus_api.billing.plans import BY_ID, GST_RATE, PLANS, SAC, STATES, Plan
 from janus_api.core.config import get_settings
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
@@ -177,9 +183,64 @@ async def _row(db: AsyncSession, user_id: int) -> AccountPlan | None:
     return row
 
 
+def _seller() -> schemas.Seller:
+    settings = get_settings()
+    return schemas.Seller(
+        legalName=settings.janus_legal_name,
+        gstin=settings.janus_gstin or None,
+        stateCode=settings.janus_state_code or None,
+        address=settings.janus_address or None,
+        sac=SAC,
+    )
+
+
+def _split(gst_paise: int, seller: str | None, buyer: str | None) -> dict[str, str | None]:
+    """CGST and SGST half each within the seller's state, IGST across states; unknown, no split."""
+    if not seller or not buyer:
+        return {}
+    if seller == buyer:
+        half = gst_paise // 2
+        return {"cgst": _rupees(half), "sgst": _rupees(gst_paise - half)}
+    return {"igst": _rupees(gst_paise)}
+
+
+async def _details(db: AsyncSession, user_id: int) -> AccountBillingDetails | None:
+    row: AccountBillingDetails | None = await db.scalar(
+        select(AccountBillingDetails).where(AccountBillingDetails.user_id == user_id)
+    )
+    return row
+
+
+async def set_details(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    data: schemas.BillingDetails,
+    ip: str | None,
+) -> schemas.BillingOut:
+    """Who Janus bills: asked once, changed by the Owner when it changes."""
+    if not await _owns(db, user_id):
+        raise ApiError("forbidden", "Only an Owner keeps the account's billing details.", 403)
+    gstin = data.gstin.upper() if data.gstin else None
+    state = gstin[:2] if gstin else data.stateCode
+    if state not in STATES:
+        raise ApiError("invalid_state", "That is not an Indian GST state code.", 422)
+    row = await _details(db, user_id)
+    if row is None:
+        row = AccountBillingDetails(user_id=user_id, legal_name="", state_code=state)
+        db.add(row)
+    row.legal_name, row.gstin, row.state_code = data.legalName.strip(), gstin, state
+    row.address, row.updated_at = (data.address or "").strip() or None, now()
+    record(db, "billing.details_set", user_id=user_id, ip=ip)
+    await db.flush()
+    return await view(db, user_id, current_tenant)
+
+
 async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> schemas.BillingOut:
     owned = await org.owned_tenants(db, user_id)
     row = await _row(db, user_id)
+    details = await _details(db, user_id)
+    seller = _seller()
     invoices = (
         await db.scalars(
             select(AccountInvoice)
@@ -208,6 +269,7 @@ async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> sc
                 status=item.status,
                 paidOn=item.paid_on.isoformat() if item.paid_on else None,
                 sample=item.sample,
+                **_split(item.gst_paise, seller.stateCode, details.state_code if details else None),
             )
             for item in invoices
         ],
@@ -239,6 +301,15 @@ async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> sc
             )
             if status == "archived"
         ],
+        billTo=schemas.BillingDetails(
+            legalName=details.legal_name,
+            gstin=details.gstin,
+            stateCode=details.state_code,
+            address=details.address,
+        )
+        if details
+        else None,
+        seller=seller,
     )
 
 
