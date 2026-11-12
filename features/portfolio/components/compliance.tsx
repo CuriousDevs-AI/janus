@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Download, Lightbulb, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +20,12 @@ const dueTone = { overdue: "danger", due_soon: "warning", upcoming: "neutral", f
 const dueName = { overdue: "Past due · not confirmed", due_soon: "Due this week", upcoming: "Upcoming", filed: "Filed" } as const;
 
 /** The statutory calendar for each company: what applies, what is due, what is missing, and recording a filing. */
-export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; onChanged: () => void }) {
+export function ComplianceView({ list: all, onChanged }: { list: PortfolioCompany[]; onChanged: () => void }) {
   const { handlesMoney } = useRoles();
+  // Opened for one company (from a notification or the Overview): its filings only.
+  const only = useSearchParams().get("company");
+  const focused = all.find((item) => item.id === only);
+  const list = focused ? [focused] : all;
   const [filter, setFilter] = React.useState<"open" | "all">("open");
   const open = list.flatMap((item) => item.compliance.filter((due) => due.status !== "filed"));
   const pastDue = list.reduce((sum, item) => sum + item.unfiledCount, 0);
@@ -51,6 +56,7 @@ export function ComplianceView({ list, onChanged }: { list: PortfolioCompany[]; 
     <div className="flex justify-end"><Button size="sm" variant="outline" onClick={download}><Download className="mr-1 size-4" />Filing register (CSV)</Button></div>
     <p className="text-xs text-muted-foreground">Standard due dates for GST, TDS, PF and ESI, professional tax, advance tax and company or LLP filings, from 90 days back to 30 ahead. Janus is not linked to the government portals: a filing counts as filed only when someone records it here. Extensions and your AGM date can move dates, so confirm with your CA.</p>
     <div role="group" aria-label="Show" className="flex gap-2"><Button size="sm" variant={filter === "open" ? "default" : "outline"} aria-pressed={filter === "open"} onClick={() => setFilter("open")}>Still to file</Button><Button size="sm" variant={filter === "all" ? "default" : "outline"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>Everything, filed too</Button></div>
+    {focused && <p className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">Showing {focused.name} only.<a className="text-accent hover:underline" href="/portfolio?view=compliance">Show all companies</a></p>}
     {list.map((item) => {
       const dues = item.compliance.filter((due) => filter === "all" || due.status !== "filed");
       return <SectionCard key={item.id} title={item.name} description={item.registration?.entityType ? `${entityNames[item.registration.entityType]}${item.compliancePlan?.gstin ? ` · GSTIN ${item.compliancePlan.gstin}` : ""}` : item.compliancePlan?.gstin ? `GSTIN ${item.compliancePlan.gstin}` : "No registration details yet"}>

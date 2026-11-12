@@ -5,18 +5,18 @@ import { BellOff, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
-import { openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { day, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor, workKinds, type WorkKind } from "@/features/portfolio/lib/work";
 import { usePreferences } from "@/features/portfolio/lib/preferences";
 import type { PortfolioCompany } from "@/features/portfolio/types";
+import { fromWork, NotificationDetail, type NoticeItem } from "@/features/portfolio/components/notification-detail";
 
 const DAY = 864e5;
 
 /** Everything that needs someone to act, across the companies, with filters. Snoozing hides an item
  * for a day, on every device; the record in the company is unchanged. */
 export function WorkInbox({ list }: { list: PortfolioCompany[] }) {
-  const { owns } = useRoles();
+  const [opened, setOpened] = React.useState<NoticeItem | null>(null);
   const [company, setCompany] = React.useState("all");
   const [kind, setKind] = React.useState<WorkKind | "all">("all");
   const [urgentOnly, setUrgentOnly] = React.useState(false);
@@ -45,7 +45,6 @@ export function WorkInbox({ list }: { list: PortfolioCompany[] }) {
       </div>
       {shown.length === 0 ? <p className="text-sm text-muted-foreground">{live.length === 0 ? "Nothing needs doing in any company. Well done." : "Nothing matches these filters."}</p>
         : <ul className="flex flex-col divide-y divide-border">{shown.map((item) => {
-          const portfolioPage = item.to.startsWith("/portfolio");
           return <li key={item.key} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
             <Badge variant={severityTone[item.priority]}>{severityName[item.priority]}</Badge>
             <div className="min-w-0 flex-1">
@@ -54,11 +53,12 @@ export function WorkInbox({ list }: { list: PortfolioCompany[] }) {
             </div>
             <div className="flex gap-1">
               <Button size="sm" variant="ghost" aria-label={`Snooze ${item.title} for a day`} title="Hide for a day, in this browser" onClick={() => save({ ...snoozed, [item.key]: Date.now() + DAY })}><BellOff className="size-3.5" /></Button>
-              {(portfolioPage || owns(item.company)) && <Button size="sm" variant="secondary" onClick={() => portfolioPage ? window.location.assign(item.to) : openIn(item.company, item.to)}>Open</Button>}
+              <Button size="sm" variant="secondary" onClick={() => setOpened(fromWork(item))}>Open</Button>
             </div>
           </li>;
         })}</ul>}
     </SectionCard>
+    {opened && <NotificationDetail item={opened} read={false} onClose={() => setOpened(null)} />}
   </>;
 }
 

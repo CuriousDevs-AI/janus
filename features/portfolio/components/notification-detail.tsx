@@ -9,7 +9,13 @@ import { openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { day, inr, severityName, severityTone } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany } from "@/features/portfolio/types";
 
-export type NoticeItem = { key: string; severity: "high" | "medium" | "low"; text: string; to: string; company: PortfolioCompany };
+export type NoticeItem = { key: string; severity: "high" | "medium" | "low"; text: string; to: string; company: PortfolioCompany; detail?: string; due?: string | null };
+
+/** A compliance item opens that company's filings, not every company's. */
+const forCompany = (to: string, company: PortfolioCompany) => to.startsWith("/portfolio?view=compliance") && !to.includes("company=") ? `${to}&company=${company.id}` : to;
+
+/** A Work inbox or Needs you first item, as the detail popup shows it. */
+export const fromWork = (item: { key: string; priority: "high" | "medium" | "low"; title: string; detail: string; due: string | null; to: string; company: PortfolioCompany }): NoticeItem => ({ key: item.key, severity: item.priority, text: item.title, detail: item.detail, due: item.due, to: item.to, company: item.company });
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 
@@ -81,10 +87,11 @@ export function NotificationDetail({ item, read, onMarkRead, onClose }: { item: 
       ? ["Some of the company's registration details are not recorded.", "Open Compliance and fill in what is missing, such as PAN, TAN or the EPF and ESI codes."]
       : guidance[category] ?? guidance.Other;
   const rows = facts(category, item.company);
-  const inPortfolio = item.to.startsWith("/portfolio");
+  const to = forCompany(item.to, item.company);
+  const inPortfolio = to.startsWith("/portfolio");
   const canGo = inPortfolio || owns(item.company);
   const [going, setGoing] = React.useState(false);
-  const go = () => { setGoing(true); onMarkRead?.(); if (inPortfolio) window.location.assign(item.to); else openIn(item.company, item.to); };
+  const go = () => { setGoing(true); onMarkRead?.(); if (inPortfolio) window.location.assign(to); else openIn(item.company, to); };
   return <Dialog open onOpenChange={(open) => !open && !going && onClose()}>
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
@@ -92,12 +99,13 @@ export function NotificationDetail({ item, read, onMarkRead, onClose }: { item: 
         <DialogTitle className="pt-1 text-base leading-snug">{item.text}</DialogTitle>
         <DialogDescription>{meaning}</DialogDescription>
       </DialogHeader>
+      {(item.detail || item.due) && <p className="text-sm">{item.detail}{item.due ? <span className="text-muted-foreground">{item.detail ? " " : ""}Due {day(item.due)}.</span> : null}</p>}
       {rows.length > 0 && <dl className="overflow-hidden rounded-lg border border-border">{rows.map(([label, value], index) => <div key={label} className={`flex justify-between gap-4 px-3 py-2 text-sm ${index ? "border-t border-border" : ""}`}><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium tabular-nums">{value}</dd></div>)}</dl>}
       <div className="rounded-lg bg-surface-2 px-3 py-2.5 text-sm"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What to do</p><p className="mt-1">{next}</p></div>
-      <p className="text-xs text-muted-foreground">{canGo ? <>Opens <span className="font-medium text-foreground">{destination(item.to)}</span>{inPortfolio ? "." : item.company.current ? ` in ${item.company.name}.` : `. Janus moves you into ${item.company.name} first.`}</> : `Only ${item.company.name}'s Owner opens it there. Your role sees it here.`}</p>
+      <p className="text-xs text-muted-foreground">{canGo ? <>Opens <span className="font-medium text-foreground">{destination(to)}{to.includes("company=") && inPortfolio ? `, ${item.company.name} only` : ""}</span>{inPortfolio ? "." : item.company.current ? ` in ${item.company.name}.` : `. Janus moves you into ${item.company.name} first.`}</> : `Only ${item.company.name}'s Owner opens it there. Your role sees it here.`}</p>
       <DialogFooter className="gap-2 sm:justify-between">
         {onMarkRead && !read ? <Button variant="ghost" disabled={going} onClick={() => { onMarkRead(); onClose(); }}>Mark read</Button> : <span />}
-        <div className="flex gap-2"><Button variant="outline" disabled={going} onClick={onClose}>Close</Button>{canGo && <Button disabled={going} onClick={go}>{going ? "Opening…" : <>Go to {destination(item.to).split(" › ").pop()}<ArrowRight className="size-3.5" /></>}</Button>}</div>
+        <div className="flex gap-2"><Button variant="outline" disabled={going} onClick={onClose}>Close</Button>{canGo && <Button disabled={going} onClick={go}>{going ? "Opening…" : <>Go to {destination(to).split(" › ").pop()}<ArrowRight className="size-3.5" /></>}</Button>}</div>
       </DialogFooter>
     </DialogContent>
   </Dialog>;

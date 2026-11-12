@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,12 +14,14 @@ import { groupBooks, groupProfitAfterSalaries, openIn, payrollFor, total, useRol
 import { change, day, healthName, healthTone, inr, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor } from "@/features/portfolio/lib/work";
 import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
+import { fromWork, NotificationDetail, type NoticeItem } from "@/features/portfolio/components/notification-detail";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const pct = (now: number, before: number) => before ? `${now >= before ? "+" : ""}${Math.round(((now - before) / before) * 100)}%` : now ? "new" : "—";
 
 /** The first screen: what needs you, what is coming, and how each company stands. Kept short. */
 export function Overview({ list, period }: { list: PortfolioCompany[]; owner: boolean; period: PortfolioPeriod }) {
+  const [shown, setShown] = React.useState<NoticeItem | null>(null);
   const { owns } = useRoles();
   const money = list.some((item) => item.books);
   const work = workFor(list);
@@ -50,7 +53,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
         {work.length === 0 ? <p className="text-sm text-muted-foreground">Nothing needs doing in any company.</p> : <ul className="flex flex-col divide-y divide-border">{work.slice(0, 6).map((item) => <li key={item.key} className="flex flex-wrap items-center gap-3 py-2.5 first:pt-0 last:pb-0">
           <Badge variant={severityTone[item.priority]}>{severityName[item.priority]}</Badge>
           <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{item.company.name}</span> · {item.title}</span>
-          {(item.to.startsWith("/portfolio") || owns(item.company)) && <Button size="sm" variant="secondary" onClick={() => item.to.startsWith("/portfolio") ? window.location.assign(item.to) : openIn(item.company, item.to)}>Open</Button>}
+          <Button size="sm" variant="secondary" onClick={() => setShown(fromWork(item))}>Open</Button>
         </li>)}</ul>}
       </SectionCard>
       <SectionCard title="Coming up" description="Filings due in the next 30 days." action={<a className="text-sm text-accent hover:underline" href="/portfolio?view=compliance">Compliance</a>}>
@@ -79,5 +82,6 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
     </SectionCard>
     <TargetsCard list={list} period={period} />
     <WeeklyEmail />
+    {shown && <NotificationDetail item={shown} read={false} onClose={() => setShown(null)} />}
   </>;
 }
