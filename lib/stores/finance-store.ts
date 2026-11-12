@@ -30,6 +30,10 @@ export interface Payment { id: string; amount: number; method: "UPI" | "Bank tra
 export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
   sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
+  /** The server's total, in rupees, which the amount due is worked from, so no paise are left over. */
+  serverTotal?: number;
+  /** An opening balance from before Janus: owed and aged like any invoice, but never a sale or GST. */
+  opening?: boolean;
 }
 /** A write-off is bad debt: it clears what the customer owes, but it is a cost in profit and loss, not a cut to sales. */
 export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string; kind?: "credit" | "write-off" }
@@ -72,6 +76,8 @@ export const lineTotals = (line: InvoiceLine) => {
 };
 
 export function invoiceTotals(invoice: Invoice) {
+  // An opening balance has no lines: what is owed is the server's total, and none of it is a sale.
+  if (invoice.opening) return { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: invoice.serverTotal ?? 0 };
   let taxable = 0, cgst = 0, sgst = 0, igst = 0;
   for (const line of invoice.lines) {
     const { taxable: t, tax } = lineTotals(line);
@@ -80,7 +86,7 @@ export function invoiceTotals(invoice: Invoice) {
   }
   const round = (value: number) => Math.round(value * 100) / 100;
   taxable = round(taxable); cgst = round(cgst); sgst = round(sgst); igst = round(igst);
-  return { taxable, cgst, sgst, igst, total: round(taxable + cgst + sgst + igst) };
+  return { taxable, cgst, sgst, igst, total: invoice.serverTotal ?? round(taxable + cgst + sgst + igst) };
 }
 
 interface FinanceState {

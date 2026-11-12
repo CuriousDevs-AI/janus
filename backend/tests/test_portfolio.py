@@ -2796,3 +2796,55 @@ async def test_the_biggest_customer_is_the_biggest_in_the_period(
         "Gone Ltd",
     ]
     assert company["customers"][0]["current"] == "600000.00"
+
+
+async def test_past_due_matches_the_company_s_own_invoices_opening_balances_included(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    """One figure, one source: the Portfolio's past due is what the company's own invoice list
+    says is owed and late, an opening balance from before Janus included."""
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    company = str(owner.tenant_id)
+    opened = await client.post(
+        f"/v1/portfolio/companies/{company}/opening-balances",
+        headers=owner.headers,
+        json={
+            "asOf": (today - timedelta(days=400)).isoformat(),
+            "customers": [
+                {
+                    "name": "Royal Retail",
+                    "amount": "64000",
+                    "dueOn": (today - timedelta(days=380)).isoformat(),
+                }
+            ],
+            "suppliers": [],
+        },
+    )
+    assert opened.status_code == 201, opened.text
+    late = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "pd-1"},
+        json={
+            "customer": "Accounts",
+            "customer_company": "Kavita Stores",
+            "invoice_date": (today - timedelta(days=50)).isoformat(),
+            "due_date": (today - timedelta(days=20)).isoformat(),
+            "same_state": True,
+            "lines": [
+                {"item": "Cloth", "hsn": "5208", "qty": 3, "rate_paise": 3333333, "gst_rate": 5}
+            ],
+        },
+    )
+    assert late.status_code == 201, late.text
+
+    invoices = (await client.get("/v1/finance/invoices", headers=owner.headers)).json()
+    late_due = sum(item["due_paise"] for item in invoices if item["due_date"] < today.isoformat())
+    assert any(item["opening"] for item in invoices)
+    money = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"][
+        0
+    ]["money"]
+    assert money["overdue"] == f"{late_due / 100:.2f}"
+    assert money["overdueInvoices"] == 2
+    # The year-old opening balance sits in the oldest bucket, the rest in 1-30 days.
+    assert money["ageing"]["over60"] == "64000.00"
