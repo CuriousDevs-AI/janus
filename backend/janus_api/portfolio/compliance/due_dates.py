@@ -155,7 +155,8 @@ def dues(profile: Profile, first: date, last: date) -> list[Due]:
                 ("itr", "Income tax return", date(start, 10, 31)),
             ):
                 found.append(Due(f"{code}_{start - 1}", label, _fy(start - 1), due, "LLP"))
-        if profile.company:
+        # An LLP pays advance tax and files DIR-3 KYC and a tax audit like a company.
+        if profile.company or profile.llp:
             for number, due in (
                 (1, date(start, 6, 15)),
                 (2, date(start, 9, 15)),
@@ -171,7 +172,8 @@ def dues(profile: Profile, first: date, last: date) -> list[Due]:
                         "Income tax",
                     )
                 )
-            # Filings for the year that ended on 31 March of this calendar year.
+            # Filings for the year that ended on 31 March of this calendar year. An LLP files its
+            # own Forms 8 and 11 instead of AOC-4 and MGT-7, whatever the plan says.
             closed = _fy(start - 1)
             for code, label, due in (
                 ("dir3", "DIR-3 KYC of directors", date(start, 9, 30)),
@@ -180,7 +182,17 @@ def dues(profile: Profile, first: date, last: date) -> list[Due]:
                 ("aoc4", "AOC-4 (financial statements)", date(start, 10, 30)),
                 ("mgt7", "MGT-7 (annual return)", date(start, 11, 29)),
             ):
-                found.append(Due(f"{code}_{start - 1}", label, closed, due, "Company"))
+                if profile.llp and code in ("aoc4", "mgt7", "itr"):
+                    continue
+                found.append(
+                    Due(
+                        f"{code}_{start - 1}",
+                        label,
+                        closed,
+                        due,
+                        "LLP" if profile.llp else "Company",
+                    )
+                )
     # One of each: an LLP marked as a company too would otherwise list its tax return twice.
     unique = {due.key: due for due in found if first <= due.due_on <= last}
     return sorted(unique.values(), key=lambda due: due.due_on)

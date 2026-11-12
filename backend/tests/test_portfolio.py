@@ -2982,3 +2982,38 @@ def test_red_reasons_lead_with_the_worst_problem() -> None:
     assert reasons[0].startswith("Losing about ₹80,000")
     assert reasons[1].startswith("Cash in the bank lasts")
     assert reasons[-1] == "₹1.6L of supplier bills already late"
+
+
+def test_an_llp_never_gets_company_filings() -> None:
+    # Even with company filings switched on (from before it was recorded as an LLP).
+    llp = Profile("none", False, False, True, llp=True)
+    found = {due.key: due for due in dues(llp, date(2026, 1, 1), date(2026, 12, 31))}
+    assert "aoc4_2025" not in found and "mgt7_2025" not in found
+    assert found["llp8_2025"].label.startswith("LLP Form 8")
+    assert found["llp11_2025"].label.startswith("LLP Form 11")
+    assert [due.label for due in found.values()].count("Income tax return") == 1
+    assert {due.area for key, due in found.items() if not key.startswith("advtax")} == {"LLP"}
+
+
+async def test_company_filings_are_refused_for_an_llp(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    url = f"/v1/portfolio/companies/{owner.tenant_id}"
+    saved = await client.put(
+        f"{url}/registration",
+        headers=owner.headers,
+        json={"entityType": "llp", "pan": "AAPFU0939F", "cin": "AAB-1234"},
+    )
+    assert saved.status_code == 200, saved.text
+    refused = await client.put(
+        f"{url}/compliance", headers=owner.headers, json={"gstFiling": "none", "company": True}
+    )
+    assert refused.status_code == 422 and "LLP Forms 8 and 11" in refused.text
+    fine = await client.put(
+        f"{url}/compliance", headers=owner.headers, json={"gstFiling": "none", "tds": True}
+    )
+    assert fine.status_code == 200, fine.text
+    body = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    labels = {due["label"] for due in body["companies"][0]["compliance"]}
+    assert not any(label.startswith(("AOC-4", "MGT-7")) for label in labels)

@@ -257,6 +257,15 @@ async def set_compliance_plan(
     """Says which filings apply. The Owner or someone with money (Group finance) sets it."""
     try:
         tenant_id = await enter_company(db, user_id, company_id, "portfolio:finance")
+        registration = await _registration(db, tenant_id)
+        if plan.company and registration is not None and registration.entity_type == "llp":
+            raise ApiError(
+                "llp_not_a_company",
+                "This company is registered as an LLP, so it files LLP Forms 8 and 11, not"
+                " company filings (AOC-4, MGT-7). Leave Limited company filings off; Janus"
+                " tracks the LLP's forms from its registration.",
+                422,
+            )
         row = await _profile(db, tenant_id)
         if row is None:
             row = ComplianceProfile(tenant_id=tenant_id, updated_by=user_id)

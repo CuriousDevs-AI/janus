@@ -153,7 +153,7 @@ function PlanForm({ item, onSaved }: { item: PortfolioCompany; onSaved: () => vo
   async function save() {
     setSaving(true);
     try {
-      await api(`/portfolio/companies/${item.id}/compliance`, { method: "PUT", body: JSON.stringify({ ...plan, gstin: gstin || null }) });
+      await api(`/portfolio/companies/${item.id}/compliance`, { method: "PUT", body: JSON.stringify({ ...plan, company: item.registration?.entityType === "llp" ? false : plan.company, gstin: gstin || null }) });
       toast.success(`Filings updated for ${item.name}.`);
       onSaved();
     } catch (failure) { toast.error(message(failure)); }
@@ -166,7 +166,7 @@ function PlanForm({ item, onSaved }: { item: PortfolioCompany; onSaved: () => vo
       <label className="grid gap-1 text-xs text-muted-foreground">GSTIN<Input value={plan.gstin ?? ""} maxLength={15} placeholder="27AAPFU0939F1ZV" onChange={(event) => setPlan({ ...plan, gstin: event.target.value })} aria-invalid={bad} /></label>
       <label className="grid gap-1 text-xs text-muted-foreground">GST returns<select className="h-8 rounded-md border border-input bg-surface px-2 text-[13px] text-foreground" value={plan.gstFiling} onChange={(event) => setPlan({ ...plan, gstFiling: event.target.value as PortfolioCompliancePlan["gstFiling"] })}><option value="none">Not registered</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly (QRMP)</option></select></label>
     </div>
-    <div className="flex flex-wrap gap-4">{box("tds", "Deducts TDS")}{box("pfEsi", "Pays PF and ESI")}{box("company", "Limited company filings (ROC, tax return, advance tax)")}</div>
+    <div className="flex flex-wrap gap-4">{box("tds", "Deducts TDS")}{box("pfEsi", "Pays PF and ESI")}{item.registration?.entityType === "llp" ? <p className="text-xs text-muted-foreground">An LLP: Janus tracks LLP Forms 8 and 11, its tax return, advance tax and DIR-3 KYC from the registration. Company filings (AOC-4, MGT-7) do not apply.</p> : box("company", "Limited company filings (ROC, tax return, advance tax)")}</div>
     {bad && <p role="alert" className="text-xs text-danger">That GSTIN does not have the right format.</p>}
     <Button type="submit" size="sm" className="self-start" disabled={saving || bad}>{saving ? "Saving…" : "Save what applies"}</Button>
   </form>;
