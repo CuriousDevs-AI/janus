@@ -130,6 +130,20 @@ function CurrentPlan({ data, plan }: { data: Billing; plan: BillingPlan }) {
       {meter("Companies", <Building2 className="size-3.5" />, data.usage.companies, plan.companies)}
       {meter("People using Janus", <Users className="size-3.5" />, data.usage.logins, plan.logins)}
     </div>
+    {data.usage.byCompany.length > 0 && <div className="border-t border-border pt-4">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">People by company</p>
+      <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-left text-sm">
+        <thead className="text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-1.5 pr-3 font-medium">Company</th><th className="px-3 py-1.5 text-right font-medium">Can sign in</th><th className="px-3 py-1.5 text-right font-medium">Invited</th><th className="py-1.5 pl-3 text-right font-medium">Seats counted</th></tr></thead>
+        <tbody>{data.usage.byCompany.map((row) => <tr key={row.id} className="border-t border-border">
+          <td className="py-2 pr-3 font-medium">{row.name}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{row.people}</td>
+          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{row.invited || "—"}</td>
+          <td className="py-2 pl-3 text-right tabular-nums">{row.people + row.invited}</td>
+        </tr>)}</tbody>
+        <tfoot><tr className="border-t border-border font-semibold"><td className="py-2 pr-3">All companies</td><td className="px-3 py-2 text-right tabular-nums">{data.usage.byCompany.reduce((sum, row) => sum + row.people, 0)}</td><td className="px-3 py-2 text-right tabular-nums">{data.usage.byCompany.reduce((sum, row) => sum + row.invited, 0) || "—"}</td><td className="py-2 pl-3 text-right tabular-nums">{data.usage.logins}{plan.logins !== null ? ` of ${plan.logins}` : ""}</td></tr></tfoot>
+      </table></div>
+      <p className="mt-2 text-[11px] text-muted-foreground">An open invitation holds a seat until it is accepted or withdrawn. Someone in two companies takes a seat in each.</p>
+    </div>}
   </section>;
 }
 

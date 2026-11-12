@@ -26,7 +26,10 @@ async def test_the_plan_is_the_owners_and_covers_every_company(
     start = (await client.get("/v1/billing", headers=owner.headers)).json()
     assert start["owner"] is True and start["plan"] == "free" and start["startedOn"] is None
     assert [plan["id"] for plan in start["plans"]] == ["free", "startup", "growth", "enterprise"]
-    assert start["usage"] == {"companies": 2, "logins": 2}
+    assert start["usage"]["companies"] == 2 and start["usage"]["logins"] == 2
+    by_company = start["usage"]["byCompany"]
+    assert [(row["people"], row["invited"]) for row in by_company] == [(1, 0), (1, 0)]
+    assert by_company[1]["name"] == "Pune Retail"
     assert start["invoices"] == [] and start["canChange"] is True
 
     # Sample invoices need a paid plan; Enterprise is set up with the team, not here.
@@ -64,6 +67,10 @@ async def test_the_plan_is_the_owners_and_covers_every_company(
 
     # Someone who owns no company sees that the plan is the Owner's, and cannot change it.
     member = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
+    await invite(client, mailbox, owner, "waiting@example.com")
+    usage = (await client.get("/v1/billing", headers=owner.headers)).json()["usage"]
+    first = usage["byCompany"][0]
+    assert (first["people"], first["invited"]) == (2, 1) and usage["logins"] == 4
     theirs = (await client.get("/v1/billing", headers=member)).json()
     assert theirs["owner"] is False and theirs["invoices"] == [] and theirs["canChange"] is False
     assert (

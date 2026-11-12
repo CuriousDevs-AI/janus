@@ -143,14 +143,27 @@ async def check_room(db: AsyncSession, tenant_id: int, *, company: bool = False)
 async def _usage(
     db: AsyncSession, user_id: int, current_tenant: int | None, owned: list[int]
 ) -> schemas.Usage:
-    logins = 0
+    rows: list[schemas.CompanyUsage] = []
     try:
         for tenant_id in owned:
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
-            logins += await org.active_member_count(db, tenant_id)
+            company = await org.company(db, tenant_id)
+            members, invites = await org_service.seat_holders(db, tenant_id)
+            rows.append(
+                schemas.CompanyUsage(
+                    id=str(tenant_id),
+                    name=company.name if company else str(tenant_id),
+                    people=sum(1 for _, _, status, _ in members if status == "active"),
+                    invited=len(invites),
+                )
+            )
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
-    return schemas.Usage(companies=len(owned), logins=logins)
+    return schemas.Usage(
+        companies=len(owned),
+        logins=sum(row.people + row.invited for row in rows),
+        byCompany=rows,
+    )
 
 
 async def _owns(db: AsyncSession, user_id: int) -> bool:

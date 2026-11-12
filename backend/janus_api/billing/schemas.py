@@ -30,10 +30,20 @@ class InvoiceOut(BaseModel):
     sample: bool
 
 
+class CompanyUsage(BaseModel):
+    id: str
+    name: str
+    # People who can sign in to the company, and invitations not yet accepted.
+    people: int
+    invited: int
+
+
 class Usage(BaseModel):
     companies: int
-    # Active logins across the companies, a person in two counted in each.
+    # Seats the plan counts: people and open invitations across the companies, a person in two
+    # counted in each, as the plan's people limit counts them.
     logins: int
+    byCompany: list[CompanyUsage]
 
 
 class PlanChange(BaseModel):
