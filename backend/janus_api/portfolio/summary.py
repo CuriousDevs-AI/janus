@@ -180,7 +180,11 @@ async def company_summary(
         money=await money_summary(db, tenant_id, today) if money else None,
         period=schemas.PeriodCompare(
             current=await period_figures(
-                db, tenant_id, date.fromisoformat(period.start), today, money=money
+                db,
+                tenant_id,
+                date.fromisoformat(period.start),
+                date.fromisoformat(period.end),
+                money=money,
             ),
             previous=await period_figures(
                 db,
@@ -268,7 +272,7 @@ async def company_summary(
             out.attention, severity, text, f"/portfolio?view=companies&company={tenant_id}"
         )
     out.health = attention.health(out.attention)
-    span_now = date.fromisoformat(period.start), today
+    span_now = date.fromisoformat(period.start), date.fromisoformat(period.end)
     span_before = date.fromisoformat(period.previousStart), date.fromisoformat(period.previousEnd)
     channels_now = await crm.leads_by_source(db, tenant_id, *span_now)
     channels_before = await crm.leads_by_source(db, tenant_id, *span_before)
@@ -504,6 +508,7 @@ async def summary(
     today: date | None = None,
     *,
     detail: bool = True,
+    as_of: date | None = None,
 ) -> schemas.PortfolioSummary:
     """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
@@ -512,9 +517,11 @@ async def summary(
     """
     companies = []
     trade: dict[int, Trade] = {}
-    # The digest reads as of the end of the week it reports; the page reads as of today.
+    # The period ends on `today` (the digest's week ends on Sunday); what is owed, late or due is
+    # as of `as_of`, the day it is read, so the email and the page say the same.
     today = today or today_ist()
     period = period_for(period_key, today)
+    as_of = as_of or today_ist()
     # When a company turns red is this person's own setting.
     await set_context(db, user_id=user_id, tenant_id=current_tenant)
     limits = (await preferences.read(db, user_id)).thresholds
@@ -531,7 +538,7 @@ async def summary(
                     db,
                     company,
                     tenant_id == current_tenant,
-                    today,
+                    as_of,
                     period,
                     money="portfolio:finance" in role.permissions,
                     detail=detail,

@@ -6,6 +6,7 @@ than the person could see on the page.
 """
 
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, text
@@ -91,10 +92,10 @@ async def build(
 
     Sent on Monday morning, the week is the seven days ending yesterday.
     """
-    # The headline only: the worker is not granted the tables behind the operating view.
-    week = await summary(
-        db, user_id, current_tenant, ip, "week", today_ist() - timedelta(days=1), detail=False
-    )
+    # The week ends yesterday (Sunday); what is owed, late or due is as of today, the day it is
+    # sent, exactly as the Portfolio page reads it, so the two never disagree.
+    today = today_ist()
+    week = await summary(db, user_id, current_tenant, ip, "week", today - timedelta(days=1))
     if not week.companies:
         return None
     period = week.period
@@ -102,28 +103,11 @@ async def build(
         f"Hello {name},",
         "",
         f"Here is the week across your companies, {day(period.start)} to {day(period.end)},"
-        f" compared with {day(period.previousStart)} to {day(period.previousEnd)}.",
+        f" compared with {day(period.previousStart)} to {day(period.previousEnd)}. Money owed,"
+        f" late or due is as of {day(today.isoformat())}.",
     ]
     for company in week.companies:
-        current, before = company.period.current, company.period.previous
-        lines += [
-            "",
-            company.name,
-            f"  Leads in: {current.leads} ({before.leads} the week before)",
-            f"  Deals won: {current.wonDeals}, worth {inr(current.wonValue)}"
-            f" ({inr(before.wonValue)} the week before)",
-            f"  Open pipeline: {inr(company.crm.pipelineValue)} in {company.crm.openDeals} deals",
-            f"  Open support tickets: {company.openTickets}",
-        ]
-        if company.money is not None:
-            money = company.money
-            lines += [
-                f"  Customers owe: {inr(money.receivable)}, of which {inr(money.overdue)} is"
-                f" overdue on {money.overdueInvoices} invoice"
-                f"{'' if money.overdueInvoices == 1 else 's'}",
-                f"  Bills due in the next 7 days: {inr(money.payableDueThisWeek)}",
-                f"  Collected: {inr(current.collected)} ({inr(before.collected)} the week before)",
-            ]
+        lines += ["", company.name, *company_lines(company)]
     frontend = get_settings().frontend_url.rstrip("/")
     lines += [
         "",
@@ -134,6 +118,82 @@ async def build(
         "y" if len(week.companies) == 1 else "ies"
     )
     return schemas.DigestPreview(subject=subject, body="\n".join(lines))
+
+
+def company_lines(company: schemas.CompanySummary) -> list[str]:
+    """One company in the email: what happened in the week, then what needs the owner now. Money
+    lines only where the person's role includes money; a company that does not sell gets its cash
+    and filings, not leads and pipeline."""
+    current, before = company.period.current, company.period.previous
+    sells = company.businessModel not in ("holding", "not_started") or (
+        company.books is not None
+        and (Decimal(company.books.current.netSales) or Decimal(company.books.previous.netSales))
+    )
+    lines: list[str] = []
+    if sells:
+        lines += [
+            f"  Leads in: {current.leads} ({before.leads} the week before)",
+            f"  Deals won: {current.wonDeals}, worth {inr(current.wonValue)}"
+            f" ({inr(before.wonValue)} the week before)",
+            f"  Open pipeline: {inr(company.crm.pipelineValue)} in {company.crm.openDeals} deals",
+        ]
+    money, books = company.money, company.books
+    if money is not None and books is not None and sells:
+        profit = Decimal(books.current.profitBeforePayroll)
+        if books.current.salariesComplete:
+            pay: Decimal | None = Decimal(books.current.salariesPosted)
+        elif company.people and company.people.monthlyPayroll:
+            pay = Decimal(company.people.monthlyPayroll) * 7 / 30
+        else:
+            pay = None
+        lines.append(
+            f"  Sales: {inr(books.current.netSales)} ({inr(books.previous.netSales)} the week"
+            " before), before GST"
+        )
+        lines.append(
+            f"  Profit after salaries (estimate): {inr(profit - pay)}"
+            if pay is not None
+            else f"  Profit before salaries: {inr(profit)} (salaries not on record)"
+        )
+    if money is not None:
+        late = Decimal(money.payableLate)
+        soon = Decimal(money.payableDueThisWeek) - late
+        lines += [
+            f"  Customers owe: {inr(money.receivable)}, of which {inr(money.overdue)} is past due"
+            f" on {money.overdueInvoices} invoice{'' if money.overdueInvoices == 1 else 's'}",
+            f"  Supplier bills: {inr(late)} already late, {inr(soon)} more due in the next 7 days",
+            f"  Collected: {inr(current.collected)} ({inr(before.collected)} the week before)",
+        ]
+        if company.businessModel == "import_export" and money.unpaidOver9MonthsInvoices:
+            lines.append(
+                f"  Export money: {inr(money.unpaidOver9Months)} unpaid for over 9 months, past"
+                " the limit FEMA allows"
+            )
+        cash = company.cash
+        if cash is not None and cash.total is not None:
+            months = cash.runwayMonths
+            lasts = (
+                ""
+                if months is None
+                else ", lasts more than 3 years"
+                if months > 36
+                else f", lasts about {months:.1f} months"
+            )
+            lines.append(f"  Cash in the bank: {inr(cash.total)} on {day(cash.asOf)}{lasts}")
+    late_filings = [due for due in company.compliance if due.status == "overdue"]
+    soon_filings = [due for due in company.compliance if due.status == "due_soon"]
+    if late_filings or soon_filings:
+        named = ", ".join(
+            f"{due.label} ({day(due.dueOn)})" for due in (late_filings + soon_filings)[:3]
+        )
+        lines.append(
+            f"  Filings: {len(late_filings)} past due, {len(soon_filings)} due this week: {named}"
+        )
+    elif not company.complianceSetUp:
+        lines.append("  Filings: not set up, so none are tracked")
+    if company.openTickets:
+        lines.append(f"  Open support tickets: {company.openTickets}")
+    return lines
 
 
 async def run_once(factory: async_sessionmaker[AsyncSession]) -> bool:

@@ -2848,3 +2848,49 @@ async def test_past_due_matches_the_company_s_own_invoices_opening_balances_incl
     assert money["overdueInvoices"] == 2
     # The year-old opening balance sits in the oldest bucket, the rest in 1-30 days.
     assert money["ageing"]["over60"] == "64000.00"
+
+
+async def test_the_weekly_email_says_what_the_overview_says(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    today = today_ist()
+    sold = await client.post(
+        "/v1/finance/invoices",
+        headers={**owner.headers, "Idempotency-Key": "we-1"},
+        json={
+            "customer": "Accounts",
+            "customer_company": "Kavita Stores",
+            "invoice_date": (today - timedelta(days=40)).isoformat(),
+            # Late only since yesterday: a Sunday-dated figure would not count it as past due.
+            "due_date": (today - timedelta(days=1)).isoformat(),
+            "same_state": True,
+            "lines": [
+                {"item": "Cloth", "hsn": "5208", "qty": 1, "rate_paise": 12345600, "gst_rate": 0}
+            ],
+        },
+    )
+    assert sold.status_code == 201, sold.text
+    for key, due, amount in (("we-2", -3, 5000000), ("we-3", 4, 2000000)):
+        bill = await client.post(
+            "/v1/finance/bills",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={
+                "vendor": "Surat Yarn Co",
+                "vendor_bill_no": key,
+                "bill_date": (today - timedelta(days=20)).isoformat(),
+                "due_date": (today + timedelta(days=due)).isoformat(),
+                "amount_paise": amount,
+            },
+        )
+        assert bill.status_code == 201, bill.text
+
+    money = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"][
+        0
+    ]["money"]
+    body = (await client.get("/v1/portfolio/digest/preview", headers=owner.headers)).json()["body"]
+    assert money["overdue"] == "123456.00"
+    assert "of which ₹1.2L is past due on 1 invoice" in body
+    # Late bills and bills due soon are told apart, not added together as "due".
+    assert "Supplier bills: ₹50,000 already late, ₹20,000 more due in the next 7 days" in body
+    assert "Bills due in the next 7 days" not in body
