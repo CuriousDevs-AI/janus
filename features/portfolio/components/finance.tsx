@@ -12,7 +12,7 @@ import { Delta, Waterfall } from "@/features/portfolio/components/market";
 import { groupBooks, openIn, payrollFor, salariesRecorded, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
 import { parseStatement } from "@/features/portfolio/lib/bank-csv";
 import { parseOpening, type OpeningRow } from "@/features/portfolio/lib/history-csv";
-import { change, day, inr } from "@/features/portfolio/lib/format";
+import { change, day, inr, todayIst } from "@/features/portfolio/lib/format";
 import type { PortfolioBooksAmount, PortfolioIntercompanyLink, PortfolioPeriod } from "@/features/portfolio/types";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
@@ -20,7 +20,7 @@ const sumBooks = (list: WithMoney[], side: "current" | "previous", key: Portfoli
 const margin = (profit: number, sales: number) => sales > 0 ? `${Math.round((profit / sales) * 100)}%` : "—";
 
 /** Money across the companies whose money the person's role includes; `hidden` counts the rest. */
-export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: number; period: PortfolioPeriod }) {
+export function Finance({ list, hidden, period, onChanged }: { list: WithMoney[]; hidden: number; period: PortfolioPeriod; onChanged?: () => void }) {
   const [mode, setMode] = React.useState<"group" | "companies">("group");
   const sales = sumBooks(list, "current", "netSales");
   const costs = sumBooks(list, "current", "costs");
@@ -51,7 +51,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     {mode === "group" && <SectionCard title="From sales to profit" description={`The group, ${period.label}: sales before GST, less supplier bills, less salaries where they are in HR (an estimate).`}>
       <Waterfall sales={groupSales} costs={groupCosts} salaries={payroll || null} />
     </SectionCard>}
-    {mode === "group" ? <SectionCard title={`The group, ${period.label}`} description={`Added up across ${coverage}. Bank balances are not connected, so this shows money in and out, not cash in the bank.`}>
+    {mode === "group" ? <SectionCard title={`The group, ${period.label}`} description={`Added up across ${coverage}.`}>
       <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm">
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th><th className="px-3 py-2">All companies</th><th className="px-3 py-2">Between your companies</th><th className="px-3 py-2">Group</th></tr></thead>
         <tbody>
@@ -74,7 +74,7 @@ export function Finance({ list, hidden, period }: { list: WithMoney[]; hidden: n
     <SalariesCard list={list} />
     <GstCard list={list} />
     <TdsCard list={list} />
-    {list.length > 1 && <IntercompanyCard />}
+    {list.length > 1 && <IntercompanyCard onRecorded={onChanged} />}
   </>;
 }
 
@@ -93,6 +93,8 @@ function ByCompany({ list, period }: { list: WithMoney[]; period: PortfolioPerio
     ["Sales to your other companies", (item) => item.intercompany && n(item.intercompany.sales) ? `${inr(n(item.intercompany.sales))} · ${item.intercompany.partners.join(", ")}` : "None"],
     ["Customers owe", (item) => inr(n(item.money.receivable))],
     ["Past due", (item) => item.money.overdueInvoices ? `${inr(n(item.money.overdue))} · ${item.money.overdueInvoices} invoice${item.money.overdueInvoices === 1 ? "" : "s"}` : "None"],
+    ["Late 1–30 days", (item) => inr(n(item.money.ageing.days0to30))],
+    ["Late 31–60 days", (item) => inr(n(item.money.ageing.days31to60))],
     ["Late over 60 days", (item) => inr(n(item.money.ageing.over60))],
     ["You owe suppliers", (item) => inr(n(item.money.payable))],
     ["Bills already late", (item) => n(item.money.payableLate) ? inr(n(item.money.payableLate)) : "None"],
@@ -125,14 +127,14 @@ function GstCard({ list }: { list: WithMoney[] }) {
 
 /** Invoices between your own companies, each with the bill the buying company recorded for it.
  * A missing bill is recorded in one step, so both sides of the group agree. */
-function IntercompanyCard() {
+function IntercompanyCard({ onRecorded }: { onRecorded?: () => void }) {
   const links = usePortfolioApi<PortfolioIntercompanyLink[]>("/portfolio/intercompany");
   const [busy, setBusy] = React.useState<string | null>(null);
   const record = async (link: PortfolioIntercompanyLink) => {
     setBusy(link.invoice);
     try {
       const made = await api<PortfolioIntercompanyLink>("/portfolio/intercompany/bills", { method: "POST", body: JSON.stringify({ sellerId: link.sellerId, invoice: link.invoice }) });
-      toast.success(`Bill ${made.bill} recorded in ${made.buyer}.`); links.reload();
+      toast.success(`Bill ${made.bill} recorded in ${made.buyer}.`); links.reload(); onRecorded?.();
     } catch (error) { toast.error(message(error)); } finally { setBusy(null); }
   };
   const all = links.data ?? [];
@@ -226,6 +228,14 @@ function CashCard({ list }: { list: WithMoney[] }) {
   </SectionCard>;
 }
 
+/** TDS left to deposit: by when, or once past it how late and the interest so far (1.5% for
+ * each month or part of a month it is late, under section 201(1A)). */
+function lateTds(left: number, dueOn: string) {
+  const late = Math.floor((Date.parse(todayIst()) - Date.parse(dueOn)) / 86_400_000);
+  if (late <= 0) return `${inr(left)} to deposit by ${day(dueOn)}`;
+  return `${inr(left)} not deposited, ${late} day${late === 1 ? "" : "s"} late, interest about ${inr(Math.round(left * 0.015 * Math.ceil(late / 30)))}`;
+}
+
 /** Last month's TDS per company: deducted on supplier bills and salaries, against the challan
  * recorded with its TDS payment in Compliance. */
 function TdsCard({ list }: { list: WithMoney[] }) {
@@ -233,7 +243,7 @@ function TdsCard({ list }: { list: WithMoney[] }) {
   if (withTds.length === 0) return null;
   return <SectionCard title="TDS to deposit" description="TDS deducted last month from supplier bills (by section) and from salaries posted, against the challan recorded with the month's TDS payment in Compliance. Due by the 7th, or 30 April for March.">
     <ul className="flex flex-col divide-y divide-border">{withTds.map((item) => { const tds = item.tds!; const left = n(tds.toDeposit); return <li key={item.id} className="flex flex-col gap-1 py-3 text-sm first:pt-0 last:pb-0">
-      <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{item.name} · {tds.label}</span><span className={`tabular-nums font-medium ${left > 0 ? "text-danger" : "text-success"}`}>{left > 0 ? `${inr(left)} to deposit by ${day(tds.dueOn)}` : n(tds.deducted) > 0 ? "Deposited" : "None deducted"}</span></p>
+      <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{item.name} · {tds.label}</span><span className={`tabular-nums font-medium ${left > 0 ? "text-danger" : "text-success"}`}>{left > 0 ? lateTds(left, tds.dueOn) : n(tds.deducted) > 0 ? "Deposited" : "None deducted"}</span></p>
       <p className="text-xs text-muted-foreground">{inr(n(tds.deducted))} deducted: {inr(n(tds.onBills))} on bills{Object.keys(tds.bySection).length ? ` (${Object.entries(tds.bySection).map(([code, value]) => `${code} ${inr(n(value))}`).join(", ")})` : ""}, {inr(n(tds.onSalaries))} on salaries · {tds.deposited !== null ? `${inr(n(tds.deposited))} deposited` : "no challan recorded yet"}</p>
       {!tds.salariesPosted && <p className="text-xs text-warning">{tds.label} salaries are not posted, so TDS on them is not counted yet.</p>}
     </li>; })}</ul>

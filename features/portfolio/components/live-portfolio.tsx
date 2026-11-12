@@ -91,7 +91,7 @@ export function LivePortfolio() {
       case "analytics": return <Analytics list={list} period={summary.data.period} />;
       case "finance": return withMoney.length === 0
         ? <SectionCard title="Money is not shared with you" description="Your role covers leads, deals, people, support and compliance. Money from the books (sales, costs, profit, what customers owe and what is due to suppliers) is not part of it."><p className="text-sm text-muted-foreground">Ask the Owner for a role with money, such as Finance manager, if you need what customers owe and what is due to suppliers.</p></SectionCard>
-        : <Finance list={withMoney} hidden={list.length - withMoney.length} period={summary.data.period} />;
+        : <Finance list={withMoney} hidden={list.length - withMoney.length} period={summary.data.period} onChanged={summary.reload} />;
       case "companies": return <Companies list={list} period={summary.data.period} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />;
       case "people": return shares
         ? <Access list={list} owner={owner} />
