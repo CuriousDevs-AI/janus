@@ -13,29 +13,20 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { attentionOf, openIn, useRoles } from "@/features/portfolio/lib/companies";
 import { severityName, severityTone } from "@/features/portfolio/lib/format";
 import { defaultThresholds, usePreferences, type Thresholds } from "@/features/portfolio/lib/preferences";
+import { categoryOf, NotificationDetail, type NoticeItem } from "@/features/portfolio/components/notification-detail";
 import type { PortfolioCompany } from "@/features/portfolio/types";
 
 export function AttentionList({ list, limit, onOpen, read = [] }: { list: PortfolioCompany[]; limit?: number; onOpen?: (key: string) => void; read?: string[] }) {
-  const { owns } = useRoles();
   const items = attentionOf(list);
+  const [shown, setShown] = React.useState<NoticeItem | null>(null);
   if (items.length === 0) return <p className="text-sm text-muted-foreground">Nothing needs you in any company.</p>;
-  return <ul className="flex flex-col divide-y divide-border">{items.slice(0, limit ?? items.length).map((item) => <li key={item.key} className={`flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0 ${read.includes(item.key) ? "opacity-60" : ""}`}>
+  return <><ul className="flex flex-col divide-y divide-border">{items.slice(0, limit ?? items.length).map((item) => <li key={item.key} className={`flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0 ${read.includes(item.key) ? "opacity-60" : ""}`}>
     <Badge variant={severityTone[item.severity]}>{severityName[item.severity]}</Badge>
     <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{item.company.name}</span> · {item.text}</span>
-    {(owns(item.company) || item.to.startsWith("/portfolio")) && <Button size="sm" variant="secondary" onClick={() => { onOpen?.(item.key); if (item.to.startsWith("/portfolio")) window.location.assign(item.to); else openIn(item.company, item.to); }}>Open</Button>}
-  </li>)}</ul>;
-}
-
-/** What a notification is about, from where it opens. */
-function categoryOf(text: string, to: string) {
-  if (/approval/.test(text)) return "Approvals";
-  if (/document/.test(text)) return "Documents";
-  if (to.includes("compliance")) return "Compliance";
-  if (to.includes("finance")) return "Money";
-  if (to.includes("projects")) return "Delivery";
-  if (to.includes("tickets")) return "Support";
-  if (to.includes("operations")) return "Stock";
-  return "Other";
+    <Button size="sm" variant="secondary" onClick={() => { onOpen?.(item.key); setShown(item); }}>Open</Button>
+  </li>)}</ul>
+    {shown && <NotificationDetail item={shown} read={read.includes(shown.key)} onClose={() => setShown(null)} />}
+  </>;
 }
 
 /** Notifications say what is wrong right now, from every company; each opens where it is dealt with.
@@ -52,7 +43,7 @@ export function Notifications({ list }: { list: PortfolioCompany[] }) {
   const mark = (keys: string[]) => { void preferences.save({ ...preferences.value, read: [...new Set([...read, ...keys])] }); };
   const unread = all.filter((item) => !read.includes(item.key));
   const categories = [...new Set(all.map((item) => item.category))].sort();
-  const { owns } = useRoles();
+  const [shown, setShown] = React.useState<NoticeItem | null>(null);
   const select = "h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]";
   return <SectionCard title={`${unread.length} unread`} description="What is wrong right now in each company, most urgent first. To get it done, use the Work inbox." action={<Button size="sm" variant="secondary" disabled={unread.length === 0} onClick={() => mark(all.map((item) => item.key))}><Check className="mr-1 size-4" />Mark all read</Button>}>
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -65,9 +56,10 @@ export function Notifications({ list }: { list: PortfolioCompany[] }) {
       <Badge variant={severityTone[item.severity]}>{severityName[item.severity]}</Badge>
       <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{item.company.name}</span> · {item.text} <span className="text-xs text-muted-foreground">· {item.category}</span></span>
       {!read.includes(item.key) && <Button size="sm" variant="ghost" onClick={() => mark([item.key])}>Mark read</Button>}
-      {(owns(item.company) || item.to.startsWith("/portfolio")) && <Button size="sm" variant="secondary" onClick={() => { mark([item.key]); if (item.to.startsWith("/portfolio")) window.location.assign(item.to); else openIn(item.company, item.to); }}>Open</Button>}
+      <Button size="sm" variant="secondary" onClick={() => { mark([item.key]); setShown(item); }}>Open</Button>
     </li>)}</ul>}
     {all.length > 0 && <p className="mt-3 text-xs text-muted-foreground">{all.length - unread.length} of {all.length} marked read.</p>}
+    {shown && <NotificationDetail item={shown} read={read.includes(shown.key)} onMarkRead={() => mark([shown.key])} onClose={() => setShown(null)} />}
   </SectionCard>;
 }
 
