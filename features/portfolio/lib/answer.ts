@@ -1,4 +1,4 @@
-import { attentionOf, femaAge, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
+import { attentionOf, femaAge, outsideSales, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { businessName, sells } from "@/features/portfolio/lib/business";
 import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 
@@ -48,7 +48,10 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const rows = selling.flatMap((item): [string, string][] => {
       const now = Number(item.books!.current.netSales), before = Number(item.books!.previous.netSales);
       const movers = [...item.customers].map((customer) => ({ name: customer.name, diff: Number(customer.current) - Number(customer.previous) })).filter((mover) => mover.diff !== 0).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
-      return [[item.name, `${inr(now)} against ${inr(before)} in the same days before (${now >= before ? "+" : "−"}${inr(Math.abs(now - before))})`], ...movers.map((mover): [string, string] => [`↳ customer ${mover.name}`, `${mover.diff > 0 ? "+" : "−"}${inr(Math.abs(mover.diff))}`])];
+      // A sale to one of your own companies is not growth: say what is left once it is taken out.
+      const own = Number(item.intercompany?.sales ?? 0), ownBefore = Number(item.intercompany?.salesBefore ?? 0);
+      const outside = own || ownBefore ? `; outside the group ${inr(outsideSales(item, "current"))} against ${inr(outsideSales(item, "previous"))}, after ${inr(own)} to your own companies` : "";
+      return [[item.name, `${inr(now)} against ${inr(before)} in the same days before (${now >= before ? "+" : "−"}${inr(Math.abs(now - before))})${outside}`], ...movers.map((mover): [string, string] => [`↳ customer ${mover.name}`, `${mover.diff > 0 ? "+" : "−"}${inr(Math.abs(mover.diff))}`])];
     });
     return { text: "Sales against the same days before, with the customers who moved most. Sales are invoices before GST.", rows };
   }
@@ -68,21 +71,22 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     if (!withBooks.length) return { text: leftOut.length ? `None of these companies sells, so none is ranked on sales and profit.${outText} Ask which company needs you most instead.` : "Performance is judged on sales and profit from the books, and money is not shared with your role. Ask which company needs you most instead." };
     const best = /best|strongest|well/.test(q);
     const scored = withBooks.map((item) => {
-      const now = Number(item.books!.current.netSales), before = Number(item.books!.previous.netSales), profit = Number(item.books!.current.profitBeforePayroll);
+      // The change is judged on sales outside the group, as on the Overview.
+      const now = outsideSales(item, "current"), before = outsideSales(item, "previous"), profit = Number(item.books!.current.profitBeforePayroll);
       const pay = period ? payrollFor(item, period) : null;
       // The customer who moved sales most in the direction asked about: the biggest rise for "best", fall for "worst".
       const mover = [...item.customers].map((customer) => ({ name: customer.name, diff: Number(customer.current) - Number(customer.previous) })).sort((a, b) => best ? b.diff - a.diff : a.diff - b.diff)[0];
-      return { item, now, before, profit, pay, after: pay === null ? profit : profit - pay, mover };
+      return { item, now, before, sales: Number(item.books!.current.netSales), profit, pay, after: pay === null ? profit : profit - pay, mover };
     });
     const ranked = scored.sort((a, b) => best ? b.after - a.after : a.after - b.after);
     const pick = ranked[0];
-    const change = (row: typeof pick) => row.before > 0 ? `${row.now >= row.before ? "+" : "−"}${Math.abs(Math.round(((row.now - row.before) / row.before) * 100))}% on the same days before` : "nothing in the same days before";
-    const margin = (row: typeof pick) => row.now > 0 ? `${Math.round((row.profit / row.now) * 100)}% margin before salaries` : "no sales";
+    const change = (row: typeof pick) => row.before > 0 ? `${row.now >= row.before ? "+" : "−"}${Math.abs(Math.round(((row.now - row.before) / row.before) * 100))}% on the same days before${row.sales !== row.now ? ", on sales outside the group" : ""}` : "nothing in the same days before";
+    const margin = (row: typeof pick) => row.sales > 0 ? `${Math.round((row.profit / row.sales) * 100)}% margin before salaries` : "no sales";
     const profitText = (row: typeof pick) => row.pay === null ? `${inr(row.profit)} profit, salaries unknown` : `about ${inr(row.after)} after ${inr(row.pay)} of salaries (estimate)`;
-    const reasons = [`sales ${inr(pick.now)} (${change(pick)})`, margin(pick), profitText(pick), ...(pick.mover && (best ? pick.mover.diff > 0 : pick.mover.diff < 0) ? [`its biggest ${best ? "rise" : "fall"} is ${pick.mover.name}, ${best ? "+" : "−"}${inr(Math.abs(pick.mover.diff))}`] : [])];
+    const reasons = [`sales ${inr(pick.sales)} (${change(pick)})`, margin(pick), profitText(pick), ...(pick.mover && (best ? pick.mover.diff > 0 : pick.mover.diff < 0) ? [`its biggest ${best ? "rise" : "fall"} is ${pick.mover.name}, ${best ? "+" : "−"}${inr(Math.abs(pick.mover.diff))}`] : [])];
     return {
       text: `${unsupported}${withBooks.length === 1 ? `${pick.item.name} in ${period?.label ?? "this period"}` : `${pick.item.name} is performing ${best ? "best" : "worst"} in ${period?.label ?? "this period"}, ranked on profit after salaries`}: ${reasons.join("; ")}. Sales are invoices before GST, as each company recorded them.${outText}`,
-      rows: ranked.map((row): [string, string] => [row.item.name, `${profitText(row)} · sales ${inr(row.now)}, ${change(row)} · ${margin(row)}`]),
+      rows: ranked.map((row): [string, string] => [row.item.name, `${profitText(row)} · sales ${inr(row.sales)}, ${change(row)} · ${margin(row)}`]),
     };
   }
   if (/risk|exposure|threat|danger|vulnerab/.test(q)) {
