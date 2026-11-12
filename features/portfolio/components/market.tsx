@@ -109,6 +109,8 @@ export function GroupLine({ money, onOpen }: { money: boolean; onOpen?: (company
 
 /** From sales to profit in steps: sales, less costs, less salaries, what is left. */
 export function Waterfall({ sales, costs, salaries }: { sales: number; costs: number; salaries: number | null }) {
+  // Nothing recorded draws an empty chart with a ₹0–₹1 axis; say so instead.
+  if (!sales && !costs && !salaries) return <p className="flex h-[220px] items-center justify-center rounded-md border border-dashed border-border px-4 text-center text-sm text-muted-foreground">No sales, supplier bills or salaries recorded in this period yet.</p>;
   const steps: { label: string; base: number; value: number; tone: "in" | "out" | "result" }[] = [];
   steps.push({ label: "Sales", base: 0, value: sales, tone: "in" });
   steps.push({ label: "Costs", base: Math.min(sales, sales - costs), value: Math.abs(costs), tone: "out" });
@@ -125,7 +127,7 @@ export function Waterfall({ sales, costs, salaries }: { sales: number; costs: nu
       <Bar dataKey="base" stackId="w" fill="transparent" />
       <Bar dataKey="value" stackId="w" radius={[4, 4, 0, 0]} maxBarSize={56}>{steps.map((step) => <Cell key={step.label} fill={colour(step)} />)}</Bar>
     </BarChart></ResponsiveContainer>
-    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">{steps.map((step) => <li key={step.label}><span className="font-medium text-foreground">{step.label}</span> {step.tone === "out" ? "−" : ""}{inr(step.value)}</li>)}</ul>
+    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">{steps.map((step) => <li key={step.label}><span className="font-medium text-foreground">{step.label}</span> {step.tone === "out" && step.value ? "−" : ""}{inr(step.value)}</li>)}</ul>
   </div>;
 }
 

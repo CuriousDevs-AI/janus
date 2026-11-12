@@ -71,7 +71,9 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       <MobileSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="app-main flex-1 overflow-y-scroll">
+        {/* relative: hidden controls inside (a file picker's sr-only input) stay in the scrolling
+            area instead of stretching the whole page below the screen. */}
+        <main className="app-main relative flex-1 overflow-y-scroll">
           {!session.user.email_verified_at && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-muted px-6 py-3 text-sm">
               <p>Verify your email to connect lead sources.</p>
