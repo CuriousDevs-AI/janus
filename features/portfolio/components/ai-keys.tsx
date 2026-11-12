@@ -11,10 +11,13 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
 import { isFree, providerName } from "@/features/portfolio/lib/ai";
+import { inr } from "@/features/portfolio/lib/format";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import type { AiProvider, PortfolioAiCompany, PortfolioAiKey, PortfolioAsked, PortfolioKey, PortfolioModels } from "@/features/portfolio/types";
 
 type CompanyRow = { company: PortfolioAiCompany; key: PortfolioAiKey };
+/** Providers bill in US dollars; spend is shown in rupees at about this rate. */
+const USD_INR = 88;
 const nameOf = (provider: AiProvider) => providerName[provider] ?? provider;
 
 /**
@@ -90,9 +93,9 @@ export function AiKeys() {
         </table></div>}
     </SectionCard>
 
-    {data.companies.length > 0 && <SectionCard title="AI spend this month" description="What Portfolio questions on paid models cost each company this month, against the cap that stops them. A Portfolio key's use is recorded in the company open at the time.">
+    {data.companies.length > 0 && <SectionCard title="AI spend this month" description="What Portfolio questions on paid models cost each company this month, against the cap that stops them. Providers bill in US dollars; rupees here are at about ₹88 to the dollar. A Portfolio key's use is recorded in the company open at the time.">
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{data.companies.map((company) => { const spent = Number(company.spentUsd), cap = Number(company.capUsd); return <li key={company.id} className="rounded-lg border border-border p-3">
-        <p className="flex items-baseline justify-between gap-2 text-sm"><span className="font-medium">{company.name}</span><span className="tabular-nums text-muted-foreground">${spent.toFixed(2)} of ${cap.toFixed(2)}</span></p>
+        <p className="flex items-baseline justify-between gap-2 text-sm"><span className="font-medium">{company.name}</span><span className="tabular-nums text-muted-foreground" title={`US$${spent.toFixed(2)} of US$${cap.toFixed(2)}`}>about {inr(spent * USD_INR)} of {inr(cap * USD_INR)}</span></p>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2"><div className={`h-full rounded-full ${spent >= cap ? "bg-danger" : "bg-accent"}`} style={{ width: `${cap ? Math.min(100, (spent / cap) * 100) : 0}%` }} /></div>
       </li>; })}</ul>
     </SectionCard>}

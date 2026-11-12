@@ -109,7 +109,7 @@ export function SidebarNav({
     if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
     const params = new URLSearchParams(itemQuery ?? "");
     // Filters on a page (its period, a chosen company) keep the page's link highlighted.
-    const ignored = new Set(["workspace", "period", "company", "preview"]);
+    const ignored = new Set(["workspace", "period", "company", "preview", "add"]);
     for (const [key, value] of params.entries()) {
       if (ignored.has(key)) continue;
       if (searchParams.get(key) !== value) return false;
@@ -307,7 +307,7 @@ export function SidebarNav({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>{currentUser.email}</DropdownMenuLabel>
+            <DropdownMenuLabel className="break-all normal-case tracking-normal" title={currentUser.email}>{currentUser.email}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {/* Settings belong to one company, so from the Portfolio each company's are reached from
                 its page. The plan belongs to the account and lives in the Portfolio. */}

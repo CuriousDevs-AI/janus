@@ -211,6 +211,10 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = React.useState(false);
   const [touched, setTouched] = React.useState(false);
   const error = name.trim().length < 2 ? "Give the company a name." : "";
+  // Say a full plan before the form is filled in, not in a toast after it.
+  const billing = usePortfolioApi<Billing>("/billing");
+  const plan = billing.data?.plans.find((item) => item.id === billing.data?.plan);
+  const full = plan && plan.companies !== null && billing.data ? billing.data.usage.companies >= plan.companies : false;
   async function save() {
     setTouched(true);
     if (error) return;
@@ -235,11 +239,12 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
   }
   return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Add a company</DialogTitle><DialogDescription>You become its Owner. It starts empty, with its own people, records and settings, and you set it up next.</DialogDescription></DialogHeader>
     <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      {full && plan && <p role="alert" className="rounded-md border border-warning/30 bg-warning-muted/40 px-3 py-2 text-sm">The {plan.name} plan includes {plan.companies} {plan.companies === 1 ? "company" : "companies"}, and all are in use. <a href="/portfolio?view=billing" className="font-medium text-accent underline-offset-2 hover:underline">Move to a bigger plan</a> to add another.</p>}
       <label className="grid gap-1.5 text-xs text-muted-foreground">Name<Input autoFocus value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></label>
       <label className="grid gap-1.5 text-xs text-muted-foreground">Kind of business<BusinessModelSelect value={model} onChange={setModel} /><span className="text-[11px]">{model ? businessModels[model].hint : "Decides which figures lead for it: a holding company is not shown sales."}</span></label>
       <label className="grid gap-1.5 text-xs text-muted-foreground">Industry (optional)<Input value={industry} maxLength={120} placeholder="Textiles" onChange={(event) => setIndustry(event.target.value)} /></label>
       {touched && error && <p role="alert" className="text-xs text-danger">{error}</p>}
-      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add company"}</Button></DialogFooter>
+      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving || full}>{saving ? "Adding…" : "Add company"}</Button></DialogFooter>
     </form></DialogContent></Dialog>;
 }
 
