@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth.service import user_directory, user_id_for_email
+from janus_api.core.email import send_portfolio_invite
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
 from janus_api.org import overview as org
@@ -25,6 +26,16 @@ ACCESS_ROLES = (
 GROUP_ROLES = ACCESS_ROLES[1:]
 # Roles only an Owner of the company gives: they own it, or share the Portfolio themselves.
 OWNER_GIVES = ("owner", "group_admin")
+# The roles as people read them in an invitation.
+ROLE_NAMES = {
+    "owner": "Owner",
+    "group_admin": "Portfolio administrator",
+    "company_admin": "Company administrator",
+    "finance_manager": "Finance manager",
+    "operations_manager": "Operations manager",
+    "group_finance": "Group finance",
+    "group_analyst": "Read-only",
+}
 
 
 async def readable_companies(db: AsyncSession, user_id: int) -> list[int]:
@@ -114,6 +125,7 @@ async def grant_access(
     member, or already invited, is skipped with the reason; the others still go out."""
     done: list[str] = []
     skipped: list[schemas.AccessSkipped] = []
+    tokens: list[str] = []
     try:
         for tenant_id in await _shareable(db, user_id, data.companies):
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
@@ -125,15 +137,25 @@ async def grant_access(
                 )
                 continue
             try:
-                await org_service.create_invitation(
+                _, token = await org_service.make_invitation(
                     db, tenant_id, user_id, str(data.email), data.role, ip
                 )
             except ApiError as error:
                 skipped.append(schemas.AccessSkipped(company=name, reason=error.message))
                 continue
             done.append(name)
+            tokens.append(token)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    # One email for the whole share: accepting its link joins every company invited with it.
+    if tokens:
+        inviter = (await user_directory(db, [user_id])).get(user_id)
+        await send_portfolio_invite(
+            str(data.email).casefold(),
+            tokens[0],
+            inviter.name if inviter and inviter.name else "Your Owner",
+            [(company, ROLE_NAMES.get(data.role, data.role)) for company in done],
+        )
     return schemas.AccessResult(done=done, skipped=skipped)
 
 

@@ -2641,19 +2641,19 @@ async def test_one_link_accepts_every_company_a_portfolio_share_covered(
         json={"email": "cfo@example.com", "role": "group_finance", "companies": []},
     )
     assert shared.json()["done"] == ["Mumbai Traders", "Pune Retail"]
-    # The person follows only the last email's link.
+    # One email for the share, naming every company, the role and who invited.
+    sent = [(subject, body) for to, subject, body in mailbox.messages if to == "cfo@example.com"]
+    assert len(sent) == 1
+    subject, body = sent[0]
+    assert "2 companies" in subject
+    assert "- Mumbai Traders: Group finance" in body and "- Pune Retail: Group finance" in body
+    links = [word for word in body.split() if "/invite?" in word]
+    assert len(links) == 1
+    # Its one link joins both companies.
     person = await _join(client, mailbox, "cfo@example.com")
     seen = (await client.get("/v1/portfolio/summary", headers=person)).json()
     assert {item["name"] for item in seen["companies"]} == {"Mumbai Traders", "Pune Retail"}
-    # The other email's link now says the invitation was already accepted, not that it is invalid.
-    links = [
-        word
-        for to, _, body in mailbox.messages
-        if to == "cfo@example.com"
-        for word in body.split()
-        if "/invite?" in word
-    ]
-    assert len(links) == 2
+    # Followed again, the link says it was already accepted, not that it is invalid.
     used = parse_qs(urlsplit(links[0]).query)["token"][0]
     again = await client.post(
         f"/v1/invitations/{used}/accept", json={"name": "Group CFO", "password": PASSWORD}

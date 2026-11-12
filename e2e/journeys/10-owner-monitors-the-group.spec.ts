@@ -27,7 +27,7 @@ test.describe("Vikram monitors all three companies from the Portfolio", () => {
   test("he shares the Portfolio with his Group CFO, who can read but not manage", async () => {
     const grant = await api("vikram", "POST", "/portfolio/access", { email: emailOf("anita"), role: GROUP_CFO.role, companies: [] });
     expect(grant).toBeTruthy();
-    expect(await acceptEveryInvite("anita", GROUP_CFO.name), "one invitation per company").toBe(3);
+    expect(await acceptEveryInvite("anita", GROUP_CFO.name), "one email for every company").toBe(1);
     const seen = await api("anita", "GET", "/portfolio/summary");
     expect(seen.companies.length).toBe(3);
     expect((await apiStatus("anita", "POST", "/portfolio/companies", { name: "Not allowed" })).status).toBe(403);

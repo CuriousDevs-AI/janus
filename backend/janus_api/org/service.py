@@ -212,6 +212,16 @@ async def disable_memberships_for_deletion(db: AsyncSession, user_id: int) -> No
 async def create_invitation(
     db: AsyncSession, tenant_id: int, user_id: int, email: str, role_name: str, ip: str
 ) -> dict[str, str]:
+    created, token = await make_invitation(db, tenant_id, user_id, email, role_name, ip)
+    await send_token(email.casefold(), "invite", token)
+    return created
+
+
+async def make_invitation(
+    db: AsyncSession, tenant_id: int, user_id: int, email: str, role_name: str, ip: str
+) -> tuple[dict[str, str], str]:
+    """Creates the invitation and returns it with its token, sending nothing: a Portfolio share
+    sends one email for every company at once."""
     await lock_workspace(db, tenant_id, user_id, "members:manage")
     role = await system_role(db, role_name)
     _, caller_role = await membership(db, user_id, tenant_id)
@@ -234,7 +244,6 @@ async def create_invitation(
     )
     db.add(invite)
     await db.flush()
-    await send_token(invite.email, "invite", token)
     record(
         db,
         "invitation.created",
@@ -243,7 +252,7 @@ async def create_invitation(
         ip=ip,
         details={"invitation_id": invite.id},
     )
-    return {"id": str(invite.id), "message": "Invitation sent."}
+    return {"id": str(invite.id), "message": "Invitation sent."}, token
 
 
 async def check_invitee(

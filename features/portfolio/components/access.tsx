@@ -70,7 +70,7 @@ function AddPerson({ list, owner, onClose, onDone }: { list: PortfolioCompany[];
     setSaving(true);
     try {
       const result = await api<PortfolioAccessResult>("/portfolio/access", { method: "POST", body: JSON.stringify({ email: email.trim(), role, companies }) });
-      (result.done.length ? toast.success : toast.error)(outcome(result, "Invitation sent for"));
+      (result.done.length ? toast.success : toast.error)(outcome(result, "One invitation email sent, for"));
       onDone();
       onClose();
     } catch (failure) {
