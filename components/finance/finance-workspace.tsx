@@ -36,7 +36,8 @@ import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, bookPayments, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 import { todayIso } from "@/lib/today";
 
-const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+// Rupees in Indian grouping; paise shown as two digits when there are any (₹1,234.50, not ₹1,234.5).
+const money = (value: number) => `₹${value.toLocaleString("en-IN", { minimumFractionDigits: Number.isInteger(Math.round(value * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
 /** Views that are not built yet. They say so instead of showing empty tables. */
