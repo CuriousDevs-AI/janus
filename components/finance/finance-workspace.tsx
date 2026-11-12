@@ -60,7 +60,7 @@ export function FinanceWorkspace() {
   }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", receivables: "Payments & receivables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
 
   if (view in comingSoon) {
     return (
@@ -75,6 +75,7 @@ export function FinanceWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "Finance overview"} description="Invoices, payments, credit notes, fund requests and budgets. Figures come only from records in this workspace." actions={<Badge variant="neutral">{invoices.length} invoices · {creditNotes.length} credit notes</Badge>} />
       <div className="flex flex-col gap-4 px-6 pb-10">
+        {view === "receivables" && <ReceivablesView />}
         {view === "invoices" && <InvoicesView me={me} />}
         {view === "credit-notes" && <CreditNotesView me={me} />}
         {view === "funds" && <FundsView me={me} />}
@@ -93,6 +94,33 @@ export function FinanceWorkspace() {
         {!["invoices", "credit-notes", "funds", "approvals", "periods", "payables", "profit-loss", "budgets", "cash-flow", "reconciliation", "month-end", "expenses", "gst", "reports"].includes(view) && <FinanceTrail />}
       </div>
     </div>
+  );
+}
+
+/** Who owes what, oldest due first: each customer with the invoices still unpaid and how late each is,
+ * so chasing starts with the oldest money. Amounts under a rupee left by rounding are not listed. */
+function ReceivablesView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const today = todayIso();
+  const open = invoices.filter((i) => !i.cancelled).map((i) => ({ invoice: i, owed: dueAmount(i, creditNotes), late: Math.floor((Date.parse(today) - Date.parse(i.dueDate)) / 86_400_000) })).filter((row) => row.owed >= 1).sort((a, b) => a.invoice.dueDate.localeCompare(b.invoice.dueDate));
+  const byCustomer = new Map<string, typeof open>();
+  for (const row of open) { const name = row.invoice.customerCompany || row.invoice.customer; byCustomer.set(name, [...(byCustomer.get(name) ?? []), row]); }
+  const customers = [...byCustomer.entries()];
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Who owes what, oldest first</CardTitle></CardHeader>
+      <CardContent className="grid gap-4 text-sm">
+        {customers.length === 0 ? <p className="text-muted-foreground">No customer owes anything.</p> : customers.map(([name, rows]) => {
+          const total = rows.reduce((sum, row) => sum + row.owed, 0), late = rows.filter((row) => row.late > 0).reduce((sum, row) => sum + row.owed, 0);
+          return <div key={name} className="grid gap-1.5">
+            <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{name}</span><span className="tabular-nums">{money(total)} owed{late > 0 ? <span className="text-danger"> · {money(late)} past due</span> : null}</span></p>
+            <ul className="grid gap-1 text-xs">{rows.map((row) => <li key={row.invoice.id} className="flex flex-wrap justify-between gap-2 border-b border-border pb-1 last:border-0"><span>{row.invoice.number} · dated {row.invoice.date} · due {row.invoice.dueDate}</span><span className={`tabular-nums ${row.late > 0 ? "text-danger" : "text-muted-foreground"}`}>{money(row.owed)} · {row.late > 0 ? `${row.late} day${row.late === 1 ? "" : "s"} late` : row.late === 0 ? "due today" : `due in ${-row.late} day${row.late === -1 ? "" : "s"}`}</span></li>)}</ul>
+          </div>;
+        })}
+        <p className="text-xs text-muted-foreground">Record a payment against an invoice in Invoices.</p>
+      </CardContent>
+    </Card>
   );
 }
 
