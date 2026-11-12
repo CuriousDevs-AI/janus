@@ -182,13 +182,16 @@ def company_lines(company: schemas.CompanySummary) -> list[str]:
             lines.append(f"  Cash in the bank: {inr(cash.total)} on {day(cash.asOf)}{lasts}")
     late_filings = [due for due in company.compliance if due.status == "overdue"]
     soon_filings = [due for due in company.compliance if due.status == "due_soon"]
-    if late_filings or soon_filings:
-        named = ", ".join(
-            f"{due.label} ({day(due.dueOn)})" for due in (late_filings + soon_filings)[:3]
-        )
-        lines.append(
-            f"  Filings: {len(late_filings)} past due, {len(soon_filings)} due this week: {named}"
-        )
+    # Past due and due this week each name their own filings, so neither reads as the other.
+    parts = [
+        f"{len(group)} {kind}: "
+        + ", ".join(f"{due.label} ({day(due.dueOn)})" for due in group[:3])
+        + (f" and {len(group) - 3} more" if len(group) > 3 else "")
+        for kind, group in (("past due", late_filings), ("due this week", soon_filings))
+        if group
+    ]
+    if parts:
+        lines.append(f"  Filings: {'; '.join(parts)}")
     elif not company.complianceSetUp:
         lines.append("  Filings: not set up, so none are tracked")
     if company.openTickets:

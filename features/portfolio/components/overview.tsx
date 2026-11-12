@@ -10,7 +10,7 @@ import { Delta, TickerRow } from "@/features/portfolio/components/market";
 import { TargetsCard } from "@/features/portfolio/components/targets";
 import { WeeklyEmail } from "@/features/portfolio/components/weekly-email";
 import { businessName, sells } from "@/features/portfolio/lib/business";
-import { groupBooks, groupProfitAfterSalaries, openIn, payrollFor, total, useRoles, winRateText } from "@/features/portfolio/lib/companies";
+import { groupBooks, groupProfitAfterSalaries, openIn, outsideSales, payrollFor, total, useRoles, winRateText } from "@/features/portfolio/lib/companies";
 import { change, day, healthName, healthTone, inr, severityName, severityTone } from "@/features/portfolio/lib/format";
 import { workFor } from "@/features/portfolio/lib/work";
 import type { PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
@@ -70,7 +70,7 @@ export function Overview({ list, period }: { list: PortfolioCompany[]; owner: bo
           <td className="py-2.5 pr-3"><a className="font-medium text-accent hover:underline" href={`/portfolio?view=companies&company=${item.id}`}>{item.name}</a>{item.current && <span className="ml-1 text-xs text-muted-foreground">· open now</span>}</td>
           <td className="px-3 py-2.5">{item.health ? <><Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>{item.health.reasons[0] && <p className="mt-1 max-w-[260px] text-xs text-muted-foreground">{item.health.reasons[0]}{item.health.reasons.length > 1 ? ` (+${item.health.reasons.length - 1})` : ""}</p>}</> : "—"}</td>
           {money ? <>
-            <td className="px-3 py-2.5 tabular-nums">{!sells(item) ? <span className="text-xs text-muted-foreground">No sales · {businessName(item).toLowerCase()}</span> : item.books ? <>{inr(n(item.books.current.netSales))} <span className="text-xs text-muted-foreground">{pct(n(item.books.current.netSales), n(item.books.previous.netSales))}</span></> : "—"}</td>
+            <td className="px-3 py-2.5 tabular-nums">{!sells(item) ? <span className="text-xs text-muted-foreground">No sales · {businessName(item).toLowerCase()}</span> : item.books ? <>{inr(n(item.books.current.netSales))} <span className="text-xs text-muted-foreground" title="Change in sales to customers outside the group">{pct(outsideSales(item, "current"), outsideSales(item, "previous"))}</span>{n(item.intercompany?.sales) > 0 && <p className="text-[11px] text-muted-foreground">{inr(n(item.intercompany?.sales))} to your own companies</p>}</> : "—"}</td>
             <td className="px-3 py-2.5 tabular-nums">{item.books ? (() => { const pay = payrollFor(item, period); const before = n(item.books.current.profitBeforePayroll); return pay === null ? <>{inr(before)}<p className="text-[11px] text-muted-foreground">before salaries</p></> : <span className={before - pay < 0 ? "text-danger" : ""}>{inr(before - pay)}<p className="text-[11px] text-muted-foreground">after salaries, est.</p></span>; })() : "—"}</td>
             <td className={`px-3 py-2.5 tabular-nums ${n(item.money?.overdue) ? "text-danger" : ""}`}>{item.money ? inr(n(item.money.overdue)) : "—"}</td>
           </> : <td className="px-3 py-2.5 tabular-nums">{item.period.current.leads} <span className="text-xs text-muted-foreground">{pct(item.period.current.leads, item.period.previous.leads)}</span></td>}
