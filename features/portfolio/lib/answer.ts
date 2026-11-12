@@ -87,9 +87,13 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   }
   if (/risk|exposure|threat|danger|vulnerab/.test(q)) {
     const today = todayIst();
-    const risks = scope.flatMap((item): { company: string; text: string; amount: number }[] => {
-      const found: { company: string; text: string; amount: number }[] = [];
-      const add = (amount: number, text: string) => { if (amount > 0) found.push({ company: item.name, text, amount }); };
+    // A legal limit comes first, then money at stake (largest first), then share-of-sales risks,
+    // whose amount is sales, not money lost, so it is not ranked against the others.
+    type Risk = { company: string; text: string; amount: number; tier: number };
+    const risks = scope.flatMap((item): Risk[] => {
+      const found: Risk[] = [];
+      const add = (amount: number, text: string, tier = 1) => { if (amount > 0) found.push({ company: item.name, text, amount, tier }); };
+      if (item.businessModel === "import_export" && item.money?.unpaidOver9MonthsInvoices) add(Number(item.money.unpaidOver9Months), `${inr(Number(item.money.unpaidOver9Months))} of export money unpaid over 9 months on ${item.money.unpaidOver9MonthsInvoices} invoice${item.money.unpaidOver9MonthsInvoices === 1 ? "" : "s"}, past FEMA's 9-month limit: the bank reports it to the RBI`, 0);
       if (item.money) {
         add(Number(item.money.ageing.over60), `${inr(Number(item.money.ageing.over60))} owed by customers more than 60 days late (${inr(Number(item.money.overdue))} past due in all)`);
         add(Number(item.money.payableLate), `${inr(Number(item.money.payableLate))} of supplier bills already late`);
@@ -105,12 +109,12 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
       if (item.tds && item.tds.dueOn < today) add(Number(item.tds.toDeposit), `${inr(Number(item.tds.toDeposit))} of TDS for ${item.tds.label} not deposited, due ${day(item.tds.dueOn)}: interest runs at 1.5% a month`);
       if (item.gst) add(Number(item.gst.lastMonth.payable), `${inr(Number(item.gst.lastMonth.payable))} of GST for ${item.gst.lastMonth.label} to pay with GSTR-3B`);
       const top = item.customers[0], sales = Number(item.books?.current.netSales ?? 0);
-      if (top && sales > 0 && Number(top.current) / sales > 0.4) add(Number(top.current), `${Math.round((Number(top.current) / sales) * 100)}% of sales come from one customer, ${top.name}`);
+      if (top && sales > 0 && Number(top.current) / sales > 0.4) add(Number(top.current), `${Math.round((Number(top.current) / sales) * 100)}% of sales come from one customer, ${top.name}`, 2);
       return found;
-    }).sort((a, b) => b.amount - a.amount);
+    }).sort((a, b) => a.tier - b.tier || b.amount - a.amount);
     if (!scope.some((item) => item.money || item.books)) return { text: "Financial risks come from the books, and money is not shared with your role." };
     const asOf = /quarter|year|month/.test(q) ? "These are as of today, not by period: what is owed, late or short right now. " : "";
-    return { text: risks.length ? `${asOf}${risks.length} financial risk${risks.length === 1 ? "" : "s"} across ${named ? named.name : "your companies"}, largest amount first.` : `${asOf}No financial risk shows in the figures: nothing more than 60 days late, no late bills, no loss, cash for at least 3 months, and no tax left to deposit.`, rows: risks.map((risk) => [risk.company, risk.text]) };
+    return { text: risks.length ? `${asOf}${risks.length} financial risk${risks.length === 1 ? "" : "s"} across ${named ? named.name : "your companies"}: legal limits first, then the largest amount, then reliance on one customer.` : `${asOf}No financial risk shows in the figures: nothing more than 60 days late, no late bills, no loss, cash for at least 3 months, and no tax left to deposit.`, rows: risks.map((risk) => [risk.company, risk.text]) };
   }
   if (/struggl|behind|needs? (me|you|us) most|most attention|which company.*(attention|first|help)/.test(q)) {
     const order = { red: 0, amber: 1, green: 2 };

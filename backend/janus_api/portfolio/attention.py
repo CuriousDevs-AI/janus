@@ -59,9 +59,10 @@ def attention(
     if business_model == "import_export" and money and money.unpaidOver9MonthsInvoices:
         add(
             "high",
-            f"{inr(money.unpaidOver9Months)} on {money.unpaidOver9MonthsInvoices}"
-            f" invoice{'' if money.unpaidOver9MonthsInvoices == 1 else 's'} unpaid for over"
-            " 9 months: export money must come in within 9 months under FEMA",
+            f"{inr(money.unpaidOver9Months)} unpaid over 9 months on"
+            f" {money.unpaidOver9MonthsInvoices}"
+            f" invoice{'' if money.unpaidOver9MonthsInvoices == 1 else 's'}, past FEMA's"
+            " 9-month limit for export money",
             f"{FINANCE}?view=receivables&workspace=finance-accounting",
         )
     bills_late, bills_week = (
@@ -156,8 +157,28 @@ def attention(
             + ", ".join(f"{due.label} for {due.period} on {_day(due.dueOn)}" for due in soon),
             soon[0].to,
         )
+    return _ordered(items)
+
+
+# Within one urgency, the worst problem leads the company's one-line reason: export money past
+# FEMA's limit, then a company losing money or running out of cash, then money owed and filings.
+_WORST = (
+    ("FEMA", 0),
+    ("Losing", 1),
+    ("Cash in the bank lasts", 2),
+    ("overdue from customers", 3),
+    ("past due", 4),
+    ("supplier bills already late", 5),
+)
+
+
+def _weight(text: str) -> int:
+    return next((rank for words, rank in _WORST if words in text), 6)
+
+
+def _ordered(items: list[schemas.AttentionItem]) -> list[schemas.AttentionItem]:
     order = {"high": 0, "medium": 1, "low": 2}
-    return sorted(items, key=lambda item: order[item.severity])
+    return sorted(items, key=lambda item: (order[item.severity], _weight(item.text)))
 
 
 def health(items: list[schemas.AttentionItem]) -> schemas.Health:
@@ -177,8 +198,7 @@ def with_line(
 ) -> list[schemas.AttentionItem]:
     """Adds one more line, keeping the most urgent first."""
     line = schemas.AttentionItem(severity=severity, text=text, to=to)
-    order = {"high": 0, "medium": 1, "low": 2}
-    return sorted([*items, line], key=lambda item: order[item.severity])
+    return _ordered([*items, line])
 
 
 def with_loss(

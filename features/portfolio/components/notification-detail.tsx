@@ -81,12 +81,16 @@ export function NotificationDetail({ item, read, onMarkRead, onClose }: { item: 
   const { owns } = useRoles();
   const category = categoryOf(item.text, item.to);
   // A few notifications need their own words: no filings set up is not a filing past due.
-  const [meaning, next] = /not set up/i.test(item.text)
+  const fema = /FEMA/.test(item.text);
+  const [meaning, next] = fema
+    ? ["Under FEMA, an exporter must bring export money into India within 9 months of shipping. After that the bank (AD bank) reports the shipment to the RBI as outstanding, and penalties can follow.", "Chase the customer for payment now. If they cannot pay in time, ask your AD bank before the 9 months run out for an extension or a write-off, with the reason and proof of follow-up. Tell your CA."]
+    : /not set up/i.test(item.text)
     ? ["Janus does not know yet which filings apply to this company, so it cannot remind you of any.", "Open Compliance and say what applies: its GSTIN and GST returns, TDS, PF and ESI, and company filings. Janus then tracks every due date."]
     : /registration details|missing/i.test(item.text)
       ? ["Some of the company's registration details are not recorded.", "Open Compliance and fill in what is missing, such as PAN, TAN or the EPF and ESI codes."]
       : guidance[category] ?? guidance.Other;
-  const rows = facts(category, item.company);
+  const money = item.company.money;
+  const rows: [string, string][] = fema && money ? [["Unpaid over 9 months", `${inr(n(money.unpaidOver9Months))} on ${money.unpaidOver9MonthsInvoices} invoice${money.unpaidOver9MonthsInvoices === 1 ? "" : "s"}`], ["Past due in all", `${inr(n(money.overdue))} on ${money.overdueInvoices} invoice${money.overdueInvoices === 1 ? "" : "s"}`], ["Customers owe", inr(n(money.receivable))]] : facts(category, item.company);
   const to = forCompany(item.to, item.company);
   const inPortfolio = to.startsWith("/portfolio");
   const canGo = inPortfolio || owns(item.company);

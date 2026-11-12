@@ -150,7 +150,7 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
       </div>
     </section>
 
-    {item.health && item.health.reasons.length > 0 && <SectionCard title="Needs attention" description="From this company's own records."><ul className="grid gap-1 text-sm">{item.health.reasons.map((reason) => <li key={reason}>• {reason}</li>)}</ul></SectionCard>}
+    {item.health && item.health.reasons.length > 0 && <SectionCard title="Needs attention" description="From this company's own records."><ul className="grid gap-1 text-sm">{item.health.reasons.map((reason) => <li key={reason} className={item.health?.status === "red" ? "font-medium text-danger" : undefined}>• {reason}</li>)}</ul></SectionCard>}
 
     <FocusCard item={item} extra={[
       ...(item.books && sells(item) ? [payroll !== null

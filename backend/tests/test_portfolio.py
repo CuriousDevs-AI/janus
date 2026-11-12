@@ -2733,6 +2733,8 @@ async def test_the_kind_of_business_decides_the_export_payment_warning(
     after = await company()
     line = next(item for item in after["attention"] if "9 months" in item["text"])
     assert line["severity"] == "high" and "FEMA" in line["text"] and "₹5,000" in line["text"]
+    # The FEMA breach is the worst of it, so it leads the red reasons, ahead of the overdue line.
+    assert after["attention"][0] == line and after["health"]["reasons"][0] == line["text"]
 
     refused = await client.put(
         f"{url}/details", headers=owner.headers, json={"name": "X Ltd", "businessModel": "casino"}
@@ -2948,3 +2950,22 @@ async def test_a_tds_payment_short_of_the_tds_deducted_stays_past_due(
         json={"filedOn": today.isoformat(), "acknowledgement": "CIN-2", "amount": "10000"},
     )
     assert (await due())["status"] == "filed"
+
+
+def test_red_reasons_lead_with_the_worst_problem() -> None:
+    from janus_api.portfolio import attention, schemas
+
+    def line(text: str) -> schemas.AttentionItem:
+        return schemas.AttentionItem(severity="high", text=text, to="/")
+
+    items = [
+        line("₹1.6L of supplier bills already late"),
+        line("2 filings past due and not recorded as filed"),
+        line("₹2L overdue from customers on 3 invoices"),
+    ]
+    items = attention.with_line(items, "high", "Cash in the bank lasts about 0.8 months", "/")
+    items = attention.with_loss(items, attention.Decimal("-80000"))
+    reasons = attention.health(items).reasons
+    assert reasons[0].startswith("Losing about ₹80,000")
+    assert reasons[1].startswith("Cash in the bank lasts")
+    assert reasons[-1] == "₹1.6L of supplier bills already late"
