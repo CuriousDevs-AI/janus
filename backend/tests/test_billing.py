@@ -1,11 +1,13 @@
 import hashlib
 import hmac
 import json
+from datetime import date
 
 import httpx
 import pytest
 from pydantic import SecretStr
 
+from janus_api.billing import change
 from janus_api.billing import service as billing
 from janus_api.core.config import get_settings
 from tests.conftest import Mailbox
@@ -43,16 +45,22 @@ async def test_the_plan_is_the_owners_and_covers_every_company(
         "/v1/billing/sample-invoices", headers=owner.headers, json={"months": 3}
     )
     assert billed.status_code == 200, billed.text
+    # The move itself recorded today's month, paid, as a sample; then three monthly ones, the
+    # newest of which is still due.
     invoices = billed.json()["invoices"]
-    assert len(invoices) == 3 and all(item["sample"] for item in invoices)
-    assert invoices[0]["status"] == "due" and {item["status"] for item in invoices[1:]} == {"paid"}
-    assert invoices[0]["amount"] == "1999.00" and invoices[0]["gst"] == "359.82"
-    assert invoices[0]["total"] == "2358.82"
+    assert len(invoices) == 4 and all(item["sample"] for item in invoices)
+    assert (
+        invoices[0]["status"] == "paid" and invoices[0]["periodStart"] == moved.json()["startedOn"]
+    )
+    monthly = invoices[1:]
+    assert monthly[0]["status"] == "due" and {item["status"] for item in monthly[1:]} == {"paid"}
+    assert monthly[0]["amount"] == "1999.00" and monthly[0]["gst"] == "359.82"
+    assert monthly[0]["total"] == "2358.82"
     # A month already invoiced is not invoiced twice.
     again = await client.post(
         "/v1/billing/sample-invoices", headers=owner.headers, json={"months": 3}
     )
-    assert len(again.json()["invoices"]) == 3
+    assert len(again.json()["invoices"]) == 4
 
     # Someone who owns no company sees that the plan is the Owner's, and cannot change it.
     member = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
@@ -218,3 +226,96 @@ async def test_a_paid_plan_is_bought_through_razorpay(
         },
     )
     assert stolen.status_code == 404
+
+
+async def test_moving_down_archives_what_does_not_fit_and_refunds_the_unused_days(
+    client: httpx.AsyncClient, mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_key")
+    monkeypatch.setattr(settings, "razorpay_key_secret", SecretStr("key-secret"))
+    refunds: list[tuple[str, int]] = []
+
+    async def fake_order(amount: int, receipt: str, notes: dict[str, str]) -> str:
+        return "order_G1"
+
+    async def fake_refund(payment_id: str, paise: int) -> str:
+        refunds.append((payment_id, paise))
+        return "rfnd_1"
+
+    monkeypatch.setattr(billing, "_create_order", fake_order)
+    monkeypatch.setattr(change, "_refund_payment", fake_refund)
+    owner = await signup(client, mailbox)
+    for name in ("Pune Retail", "Surat Exports"):
+        added = await client.post(
+            "/v1/portfolio/companies", headers=owner.headers, json={"name": name}
+        )
+        assert added.status_code == 201, added.text
+    members = [
+        await accept_new(client, await invite(client, mailbox, owner, f"m{n}@example.com"))
+        for n in range(3)
+    ]
+    await invite(client, mailbox, owner, "late@example.com")
+
+    # Growth, bought through Razorpay, so this month is a paid invoice with its payment.
+    await client.post("/v1/billing/checkout", headers=owner.headers, json={"plan": "growth"})
+    signature = hmac.new(b"key-secret", b"order_G1|pay_G1", hashlib.sha256).hexdigest()
+    paid = await client.post(
+        "/v1/billing/checkout/verify",
+        headers=owner.headers,
+        json={"orderId": "order_G1", "paymentId": "pay_G1", "signature": signature},
+    )
+    assert paid.status_code == 200, paid.text
+    invoice = paid.json()["invoices"][0]
+    period = (
+        date.fromisoformat(invoice["periodEnd"]) - date.fromisoformat(invoice["periodStart"])
+    ).days + 1
+
+    # Free holds one company and three people: the session's company stays, and choosing another
+    # as well is too many.
+    other = next(
+        item["id"]
+        for item in (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()[
+            "companies"
+        ]
+        if item["name"] == "Pune Retail"
+    )
+    too_many = await client.get(
+        f"/v1/billing/preview?plan=free&keep={other}", headers=owner.headers
+    )
+    assert too_many.status_code == 422
+    seen = (await client.get("/v1/billing/preview?plan=free", headers=owner.headers)).json()
+    assert [item["name"] for item in seen["archiveCompanies"]] == ["Pune Retail", "Surat Exports"]
+    assert [item["name"] for item in seen["withdrawInvitations"]] == ["late@example.com"]
+    # Owner, three members and an invitation are five seats: the invitation goes, then one member.
+    assert len(seen["archivePeople"]) == 1
+    refund = seen["refund"]
+    assert refund["method"] == "razorpay" and refund["daysUsed"] == 1
+    assert refund["daysTotal"] == period and refund["daysUnused"] == period - 1
+    expected = 707882 * (period - 1) // period
+    assert refund["amount"] == f"{expected / 100:.2f}"
+
+    moved = await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "free"})
+    assert moved.status_code == 200, moved.text
+    after = moved.json()
+    assert after["plan"] == "free"
+    assert [item["name"] for item in after["archived"]] == ["Pune Retail", "Surat Exports"]
+    assert (
+        after["refunds"][0]["status"] == "refunded"
+        and after["refunds"][0]["amount"] == refund["amount"]
+    )
+    assert refunds == [("pay_G1", expected)]
+    summary = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
+    assert len(summary["companies"]) == 1 and summary["companies"][0]["current"] is True
+    # The newest member is archived and can no longer get in; the others can.
+    assert (await client.get("/v1/me", headers=members[2])).status_code == 403
+    assert (await client.get("/v1/me", headers=members[0])).status_code == 200
+
+    # Moving up again brings back the companies and the member; nothing was lost.
+    back = await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "growth"})
+    assert back.json()["archived"] == []
+    assert (
+        len((await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"])
+        == 3
+    )
+    assert (await client.get("/v1/me", headers=members[2])).status_code == 200

@@ -1035,3 +1035,110 @@ async def set_workspace_access(
     )
     await db.flush()
     return (await member_outputs(db, [(member, role)]))[0]
+
+
+# Archiving by plan: an account that moves to a smaller plan keeps what fits and archives the rest,
+# and gets it back when the plan has room. An archived membership is kept but closed, so nobody can
+# open an archived company or sign in to it, and its records stay as they are.
+
+
+async def owner_companies(db: AsyncSession, user_id: int) -> list[tuple[int, str, str]]:
+    """The companies this person owns, active or archived, as (id, name, status), oldest first.
+    Read under the person's own context; each name under its company's."""
+    rows = (
+        await db.execute(
+            select(Membership.tenant_id, Membership.status)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                Membership.user_id == user_id,
+                Membership.status.in_(("active", "archived")),
+                Role.tenant_id.is_(None),
+                Role.name == "owner",
+            )
+            .order_by(Membership.tenant_id)
+        )
+    ).all()
+    out = []
+    for tenant_id, status in rows:
+        await set_context(db, user_id=user_id, tenant_id=tenant_id)
+        tenant = await db.get(Tenant, tenant_id)
+        out.append((int(tenant_id), tenant.name if tenant else str(tenant_id), str(status)))
+    return out
+
+
+async def seat_holders(
+    db: AsyncSession, tenant_id: int
+) -> tuple[list[tuple[int, int, str, bool]], list[tuple[int, str]]]:
+    """Under the company's context: its memberships that hold or held a seat, as (membership id,
+    user id, status, is an Owner), oldest first; and its open invitations, as (id, email)."""
+    members = (
+        await db.execute(
+            select(Membership.id, Membership.user_id, Membership.status, Role.name)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                Membership.tenant_id == tenant_id,
+                Membership.status.in_(("active", "archived")),
+            )
+            .order_by(Membership.id)
+        )
+    ).all()
+    invites = (
+        await db.execute(
+            select(Invitation.id, Invitation.email)
+            .where(
+                Invitation.tenant_id == tenant_id,
+                Invitation.used_at.is_(None),
+                Invitation.revoked_at.is_(None),
+                Invitation.expires_at > now(),
+            )
+            .order_by(Invitation.id)
+        )
+    ).all()
+    return (
+        [
+            (int(m_id), int(u_id), str(status), role == "owner")
+            for m_id, u_id, status, role in members
+        ],
+        [(int(i_id), str(email)) for i_id, email in invites],
+    )
+
+
+async def set_membership_status(
+    db: AsyncSession, tenant_id: int, membership_ids: Iterable[int], status: str
+) -> None:
+    """Archives (`archived`) or restores (`active`) memberships, under the company's context.
+    Only active and archived memberships move; a disabled one stays as it is."""
+    ids = list(membership_ids)
+    if not ids:
+        return
+    for member in (
+        await db.scalars(
+            select(Membership).where(
+                Membership.tenant_id == tenant_id,
+                Membership.id.in_(ids),
+                Membership.status.in_(("active", "archived")),
+            )
+        )
+    ).all():
+        member.status = status
+
+
+async def archive_company(db: AsyncSession, tenant_id: int) -> None:
+    """Closes a company: every active membership archived, open invitations withdrawn."""
+    members, invites = await seat_holders(db, tenant_id)
+    await set_membership_status(
+        db, tenant_id, [m_id for m_id, _, status, _ in members if status == "active"], "archived"
+    )
+    await withdraw_invitations(db, tenant_id, [i_id for i_id, _ in invites])
+
+
+async def withdraw_invitations(db: AsyncSession, tenant_id: int, ids: Iterable[int]) -> None:
+    wanted = list(ids)
+    if not wanted:
+        return
+    for invite in (
+        await db.scalars(
+            select(Invitation).where(Invitation.tenant_id == tenant_id, Invitation.id.in_(wanted))
+        )
+    ).all():
+        invite.revoked_at = now()

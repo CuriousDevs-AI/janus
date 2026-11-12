@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 
-from janus_api.billing import schemas, service
+from janus_api.billing import change, schemas, service
 from janus_api.core.deps import CurrentActor, Db, request_ip
 
 router = APIRouter(prefix="/v1/billing", tags=["Billing"])
@@ -16,7 +16,16 @@ async def change_plan(
     data: schemas.PlanChange, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.BillingOut:
     return await service.change_plan(
-        db, actor.user.id, actor.session.tenant_id, data.plan, request_ip(request)
+        db, actor.user.id, actor.session.tenant_id, data.plan, data.keep, request_ip(request)
+    )
+
+
+@router.get("/preview", response_model=schemas.ChangePreview)
+async def preview(
+    actor: CurrentActor, db: Db, plan: schemas.PlanId, keep: str = ""
+) -> schemas.ChangePreview:
+    return await change.preview(
+        db, actor.user.id, actor.session.tenant_id, plan, [item for item in keep.split(",") if item]
     )
 
 
@@ -34,7 +43,13 @@ async def checkout(
     data: schemas.Checkout, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.CheckoutOut:
     return await service.checkout(
-        db, actor.user.id, actor.user.name, actor.user.email, data.plan, request_ip(request)
+        db,
+        actor.user.id,
+        actor.user.name,
+        actor.user.email,
+        data.plan,
+        data.keep,
+        request_ip(request),
     )
 
 

@@ -20,14 +20,15 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
-from janus_api.billing import schemas
-from janus_api.billing.models import AccountInvoice, AccountPayment, AccountPlan
+from janus_api.billing import change, schemas
+from janus_api.billing.models import AccountInvoice, AccountPayment, AccountPlan, AccountRefund
 from janus_api.billing.plans import BY_ID, GST_RATE, PLANS, Plan
 from janus_api.core.config import get_settings
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
 from janus_api.org import overview as org
+from janus_api.org import service as org_service
 
 
 def _today() -> date:
@@ -152,6 +153,10 @@ async def _usage(
     return schemas.Usage(companies=len(owned), logins=logins)
 
 
+async def _owns(db: AsyncSession, user_id: int) -> bool:
+    return bool(await org.owned_tenants(db, user_id))
+
+
 async def _row(db: AsyncSession, user_id: int) -> AccountPlan | None:
     row: AccountPlan | None = await db.scalar(
         select(AccountPlan).where(AccountPlan.user_id == user_id)
@@ -195,11 +200,51 @@ async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> sc
         ],
         canChange=bool(owned) and _changes_allowed(),
         payments=_payments(),
+        chosen=row is not None,
+        refunds=[
+            schemas.RefundOut(
+                invoice=item.invoice,
+                plan=BY_ID[item.plan].name if item.plan in BY_ID else item.plan,
+                daysUnused=item.days_unused,
+                daysTotal=item.days_total,
+                amount=_rupees(item.amount_paise),
+                status=item.status,
+                createdOn=item.created_at.astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat(),
+            )
+            for item in (
+                await db.scalars(
+                    select(AccountRefund)
+                    .where(AccountRefund.user_id == user_id)
+                    .order_by(AccountRefund.id.desc())
+                )
+            ).all()
+        ],
+        archived=[
+            schemas.Company(id=str(cid), name=name)
+            for cid, name, status in (
+                await _owner_companies(db, user_id, current_tenant) if owned else []
+            )
+            if status == "archived"
+        ],
     )
 
 
+async def _owner_companies(
+    db: AsyncSession, user_id: int, current_tenant: int | None
+) -> list[tuple[int, str, str]]:
+    try:
+        return await org_service.owner_companies(db, user_id)
+    finally:
+        await set_context(db, user_id=user_id, tenant_id=current_tenant)
+
+
 async def change_plan(
-    db: AsyncSession, user_id: int, current_tenant: int | None, plan_id: str, ip: str
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    plan_id: str,
+    keep: list[str],
+    ip: str,
 ) -> schemas.BillingOut:
     """Moves the account to another plan from today. Enterprise is set up with the Janus team."""
     if not await org.owned_tenants(db, user_id):
@@ -215,8 +260,33 @@ async def change_plan(
             "A paid plan is bought through checkout, which is not connected yet.",
             409,
         )
-    await _set_plan(db, user_id, plan_id, ip)
-    await db.flush()
+    await change.apply(db, user_id, current_tenant, plan_id, keep, ip)
+    plan = BY_ID[plan_id]
+    if plan.price_paise:
+        # Test mode: the month is recorded as a paid sample invoice, so a later move refunds it
+        # the way a paid one would be.
+        today = _today()
+        taken = await db.scalar(
+            select(func.count(AccountInvoice.id)).where(AccountInvoice.user_id == user_id)
+        )
+        gst = plan.price_paise * GST_RATE // 100
+        db.add(
+            AccountInvoice(
+                user_id=user_id,
+                number=f"JNS-{today.year}-{int(taken or 0) + 1:04d}",
+                plan=plan.id,
+                issued_on=today,
+                period_start=today,
+                period_end=_add_month(today) - timedelta(days=1),
+                amount_paise=plan.price_paise,
+                gst_paise=gst,
+                total_paise=plan.price_paise + gst,
+                status="paid",
+                paid_on=today,
+                sample=True,
+            )
+        )
+        await db.flush()
     return await view(db, user_id, current_tenant)
 
 
@@ -241,7 +311,13 @@ async def _set_plan(db: AsyncSession, user_id: int, plan_id: str, ip: str | None
 
 
 async def checkout(
-    db: AsyncSession, user_id: int, name: str, email: str, plan_id: str, ip: str
+    db: AsyncSession,
+    user_id: int,
+    name: str,
+    email: str,
+    plan_id: str,
+    keep: list[str],
+    ip: str,
 ) -> schemas.CheckoutOut:
     """A Razorpay order for one month of the plan, GST included, for Checkout to take payment."""
     keys = _razorpay()
@@ -258,7 +334,11 @@ async def checkout(
     order_id = await _create_order(
         amount, f"janus-{user_id}-{int(count or 0) + 1}", {"plan": plan.id, "account": str(user_id)}
     )
-    db.add(AccountPayment(user_id=user_id, plan=plan.id, order_id=order_id, amount_paise=amount))
+    db.add(
+        AccountPayment(
+            user_id=user_id, plan=plan.id, order_id=order_id, amount_paise=amount, keep=keep
+        )
+    )
     record(db, "billing.checkout", user_id=user_id, ip=ip, details={"plan": plan.id})
     return schemas.CheckoutOut(
         keyId=keys[0],
@@ -273,13 +353,21 @@ async def checkout(
 
 
 async def _settle(
-    db: AsyncSession, payment: AccountPayment, payment_id: str, ip: str | None
+    db: AsyncSession,
+    payment: AccountPayment,
+    payment_id: str,
+    current_tenant: int | None,
+    ip: str | None,
 ) -> None:
     """Records a confirmed payment once: the plan from today, and a paid invoice for the month."""
     if payment.status == "paid":
         return
     payment.status, payment.payment_id, payment.paid_at = "paid", payment_id, now()
-    renews = await _set_plan(db, payment.user_id, payment.plan, ip)
+    # The month left on the old plan is refunded, and what the new plan cannot hold archived, as
+    # the buyer saw before paying.
+    await change.apply(db, payment.user_id, current_tenant, payment.plan, payment.keep, ip)
+    row = await _row(db, payment.user_id)
+    renews = row.renews_on if row else None
     today = _today()
     taken = await db.scalar(
         select(func.count(AccountInvoice.id)).where(AccountInvoice.user_id == payment.user_id)
@@ -299,6 +387,7 @@ async def _settle(
             status="paid",
             paid_on=today,
             sample=False,
+            payment_id=payment_id,
         )
     )
     record(
@@ -327,7 +416,7 @@ async def verify(
         raise ApiError("not_found", "That payment is not one of yours.", 404)
     if not _signed(f"{data.orderId}|{data.paymentId}".encode(), keys[1], data.signature):
         raise ApiError("bad_signature", "The payment could not be confirmed with Razorpay.", 400)
-    await _settle(db, payment, data.paymentId, ip)
+    await _settle(db, payment, data.paymentId, current_tenant, ip)
     return await view(db, user_id, current_tenant)
 
 
@@ -350,7 +439,7 @@ async def webhook(db: AsyncSession, body: bytes, signature: str, ip: str) -> Non
     await set_context(db, user_id=int(owner))
     payment = await db.scalar(select(AccountPayment).where(AccountPayment.order_id == order_id))
     if payment is not None and int(entity.get("amount", 0)) == payment.amount_paise:
-        await _settle(db, payment, str(payment_id), ip)
+        await _settle(db, payment, str(payment_id), None, ip)
 
 
 async def add_sample_invoices(

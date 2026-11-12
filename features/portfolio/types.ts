@@ -226,6 +226,16 @@ export type BillingPlanId = "free" | "startup" | "growth" | "enterprise";
 export interface BillingPlan { id: BillingPlanId; name: string; tagline: string; price: string | null; companies: number | null; logins: number | null; features: string[] }
 export interface BillingInvoice { number: string; plan: string; issuedOn: string; periodStart: string; periodEnd: string; amount: string; gst: string; total: string; status: "paid" | "due"; paidOn: string | null; sample: boolean }
 /** payments: "razorpay" buys a paid plan through Razorpay; "test" changes it at once with nothing charged (never in production); "off" cannot buy one yet. */
-export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean; payments: "razorpay" | "test" | "off" }
+export interface Billing { owner: boolean; plan: BillingPlanId; startedOn: string | null; renewsOn: string | null; usage: { companies: number; logins: number }; gstRate: number; plans: BillingPlan[]; invoices: BillingInvoice[]; canChange: boolean; payments: "razorpay" | "test" | "off"; chosen: boolean; refunds: BillingRefund[]; archived: { id: string; name: string }[] }
+export interface BillingRefund { invoice: string; plan: string; daysUnused: number; daysTotal: number; amount: string; status: "refunded" | "test" | "failed"; createdOn: string }
+/** GET /billing/preview: what moving to a plan does, before it is done. */
+export interface BillingPreview {
+  plan: BillingPlanId; companyLimit: number | null; peopleLimit: number | null;
+  companies: { id: string; name: string; current: boolean; keep: boolean }[];
+  archiveCompanies: { id: string; name: string }[]; archivePeople: { name: string; company: string }[]; withdrawInvitations: { name: string; company: string }[];
+  restoreCompanies: { id: string; name: string }[]; restorePeople: { name: string; company: string }[];
+  refund: { invoice: string; plan: string; daysUsed: number; daysTotal: number; daysUnused: number; amount: string; method: "razorpay" | "test" } | null;
+  charge: string | null;
+}
 /** POST /billing/checkout: what Razorpay Checkout needs. Amount in paise, GST included. */
 export interface BillingCheckout { keyId: string; orderId: string; amount: number; currency: "INR"; plan: string; description: string; name: string; email: string }

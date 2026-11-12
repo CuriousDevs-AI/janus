@@ -6,4 +6,5 @@
  * the preview's version, which a real account never loads.
  */
 export { PortfolioPage } from "@/features/portfolio/portfolio-page";
+export { ChoosePlan } from "@/features/portfolio/components/choose-plan";
 export type { PortfolioCompany, PortfolioSummary } from "@/features/portfolio/types";

@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from janus_api.core.db import Base
@@ -34,6 +35,8 @@ class AccountInvoice(Base):
     paid_on: Mapped[date | None] = mapped_column(Date)
     # Made for testing (no payment provider is connected), and shown as such.
     sample: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The Razorpay payment it was paid with, where a refund goes back.
+    payment_id: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -49,3 +52,20 @@ class AccountPayment(Base):
     status: Mapped[str] = mapped_column(String(10), default="created")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The companies the buyer chose to keep, for a move down settled by the webhook.
+    keep: Mapped[list[str]] = mapped_column(JSONB, default=list)
+
+
+class AccountRefund(Base):
+    """The unused days of a paid month, refunded when the account moved to another plan."""
+
+    __tablename__ = "account_refunds"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    invoice: Mapped[str] = mapped_column(String(20))
+    plan: Mapped[str] = mapped_column(String(20))
+    days_unused: Mapped[int] = mapped_column(Integer)
+    days_total: Mapped[int] = mapped_column(Integer)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(10))
+    razorpay_refund_id: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

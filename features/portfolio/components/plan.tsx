@@ -11,7 +11,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { day } from "@/features/portfolio/lib/format";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
-import type { Billing, BillingCheckout, BillingInvoice, BillingPlan } from "@/features/portfolio/types";
+import type { Billing, BillingCheckout, BillingInvoice, BillingPlan, BillingPreview } from "@/features/portfolio/types";
 
 type RazorpayResponse = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 type RazorpayCheckout = { open: () => void; on: (event: "payment.failed", handler: (failure: { error?: { description?: string } }) => void) => void };
@@ -73,6 +73,17 @@ export function Plan() {
       })}</div>
     </div>
 
+    {data.archived.length > 0 && <SectionCard title="Archived by your plan" description={`${current.name} holds fewer companies than you have. These are kept as they were and come back when you move up.`}>
+      <ul className="flex flex-wrap gap-2">{data.archived.map((item) => <li key={item.id}><Badge variant="neutral">{item.name}</Badge></li>)}</ul>
+    </SectionCard>}
+
+    {data.refunds.length > 0 && <SectionCard title="Refunds" description="The unused days of a paid month, when you moved to another plan.">
+      <ul className="divide-y divide-border">{data.refunds.map((refund, index) => <li key={index} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm first:pt-0 last:pb-0">
+        <span><span className="font-medium">{rupees(refund.amount)}</span> <span className="text-muted-foreground">for {refund.daysUnused} unused of {refund.daysTotal} days of {refund.plan} · {refund.invoice} · {day(refund.createdOn)}</span></span>
+        {refund.status === "refunded" ? <Badge variant="success">Refunded to your payment</Badge> : refund.status === "failed" ? <Badge variant="danger">Razorpay refused it: we will refund by hand</Badge> : <Badge variant="neutral">Test: recorded only</Badge>}
+      </li>)}</ul>
+    </SectionCard>}
+
     <SectionCard title="Invoices" description={`Monthly, from Janus to your account, with ${data.gstRate}% GST.`}>
       {data.invoices.length === 0 ? <p className="text-sm text-muted-foreground">No invoices yet.</p>
         : <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm">
@@ -122,18 +133,24 @@ function CurrentPlan({ data, plan }: { data: Billing; plan: BillingPlan }) {
   </section>;
 }
 
-function ChangePlan({ from, to, pay, onClose, onDone }: { from: BillingPlan; to: BillingPlan; pay: boolean; onClose: () => void; onDone: () => void }) {
+export function ChangePlan({ from, to, pay, first = false, onClose, onDone }: { from: BillingPlan; to: BillingPlan; pay: boolean; first?: boolean; onClose: () => void; onDone: () => void }) {
   const [saving, setSaving] = React.useState(false);
-  const total = to.price === null ? 0 : Number(to.price) * 1.18;
+  const [keep, setKeep] = React.useState<string[] | null>(null);
+  // The preview follows the companies chosen to keep, and says exactly what the move will do.
+  const preview = usePortfolioApi<BillingPreview>(`/billing/preview?plan=${to.id}${keep ? `&keep=${keep.join(",")}` : ""}`, { keepPrevious: true });
+  const seen = preview.data;
+  const chosen = keep ?? seen?.companies.filter((item) => item.keep).map((item) => item.id) ?? [];
+  const limit = seen?.companyLimit ?? null;
+  const toggle = (id: string) => setKeep(chosen.includes(id) ? chosen.filter((item) => item !== id) : [...chosen, id]);
   async function confirm() {
     setSaving(true);
     if (!pay) {
-      try { await api("/billing/plan", { method: "PUT", body: JSON.stringify({ plan: to.id }) }); toast.success(`You are on the ${to.name} plan.`); onDone(); }
+      try { await api("/billing/plan", { method: "PUT", body: JSON.stringify({ plan: to.id, keep: chosen }) }); toast.success(`You are on the ${to.name} plan.`); onDone(); }
       catch (error) { toast.error(message(error)); setSaving(false); }
       return;
     }
     try {
-      const order = await api<BillingCheckout>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan: to.id }) });
+      const order = await api<BillingCheckout>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan: to.id, keep: chosen }) });
       await loadRazorpay();
       const checkout = new window.Razorpay!({
         key: order.keyId, order_id: order.orderId, amount: order.amount, currency: order.currency,
@@ -152,9 +169,28 @@ function ChangePlan({ from, to, pay, onClose, onDone }: { from: BillingPlan; to:
       checkout.open();
     } catch (error) { toast.error(message(error)); setSaving(false); }
   }
-  return <Dialog open onOpenChange={(open) => !open && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Move from {from.name} to {to.name}?</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`} {pay ? `You pay ${rupees(total.toFixed(2))} now through Razorpay, GST included.` : to.price !== null && Number(to.price) > 0 ? "Payments are not connected yet, so nothing is charged." : ""}</DialogDescription></DialogHeader>
-    <ul className="grid gap-1.5 text-sm">{to.features.slice(0, 4).map((feature) => <li key={feature} className="flex items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />{feature}</li>)}</ul>
-    <DialogFooter><Button variant="outline" disabled={saving} onClick={onClose}>Keep {from.name}</Button><Button disabled={saving} onClick={() => void confirm()}>{saving ? (pay ? "Opening Razorpay…" : "Moving…") : pay ? `Pay ${rupees(total.toFixed(2))}` : `Move to ${to.name}`}</Button></DialogFooter>
+  const tooMany = limit !== null && chosen.length > limit;
+  const list = (title: string, items: { name: string; company?: string }[], tone: "warn" | "good") => items.length > 0 && <div><p className={`text-xs font-semibold ${tone === "warn" ? "text-warning" : "text-success"}`}>{title}</p><ul className="mt-1 grid gap-0.5 text-sm">{items.map((item, index) => <li key={index}>{item.name}{item.company ? <span className="text-muted-foreground"> · {item.company}</span> : null}</li>)}</ul></div>;
+  return <Dialog open onOpenChange={(open) => !open && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+    <DialogHeader><DialogTitle>{first ? `Start on ${to.name}?` : `Move from ${from.name} to ${to.name}?`}</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`}{first ? "" : " Nothing is deleted: what does not fit is archived, and comes back when your plan has room again."}</DialogDescription></DialogHeader>
+    {!seen ? <div role="status" aria-label="Working out the change" className="h-40 animate-pulse rounded-lg bg-surface-2" /> : <div className={`grid gap-4 text-sm transition-opacity ${preview.stale ? "opacity-60" : ""}`}>
+      {seen.archiveCompanies.length > 0 || tooMany ? <fieldset className="grid gap-1.5 rounded-lg border border-warning/30 bg-warning-muted/40 p-3">
+        <legend className="px-1 text-xs font-semibold text-warning">{to.name} holds {limit} {limit === 1 ? "company" : "companies"}. Choose which to keep</legend>
+        {seen.companies.map((item) => <label key={item.id} className="flex items-center gap-2"><input type="checkbox" checked={item.current || chosen.includes(item.id)} disabled={item.current || saving} onChange={() => toggle(item.id)} />{item.name}{item.current && <span className="text-xs text-muted-foreground">(open now, always kept)</span>}</label>)}
+        {tooMany ? <p role="alert" className="text-xs text-danger">Keep no more than {limit}.</p> : <p className="text-xs text-muted-foreground">The others are archived: nobody can open them until you move up again.</p>}
+      </fieldset> : null}
+      {list("Archived", seen.archiveCompanies, "warn")}
+      {list("People archived (they cannot sign in to that company)", seen.archivePeople, "warn")}
+      {list("Invitations withdrawn", seen.withdrawInvitations, "warn")}
+      {list("Coming back", seen.restoreCompanies, "good")}
+      {list("People coming back", seen.restorePeople, "good")}
+      <div className="rounded-lg border border-border px-3 py-2">
+        {first ? null : seen.refund ? <div className="flex justify-between gap-3 py-1"><span className="text-muted-foreground">Refund for {seen.refund.daysUnused} unused of {seen.refund.daysTotal} days of {seen.refund.plan} ({seen.refund.invoice}){seen.refund.method === "test" ? ", recorded only: nothing was paid" : ", back to your Razorpay payment"}</span><span className="font-medium tabular-nums text-success">{rupees(seen.refund.amount)}</span></div> : <p className="py-1 text-muted-foreground">No refund: no paid days left on {from.name}.</p>}
+        {seen.charge && <div className="flex justify-between gap-3 border-t border-border py-1 pt-2"><span className="text-muted-foreground">{pay ? "You pay now, GST included" : "A month of " + to.name + " (test mode: not charged)"}</span><span className="font-medium tabular-nums">{rupees(seen.charge)}</span></div>}
+      </div>
+    </div>}
+    {preview.error && <p role="alert" className="text-xs text-danger">{preview.error}</p>}
+    <DialogFooter><Button variant="outline" disabled={saving} onClick={onClose}>{first ? "Back" : `Keep ${from.name}`}</Button><Button disabled={saving || !seen || tooMany || preview.stale} onClick={() => void confirm()}>{saving ? (pay ? "Opening Razorpay…" : "Moving…") : pay && seen?.charge ? `Pay ${rupees(seen.charge)}` : first ? `Start ${to.name}` : `Move to ${to.name}`}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
 
