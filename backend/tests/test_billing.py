@@ -350,6 +350,9 @@ async def test_invoices_carry_both_gstins_the_sac_and_the_place_of_supply(
     await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "growth"})
     await client.post("/v1/billing/sample-invoices", headers=owner.headers, json={"months": 1})
     before = (await client.get("/v1/billing", headers=owner.headers)).json()
+    # A sample month never bills days an invoice already covers.
+    spans = sorted((item["periodStart"], item["periodEnd"]) for item in before["invoices"])
+    assert all(end < start for (_, end), (start, _) in zip(spans, spans[1:], strict=False))
     assert before["billTo"] is None and before["seller"]["gstin"] == "29AAACJ1234K1Z5"
     assert before["seller"]["sac"] and before["invoices"][0]["igst"] is None
 

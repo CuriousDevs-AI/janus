@@ -537,22 +537,24 @@ async def add_sample_invoices(
     plan = BY_ID.get(row.plan) if row else None
     if plan is None or not plan.price_paise:
         raise ApiError("no_paid_plan", "Sample invoices need a paid plan first.", 409)
-    taken = set(
-        (
-            await db.scalars(
-                select(AccountInvoice.period_start).where(AccountInvoice.user_id == user_id)
+    # A month that overlaps an invoice already there (a real one from a plan change) is left out,
+    # so no two invoices bill the same days.
+    taken = (
+        await db.execute(
+            select(AccountInvoice.period_start, AccountInvoice.period_end).where(
+                AccountInvoice.user_id == user_id
             )
-        ).all()
-    )
+        )
+    ).all()
     count = len(taken)
     today = _today()
     start = today.replace(day=1)
     for back in range(months - 1, -1, -1):
         index = start.year * 12 + start.month - 1 - back
         period_start = date(index // 12, index % 12 + 1, 1)
-        if period_start in taken:
-            continue
         period_end = _add_month(period_start) - timedelta(days=1)
+        if any(begin <= period_end and period_start <= end for begin, end in taken):
+            continue
         count += 1
         amount = plan.price_paise
         gst = amount * GST_RATE // 100
