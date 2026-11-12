@@ -11,7 +11,7 @@ import { CustomersKept } from "@/features/portfolio/components/customers-kept";
 import { LastYear } from "@/features/portfolio/components/last-year";
 import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
 import { sells } from "@/features/portfolio/lib/business";
-import { groupBooks, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
+import { groupBooks, outsideSales, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { change, healthName, inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioPeriod, PortfolioTrends } from "@/features/portfolio/types";
 
@@ -91,11 +91,12 @@ function Leaders({ list: all, money }: { list: PortfolioCompany[]; money: boolea
     const top = scored.sort((a, b) => low ? a.value - b.value : b.value - a.value)[0];
     return { name: top.item.name, value: format(top.value) };
   };
-  const growth = (item: PortfolioCompany) => { const now = money ? n(item.books?.current.netSales) : item.period.current.leads; const before = money ? n(item.books?.previous.netSales) : item.period.previous.leads; return before ? ((now - before) / before) * 100 : null; };
+  // Growth counts sales to outside customers only: a sale to one of your own companies is not growth.
+  const growth = (item: PortfolioCompany) => { const now = money ? outsideSales(item, "current") : item.period.current.leads; const before = money ? outsideSales(item, "previous") : item.period.previous.leads; return before ? ((now - before) / before) * 100 : null; };
   const scoredGrowth = list.map(growth).filter((value): value is number => value !== null);
   const cards: [string, { name: string; value: string } | null][] = [
     // When every company fell, the leader fell least: never call a fall growth.
-    [scoredGrowth.length && scoredGrowth.every((value) => value < 0) ? "Falling least" : "Growing fastest", best(growth, (value) => `${value >= 0 ? "+" : ""}${Math.round(value)}% ${money ? "sales" : "leads"}`)],
+    [scoredGrowth.length && scoredGrowth.every((value) => value < 0) ? "Falling least" : "Growing fastest", best(growth, (value) => `${value >= 0 ? "+" : ""}${Math.round(value)}% ${money ? "sales outside the group" : "leads"}`)],
     ["Biggest pipeline", best((item) => n(item.crm.pipelineValue) || null, inr)],
     [`Best win rate (${RATE_MINIMUM}+ closed deals)`, best((item) => item.crm.wonDeals + item.crm.lostDeals >= RATE_MINIMUM ? winRate(item) : null, (value) => `${value}%`)],
     money ? ["Best margin", best((item) => n(item.books?.current.netSales) ? percent(n(item.books?.current.profitBeforePayroll), n(item.books?.current.netSales)) : null, (value) => `${value}%`)] : ["Most leads", best((item) => item.period.current.leads || null, String)],

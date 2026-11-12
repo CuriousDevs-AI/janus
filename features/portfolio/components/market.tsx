@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { businessName, salesName, sells } from "@/features/portfolio/lib/business";
+import { outsideSales } from "@/features/portfolio/lib/companies";
 import { inr } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany, PortfolioTrends } from "@/features/portfolio/types";
 
@@ -65,11 +66,14 @@ export function TickerRow({ list, money }: { list: PortfolioCompany[]; money: bo
       </Link>;
       const now = money ? n(item.books?.current.netSales) : item.period.current.leads;
       const before = money ? n(item.books?.previous.netSales) : item.period.previous.leads;
+      // The change is judged on sales outside the group, and says what went to your own companies.
+      const internal = money ? n(item.intercompany?.sales) : 0;
       return <Link key={item.id} role="listitem" href={`/portfolio?view=companies&company=${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3 transition-colors hover:bg-surface-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold" title={item.name}>{item.name}</p>
           <p className="mt-1 text-lg font-semibold tabular-nums">{money ? inr(now) : `${now} leads`}</p>
-          <Delta now={now} before={before} format={money ? inr : String} compact />
+          {money ? <Delta now={outsideSales(item, "current")} before={outsideSales(item, "previous")} format={inr} compact /> : <Delta now={now} before={before} format={String} compact />}
+          {internal > 0 && <p className="text-[11px] text-muted-foreground">{inr(internal)} to your own companies</p>}
         </div>
         <Sparkline values={series(item.id)} label={`${item.name} ${money ? salesName(item).toLowerCase() : "leads"}`} up={now === before ? null : now > before} />
       </Link>;

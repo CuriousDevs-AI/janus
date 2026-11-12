@@ -128,6 +128,13 @@ export function groupProfitAfterSalaries(list: PortfolioCompany[], period: { sta
  * both sales and costs. Every screen uses this, so a group figure and its change are the same
  * everywhere.
  */
+/** A company's sales to customers outside the group: growth is judged on these, so a sale to one of
+ * your own companies does not read as growth. */
+export function outsideSales(item: PortfolioCompany, side: "current" | "previous") {
+  const internal = Number((side === "current" ? item.intercompany?.sales : item.intercompany?.salesBefore) ?? 0);
+  return Number(item.books?.[side].netSales ?? 0) - internal;
+}
+
 export function groupBooks(list: PortfolioCompany[], side: "current" | "previous") {
   const sum = (pick: (item: PortfolioCompany) => string | null | undefined) => list.reduce((total, item) => total + Number(pick(item) ?? 0), 0);
   const internalSales = sum((item) => side === "current" ? item.intercompany?.sales : item.intercompany?.salesBefore);
