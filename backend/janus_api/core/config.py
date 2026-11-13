@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     encryption_key: SecretStr = SecretStr("")
     environment: Literal["development", "production", "test"] = "development"
     email_backend: Literal["console", "smtp"] = "console"
-    email_from: str = "Janus <hello@localhost>"
+    email_from: str = "Janus by CuriousDevs <hello@localhost>"
     smtp_host: str = "localhost"
     smtp_port: int = 587
     smtp_username: str = ""
