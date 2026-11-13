@@ -145,6 +145,21 @@ async def test_a_model_answers_only_from_the_portfolio_and_cites_it(
         await client.get("/v1/portfolio/intelligence/history", headers=owner.headers)
     ).json() == []
 
+    # Asked from Business Management: only that company's records, and only a company of theirs.
+    provider_transport(monkeypatch, lambda request: _chat("Sales are steady."))
+    scoped = await client.post(
+        "/v1/portfolio/intelligence/ask",
+        headers=owner.headers,
+        json={"question": "Sales?", "model": model, "companyId": company["id"]},
+    )
+    assert scoped.status_code == 200, scoped.text
+    elsewhere = await client.post(
+        "/v1/portfolio/intelligence/ask",
+        headers=owner.headers,
+        json={"question": "Sales?", "model": model, "companyId": "999999"},
+    )
+    assert elsewhere.status_code == 404, elsewhere.text
+
     # Janus rules answer on the page, not here; a spent budget stops the model.
     rules = await client.post(
         "/v1/portfolio/intelligence/ask",

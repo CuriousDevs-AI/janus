@@ -40,7 +40,8 @@ export function KnowledgeCard({ list }: { list: PortfolioCompany[] }) {
     } catch (error) { toast.error(message(error)); }
   };
 
-  const all = items.data ?? [];
+  // Only the companies on this page: one company's Business Management shows only its own.
+  const all = (items.data ?? []).filter((item) => list.some((company) => company.id === item.companyId));
   const suggested = all.filter((item) => item.status === "suggested");
   const facts = all.filter((item) => item.kind === "fact" && item.status === "approved");
   const documents = Object.values(all.filter((item) => item.kind === "document").reduce<Record<string, PortfolioKnowledgeItem[]>>((groups, item) => { (groups[item.document ?? item.id] ??= []).push(item); return groups; }, {}));
