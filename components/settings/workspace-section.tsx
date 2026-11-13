@@ -33,6 +33,8 @@ import { useSession } from "@/components/auth/session-provider";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
+import { LiveBusinessOverview } from "@/components/business/business-overview";
+import { usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -228,6 +230,13 @@ function BusinessOverviewPanel() {
   // The finance-flavoured panels below are written for the first company only.
   const rich = demoMode && isFirstCompany;
   const people = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
+  // The company's own figures, as the Portfolio reads them for it: money, people, filings and what
+  // needs the Owner. Someone whose role cannot read the Portfolio keeps the CRM summary below.
+  const [periodKey, setPeriodKey] = React.useState<PortfolioPeriodKey>("month");
+  const figures = usePortfolioApi<PortfolioSummary>(demoMode ? null : `/portfolio/summary?period=${periodKey}`, { keepPrevious: true });
+  const shown = figures.data;
+  const mine = shown?.companies.find((item) => item.current);
+  const top = mine?.attention[0];
   return (
     <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -250,7 +259,7 @@ function BusinessOverviewPanel() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Janus brief</p>
-            <p className="mt-1 text-sm leading-6 text-foreground">{!crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
+            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.leads} leads, ${mine.crm.openDeals} open deals and ${formatCurrencyINR(Number(mine.crm.pipelineValue), false)} in open pipeline.` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
           </div>
         </div>
         <Link href="/ai?workspace=business" className="shrink-0 text-sm font-medium text-accent hover:underline">Ask Janus →</Link>
@@ -258,7 +267,7 @@ function BusinessOverviewPanel() {
 
       {demoMode && !company.setupDone && <section className="flex flex-wrap items-center justify-between gap-3 border border-warning/40 bg-warning-muted px-4 py-3"><div><p className="text-sm font-medium">Finish setting up {company.name}</p><p className="text-xs text-muted-foreground">Choose its workspaces and add the first people to switch the company on.</p></div><Button size="sm" asChild><Link href={`/setup?finish=${company.id}`}>Continue setup</Link></Button></section>}
 
-      {crmOn ? <div className="grid gap-3 sm:grid-cols-3">
+      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} stale={figures.stale} /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
@@ -288,13 +297,13 @@ function BusinessOverviewPanel() {
         <InsightGraph />
       </>}
 
-      <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
+      {!mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
           <Badge variant="success">HR & People connected</Badge>
           <Badge variant="neutral">Finance figures not in this summary yet</Badge>
         </div>
-      </SectionCard>
+      </SectionCard>}
     </div>
   );
 }
