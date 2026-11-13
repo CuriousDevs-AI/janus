@@ -1,0 +1,390 @@
+{
+  "viewport": "mobile",
+  "login": {
+    "ok": true,
+    "ms": 1338,
+    "url": "http://localhost:3011/settings?tab=workspace&view=overview&workspace=business"
+  },
+  "pages": [
+    {
+      "route": "/dashboard",
+      "status": "ok",
+      "loadMs": 1140,
+      "url": "/dashboard",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 858,
+      "head": "CRM Overview CRM Overview Live CRM & Sales workspace for Acme Traders Pvt Ltd. Refresh LEADS CAPTURED 1 OPEN DEALS 1 OPEN PIPELINE ₹2.5L CONNECTED SOURCES 3 Recent leads Newest enquiries from connected sources. View all ",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "failed": [
+        "500 GET /api/backend/sources?limit=50&after_id=0"
+      ]
+    },
+    {
+      "route": "/portfolio",
+      "status": "ok",
+      "loadMs": 759,
+      "url": "/portfolio",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 62,
+      "head": "Overview The Portfolio is not available yet for live accounts.",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/leads",
+      "status": "ok",
+      "loadMs": 823,
+      "url": "/leads",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 383,
+      "head": "Leads Leads Every enquiry in one searchable pipeline. Refresh Add lead Add lead source All stages All sources Columns 4 Actions Showing 1 of 1 loaded leads Click a value with the pencil affordance to edit name, mobile, e",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/lead-sources",
+      "status": "ok",
+      "loadMs": 792,
+      "url": "/lead-sources",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 792,
+      "head": "Lead Sources Lead Sources Connect the places your enquiries already come from. Add a new lead source ENABLED SOURCES (3) Website Form & Chat Widget website LEADS CAPTURED 8 LAST RECEIVED 23 Oct, 03:40 pm View source deta",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "failed": [
+        "500 GET /api/backend/sources?limit=50&after_id=0"
+      ]
+    },
+    {
+      "route": "/deals",
+      "status": "ok",
+      "loadMs": 798,
+      "url": "/deals",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 365,
+      "head": "Deals Deals 1 deal on this page · ₹2.5L open value Choose a lead Previous Page 1 Next New 0 ₹0 No deals Qualified 1 ₹2.5L Asha Traders Asha Traders · Asha Traders Pvt Ltd ₹2,50,000 Pankaj Neema 44m ago Edit / move stage ",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/customers",
+      "status": "ok",
+      "loadMs": 829,
+      "url": "/customers",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 226,
+      "head": "Customers Customers 1 of 1 customer records Refresh All Active Won Needs attention CUSTOMER COMPANY CRM STAGE DEAL VALUE OWNER LAST ACTIVITY LEADS AT Asha Traders Asha Traders Pvt Ltd Qualified ₹2.5L Pankaj Neema 44m ago",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/tickets",
+      "status": "ok",
+      "loadMs": 1214,
+      "url": "/tickets",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 603,
+      "head": "Tickets Tickets 3 of 4 tickets New Ticket New tickets arrive automatically from the same channels as leads — Website Chat, Email, WhatsApp and other Lead Sources. Migrating from Zendesk, Freshdesk, Intercom or Jira Servi",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/inbox",
+      "status": "ok",
+      "loadMs": 783,
+      "url": "/inbox",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 304,
+      "head": "Chats Chats Messages from connected channels · refreshes every 5 seconds Mine 0 Unassigned 0 All 0 All channels WhatsApp Email Calls No chats on this page. Open a lead and choose a channel follow-up, or receive a message",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/knowledge",
+      "status": "ok",
+      "loadMs": 764,
+      "url": "/knowledge",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 176,
+      "head": "Knowledge Knowledge 0 of 0 documents Add URL Create FAQ Upload All categories Your AI needs knowledge Upload your first document so agents can ground their answers. Upload",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/memory",
+      "status": "ok",
+      "loadMs": 736,
+      "url": "/memory",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 254,
+      "head": "Janus Memory 0 memories — 0 customer · 0 conversation · 0 derived insights · 0 event history All memory types All statuses Any confidence 0 of 0 shown No memory items match your filters Try a different search term or res",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/ai",
+      "status": "ok",
+      "loadMs": 734,
+      "url": "/ai",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1724,
+      "head": "Janus Intelligence JANUS INTELLIGENCE Knowledge Verified sources Everything Janus knows about your business. Answers use this knowledge and connected records, with access controlled by permissions. Connect an app Add kno",
+      "overflowX": 0,
+      "bad": "NAN",
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/notifications",
+      "status": "ok",
+      "loadMs": 743,
+      "url": "/notifications",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 160,
+      "head": "Notifications Notifications 0 unread of 0 Mark all read All Sales 0 Support 0 AI 0 Automation 0 System 0 Nothing here No notifications in this category yet.",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/activity",
+      "status": "ok",
+      "loadMs": 782,
+      "url": "/activity",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1246,
+      "head": "Janus Activity What changed across the workspaces, with who did it and when. Workspace All Finance Operations Projects IT CRM & Support Person Everyone Pankaj Neema IT 2026-10-29 12:16 · Pankaj Neema · IT-1001 resolved I",
+      "overflowX": 0,
+      "bad": "nan",
+      "consoleErrors": [
+        "error: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — "
+      ],
+      "failed": []
+    },
+    {
+      "route": "/agents",
+      "status": "ok",
+      "loadMs": 855,
+      "url": "/agents",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1044,
+      "head": "AI Agents AI Agents Business-level AI agents. Sensitive actions require approval. Templates New agent Settings Counts come from connected agent and execution records. ACTIVE AGENTS 0 WAITING FOR APPROVAL 0 FAILED · LAST ",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/automations",
+      "status": "ok",
+      "loadMs": 756,
+      "url": "/automations",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 160,
+      "head": "Automations Automations 0 automations · 0 active New Automation All Active Disabled Draft No automations found Try a different search term or status filter.",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/approvals",
+      "status": "ok",
+      "loadMs": 687,
+      "url": "/approvals",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 133,
+      "head": "Approvals Approvals 0 pending approvals Pending Approved Rejected All No approvals here Nothing to review in this view right now.",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/integrations",
+      "status": "ok",
+      "loadMs": 775,
+      "url": "/integrations",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1939,
+      "head": "Integrations Integrations 2 connected · 12 total · other business tools, not customer channels Looking for Website Forms, WhatsApp, Phone Calls or Custom Webhooks? Manage them under Lead Sources. NEEDS ATTENTION Slack Ne",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/evaluations",
+      "status": "ok",
+      "loadMs": 740,
+      "url": "/evaluations",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 198,
+      "head": "Janus Evaluations 0 runs across 0 agents AVG ACCURACY (LATEST) 0% TOTAL RUNS 0 REGRESSIONS 0 AGENTS EVALUATED 0 All agents 0 of 0 runs No evaluation runs No runs match the selected agent filter.",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/analytics",
+      "status": "ok",
+      "loadMs": 776,
+      "url": "/analytics",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 386,
+      "head": "Analytics Analytics Acquisition, sales, AI operations, support, customer health and automation — last 30 days. Acquisition Sales Support Customer Leads by source Volume across the last 30 days 0 1 2 3 4 WhatsApp Website ",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "warning: The width(0) and height(0) of chart should be greater than 0,\n       please check the style of container, or the props width(100%) and height(100%),\n       or add a minWidth(0) or minHeight(undefined)"
+      ],
+      "failed": []
+    },
+    {
+      "route": "/usage",
+      "status": "ok",
+      "loadMs": 731,
+      "url": "/usage",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 626,
+      "head": "Usage Usage & Cost Acme Traders Pvt Ltd · no AI usage recorded yet TOTAL THIS MONTH ₹0 COST PER LEAD ₹0 COST PER CONVERSATION ₹0 COST PER RESOLVED TICKET ₹0 COST BY CATEGORY · LAST 7 DAYS ₹0 total LLM Voice WhatsApp Emai",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/audit",
+      "status": "ok",
+      "loadMs": 692,
+      "url": "/audit",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 116,
+      "head": "Audit Logs Audit Logs 0 of 0 events All results No matching events Try a different search term or result filter.",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/settings",
+      "status": "ok",
+      "loadMs": 888,
+      "url": "/settings",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1446,
+      "head": "Business Overview Settings Manage your profile, access, notifications and business configuration. Business Settings Company Profile Organization Structure Currency & Timezone Security & Privacy Data Management COMPANY Co",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/work",
+      "status": "ok",
+      "loadMs": 770,
+      "url": "/work",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 177,
+      "head": "Janus Work inbox 1 thing to act on, across every workspace. Hiding items I raised Hiding read items Urgent · 1 urgent #6523 is escalated: Payment reminder query Mark read Open",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/operations-inventory",
+      "status": "ok",
+      "loadMs": 1517,
+      "url": "/workspace/operations-inventory",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 409,
+      "head": "Operations Overview Operations overview Items, stock by location and batch, dispatches and returns. Stock never goes negative. ITEMS 1 LOW STOCK 0 DISPATCHES NOT YET DELIVERED 0 ADJUSTMENTS WAITING APPROVAL 0 Low stock E",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — "
+      ],
+      "failed": []
+    },
+    {
+      "route": "/workspace/finance-accounting",
+      "status": "ok",
+      "loadMs": 1653,
+      "url": "/workspace/finance-accounting",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 582,
+      "head": "Finance Overview Finance overview Invoices, payments, credit notes, fund requests and budgets. Figures come only from records in this workspace. 3 invoices · 1 credit notes INVOICED ₹23,600 COLLECTED ₹0 OUTSTANDING ₹23,1",
+      "overflowX": 0,
+      "bad": "nan",
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/projects-delivery",
+      "status": "ok",
+      "loadMs": 871,
+      "url": "/workspace/projects-delivery",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 403,
+      "head": "Projects Overview Delivery overview Projects draw their budget from a fund allocation. Milestones bill on acceptance. Delivery health is computed from dates and open work. ACTIVE PROJECTS 0 LATE 0 AT RISK 0 OPEN TASKS 0 ",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/customer-support",
+      "status": "ok",
+      "loadMs": 827,
+      "url": "/workspace/customer-support",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 517,
+      "head": "Support Overview Support overview Tickets are worked in CRM & Sales. This workspace shows who holds them, and whether they are within their service time. OPEN TICKETS 1 UNASSIGNED 1 SLA BREACHED 0 DUE WITHIN AN HOUR 0 ES",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/it-infrastructure",
+      "status": "ok",
+      "loadMs": 844,
+      "url": "/workspace/it-infrastructure",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 707,
+      "head": "IT Overview IT overview Assets, the access each person holds, and software licences. Every change is written to the log. ASSETS ASSIGNED 0 ASSETS IN STOCK 1 ACTIVE ACCESS GRANTS 1 LICENCES RENEWING IN 30 DAYS 0 Needs att",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — "
+      ],
+      "failed": []
+    }
+  ]
+}

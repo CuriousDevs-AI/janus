@@ -27,8 +27,8 @@ const about = (name: string): string[] => [
   `What needs attention at ${name}?`,
   `Why did ${name}'s sales change?`,
   `How much profit did ${name} make?`,
-  `What are the receivables at ${name}?`,
-  `Which GST or TDS filings are open at ${name}?`,
+  `What is owed to ${name}?`,
+  `Any GST or TDS due at ${name}?`,
 ];
 const RULES = "rules";
 const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [], portfolioKeys: [], canAddKeys: false };

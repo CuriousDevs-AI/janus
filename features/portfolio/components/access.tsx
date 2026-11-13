@@ -100,7 +100,7 @@ function AddPerson({ list, owner, onClose, onDone }: { list: PortfolioCompany[];
       setSaving(false);
     }
   }
-  return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Add a person</DialogTitle><DialogDescription>They get one email invitation for each company you choose.</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Add a person</DialogTitle><DialogDescription>They get one email. Its link joins every company you choose, with the role you give.</DialogDescription></DialogHeader>
     <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label className="grid gap-1.5 text-xs text-muted-foreground">Email<Input type="email" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <fieldset className="grid gap-1.5"><legend className="mb-1 text-xs text-muted-foreground">Role</legend>
@@ -111,7 +111,7 @@ function AddPerson({ list, owner, onClose, onDone }: { list: PortfolioCompany[];
       </fieldset>
       <fieldset className="grid gap-1.5"><legend className="mb-1 flex w-full items-center justify-between gap-2 text-xs text-muted-foreground">Companies{owned.length > 1 && <button type="button" className="text-accent hover:underline" onClick={() => setCompanies(companies.length === owned.length ? [] : owned.map((item) => item.id))}>{companies.length === owned.length ? "Clear all" : "Choose all"}</button>}</legend>{owned.map((item) => <label key={item.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={companies.includes(item.id)} onChange={() => setCompanies(companies.includes(item.id) ? companies.filter((id) => id !== item.id) : [...companies, item.id])} />{item.name}</label>)}</fieldset>
       {touched && error && <p role="alert" className="text-xs text-danger">{error}</p>}
-      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Sending…" : companies.length > 1 ? `Send ${companies.length} invitations` : "Send invitation"}</Button></DialogFooter>
+      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Sending…" : companies.length > 1 ? `Invite to ${companies.length} companies` : "Send invitation"}</Button></DialogFooter>
     </form></DialogContent></Dialog>;
 }
 

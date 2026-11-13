@@ -211,6 +211,11 @@ async def _details(db: AsyncSession, user_id: int) -> AccountBillingDetails | No
     return row
 
 
+# Janus is a CuriousDevs product, so its own invoices are numbered CD-<year>-<n>. Numbers issued
+# before as JNS- keep theirs; the count runs on across both, so no number repeats.
+INVOICE_PREFIX = "CD"
+
+
 async def _last_number(db: AsyncSession, user_id: int) -> int:
     """The highest invoice number the account has, so a new one never repeats a number, even
     after an invoice was removed (a count would hand out the last number again)."""
@@ -396,7 +401,7 @@ async def change_plan(
         db.add(
             AccountInvoice(
                 user_id=user_id,
-                number=f"JNS-{today.year}-{taken + 1:04d}",
+                number=f"{INVOICE_PREFIX}-{today.year}-{taken + 1:04d}",
                 plan=plan.id,
                 issued_on=today,
                 period_start=today,
@@ -498,7 +503,7 @@ async def _settle(
     db.add(
         AccountInvoice(
             user_id=payment.user_id,
-            number=f"JNS-{today.year}-{taken + 1:04d}",
+            number=f"{INVOICE_PREFIX}-{today.year}-{taken + 1:04d}",
             plan=payment.plan,
             issued_on=today,
             period_start=today,
@@ -602,7 +607,7 @@ async def add_sample_invoices(
         db.add(
             AccountInvoice(
                 user_id=user_id,
-                number=f"JNS-{period_start.year}-{count:04d}",
+                number=f"{INVOICE_PREFIX}-{period_start.year}-{count:04d}",
                 plan=plan.id,
                 issued_on=period_start,
                 period_start=period_start,
