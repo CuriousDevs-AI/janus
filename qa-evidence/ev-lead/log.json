@@ -1,0 +1,108 @@
+[
+  {
+    "k": "add-lead-fields",
+    "v": [
+      {
+        "tag": "INPUT",
+        "type": "text",
+        "name": "",
+        "label": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": "text",
+        "name": "",
+        "label": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": "text",
+        "name": "",
+        "label": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": "email",
+        "name": "",
+        "label": ""
+      },
+      {
+        "tag": "TEXTAREA",
+        "type": "textarea",
+        "name": "",
+        "label": ""
+      },
+      {
+        "tag": "BUTTON",
+        "type": "button",
+        "name": "",
+        "label": "Cancel"
+      },
+      {
+        "tag": "BUTTON",
+        "type": "submit",
+        "name": "",
+        "label": "Add lead"
+      },
+      {
+        "tag": "BUTTON",
+        "type": "button",
+        "name": "",
+        "label": "Close"
+      }
+    ]
+  },
+  {
+    "k": "empty-submit-dialog-still-open",
+    "v": true
+  },
+  {
+    "k": "filled-name",
+    "v": true
+  },
+  {
+    "k": "filled-phone",
+    "v": true
+  },
+  {
+    "k": "filled-email",
+    "v": true
+  },
+  {
+    "k": "filled-company",
+    "v": true
+  },
+  {
+    "k": "filled-requirement",
+    "v": true
+  },
+  {
+    "k": "hostile-dialog-still-open",
+    "v": true
+  },
+  {
+    "k": "toasts-after-hostile",
+    "v": []
+  },
+  {
+    "k": "valid-toasts",
+    "v": [
+      "Lead added"
+    ]
+  },
+  {
+    "k": "valid-dialog-still-open",
+    "v": false
+  },
+  {
+    "k": "lead-after-reload",
+    "v": {
+      "meera": true,
+      "hostileScriptRendered": false
+    }
+  },
+  {
+    "k": "console-and-network-errors",
+    "v": []
+  }
+]

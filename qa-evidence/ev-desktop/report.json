@@ -1,0 +1,390 @@
+{
+  "viewport": "desktop",
+  "login": {
+    "ok": true,
+    "ms": 1988,
+    "url": "http://localhost:3011/settings?tab=workspace&view=overview&workspace=business"
+  },
+  "pages": [
+    {
+      "route": "/dashboard",
+      "status": "ok",
+      "loadMs": 1221,
+      "url": "/dashboard",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1208,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "failed": [
+        "500 GET /api/backend/sources?limit=50&after_id=0"
+      ]
+    },
+    {
+      "route": "/portfolio",
+      "status": "ok",
+      "loadMs": 778,
+      "url": "/portfolio",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 305,
+      "head": "C CuriousDevs Janus P Portfolio All your companies PORTFOLIO Overview Analytics Finance Work inbox Activity MANAGE Companies Janus Intelligence Notifications ACCESS Portfolio access PN Pankaj Neema owner Overview PORTFOL",
+      "overflowX": 0,
+      "bad": "nan",
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/leads",
+      "status": "ok",
+      "loadMs": 823,
+      "url": "/leads",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 699,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/lead-sources",
+      "status": "ok",
+      "loadMs": 779,
+      "url": "/lead-sources",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1108,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "failed": [
+        "500 GET /api/backend/sources?limit=50&after_id=0"
+      ]
+    },
+    {
+      "route": "/deals",
+      "status": "ok",
+      "loadMs": 763,
+      "url": "/deals",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 681,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/customers",
+      "status": "ok",
+      "loadMs": 891,
+      "url": "/customers",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 542,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/tickets",
+      "status": "ok",
+      "loadMs": 1178,
+      "url": "/tickets",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 919,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/inbox",
+      "status": "ok",
+      "loadMs": 771,
+      "url": "/inbox",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 691,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/knowledge",
+      "status": "ok",
+      "loadMs": 769,
+      "url": "/knowledge",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 492,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/memory",
+      "status": "ok",
+      "loadMs": 731,
+      "url": "/memory",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 630,
+      "head": "AT Acme Traders Pvt Ltd Business Management BUSINESS Business Overview Janus Intelligence MANAGEMENT People & Access Workspaces INTELLIGENCE Business Reports AI Agents AUTOMATION Workflows SETTINGS Profile Security & Ses",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/ai",
+      "status": "ok",
+      "loadMs": 752,
+      "url": "/ai",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 2100,
+      "head": "AT Acme Traders Pvt Ltd Business Management BUSINESS Business Overview Janus Intelligence MANAGEMENT People & Access Workspaces INTELLIGENCE Business Reports AI Agents AUTOMATION Workflows SETTINGS Profile Security & Ses",
+      "overflowX": 0,
+      "bad": "NAN",
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/notifications",
+      "status": "ok",
+      "loadMs": 742,
+      "url": "/notifications",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 476,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/activity",
+      "status": "ok",
+      "loadMs": 862,
+      "url": "/activity",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1562,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": "nan",
+      "consoleErrors": [
+        "error: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — "
+      ],
+      "failed": []
+    },
+    {
+      "route": "/agents",
+      "status": "ok",
+      "loadMs": 858,
+      "url": "/agents",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1420,
+      "head": "AT Acme Traders Pvt Ltd Business Management BUSINESS Business Overview Janus Intelligence MANAGEMENT People & Access Workspaces INTELLIGENCE Business Reports AI Agents AUTOMATION Workflows SETTINGS Profile Security & Ses",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/automations",
+      "status": "ok",
+      "loadMs": 746,
+      "url": "/automations",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 476,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/approvals",
+      "status": "ok",
+      "loadMs": 708,
+      "url": "/approvals",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 449,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/integrations",
+      "status": "ok",
+      "loadMs": 743,
+      "url": "/integrations",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 2255,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/evaluations",
+      "status": "ok",
+      "loadMs": 702,
+      "url": "/evaluations",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 574,
+      "head": "AT Acme Traders Pvt Ltd Business Management BUSINESS Business Overview Janus Intelligence MANAGEMENT People & Access Workspaces INTELLIGENCE Business Reports AI Agents AUTOMATION Workflows SETTINGS Profile Security & Ses",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/analytics",
+      "status": "ok",
+      "loadMs": 819,
+      "url": "/analytics",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 702,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "warning: The width(0) and height(0) of chart should be greater than 0,\n       please check the style of container, or the props width(100%) and height(100%),\n       or add a minWidth(0) or minHeight(undefined)"
+      ],
+      "failed": []
+    },
+    {
+      "route": "/usage",
+      "status": "ok",
+      "loadMs": 752,
+      "url": "/usage",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 953,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/audit",
+      "status": "ok",
+      "loadMs": 719,
+      "url": "/audit",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 432,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/settings",
+      "status": "ok",
+      "loadMs": 863,
+      "url": "/settings",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1822,
+      "head": "AT Acme Traders Pvt Ltd Business Management BUSINESS Business Overview Janus Intelligence MANAGEMENT People & Access Workspaces INTELLIGENCE Business Reports AI Agents AUTOMATION Workflows SETTINGS Profile Security & Ses",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/work",
+      "status": "ok",
+      "loadMs": 761,
+      "url": "/work",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 493,
+      "head": "AT Acme Traders Pvt Ltd CRM & Sales CRM & SALES CRM Overview Chats Lead Sources Leads Deals Customers Tickets Automations Knowledge Analytics AI AI Assistant Agents Memory Evaluations CRM MANAGEMENT Integrations Approval",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/operations-inventory",
+      "status": "ok",
+      "loadMs": 1505,
+      "url": "/workspace/operations-inventory",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 799,
+      "head": "AT Acme Traders Pvt Ltd Operations & Inventory OPERATIONS & INVENTORY Operations Overview Inventory Products & Stock Warehouses & Locations Physical Count Transit Transfers Workflows Procurement Purchase Orders Vendors O",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — "
+      ],
+      "failed": []
+    },
+    {
+      "route": "/workspace/finance-accounting",
+      "status": "ok",
+      "loadMs": 1889,
+      "url": "/workspace/finance-accounting",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1005,
+      "head": "AT Acme Traders Pvt Ltd Finance & Accounting FINANCE & ACCOUNTING Finance Overview Income & Revenue Expenses Invoices Credit Notes Fund Requests & Budgets Approvals Queue Period Locks Payments & Receivables Bills & Payab",
+      "overflowX": 0,
+      "bad": "nan",
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/projects-delivery",
+      "status": "ok",
+      "loadMs": 882,
+      "url": "/workspace/projects-delivery",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 756,
+      "head": "AT Acme Traders Pvt Ltd Projects & Delivery PROJECTS & DELIVERY Projects Overview All Projects Tasks & Work Items Milestones & Deliverables Change Requests Resource Allocation Timesheets Project Calendar Client Delivery ",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/customer-support",
+      "status": "ok",
+      "loadMs": 954,
+      "url": "/workspace/customer-support",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 850,
+      "head": "AT Acme Traders Pvt Ltd Customer Support & Success CUSTOMER SUPPORT & SUCCESS Support Overview Tickets Customer Directory Queues & Assignments SLA Management Knowledge Base Customer Feedback Renewals & Success Support Re",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "route": "/workspace/it-infrastructure",
+      "status": "ok",
+      "loadMs": 896,
+      "url": "/workspace/it-infrastructure",
+      "title": "Janus — AI-Native Customer Operations",
+      "textLen": 1020,
+      "head": "AT Acme Traders Pvt Ltd IT & Infrastructure IT & INFRASTRUCTURE IT Overview IT Assets IT Helpdesk Access Management Software & Licenses Infrastructure Monitoring Incidents Change Management Security & Compliance IT Repor",
+      "overflowX": 0,
+      "bad": null,
+      "consoleErrors": [
+        "error: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — "
+      ],
+      "failed": []
+    }
+  ]
+}
