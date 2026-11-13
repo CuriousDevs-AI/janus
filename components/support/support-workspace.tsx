@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,20 +78,21 @@ function OverviewView() {
     dueSoon: open.filter((t) => slaState(t) === "due soon").length,
     escalated: open.filter((t) => t.status === "escalated").length,
   };
+  const to = (show?: string) => workspaceHref("customer-support", "queues", show ? { show } : {});
   return (
     <>
       {tickets.length === 0 ? <Card><CardContent className="p-6 text-sm text-muted-foreground">No tickets yet. Tickets arrive from chats, email and lead sources.</CardContent></Card> : null}
       <div className="grid gap-3 sm:grid-cols-5">
-        <Kpi label="Open tickets" value={String(counts.open)} />
-        <Kpi label="Unassigned" value={String(counts.unassigned)} tone={counts.unassigned > 0 ? "warning" : undefined} />
-        <Kpi label="SLA breached" value={String(counts.breached)} tone={counts.breached > 0 ? "warning" : undefined} />
-        <Kpi label="Due within an hour" value={String(counts.dueSoon)} />
-        <Kpi label="Escalated" value={String(counts.escalated)} />
+        <Kpi label="Open tickets" value={String(counts.open)} href={to()} />
+        <Kpi label="Unassigned" value={String(counts.unassigned)} tone={counts.unassigned > 0 ? "warning" : undefined} href={to("unassigned")} />
+        <Kpi label="SLA breached" value={String(counts.breached)} tone={counts.breached > 0 ? "warning" : undefined} href={to("breached")} />
+        <Kpi label="Due within an hour" value={String(counts.dueSoon)} href={to("due soon")} />
+        <Kpi label="Escalated" value={String(counts.escalated)} href={to("escalated")} />
       </div>
       <Card>
         <CardHeader><CardTitle className="text-base">Needs attention now</CardTitle></CardHeader>
         <CardContent className="grid gap-2 text-sm">
-          {open.filter((t) => slaState(t) === "breached" || !t.assigneeId).slice(0, 8).map((t) => <p key={t.id}>{t.number} · {t.subject} · {t.assigneeId ? "assigned" : "unassigned"} · SLA {slaState(t)}</p>)}
+          {open.filter((t) => slaState(t) === "breached" || !t.assigneeId).slice(0, 8).map((t) => <Link key={t.id} href={`/tickets/${t.id}?workspace=customer-support`} className="-mx-2 flex flex-wrap items-center justify-between gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2"><span><span className="font-medium">{t.number}</span> · {t.subject}</span><span className="flex items-center gap-1.5">{t.assigneeId ? null : <Badge variant="warning">unassigned</Badge>}<Badge variant={slaTone(slaState(t)) as "neutral"}>SLA {slaState(t)}</Badge></span></Link>)}
           {open.filter((t) => slaState(t) === "breached" || !t.assigneeId).length === 0 ? <p className="text-muted-foreground">Nothing is breached or unassigned.</p> : null}
         </CardContent>
       </Card>
@@ -319,14 +321,6 @@ function RenewalsView() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${tone === "warning" ? "text-amber-700" : ""}`}>{value}</p>
-    </div>
-  );
-}
 
 function QueuesView() {
   const session = useSession();
@@ -338,14 +332,21 @@ function QueuesView() {
     syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
   }, []);
   const customers = useAppStore((state) => state.customers);
+  const params = useSearchParams();
+  type Show = "all" | "unassigned" | "breached" | "due soon" | "escalated";
+  const [show, setShow] = React.useState<Show>(() => { const asked = params.get("show"); return asked === "unassigned" || asked === "breached" || asked === "due soon" || asked === "escalated" ? asked : "all"; });
+  const fits = (t: Ticket, kind: Show) => kind === "all" || (kind === "unassigned" ? !t.assigneeId : kind === "escalated" ? t.status === "escalated" : slaState(t) === kind);
+  const picked = open.filter((t) => fits(t, show));
   const groups: { key: string; label: string; tickets: Ticket[] }[] = [
-    { key: "", label: "Unassigned", tickets: open.filter((t) => !t.assigneeId) },
-    ...users.map((u) => ({ key: u.id, label: u.name, tickets: open.filter((t) => t.assigneeId === u.id) })),
-  ].filter((g) => g.tickets.length > 0 || g.key === "");
+    { key: "", label: "Unassigned", tickets: picked.filter((t) => !t.assigneeId) },
+    ...users.map((u) => ({ key: u.id, label: u.name, tickets: picked.filter((t) => t.assigneeId === u.id) })),
+  ].filter((g) => g.tickets.length > 0 || (g.key === "" && show === "all"));
 
   return (
     <>
       <p className="text-xs text-muted-foreground">Assign a ticket to the person who will work it. Reassigning keeps the history in the ticket. Each person sees their queue; the unassigned queue is for the lead to distribute.</p>
+      <FilterChips<Show> label="Show tickets" value={show} onChange={setShow} options={[{ value: "all", label: "All open", count: open.length }, { value: "unassigned", label: "Unassigned", count: open.filter((t) => fits(t, "unassigned")).length, tone: "warning" }, { value: "breached", label: "SLA breached", count: open.filter((t) => fits(t, "breached")).length, tone: "warning" }, { value: "due soon", label: "Due within an hour", count: open.filter((t) => fits(t, "due soon")).length }, { value: "escalated", label: "Escalated", count: open.filter((t) => fits(t, "escalated")).length }]} />
+      {groups.length === 0 ? <Card><CardContent className="p-6 text-sm text-muted-foreground">No open ticket is {show}. <button type="button" className="text-accent hover:underline" onClick={() => setShow("all")}>Show all open</button></CardContent></Card> : null}
       {groups.map((group) => (
         <Card key={group.key || "unassigned"}>
           <CardHeader><CardTitle className="text-base">{group.label} <span className="text-sm font-normal text-muted-foreground">· {group.tickets.length}</span></CardTitle></CardHeader>
@@ -355,7 +356,7 @@ function QueuesView() {
               const customer = customers.find((c) => c.id === t.customerId);
               return (
                 <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
-                  <span><span className="font-medium">{t.number}</span> · {t.subject}<span className="block text-xs text-muted-foreground">{customer?.name ?? "Customer"} · {t.priority} · {t.status.replaceAll("_", " ")}</span></span>
+                  <span><Link href={`/tickets/${t.id}?workspace=customer-support`} className="font-medium hover:underline">{t.number}</Link> · {t.subject}<span className="block text-xs text-muted-foreground">{customer?.name ?? "Customer"} · {t.priority} · {t.status.replaceAll("_", " ")}</span></span>
                   <span className="flex items-center gap-2">
                     <Badge variant={slaTone(slaState(t)) as "neutral"}>{slaState(t)}</Badge>
                     <select aria-label={`Assign ${t.number}`} className={selectClass} value={t.assigneeId ?? ""} onChange={(e) => { if (!e.target.value) return; void assignSupportTicket(t.id, e.target.value, me).then((error) => (error ? toast.error(error) : toast.success(`${t.number} assigned`))); }}>

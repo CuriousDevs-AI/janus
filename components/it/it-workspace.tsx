@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { message } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,14 +51,6 @@ export function ITWorkspace() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${tone === "warning" ? "text-amber-700" : ""}`}>{value}</p>
-    </div>
-  );
-}
 
 function OverviewView() {
   const assets = useITStore((state) => state.assets);
@@ -66,14 +59,15 @@ function OverviewView() {
   const log = useITStore((state) => state.log);
   const soon = licences.filter(renewalSoon);
   const inStock = assets.filter((a) => a.status === "in stock");
+  const to = (view: string, extra: Record<string, string> = {}) => workspaceHref("it-infrastructure", view, extra);
 
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-4">
-        <Kpi label="Assets assigned" value={String(assets.filter((a) => a.status === "assigned").length)} />
-        <Kpi label="Assets in stock" value={String(inStock.length)} />
-        <Kpi label="Active access grants" value={String(access.filter((g) => g.status === "active").length)} />
-        <Kpi label="Licences renewing in 30 days" value={String(soon.length)} tone={soon.length > 0 ? "warning" : undefined} />
+        <Kpi label="Assets assigned" value={String(assets.filter((a) => a.status === "assigned").length)} href={to("assets", { status: "assigned" })} />
+        <Kpi label="Assets in stock" value={String(inStock.length)} detail={inStock.length ? "Ready to assign" : undefined} href={to("assets", { status: "in stock" })} />
+        <Kpi label="Active access grants" value={String(access.filter((g) => g.status === "active").length)} href={to("access")} />
+        <Kpi label="Licences renewing in 30 days" value={String(soon.length)} tone={soon.length > 0 ? "warning" : undefined} href={to("licenses")} />
       </div>
       <Card>
         <CardHeader><CardTitle className="text-base">Needs attention</CardTitle></CardHeader>
@@ -394,6 +388,12 @@ function AssetsView() {
   const [draft, setDraft] = React.useState<{ name: string; kind: (typeof ASSET_KINDS)[number]; serial: string; purchaseDate: string; cost: string }>({ name: "", kind: "Laptop", serial: "", purchaseDate: TODAY, cost: "0" });
   const [picks, setPicks] = React.useState<Record<string, string>>({});
   const [leaver, setLeaver] = React.useState("");
+  const params = useSearchParams();
+  type Show = "all" | "assigned" | "in stock" | "retired";
+  const [show, setShow] = React.useState<Show>(() => { const asked = params.get("status"); return asked === "assigned" || asked === "in stock" || asked === "retired" ? asked : "all"; });
+  const [find, setFind] = React.useState("");
+  const term = find.trim().toLowerCase();
+  const shown = assets.filter((a) => (show === "all" || a.status === show) && (!term || `${a.name} ${a.kind} ${a.serial} ${a.assignedTo ?? ""}`.toLowerCase().includes(term)));
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -418,10 +418,12 @@ function AssetsView() {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle className="text-base">Register</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0"><CardTitle className="text-base">Register</CardTitle>{assets.length > 0 ? <Input aria-label="Find an asset" placeholder="Find by name, serial or person" value={find} onChange={(e) => setFind(e.target.value)} className="h-8 w-full max-w-[240px]" /> : null}</CardHeader>
         <CardContent className="grid gap-2 text-sm">
+          {assets.length > 0 ? <div className="mb-1"><FilterChips<Show> label="Show assets" value={show} onChange={setShow} options={(["all", "assigned", "in stock", "retired"] as const).map((value) => ({ value, label: value === "all" ? "All" : value[0].toUpperCase() + value.slice(1), count: value === "all" ? assets.length : assets.filter((a) => a.status === value).length }))} /></div> : null}
           {assets.length === 0 ? <p className="text-muted-foreground">No assets yet.</p> : null}
-          {assets.map((a) => (
+          {assets.length > 0 && shown.length === 0 ? <p className="text-muted-foreground">No asset matches. <button type="button" className="text-accent hover:underline" onClick={() => { setShow("all"); setFind(""); }}>Show all</button></p> : null}
+          {shown.map((a) => (
             <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
               <span>
                 <span className="font-medium">{a.name}</span> · {a.kind} · {a.serial}

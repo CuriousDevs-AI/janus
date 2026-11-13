@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -704,15 +705,16 @@ function OverviewView() {
   const expiring = batches.filter((batch) => !isExpired(batch) && days(TODAY, batch.expiry) <= 60 && stockOn(movements, batch.itemId, undefined, batch.batchNo) > 0);
   const open = dispatches.filter((d) => d.status === "dispatched").length;
   const pendingAdj = adjustments.filter((a) => a.status === "pending").length;
+  const to = (view: string, extra: Record<string, string> = {}) => workspaceHref("operations-inventory", view, extra);
 
   return (
     <>
       {items.length === 0 ? <Card><CardContent className="p-6 text-sm text-muted-foreground">No items yet. Add the first one from Products &amp; stock. Stock starts at zero for a new company.</CardContent></Card> : null}
       <div className="grid gap-3 sm:grid-cols-4">
-        <Kpi label="Items" value={String(items.length)} />
-        <Kpi label="Low stock" value={String(low.length)} tone={low.length > 0 ? "warning" : undefined} />
-        <Kpi label="Dispatches not yet delivered" value={String(open)} />
-        <Kpi label="Adjustments waiting approval" value={String(pendingAdj)} tone={pendingAdj > 0 ? "warning" : undefined} />
+        <Kpi label="Items" value={String(items.length)} href={to("products")} />
+        <Kpi label="Low stock" value={String(low.length)} detail={low.length ? "At or under reorder level" : undefined} tone={low.length > 0 ? "warning" : undefined} href={to("products", { stock: "low" })} />
+        <Kpi label="Dispatches not yet delivered" value={String(open)} href={to("orders")} />
+        <Kpi label="Adjustments waiting approval" value={String(pendingAdj)} tone={pendingAdj > 0 ? "warning" : undefined} href={to("inventory")} />
       </div>
       <Card>
         <CardHeader><CardTitle className="text-base">Low stock</CardTitle></CardHeader>
@@ -741,20 +743,20 @@ function OverviewView() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${tone === "warning" ? "text-amber-700" : ""}`}>{value}</p>
-    </div>
-  );
-}
 
 function ProductsView() {
   const items = useOperationsStore((state) => state.items);
   const movements = useOperationsStore((state) => state.movements);
   const [form, setForm] = React.useState({ name: "", sku: "", unit: "piece", hsn: "", rate: "", gstRate: 18, reorderLevel: "0", trackBatch: false });
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
+  const params = useSearchParams();
+  type Show = "all" | "low" | "out";
+  const [show, setShow] = React.useState<Show>(() => params.get("stock") === "low" ? "low" : params.get("stock") === "out" ? "out" : "all");
+  const [find, setFind] = React.useState("");
+  const onHand = (item: (typeof items)[number]) => stockOn(movements, item.id);
+  const fits = (item: (typeof items)[number], kind: Show) => kind === "all" || (kind === "out" ? onHand(item) <= 0 : onHand(item) <= item.reorderLevel);
+  const term = find.trim().toLowerCase();
+  const shown = items.filter((item) => fits(item, show) && (!term || `${item.name} ${item.sku} ${item.hsn}`.toLowerCase().includes(term)));
 
   async function save() {
     const problem = await addItemRecord({ name: form.name.trim(), sku: form.sku.trim(), unit: form.unit.trim() || "piece", hsn: form.hsn.trim(), rate: Number(form.rate), gstRate: form.gstRate, reorderLevel: Number(form.reorderLevel), trackBatch: form.trackBatch });
@@ -782,20 +784,25 @@ function ProductsView() {
           <Button className="w-fit" onClick={save}>Add item</Button>
         </CardContent>
       </Card>
+      {items.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-3">
+        <FilterChips<Show> label="Show items" value={show} onChange={setShow} options={[{ value: "all", label: "All", count: items.length }, { value: "low", label: "Low stock", count: items.filter((item) => fits(item, "low")).length, tone: "warning" }, { value: "out", label: "Out of stock", count: items.filter((item) => fits(item, "out")).length, tone: "warning" }]} />
+        <Input aria-label="Find an item" placeholder="Find by name, SKU or HSN" value={find} onChange={(e) => setFind(e.target.value)} className="h-8 w-full max-w-[240px]" />
+      </div> : null}
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] text-sm">
             <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Item</th><th className="px-4 py-2">SKU</th><th className="px-4 py-2">HSN</th><th className="px-4 py-2 text-right">Rate</th><th className="px-4 py-2 text-right">GST</th><th className="px-4 py-2 text-right">Stock</th><th className="px-4 py-2">Batches</th></tr></thead>
             <tbody>
               {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No items yet.</td></tr> : null}
-              {items.map((item) => (
+              {items.length > 0 && shown.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No item matches. <button type="button" className="text-accent hover:underline" onClick={() => { setShow("all"); setFind(""); }}>Show all</button></td></tr> : null}
+              {shown.map((item) => (
                 <tr key={item.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 font-medium">{item.name}</td>
                   <td className="px-4 py-3">{item.sku}</td>
                   <td className="px-4 py-3">{item.hsn}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{money(item.rate)}</td>
                   <td className="px-4 py-3 text-right">{item.gstRate}%</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{stockOn(movements, item.id)} {item.unit}</td>
+                  <td className="px-4 py-3 text-right tabular-nums"><span className={onHand(item) <= 0 ? "font-medium text-danger" : onHand(item) <= item.reorderLevel ? "font-medium text-amber-700 dark:text-amber-400" : ""}>{onHand(item)} {item.unit}</span>{item.reorderLevel > 0 ? <span className="mt-1 ml-auto block h-1 w-20 overflow-hidden rounded-full bg-surface-2" title={`Reorder at ${item.reorderLevel} ${item.unit}`}><span className={`block h-full rounded-full ${onHand(item) <= item.reorderLevel ? "bg-amber-500" : "bg-accent"}`} style={{ width: `${Math.min(100, (onHand(item) / (item.reorderLevel * 3)) * 100)}%` }} /></span> : null}</td>
                   <td className="px-4 py-3">{item.trackBatch ? <Badge variant="neutral">tracked</Badge> : "—"}</td>
                 </tr>
               ))}
