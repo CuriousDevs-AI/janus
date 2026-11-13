@@ -22,7 +22,7 @@ export function AttentionList({ list, limit, onOpen, read = [] }: { list: Portfo
   if (items.length === 0) return <p className="text-sm text-muted-foreground">Nothing needs you in any company.</p>;
   return <><ul className="flex flex-col divide-y divide-border">{items.slice(0, limit ?? items.length).map((item) => <li key={item.key} className={`flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0 ${read.includes(item.key) ? "opacity-60" : ""}`}>
     <Badge variant={severityTone[item.severity]}>{severityName[item.severity]}</Badge>
-    <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{item.company.name}</span> · {item.text}</span>
+    <span className="min-w-0 flex-1 text-sm">{!read.includes(item.key) && <span aria-label="Unread" className="mr-1.5 inline-block size-2 rounded-full bg-accent align-middle" />}<span className="font-medium">{item.company.name}</span> · {item.text}</span>
     <Button size="sm" variant="secondary" onClick={() => { onOpen?.(item.key); setShown(item); }}>Open</Button>
   </li>)}</ul>
     {shown && <NotificationDetail item={shown} read={read.includes(shown.key)} onClose={() => setShown(null)} />}
@@ -49,12 +49,13 @@ export function Notifications({ list }: { list: PortfolioCompany[] }) {
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <select aria-label="Company" className={select} value={company} onChange={(event) => setCompany(event.target.value)}><option value="all">All companies</option>{list.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select aria-label="Kind" className={select} value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Every kind</option>{categories.map((value) => <option key={value}>{value}</option>)}</select>
-      <select aria-label="Urgency" className={select} value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="all">Any urgency</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+      {/* Urgency as buttons with their counts: click one to see only it, again for all. */}
+      <div role="group" aria-label="Urgency" className="flex gap-1">{(["high", "medium", "low"] as const).map((level) => { const count = all.filter((item) => item.severity === level && (company === "all" || item.company.id === company)).length; const on = severity === level; return <button key={level} type="button" aria-pressed={on} disabled={!count && !on} onClick={() => setSeverity(on ? "all" : level)} className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors disabled:opacity-40 ${on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}><span aria-hidden className={`size-2 rounded-full ${level === "high" ? "bg-danger" : level === "medium" ? "bg-warning" : "bg-muted-foreground"}`} />{severityName[level]}<span className="tabular-nums">{count}</span></button>; })}</div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={unreadOnly} onChange={() => setUnreadOnly(!unreadOnly)} />Unread only</label>
     </div>
     {items.length === 0 ? <p className="text-sm text-muted-foreground">{all.length ? "Nothing matches these filters." : "Nothing is wrong in any company."}</p> : <ul className="flex flex-col divide-y divide-border">{items.map((item) => <li key={item.key} className={`flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0 ${read.includes(item.key) ? "opacity-60" : ""}`}>
       <Badge variant={severityTone[item.severity]}>{severityName[item.severity]}</Badge>
-      <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{item.company.name}</span> · {item.text} <span className="text-xs text-muted-foreground">· {item.category}</span></span>
+      <span className="min-w-0 flex-1 text-sm">{!read.includes(item.key) && <span aria-label="Unread" className="mr-1.5 inline-block size-2 rounded-full bg-accent align-middle" />}<span className="font-medium">{item.company.name}</span> · {item.text} <span className="text-xs text-muted-foreground">· {item.category}</span></span>
       {!read.includes(item.key) && <Button size="sm" variant="ghost" onClick={() => mark([item.key])}>Mark read</Button>}
       <Button size="sm" variant="secondary" onClick={() => { mark([item.key]); setShown(item); }}>Open</Button>
     </li>)}</ul>}

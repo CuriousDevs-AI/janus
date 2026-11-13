@@ -9,6 +9,7 @@ import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Basis, Kpi } from "@/features/portfolio/components/figures";
 import { Delta, Waterfall } from "@/features/portfolio/components/market";
+import { Section, SectionNav } from "@/features/portfolio/components/section-nav";
 import { groupBooks, openIn, payrollFor, salariesRecorded, useRoles, type WithMoney } from "@/features/portfolio/lib/companies";
 import { parseStatement } from "@/features/portfolio/lib/bank-csv";
 import { parseOpening, type OpeningRow } from "@/features/portfolio/lib/history-csv";
@@ -22,6 +23,8 @@ const margin = (profit: number, sales: number) => sales > 0 ? `${Math.round((pro
 /** Money across the companies whose money the person's role includes; `hidden` counts the rest. */
 export function Finance({ list, hidden, period, onChanged }: { list: WithMoney[]; hidden: number; period: PortfolioPeriod; onChanged?: () => void }) {
   const [mode, setMode] = React.useState<"group" | "companies">("group");
+  // The steps from sales to profit, for the group or for one company.
+  const [focus, setFocus] = React.useState<string>("group");
   const sales = sumBooks(list, "current", "netSales");
   const costs = sumBooks(list, "current", "costs");
   const moneyIn = sumBooks(list, "current", "moneyIn");
@@ -36,20 +39,27 @@ export function Finance({ list, hidden, period, onChanged }: { list: WithMoney[]
   const owed = list.reduce((total, item) => total + n(item.money.receivable), 0);
   const overdue = list.reduce((total, item) => total + n(item.money.overdue), 0);
   const coverage = `${list.length} ${list.length === 1 ? "company" : "companies"}${hidden ? `; ${hidden} more ${hidden === 1 ? "does" : "do"} not share money with your role` : ""}`;
+  const one = list.find((item) => item.id === focus);
+  const steps = one
+    ? { sales: n(one.books?.current.netSales), costs: n(one.books?.current.costs), salaries: payrollFor(one, period), who: one.name }
+    : { sales: groupSales, costs: groupCosts, salaries: payroll || null, who: "The group" };
   return <>
+    <SectionNav sections={[{ id: "finance-profit", label: "Sales to profit" }, { id: "finance-cash", label: "Cash" }, { id: "finance-opening", label: "Opening balances" }, { id: "finance-salaries", label: "Salaries" }, { id: "finance-gst", label: "GST" }, { id: "finance-tds", label: "TDS" }, { id: "finance-between", label: "Between your companies" }]} />
+    <Section id="finance-profit">
     <div role="group" aria-label="Show" className="flex gap-2">
       <Button size="sm" variant={mode === "group" ? "default" : "outline"} aria-pressed={mode === "group"} onClick={() => setMode("group")}>Whole group</Button>
       <Button size="sm" variant={mode === "companies" ? "default" : "outline"} aria-pressed={mode === "companies"} onClick={() => setMode("companies")}>Company by company</Button>
     </div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Kpi label="Sales" value={inr(groupSales)} detail={`Group, before GST, sales between your companies taken out. ${change(groupSales, groupBefore.sales)}`} delta={<Delta now={groupSales} before={groupBefore.sales} compact />} />
+      <Kpi label="Sales" value={inr(groupSales)} detail={`Group, before GST, sales between your companies taken out. ${change(groupSales, groupBefore.sales)}`} delta={<Delta now={groupSales} before={groupBefore.sales} compact />} href={`/portfolio?view=analytics${period.key === "month" ? "" : `&period=${period.key}`}`} />
       {payroll ? <Kpi label="Profit after salaries" value={inr(groupSales - groupCosts - payroll)} detail={`${recorded ? "Salaries posted" : "Estimate"} · ${inr(groupSales - groupCosts)} before ${inr(payroll)} of salaries (margin ${margin(groupSales - groupCosts, groupSales)} before)`} />
         : <Kpi label="Profit before salaries" value={inr(groupSales - groupCosts)} detail={`Margin ${margin(groupSales - groupCosts, groupSales)} · salaries not on record`} />}
-      <Kpi label="Money in − money out" value={inr(moneyIn - moneyOut)} detail={`${inr(moneyIn)} from customers, ${inr(moneyOut)} to suppliers`} />
-      <Kpi label="Customers owe" value={inr(owed)} detail={overdue ? `${inr(overdue)} of it past due` : "Nothing past due"} />
+      <Kpi label="Money in − money out" value={inr(moneyIn - moneyOut)} detail={`${inr(moneyIn)} from customers, ${inr(moneyOut)} to suppliers`} href="#finance-cash" />
+      <Kpi label="Customers owe" value={inr(owed)} detail={overdue ? `${inr(overdue)} of it past due: open to chase it` : "Nothing past due"} href={overdue ? "/portfolio?view=work&kind=collect" : undefined} />
     </div>
-    {mode === "group" && <SectionCard title="From sales to profit" description={`The group, ${period.label}: sales before GST, less supplier bills, less salaries where they are in HR (an estimate).`}>
-      <Waterfall sales={groupSales} costs={groupCosts} salaries={payroll || null} />
+    {mode === "group" && <SectionCard title="From sales to profit" description={`${steps.who}, ${period.label}: sales before GST, less supplier bills, less salaries where they are in HR (an estimate).${one ? " Each company as it recorded them, sales to your other companies included." : ""}`}>
+      {list.length > 1 && <div role="group" aria-label="Whose figures" className="mb-3 flex flex-wrap gap-1.5">{[{ id: "group", name: "Whole group" }, ...list].map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${focus === item.id ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}</div>}
+      <Waterfall sales={steps.sales} costs={steps.costs} salaries={steps.salaries} />
     </SectionCard>}
     {mode === "group" ? <SectionCard title={`The group, ${period.label}`} description={`Added up across ${coverage}.`}>
       <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm">
@@ -69,12 +79,13 @@ export function Finance({ list, hidden, period, onChanged }: { list: WithMoney[]
     : <SectionCard title="Company by company" description={`From each company's invoices, payments, credit notes and bills, ${period.label}. ${coverage}.`}>
       <ByCompany list={list} period={period} />
     </SectionCard>}
-    <CashCard list={list} />
-    <OpeningCard list={list} />
-    <SalariesCard list={list} />
-    <GstCard list={list} />
-    <TdsCard list={list} />
-    {list.length > 1 && <IntercompanyCard onRecorded={onChanged} />}
+    </Section>
+    <Section id="finance-cash"><CashCard list={list} /></Section>
+    <Section id="finance-opening"><OpeningCard list={list} /></Section>
+    <Section id="finance-salaries"><SalariesCard list={list} /></Section>
+    <Section id="finance-gst"><GstCard list={list} /></Section>
+    <Section id="finance-tds"><TdsCard list={list} /></Section>
+    {list.length > 1 && <Section id="finance-between"><IntercompanyCard onRecorded={onChanged} /></Section>}
   </>;
 }
 

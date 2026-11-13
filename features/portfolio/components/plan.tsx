@@ -47,6 +47,7 @@ export function Plan() {
   const billing = usePortfolioApi<Billing>("/billing");
   const [moving, setMoving] = React.useState<BillingPlan | null>(null);
   const [viewing, setViewing] = React.useState<BillingInvoice | null>(null);
+  const [showing, setShowing] = React.useState<"all" | "due" | "paid">("all");
   // A previewed role sees what that person would: the plan is the Owner's, not theirs.
   const preview = React.useContext(PreviewRole);
   if (billing.loading) return <div role="status" aria-label="Loading your plan" className="h-[420px] animate-pulse rounded-xl border border-border bg-surface-2" />;
@@ -57,6 +58,9 @@ export function Plan() {
   </SectionCard>;
   const current = data.plans.find((plan) => plan.id === data.plan) ?? data.plans[0];
   const rank = (plan: BillingPlan) => data.plans.findIndex((item) => item.id === plan.id);
+  const due = data.invoices.filter((invoice) => invoice.status !== "paid");
+  const invoices = showing === "all" ? data.invoices : showing === "due" ? due : data.invoices.filter((invoice) => invoice.status === "paid");
+  const owed = due.reduce((sum, invoice) => sum + Number(invoice.total), 0);
   return <>
     <CurrentPlan data={data} plan={current} />
     {data.payments === "test" && <p className="rounded-lg border border-warning/30 bg-warning-muted px-3 py-2 text-xs text-warning">Test mode: payments are not connected yet, so a change here takes effect at once and nothing is charged. Invoices marked Sample were made for testing.</p>}
@@ -93,11 +97,12 @@ export function Plan() {
 
     <BillToCard details={data.billTo ?? null} onSaved={billing.reload} />
 
-    <SectionCard title="Invoices" description={`Monthly, from Janus to your account, with ${data.gstRate}% GST.`}>
+    <SectionCard title="Invoices" description={`Monthly, from Janus to your account, with ${data.gstRate}% GST.${due.length ? ` ${rupees(owed)} due on ${due.length} ${due.length === 1 ? "invoice" : "invoices"}.` : ""}`}>
       {data.invoices.length === 0 ? <p className="text-sm text-muted-foreground">No invoices yet.</p>
-        : <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm">
+        : <><div role="group" aria-label="Show invoices" className="mb-3 flex flex-wrap gap-1.5">{([["all", "All", data.invoices.length], ["due", "Due", due.length], ["paid", "Paid", data.invoices.length - due.length]] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={showing === value} onClick={() => setShowing(value)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${showing === value ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>{label} <span className="tabular-nums text-muted-foreground">{count}</span></button>)}</div>
+        {invoices.length === 0 ? <p className="text-sm text-muted-foreground">{showing === "due" ? "Nothing due. Every invoice is paid." : "No paid invoices yet."}</p> : <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-3">Invoice</th><th className="px-3 py-2">For</th><th className="px-3 py-2">Plan</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2">Status</th><th className="py-2 pl-3" /></tr></thead>
-          <tbody>{data.invoices.map((invoice) => <tr key={invoice.number} className="border-b border-border last:border-0">
+          <tbody>{invoices.map((invoice) => <tr key={invoice.number} onClick={(event) => { if (!(event.target as HTMLElement).closest("button")) setViewing(invoice); }} className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-surface-2">
             <td className="py-2.5 pr-3"><span className="font-medium">{invoice.number}</span>{invoice.sample && <Badge variant="neutral" className="ml-2">Sample</Badge>}<p className="text-xs text-muted-foreground">Issued {day(invoice.issuedOn)}</p></td>
             <td className="px-3 text-muted-foreground">{day(invoice.periodStart)} to {day(invoice.periodEnd)}</td>
             <td className="px-3">{invoice.plan}</td>
@@ -105,7 +110,7 @@ export function Plan() {
             <td className="px-3">{invoice.status === "paid" ? <Badge variant="success">Paid {invoice.paidOn ? day(invoice.paidOn) : ""}</Badge> : <Badge variant="warning">Due</Badge>}</td>
             <td className="py-2.5 pl-3 text-right"><Button size="sm" variant="ghost" onClick={() => setViewing(invoice)}><FileText className="size-3.5" />View</Button></td>
           </tr>)}</tbody>
-        </table></div>}
+        </table></div>}</>}
     </SectionCard>
 
     {moving && <ChangePlan from={current} to={moving} pay={data.payments === "razorpay" && moving.price !== null && Number(moving.price) > 0} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); window.dispatchEvent(new Event(sessionChanged)); }} />}

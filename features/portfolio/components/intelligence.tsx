@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ArrowUp, BookOpen, Building2, Cpu, FileCheck2, Landmark, MessageSquarePlus, Scale, Sparkles, Trash2, TrendingDown, TriangleAlert } from "lucide-react";
+import { AlertTriangle, ArrowUp, BookOpen, Building2, Check, Copy, Cpu, FileCheck2, Landmark, MessageSquarePlus, Scale, Sparkles, Trash2, TrendingDown, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +21,14 @@ const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["What are the biggest financial risks?", Landmark],
   ["Who is my biggest customer?", Building2],
   ["Any GST or TDS due?", FileCheck2],
+];
+/** Questions about one company that Janus rules can answer when the company is named. */
+const about = (name: string): string[] => [
+  `What needs attention at ${name}?`,
+  `Why did ${name}'s sales change?`,
+  `How much profit did ${name} make?`,
+  `What are the receivables at ${name}?`,
+  `Which GST or TDS filings are open at ${name}?`,
 ];
 const RULES = "rules";
 const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [], portfolioKeys: [], canAddKeys: false };
@@ -45,6 +53,9 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
   const [cleared, setCleared] = React.useState(false);
   const [panel, setPanel] = React.useState<"knowledge" | null>(null);
   const [settingUp, setSettingUp] = React.useState(false);
+  const [focus, setFocus] = React.useState<string | null>(null);
+  const focused = list.find((item) => item.id === focus);
+  const tries = focused ? about(focused.name) : suggestions.map(([text]) => text);
   const earlier = cleared ? [] : (history.data ?? []);
   const shown: Turn[] = [...earlier.map((item) => ({ q: item.question, ai: item })), ...turns];
   const busy = turns.some((turn) => turn.pending);
@@ -98,6 +109,7 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
                   {turn.error && <p className="flex items-start gap-2 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{turn.error}</p>}
                   {turn.rules && <RulesAnswer answer={turn.rules} />}
                   {turn.ai && <ModelAnswer answer={turn.ai} />}
+                  {(turn.rules || turn.ai) && <CopyAnswer text={turn.ai ? turn.ai.answer : [turn.rules!.text, ...(turn.rules!.rows ?? []).map(([label, value]) => `${label.replace(/^↳\s*/, "")}: ${value}`)].join("\n")} />}
                 </div>
               </div>
             </li>)}</ol>}
@@ -126,9 +138,16 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
           {!preview && <Button size="sm" variant="outline" className="mt-3 w-full" disabled={!models.data} onClick={() => setSettingUp(true)}>Set up model</Button>}
           {!preview && available.options.length > 1 && <a className="mt-2 block text-center text-xs text-accent hover:underline" href="/portfolio?view=ai-keys">Manage AI keys</a>}
         </div>
-        {shown.length > 0 && <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Try asking</p>
-          <ul className="flex flex-col gap-1">{suggestions.map(([text]) => <li key={text}><button type="button" disabled={busy} onClick={() => void ask(text)} className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50">{text}</button></li>)}</ul>
+        {list.length > 1 && <div className="rounded-xl border border-border bg-surface p-4">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Building2 className="size-3.5" aria-hidden />Ask about</p>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ask about">
+            <button type="button" aria-pressed={!focused} onClick={() => setFocus(null)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${!focused ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>All companies</button>
+            {list.map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(focus === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${focus === item.id ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}
+          </div>
+        </div>}
+        {(shown.length > 0 || focused) && <div className="rounded-xl border border-border bg-surface p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{focused ? `Try asking about ${focused.name}` : "Try asking"}</p>
+          <ul className="flex flex-col gap-1">{tries.map((text) => <li key={text}><button type="button" disabled={busy} onClick={() => void ask(text)} className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50">{text}</button></li>)}</ul>
         </div>}
         {!preview && <div className="rounded-xl border border-border bg-surface p-4">
           <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><BookOpen className="size-3.5" aria-hidden />What Janus knows</p>
@@ -154,6 +173,16 @@ function Welcome({ count, onAsk }: { count: number; onAsk: (text: string) => voi
       <Icon className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden /><span>{text}</span>
     </button>)}</div>
   </div>;
+}
+
+/** Copies an answer, so it can go into a message or a note. */
+function CopyAnswer({ text }: { text: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }
+    catch { toast.error("Could not copy. Select the answer and copy it instead."); }
+  };
+  return <button type="button" onClick={() => void copy()} className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-surface hover:text-foreground">{copied ? <><Check className="size-3" aria-hidden />Copied</> : <><Copy className="size-3" aria-hidden />Copy answer</>}</button>;
 }
 
 function Thinking() {
