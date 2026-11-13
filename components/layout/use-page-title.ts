@@ -22,7 +22,7 @@ export function usePageTitle() {
         }
         // Filters on a page (its period, a chosen company, a preview) keep the page's title.
         for (const [key] of searchParams.entries()) {
-          if (!["workspace", "period", "company", "preview", "add", "health", "filter", "kind", "status", "aging", "show", "stock", "project"].includes(key) && !itemParams.has(key)) return false;
+          if (!["workspace", "period", "company", "preview", "add", "health", "filter", "kind", "status", "aging", "show", "stock", "project", "q"].includes(key) && !itemParams.has(key)) return false;
         }
         return true;
       })?.label || byPath?.label || "Janus"

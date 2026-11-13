@@ -34,7 +34,7 @@ import { CompanyProfileSection } from "@/components/settings/company-profile-sec
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
-import { usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
+import { inr, usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -248,7 +248,7 @@ function BusinessOverviewPanel() {
           <h2 className="mt-2 text-2xl font-semibold tracking-tight">Business overview</h2>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+        <Button size="sm" variant="secondary" onClick={() => (mine ? figures.reload() : window.location.reload())}>
           <RefreshCw className="size-3.5" />
           Refresh
         </Button>
@@ -259,7 +259,7 @@ function BusinessOverviewPanel() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Janus brief</p>
-            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.leads} leads, ${mine.crm.openDeals} open deals and ${formatCurrencyINR(Number(mine.crm.pipelineValue), false)} in open pipeline.` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
+            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.openDeals} open deals worth ${inr(Number(mine.crm.pipelineValue))} in the pipeline.` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
           </div>
         </div>
         <Link href="/ai?workspace=business" className="shrink-0 text-sm font-medium text-accent hover:underline">Ask Janus →</Link>
@@ -267,7 +267,7 @@ function BusinessOverviewPanel() {
 
       {demoMode && !company.setupDone && <section className="flex flex-wrap items-center justify-between gap-3 border border-warning/40 bg-warning-muted px-4 py-3"><div><p className="text-sm font-medium">Finish setting up {company.name}</p><p className="text-xs text-muted-foreground">Choose its workspaces and add the first people to switch the company on.</p></div><Button size="sm" asChild><Link href={`/setup?finish=${company.id}`}>Continue setup</Link></Button></section>}
 
-      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} stale={figures.stale} /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
+      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
