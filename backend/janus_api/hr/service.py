@@ -30,7 +30,7 @@ from sqlalchemy import func, select
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db
 from janus_api.core.errors import ApiError
-from janus_api.hr import schemas
+from janus_api.hr import payroll, schemas
 from janus_api.hr.models import HrRecord
 from janus_api.hr.rules import ALL, RULES, Rule
 
@@ -506,3 +506,22 @@ async def seed(db: Db, actor: Actor, body: schemas.BatchIn) -> schemas.RecordsOu
         await db.flush()
     await db.flush()
     return await list_records(db, actor)
+
+
+# ---- The monthly payroll run, for Finance and the Portfolio --------------------------------
+
+PayslipLine = payroll.Line
+
+
+async def payroll_lines(db: Db, tenant_id: int, month: date) -> tuple[list[PayslipLine], bool]:
+    """The month's payslips (the caller is in the company's context): the ones kept when the month
+    was run, or else as they would be run now. Also says whether they were kept."""
+    kept = await payroll.stored(db, tenant_id, month)
+    if kept:
+        return [payroll.line_of(row) for row in kept], True
+    return [payroll.line_of(item) for item in await payroll.preview(db, tenant_id, month)], False
+
+
+async def run_payroll(db: Db, tenant_id: int, month: date, user_id: int) -> list[PayslipLine]:
+    """Runs the month once and keeps its payslips; asking again returns the same ones."""
+    return [payroll.line_of(row) for row in await payroll.run(db, tenant_id, month, user_id)]

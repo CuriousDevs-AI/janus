@@ -1,5 +1,7 @@
 """The first pipeline shares a lead's contact and ownership; one deal per lead."""
 
+from typing import cast
+
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +28,10 @@ async def query_for(
         .outerjoin(User, User.id == Lead.owner_id)
     )
     query = query.where(Deal.tenant_id == tenant_id)
-    return query if owners is None else query.where(Lead.owner_id.in_(owners))
+    if owners is not None:
+        query = query.where(Lead.owner_id.in_(owners))
+    # The owner is outer-joined, so it may be missing.
+    return cast(Select[tuple[Deal, Lead, Contact, User | None]], query)
 
 
 def output(deal: Deal, lead: Lead, contact: Contact, owner: User | None = None) -> schemas.DealOut:

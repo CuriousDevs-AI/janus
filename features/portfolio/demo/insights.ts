@@ -1,4 +1,4 @@
-import type { CompanySummary } from "@/lib/group-summary";
+import type { CompanySummary } from "@/features/portfolio/demo/group-summary";
 import { lakh } from "@/lib/demo-universe";
 
 export interface Insight { tone: "positive" | "watch" | "action"; title: string; detail: string }

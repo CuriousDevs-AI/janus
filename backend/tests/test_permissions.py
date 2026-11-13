@@ -60,8 +60,8 @@ async def test_rls_denies_cross_tenant_reads_and_writes(
               AND identity_generation = 'ALWAYS' """)
             )
         ).all()
-        # One identity id per model table; HR records are the newest.
-        assert len(identities) == 81
+        # One identity id per model table; the account's billing details are the newest.
+        assert len(identities) == 105
     async with session_factory()() as db:
         await set_context(db, tenant_id=first.tenant_id, user_id=first.user_id)
         for table in ["memberships", "invitations", "audit_log"]:
@@ -102,7 +102,7 @@ async def test_rls_denies_cross_tenant_reads_and_writes(
         assert not (await db.execute(text("SELECT id FROM tenants"))).all()
     async with session_factory()() as db:
         # System roles are readable but cannot be changed by the application.
-        assert await db.scalar(text("SELECT count(*) FROM roles WHERE tenant_id IS NULL")) == 4
+        assert await db.scalar(text("SELECT count(*) FROM roles WHERE tenant_id IS NULL")) == 10
         assert not (
             await db.execute(
                 text("UPDATE roles SET permissions = '{}' WHERE tenant_id IS NULL RETURNING id")

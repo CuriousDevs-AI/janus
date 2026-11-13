@@ -20,7 +20,8 @@ from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
-from janus_api.finance.models import FinanceBudgetLine
+from janus_api.core.money import inr_exact
+from janus_api.finance import service as finance
 from janus_api.operations.models import (
     OpsAdjustment,
     OpsBatch,
@@ -1901,13 +1902,7 @@ async def raise_requisition(
         response.status_code = 200
         return await _requisition_out(db, existing)
     item = await _item(db, tenant_id, data.item_key)
-    budget = await db.scalar(
-        select(FinanceBudgetLine.id).where(
-            FinanceBudgetLine.tenant_id == tenant_id,
-            FinanceBudgetLine.external_key == data.budget_line_key,
-        )
-    )
-    if budget is None:
+    if await finance.budget_left(db, tenant_id, data.budget_line_key) is None:
         raise ApiError(
             "budget_line_not_found", "Choose the budget line this buying is paid from.", 422
         )
@@ -1956,24 +1951,18 @@ async def approve_requisition(key: str, actor: Stock, db: Db, request: Request) 
         raise ApiError(
             "self_approval", "The person who raised a requisition cannot approve it.", 403
         )
-    budget = await db.scalar(
-        select(FinanceBudgetLine).where(
-            FinanceBudgetLine.tenant_id == tenant_id,
-            FinanceBudgetLine.external_key == row.budget_line_key,
-        )
-    )
-    if budget is None:
+    available = await finance.budget_left(db, tenant_id, row.budget_line_key)
+    if available is None:
         raise ApiError(
             "budget_line_not_found",
             "The budget line for this requisition is not on the server.",
             422,
         )
-    available = budget.allocated_paise - budget.drawn_paise
     value = int((row.qty * row.estimated_rate_paise).to_integral_value(rounding=ROUND_HALF_UP))
     if value > available:
         raise ApiError(
             "over_budget",
-            f"The budget line has {available / 100:,.2f} left; this needs {value / 100:,.2f}.",
+            f"The budget line has {inr_exact(available)} left; this needs {inr_exact(value)}.",
             422,
         )
     row.status = "approved"

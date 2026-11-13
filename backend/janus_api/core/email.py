@@ -42,9 +42,23 @@ class SMTPEmailSender:
         try:
             await run_in_threadpool(deliver)
         except (smtplib.SMTPException, OSError) as error:
+            # Printed so whoever runs the server sees why mail did not go (a wrong app password
+            # reads SMTPAuthenticationError). The recipient and the body are left out.
+            print(
+                json.dumps(
+                    {
+                        "event": "email_failed",
+                        "subject": subject,
+                        "error": type(error).__name__,
+                        "detail": str(error)[:300],
+                    }
+                ),
+                flush=True,
+            )
             raise ApiError(
                 "email_unavailable", "Email delivery is temporarily unavailable.", 503
             ) from error
+        print(json.dumps({"event": "email_sent", "subject": subject}), flush=True)
 
 
 def get_sender() -> EmailSender:
@@ -61,3 +75,22 @@ async def send_token(recipient: str, kind: str, token: str) -> None:
     url = f"{get_settings().frontend_url.rstrip('/')}/{kind}?{urlencode({'token': token})}"
     template = Path(__file__).with_name("templates").joinpath(f"{kind}.txt").read_text()
     await get_sender().send(recipient, subjects[kind], template.format(url=url))
+
+
+async def send_portfolio_invite(
+    recipient: str, token: str, inviter: str, companies: list[tuple[str, str]]
+) -> None:
+    """One email for a Portfolio share: every company and role, who invited, and one link that
+    joins them all."""
+    url = f"{get_settings().frontend_url.rstrip('/')}/invite?{urlencode({'token': token})}"
+    lines = "\n".join(f"- {company}: {role}" for company, role in companies)
+    count = len(companies)
+    body = (
+        f"{inviter} has invited you to {count} {'company' if count == 1 else 'companies'}"
+        f" on Janus:\n\n{lines}\n\nJoin them all with this link: {url}\n"
+        "This invitation expires in 7 days and can be used once."
+    )
+    subject = (
+        f"{inviter} invited you to {count} {'company' if count == 1 else 'companies'} on Janus"
+    )
+    await get_sender().send(recipient, subject, body)

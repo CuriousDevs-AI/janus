@@ -16,7 +16,7 @@ from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
-from janus_api.org.models import Membership
+from janus_api.org import service as org_service
 from janus_api.projects.models import Project
 from janus_api.timeline.service import record_event
 
@@ -96,14 +96,7 @@ async def create_project(
             owner_id = int(data.owner_user_id)
         except ValueError as error:
             raise ApiError("invalid_owner", "Choose an owner from the company.", 422) from error
-        active = await db.scalar(
-            select(Membership.id).where(
-                Membership.tenant_id == tenant_id,
-                Membership.user_id == owner_id,
-                Membership.status == "active",
-            )
-        )
-        if active is None:
+        if not await org_service.active_member(db, tenant_id, owner_id):
             raise ApiError(
                 "owner_not_in_company", "That owner is not an active member of the company.", 422
             )

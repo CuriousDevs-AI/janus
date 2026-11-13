@@ -86,6 +86,9 @@ class FinanceInvoice(Base):
     sgst_paise: Mapped[int] = mapped_column(BigInteger)
     igst_paise: Mapped[int] = mapped_column(BigInteger)
     total_paise: Mapped[int] = mapped_column(BigInteger)
+    # An opening balance: what the customer owed when the company moved to Janus. It is owed and
+    # paid like any invoice, but it is not a sale: no sales, GST or customer figure uses it.
+    opening: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_by_name: Mapped[str] = mapped_column(String(160))
     idempotency_key: Mapped[str] = mapped_column(String(80))
@@ -170,6 +173,7 @@ class FinanceBill(Base):
         UniqueConstraint("tenant_id", "idempotency_key"),
         CheckConstraint("amount_paise > 0", name="ck_finance_bills_amount"),
         CheckConstraint("due_date >= bill_date", name="ck_finance_bills_dates"),
+        CheckConstraint("gst_paise >= 0 AND gst_paise < amount_paise", name="ck_finance_bills_gst"),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
     number: Mapped[str] = mapped_column(String(20))
@@ -178,6 +182,17 @@ class FinanceBill(Base):
     bill_date: Mapped[date] = mapped_column(Date)
     due_date: Mapped[date] = mapped_column(Date)
     amount_paise: Mapped[int] = mapped_column(BigInteger)
+    # The GST inside amount_paise; 0 on bills recorded before it was asked for (not known).
+    gst_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    # TDS the company deducts from this bill and pays to the government, not to the supplier, and
+    # the section it is under (194C, 194J and so on).
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    tds_section: Mapped[str | None] = mapped_column(String(10))
+    # Its GST cannot be taken as input credit (Section 17(5): food, motor vehicles, personal use).
+    itc_blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # An opening balance owed to the supplier when the company moved to Janus: owed and paid like
+    # any bill, but not a cost, so no cost, GST or TDS figure uses it.
+    opening: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     po_key: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_by_name: Mapped[str] = mapped_column(String(160))
@@ -234,3 +249,72 @@ class FinanceFundRequest(Base):
     rejected_reason: Mapped[str | None] = mapped_column(String(300))
     raised_on: Mapped[date] = mapped_column(Date)
     idempotency_key: Mapped[str] = mapped_column(String(80))
+
+
+class FinancePayrollPosting(Base):
+    """A month's salaries posted to the books: the gross salaries from HR for that month, as one
+    expense, so profit after salaries is recorded rather than estimated."""
+
+    __tablename__ = "finance_payroll_postings"
+    __table_args__ = (UniqueConstraint("tenant_id", "month"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    # The first day of the month the salaries are for.
+    month: Mapped[date] = mapped_column(Date)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    # TDS deducted from these salaries (section 192), owed to the government.
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    headcount: Mapped[int] = mapped_column(Integer)
+    posted_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    posted_by_name: Mapped[str] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceBankLine(Base):
+    """One line of a bank statement a company imported: money in (positive) or out (negative),
+    and the balance after it where the statement gives one. The same line imported twice is kept
+    once, by its fingerprint."""
+
+    __tablename__ = "finance_bank_lines"
+    __table_args__ = (UniqueConstraint("tenant_id", "fingerprint"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    account: Mapped[str] = mapped_column(String(80))
+    line_date: Mapped[date] = mapped_column(Date)
+    position: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(String(300))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    balance_paise: Mapped[int | None] = mapped_column(BigInteger)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceHistoryMonth(Base):
+    """A month from before the company kept its books in Janus, imported from Tally, Zoho Books or
+    another system: sales before GST and costs, in paise. Used only for months Janus has no
+    invoices or bills of its own."""
+
+    __tablename__ = "finance_history_months"
+    __table_args__ = (UniqueConstraint("tenant_id", "month"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    month: Mapped[date] = mapped_column(Date)
+    sales_paise: Mapped[int] = mapped_column(BigInteger)
+    costs_paise: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(20))
+    imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceHistoryCustomer(Base):
+    """One customer's sales before GST in a month from before the company kept its books in Janus,
+    imported from a party-wise sales report (Tally, Zoho Books). Used for customer retention, and
+    only for months Janus has no invoices of its own."""
+
+    __tablename__ = "finance_history_customers"
+    __table_args__ = (UniqueConstraint("tenant_id", "month", "customer"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    month: Mapped[date] = mapped_column(Date)
+    customer: Mapped[str] = mapped_column(String(160))
+    sales_paise: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(20))
+    imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

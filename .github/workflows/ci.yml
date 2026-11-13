@@ -1,0 +1,97 @@
+# Checks every push and pull request: the backend's lint, format, types and test suite against a
+# real Postgres with the production role limits, and the frontend's types, lint and production build.
+# The end-to-end suite needs the whole app, worker and a browser; run it with `npm run e2e`.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: janus
+          POSTGRES_PASSWORD: ci-migration-password
+          POSTGRES_DB: janus
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U janus -d janus"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      # Test-only values for a throwaway database; nothing here is a real secret.
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: janus
+      PGPASSWORD: ci-migration-password
+      PGDATABASE: janus
+      APP_DB_PASSWORD: ci-app-password
+      WORKER_DB_PASSWORD: ci-worker-password
+      JANUS_ENVIRONMENT: test
+      JANUS_DATABASE_URL: postgresql+asyncpg://janus_app:ci-app-password@localhost:5432/janus
+      JANUS_MIGRATION_DATABASE_URL: postgresql+asyncpg://janus:ci-migration-password@localhost:5432/janus
+      JANUS_TEST_WORKER_URL: postgresql+asyncpg://janus_worker:ci-worker-password@localhost:5432/janus
+      JANUS_JWT_SECRET: ci-only-jwt-secret-for-throwaway-test-database
+      JANUS_FRONTEND_URL: http://localhost:3000
+      JANUS_PUBLIC_API_URL: http://localhost:8000
+      JANUS_EMAIL_BACKEND: console
+      JANUS_EMAIL_FROM: Janus <hello@localhost>
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check janus_api tests
+      - name: Format
+        run: uv run ruff format --check janus_api tests
+      - name: Types
+        run: uv run mypy janus_api
+      - name: A test-only encryption key
+        run: echo "JANUS_ENCRYPTION_KEY=$(uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" >> "$GITHUB_ENV"
+      - name: Database roles and migrations
+        run: ../scripts/ci-backend-db.sh
+      - name: Tests
+        run: uv run pytest -q -p no:cacheprovider
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_JANUS_DEMO_MODE: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # Next.js writes the route types (LayoutProps, PageProps) into .next; a clean checkout has none.
+      - name: Route types
+        run: npx next typegen
+      - name: Types
+        run: npx tsc --noEmit -p .
+      - name: Lint
+        run: npx eslint .
+      - name: Production build
+        run: npx next build

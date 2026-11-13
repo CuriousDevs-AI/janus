@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { mergeServerOwned } from "@/lib/stores/server-owned";
+import { mergeServerOwned, withoutDemoRecords } from "@/lib/stores/server-owned";
 import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
@@ -30,6 +30,10 @@ export interface Payment { id: string; amount: number; method: "UPI" | "Bank tra
 export interface Invoice {
   id: string; number: string; customer: string; customerCompany: string; date: string; dueDate: string;
   sameState: boolean; lines: InvoiceLine[]; payments: Payment[]; createdBy: string; cancelled?: boolean; dealId?: string;
+  /** The server's total, in rupees, which the amount due is worked from, so no paise are left over. */
+  serverTotal?: number;
+  /** An opening balance from before Janus: owed and aged like any invoice, but never a sale or GST. */
+  opening?: boolean;
 }
 /** A write-off is bad debt: it clears what the customer owes, but it is a cost in profit and loss, not a cut to sales. */
 export interface CreditNote { id: string; number: string; invoiceId: string; amount: number; reason: string; status: "pending" | "approved" | "rejected"; createdBy: string; approvedBy?: string; rejectedBy?: string; rejectedReason?: string; date: string; ticketId?: string; kind?: "credit" | "write-off" }
@@ -63,7 +67,7 @@ export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2
   return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
 }
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
-export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string }
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string; gst?: number; itcBlocked?: boolean }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;
@@ -72,6 +76,8 @@ export const lineTotals = (line: InvoiceLine) => {
 };
 
 export function invoiceTotals(invoice: Invoice) {
+  // An opening balance has no lines: what is owed is the server's total, and none of it is a sale.
+  if (invoice.opening) return { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: invoice.serverTotal ?? 0 };
   let taxable = 0, cgst = 0, sgst = 0, igst = 0;
   for (const line of invoice.lines) {
     const { taxable: t, tax } = lineTotals(line);
@@ -80,7 +86,7 @@ export function invoiceTotals(invoice: Invoice) {
   }
   const round = (value: number) => Math.round(value * 100) / 100;
   taxable = round(taxable); cgst = round(cgst); sgst = round(sgst); igst = round(igst);
-  return { taxable, cgst, sgst, igst, total: round(taxable + cgst + sgst + igst) };
+  return { taxable, cgst, sgst, igst, total: invoice.serverTotal ?? round(taxable + cgst + sgst + igst) };
 }
 
 interface FinanceState {
@@ -127,9 +133,13 @@ interface FinanceState {
 }
 
 const today = todayIso();
-const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps"> => {
-  // Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
-  if (!isFirstCompany || !demoMode) return { invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [] };
+type FinanceSeed = Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps">;
+const emptyFinance = (): FinanceSeed => ({ invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [] });
+// Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
+const seedFinance = (): FinanceSeed => (isFirstCompany && demoMode ? demoFinance() : emptyFinance());
+
+/** The preview's records. Also read on a real account, to recognise demo records in a copy saved in demo mode. */
+function demoFinance(): FinanceSeed {
   const lines: BudgetLine[] = [
     { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
     { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
@@ -157,7 +167,7 @@ const seedFinance = (): Pick<FinanceState, "invoices" | "creditNotes" | "budgetL
     { id: "bl-3", date: "2026-10-18", description: "NEFT from unknown remitter", amount: 5000, matchedKey: null },
   ];
   return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines, closeReviews: [], expenses: [], pettyCashTopUps: [] };
-};
+}
 
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
 
@@ -486,7 +496,15 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
     }),
-    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills", "draws", "bankEntries", "openingCash", "bankLines", "closeReviews", "expenses", "pettyCashTopUps"]),
+    { name: scoped("janus.finance.v1"), storage: createJSONStorage(() => workspaceStorage), merge: (persisted, current) => {
+      // Invoices, credit notes, budget lines, fund requests and bills come from the server. Expenses,
+      // petty cash, draws, bank entries and lines, opening cash and close reviews are saved only in this
+      // store (synced as the company's workspace state), so the saved copy is kept, less any demo records.
+      const merged = mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills"])(persisted, current);
+      const demo = demoFinance();
+      const cleaned = withoutDemoRecords(merged, { draws: demo.draws, bankEntries: demo.bankEntries, bankLines: demo.bankLines, closeReviews: demo.closeReviews, expenses: demo.expenses, pettyCashTopUps: demo.pettyCashTopUps });
+      return !demoMode && cleaned.openingCash === demo.openingCash ? { ...cleaned, openingCash: 0 } : cleaned;
+    },
     partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, shareCapital: state.shareCapital, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail }) },
   ),
 );

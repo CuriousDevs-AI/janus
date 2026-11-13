@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
+from janus_api.business.service import enqueue_event
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.support.models import SupportTicket
@@ -132,6 +133,7 @@ async def create_ticket(
         ip=request_ip(request),
         details={"ticket": row.number, "priority": data.priority},
     )
+    await enqueue_event(db, tenant_id, "ticket_created", {"ticket_id": row.id})
     return _out(row)
 
 

@@ -22,7 +22,7 @@ import { periodLockProblem, usePeriodLockStore } from "@/lib/stores/period-lock-
 import { monthEnd, monthEndChecks } from "@/lib/month-end";
 import { EXPENSE_CATEGORIES, gstSummary, pettyCashBalance } from "@/lib/stores/finance-store";
 import { moveBudget, syncBudgetLines } from "@/lib/finance-records";
-import { addBill, recordBillPayment, syncBills } from "@/lib/bill-records";
+import { addBill, recordBillPayment, setBlockedCredit, syncBills } from "@/lib/bill-records";
 import { addFundRequest, approveFundRequest, rejectFundRequest, syncFundRequests } from "@/lib/fund-records";
 import { setPeriodLock, syncCompanyRules } from "@/lib/company-rules-records";
 import { approveCreditNote, createInvoice, raiseCreditNote, recordInvoicePayment, syncInvoices } from "@/lib/invoice-records";
@@ -36,7 +36,8 @@ import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { FUND_OWNER_LIMIT, GST_RATES, agingBucket, dueAmount, bookPayments, cashFlowByMonth, fiscalPeriod, invoiceStatus, invoiceTotals, profitAndLoss, useFinanceStore, type CreditNote, type FundRequest, type Invoice, type InvoiceLine } from "@/lib/stores/finance-store";
 import { todayIso } from "@/lib/today";
 
-const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+// Rupees in Indian grouping; paise shown as two digits when there are any (₹1,234.50, not ₹1,234.5).
+const money = (value: number) => `₹${value.toLocaleString("en-IN", { minimumFractionDigits: Number.isInteger(Math.round(value * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
 /** Views that are not built yet. They say so instead of showing empty tables. */
@@ -60,7 +61,7 @@ export function FinanceWorkspace() {
   }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
+  const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", receivables: "Payments & receivables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
 
   if (view in comingSoon) {
     return (
@@ -75,6 +76,7 @@ export function FinanceWorkspace() {
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader title={titles[view] ?? "Finance overview"} description="Invoices, payments, credit notes, fund requests and budgets. Figures come only from records in this workspace." actions={<Badge variant="neutral">{invoices.length} invoices · {creditNotes.length} credit notes</Badge>} />
       <div className="flex flex-col gap-4 px-6 pb-10">
+        {view === "receivables" && <ReceivablesView />}
         {view === "invoices" && <InvoicesView me={me} />}
         {view === "credit-notes" && <CreditNotesView me={me} />}
         {view === "funds" && <FundsView me={me} />}
@@ -96,11 +98,42 @@ export function FinanceWorkspace() {
   );
 }
 
+/** Who owes what, oldest due first: each customer with the invoices still unpaid and how late each is,
+ * so chasing starts with the oldest money. Amounts under a rupee left by rounding are not listed. */
+function ReceivablesView() {
+  const invoices = useFinanceStore((state) => state.invoices);
+  const creditNotes = useFinanceStore((state) => state.creditNotes);
+  const today = todayIso();
+  const open = invoices.filter((i) => !i.cancelled).map((i) => ({ invoice: i, owed: dueAmount(i, creditNotes), late: Math.floor((Date.parse(today) - Date.parse(i.dueDate)) / 86_400_000) })).filter((row) => row.owed >= 1).sort((a, b) => a.invoice.dueDate.localeCompare(b.invoice.dueDate));
+  const byCustomer = new Map<string, typeof open>();
+  for (const row of open) { const name = row.invoice.customerCompany || row.invoice.customer; byCustomer.set(name, [...(byCustomer.get(name) ?? []), row]); }
+  const customers = [...byCustomer.entries()];
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Who owes what, oldest first</CardTitle></CardHeader>
+      <CardContent className="grid gap-4 text-sm">
+        {customers.length === 0 ? <p className="text-muted-foreground">No customer owes anything.</p> : customers.map(([name, rows]) => {
+          const total = rows.reduce((sum, row) => sum + row.owed, 0), late = rows.filter((row) => row.late > 0).reduce((sum, row) => sum + row.owed, 0);
+          return <div key={name} className="grid gap-1.5">
+            <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{name}</span><span className="tabular-nums">{money(total)} owed{late > 0 ? <span className="text-danger"> · {money(late)} past due</span> : null}</span></p>
+            <ul className="grid gap-1 text-xs">{rows.map((row) => <li key={row.invoice.id} className="flex flex-wrap justify-between gap-2 border-b border-border pb-1 last:border-0"><span>{row.invoice.number} · dated {row.invoice.date} · due {row.invoice.dueDate}</span><span className={`tabular-nums ${row.late > 0 ? "text-danger" : "text-muted-foreground"}`}>{money(row.owed)} · {row.late > 0 ? `${row.late} day${row.late === 1 ? "" : "s"} late` : row.late === 0 ? "due today" : `due in ${-row.late} day${row.late === -1 ? "" : "s"}`}</span></li>)}</ul>
+          </div>;
+        })}
+        <p className="text-xs text-muted-foreground">Record a payment against an invoice in Invoices.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Vendor bills: what the company owes, when it is due, and what has been paid so far. */
 function PayablesView({ me }: { me: string }) {
   const bills = useFinanceStore((state) => state.bills);
   const [vendor, setVendor] = React.useState("");
   const [vendorBillNo, setVendorBillNo] = React.useState("");
+  const [gst, setGst] = React.useState("");
+  const [itcBlocked, setItcBlocked] = React.useState(false);
+  const [tds, setTds] = React.useState("");
+  const [tdsSection, setTdsSection] = React.useState("194C");
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState("2026-11-15");
   /** A vendor's payment terms set the due date: the bill date plus its days. Vendors without terms use 30 days. */
@@ -120,10 +153,10 @@ function PayablesView({ me }: { me: string }) {
   }, []);
 
   async function create() {
-    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), poId: poId || undefined }, me);
+    const problem = await addBill({ vendor, vendorBillNo, date: today, dueDate, amount: Number(amount), gst: Number(gst) || 0, itcBlocked, tds: Number(tds) || 0, tdsSection: Number(tds) > 0 ? tdsSection : undefined, poId: poId || undefined }, me);
     if (problem) return toast.error(problem);
     toast.success("Bill recorded");
-    setVendor(""); setVendorBillNo(""); setAmount(""); setPoId("");
+    setVendor(""); setVendorBillNo(""); setAmount(""); setGst(""); setItcBlocked(false); setTds(""); setPoId("");
   }
 
   async function pay(billId: string) {
@@ -133,19 +166,27 @@ function PayablesView({ me }: { me: string }) {
     setPayAmounts((current) => ({ ...current, [billId]: "" }));
   }
 
+  async function toggleBlocked(billId: string, blocked: boolean) {
+    const problem = await setBlockedCredit(billId, blocked);
+    if (problem) return toast.error(problem);
+    toast.success(blocked ? "GST on this bill is now blocked credit, not taken." : "GST on this bill is taken as input credit.");
+  }
+
   return (
     <>
       <Card>
         <CardHeader><CardTitle className="text-base">Record a bill</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
-          <p className="text-xs text-muted-foreground">A bill is what the company owes a vendor. Pay it in one or more payments; each payment cannot be more than the amount still owed.</p>
+          <p className="text-xs text-muted-foreground">A bill is what the company owes a vendor. Where the company deducts TDS, enter it with its section: the vendor is then owed the bill less the TDS, which the company deposits with the government. Pay it in one or more payments; each payment cannot be more than the amount still owed.</p>
           <div className="grid gap-3 sm:grid-cols-5">
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-vendor">Vendor</Label><select id="bill-vendor" className={selectClass} value={vendor} onChange={(e) => chooseVendor(e.target.value)}><option value="">Vendor…</option>{vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-no">Vendor&apos;s bill no.</Label><Input id="bill-no" value={vendorBillNo} onChange={(e) => setVendorBillNo(e.target.value)} /></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-amount">Amount with GST (₹)</Label><Input id="bill-amount" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-gst">GST in this bill (₹)</Label><Input id="bill-gst" type="number" min={0} placeholder="As on the bill" value={gst} onChange={(e) => setGst(e.target.value)} /><label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" disabled={!(Number(gst) > 0)} checked={itcBlocked && Number(gst) > 0} onChange={(e) => setItcBlocked(e.target.checked)} />Credit blocked (food, cars, personal use)</label></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="bill-tds">TDS deducted (₹)</Label><div className="flex gap-1"><Input id="bill-tds" type="number" min={0} placeholder="0" value={tds} onChange={(e) => setTds(e.target.value)} /><select aria-label="TDS section" className={selectClass} value={tdsSection} onChange={(e) => setTdsSection(e.target.value)}>{["194C", "194J", "194I", "194H", "194Q", "194A"].map((code) => <option key={code}>{code}</option>)}</select></div></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-due">Due date</Label><Input id="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="bill-po">Purchase order (optional)</Label><select id="bill-po" className={selectClass} value={poId} onChange={(e) => setPoId(e.target.value)}><option value="">No order</option>{purchaseOrders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.vendor}</option>)}</select></div>
-            <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0)} onClick={create}>Record bill</Button>
+            <Button className="self-end" disabled={!vendor || !vendorBillNo || !(Number(amount) > 0) || Number(gst) >= Number(amount) || Number(tds) >= Number(amount) - (Number(gst) || 0)} onClick={create}>Record bill</Button>
           </div>
         </CardContent>
       </Card>
@@ -166,7 +207,7 @@ function PayablesView({ me }: { me: string }) {
                   <tr key={bill.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{bill.number}<span className="block text-xs font-normal text-muted-foreground">{bill.vendor} · {bill.vendorBillNo}</span></td>
                     <td className="px-4 py-3">{bill.dueDate}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}{bill.gst ? <span className="block text-xs text-muted-foreground">GST {money(bill.gst)} · <button type="button" className="underline-offset-2 hover:underline" title="Section 17(5): GST on food, cars and personal use cannot be taken as input credit" onClick={() => void toggleBlocked(bill.id, !bill.itcBlocked)}>{bill.itcBlocked ? "credit blocked" : "credit taken"}</button></span> : null}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(owed)}</td>
                     <td className="px-4 py-3"><Badge variant={status === "paid" ? "success" : status === "overdue" ? "danger" : "warning"}>{status}</Badge></td>
                     <td className="px-4 py-3 text-xs">{order ? <span className={match.matched ? "text-success" : "text-warning"}>{order.number}: {match.status}</span> : <span className="text-muted-foreground">no order</span>}</td>

@@ -44,19 +44,36 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (blocked) router.replace(homeForPermissions(session.permissions));
   }, [blocked, router, session.permissions]);
+  // An Owner whose account has not chosen a plan chooses one first, then goes on where they were.
+  const [needsPlan, setNeedsPlan] = React.useState(false);
+  React.useEffect(() => {
+    if (demoMode || session.role !== "owner") return;
+    let live = true;
+    api<{ owner: boolean; chosen: boolean }>("/billing")
+      .then((billing) => { if (live && billing.owner && !billing.chosen) setNeedsPlan(true); })
+      .catch(() => { /* the plan page itself says what went wrong */ });
+    return () => { live = false; };
+  }, [session.role]);
+  React.useEffect(() => {
+    if (needsPlan && pathname !== "/choose-plan") router.replace(`/choose-plan?next=${encodeURIComponent(pathname)}`);
+  }, [needsPlan, pathname, router]);
   // HR, Finance and Employee previews have no business in CRM or Business Management. Send them home.
   React.useEffect(() => {
     if (allowed || !account) return;
     // The Owner who has companies goes back to the company they are in; with none, to the Portfolio.
     router.replace(account.hrRole === "owner" && readCompanies().length > 0 && !pathname.startsWith("/portfolio") ? businessHome : homeFor(account));
   }, [allowed, account, router, pathname]);
+  // Choosing a plan fills the screen, before any workspace.
+  if (pathname === "/choose-plan") return <main className="h-dvh overflow-y-auto">{children}</main>;
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
       <Sidebar />
       <MobileSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="app-main flex-1 overflow-y-scroll">
+        {/* relative: hidden controls inside (a file picker's sr-only input) stay in the scrolling
+            area instead of stretching the whole page below the screen. */}
+        <main className="app-main relative flex-1 overflow-y-scroll">
           {!session.user.email_verified_at && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-muted px-6 py-3 text-sm">
               <p>Verify your email to connect lead sources.</p>

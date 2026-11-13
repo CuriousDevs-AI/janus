@@ -57,7 +57,18 @@ async def test_members_roles_live_permissions_and_last_owner(
     token = await invite(client, mailbox, owner, "agent@example.com")
     agent = await accept_new(client, token)
     roles = (await client.get("/v1/roles", headers=agent)).json()
-    assert {r["name"] for r in roles} == {"owner", "admin", "manager", "agent"}
+    assert {r["name"] for r in roles} == {
+        "owner",
+        "admin",
+        "manager",
+        "agent",
+        "group_finance",
+        "group_analyst",
+        "group_admin",
+        "company_admin",
+        "finance_manager",
+        "operations_manager",
+    }
     members = (await client.get("/v1/members", headers=owner.headers)).json()
     owner_id = next(m["id"] for m in members if m["email"] == owner.email)
     agent_id = next(m["id"] for m in members if m["email"] == "agent@example.com")
@@ -398,3 +409,44 @@ async def test_pagination_and_unverified_org_writes(
     ).json()
     assert len(next_page) == 1 and next_page[0]["name"] == "Support"
     assert (await client.get("/v1/teams?limit=101", headers=owner.headers)).status_code == 422
+
+
+async def test_workspace_access_on_top_of_a_role(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    agent = await accept_new(client, await invite(client, mailbox, owner, "accounts@example.com"))
+    admin = await accept_new(
+        client, await invite(client, mailbox, owner, "admin@example.com", "admin")
+    )
+    members = (await client.get("/v1/members", headers=owner.headers)).json()
+    ids = {m["email"]: m["id"] for m in members}
+    url = f"/v1/members/{ids['accounts@example.com']}/workspace-access"
+
+    given = await client.put(url, headers=owner.headers, json={"permissions": ["billing:manage"]})
+    assert given.status_code == 200, given.text
+    assert given.json()["extra_permissions"] == ["billing:manage"]
+    me = (await client.get("/v1/me", headers=agent)).json()
+    assert "billing:manage" in me["permissions"]
+    assert (await client.get("/v1/finance/bills", headers=agent)).status_code == 200
+
+    # Only listed permissions, only what the giver holds, never an Owner's membership.
+    wider = await client.put(url, headers=owner.headers, json={"permissions": ["members:manage"]})
+    assert wider.status_code == 422
+    beyond = await client.put(url, headers=admin, json={"permissions": ["billing:manage"]})
+    assert beyond.status_code == 403
+    ok = await client.put(url, headers=admin, json={"permissions": ["stock:adjust"]})
+    assert ok.status_code == 200 and ok.json()["extra_permissions"] == ["stock:adjust"]
+    owner_member = await client.put(
+        f"/v1/members/{ids[owner.email]}/workspace-access",
+        headers=owner.headers,
+        json={"permissions": ["billing:manage"]},
+    )
+    assert owner_member.status_code == 422
+    # Taken away again: the next request no longer has it.
+    assert (
+        await client.put(url, headers=owner.headers, json={"permissions": []})
+    ).status_code == 200
+    assert "stock:adjust" not in (await client.get("/v1/me", headers=agent)).json()["permissions"]
+    denied = await client.put(url, headers=agent, json={"permissions": []})
+    assert denied.status_code == 403

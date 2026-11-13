@@ -1,9 +1,12 @@
+from collections.abc import Iterable
 from datetime import timedelta
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import Select, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
+from janus_api.auth.models import User
+from janus_api.billing import service as billing
 from janus_api.core.email import send_token
 from janus_api.core.errors import ApiError
 from janus_api.core.security import digest, now, random_token
@@ -37,14 +40,39 @@ PERMISSIONS = {
     "hr:approve",
     "hr:manage",
     "announcements:post",
+    "portfolio:read",
+    "portfolio:finance",
+    "portfolio:share",
 }
 
 # What every member holds whatever their role: their own HR (profile, leave, attendance, pay).
 # It comes with the membership, so nobody has to grant it person by person.
 MEMBER_PERMISSIONS = frozenset({"hr:self"})
+# What can be given to one member on top of their role, so a department works in its own workspace
+# without a broader role: Finance, stock, projects, settings (IT), approvals and reports.
+GRANTABLE = frozenset(
+    {
+        "billing:manage",
+        "stock:adjust",
+        "projects:manage",
+        "settings:manage",
+        "approvals:manage",
+        "reports:read",
+    }
+)
+
+
+def permissions_of(member: Membership, role: Role) -> list[str]:
+    """A member's permissions: their role's, every member's own, and workspace access given."""
+    extra = set(member.extra_permissions or []) & GRANTABLE
+    return sorted(set(role.permissions) | MEMBER_PERMISSIONS | extra)
+
+
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
-    "admin": sorted(PERMISSIONS - {"billing:manage"}),
+    "admin": sorted(
+        PERMISSIONS - {"billing:manage", "portfolio:read", "portfolio:finance", "portfolio:share"}
+    ),
     "manager": [
         "leads:read_own",
         "leads:read_team",
@@ -56,6 +84,33 @@ SYSTEM_ROLES = {
         "hr:approve",
     ],
     "agent": ["leads:read_own", "leads:write"],
+    # Portfolio access an Owner shares across their companies (migration 0048).
+    "group_finance": ["portfolio:finance", "portfolio:read", "reports:read"],
+    "group_analyst": ["portfolio:read", "reports:read"],
+    # The six Portfolio roles (migration 0062): the Owner, these four, and Group analyst as
+    # Read-only. Each is held company by company, so its scope is the companies shared.
+    "group_admin": [
+        "members:manage",
+        "portfolio:finance",
+        "portfolio:read",
+        "portfolio:share",
+        "reports:read",
+    ],
+    "company_admin": sorted(PERMISSIONS - {"billing:manage", "portfolio:share"}),
+    "finance_manager": [
+        "approvals:manage",
+        "billing:manage",
+        "portfolio:finance",
+        "portfolio:read",
+        "reports:read",
+    ],
+    "operations_manager": [
+        "approvals:manage",
+        "portfolio:read",
+        "projects:manage",
+        "reports:read",
+        "stock:adjust",
+    ],
 }
 
 
@@ -157,12 +212,27 @@ async def disable_memberships_for_deletion(db: AsyncSession, user_id: int) -> No
 async def create_invitation(
     db: AsyncSession, tenant_id: int, user_id: int, email: str, role_name: str, ip: str
 ) -> dict[str, str]:
+    created, token = await make_invitation(db, tenant_id, user_id, email, role_name, ip)
+    await send_token(email.casefold(), "invite", token)
+    return created
+
+
+async def make_invitation(
+    db: AsyncSession, tenant_id: int, user_id: int, email: str, role_name: str, ip: str
+) -> tuple[dict[str, str], str]:
+    """Creates the invitation and returns it with its token, sending nothing: a Portfolio share
+    sends one email for every company at once."""
     await lock_workspace(db, tenant_id, user_id, "members:manage")
     role = await system_role(db, role_name)
     _, caller_role = await membership(db, user_id, tenant_id)
     if role_name == "owner" and caller_role.name != "owner":
         raise ApiError("forbidden", "Only an Owner can invite another Owner.", 403)
+    # Nobody hands out more than they hold: a role with a permission the inviter lacks is the
+    # Owner's to give.
+    if caller_role.name != "owner" and not set(role.permissions) <= set(caller_role.permissions):
+        raise ApiError("forbidden", "That role can do more than yours. Ask an Owner.", 403)
     await check_invitee(db, tenant_id, email.casefold())
+    await billing.check_room(db, tenant_id)
     token = random_token()
     invite = Invitation(
         tenant_id=tenant_id,
@@ -174,7 +244,6 @@ async def create_invitation(
     )
     db.add(invite)
     await db.flush()
-    await send_token(invite.email, "invite", token)
     record(
         db,
         "invitation.created",
@@ -183,7 +252,7 @@ async def create_invitation(
         ip=ip,
         details={"invitation_id": invite.id},
     )
-    return {"id": str(invite.id), "message": "Invitation sent."}
+    return {"id": str(invite.id), "message": "Invitation sent."}, token
 
 
 async def check_invitee(
@@ -226,6 +295,13 @@ async def find_invitation(db: AsyncSession, token: str, *, lock: bool = False) -
     token_hash = digest(token)
     tenant_id = await db.scalar(text("SELECT invitation_tenant(:hash)"), {"hash": token_hash})
     if tenant_id is None:
+        # Accepted already, often together with the others of a Portfolio share: say so.
+        if await db.scalar(text("SELECT invitation_used(:hash)"), {"hash": token_hash}):
+            raise ApiError(
+                "invitation_used",
+                "This invitation was already accepted, so you are in. Sign in to open the company.",
+                409,
+            )
         raise ApiError("invalid_token", "Invalid or expired invitation.", 400)
     actor = await db.scalar(text("SELECT app_user()"))
     await set_context(db, tenant_id=int(tenant_id), user_id=actor)
@@ -251,6 +327,45 @@ async def invitation_labels(db: AsyncSession, invite: Invitation) -> tuple[str, 
     if not tenant or not role:
         raise ApiError("invalid_token", "Invalid invitation.")
     return tenant.name, role.name
+
+
+async def accept_siblings(
+    db: AsyncSession, token: str, invite: Invitation, user_id: int
+) -> list[int]:
+    """Accepts the other open invitations sent with this one (same email, same person inviting, same
+    role), company by company under each one's context. Returns the companies joined. One whose
+    membership was disabled is left as it is."""
+    tenants = (
+        await db.scalars(
+            text("SELECT * FROM sibling_invitation_tenants(:hash)"), {"hash": digest(token)}
+        )
+    ).all()
+    joined: list[int] = []
+    for tenant_id in tenants:
+        await set_context(db, tenant_id=int(tenant_id), user_id=user_id)
+        other = await db.scalar(
+            select(Invitation)
+            .where(
+                Invitation.tenant_id == int(tenant_id),
+                Invitation.email == invite.email,
+                Invitation.inviter_id == invite.inviter_id,
+                Invitation.role_id == invite.role_id,
+                Invitation.used_at.is_(None),
+                Invitation.revoked_at.is_(None),
+                Invitation.expires_at > now(),
+            )
+            .with_for_update()
+        )
+        if other is None:
+            continue
+        try:
+            await accept_membership(db, other, user_id)
+        except ApiError:
+            continue
+        record(db, "auth.invitation_accepted", user_id=user_id, tenant_id=int(tenant_id))
+        joined.append(int(tenant_id))
+    await set_context(db, tenant_id=invite.tenant_id, user_id=user_id)
+    return joined
 
 
 async def accept_membership(db: AsyncSession, invite: Invitation, user_id: int) -> None:
@@ -417,6 +532,7 @@ async def member_outputs(
             avatar_url=profiles[member.user_id].avatar_url,
             role=role.name,
             status=member.status,
+            extra_permissions=sorted(member.extra_permissions or []),
         )
         for member, role in rows
     ]
@@ -755,6 +871,34 @@ async def active_member(db: AsyncSession, tenant_id: int, user_id: int) -> bool:
     )
 
 
+def active_user_select(tenant_id: int) -> Select[tuple[int]]:
+    """The user IDs of the company's active members, for use inside another module's query."""
+    return select(Membership.user_id).where(
+        Membership.tenant_id == tenant_id, Membership.status == "active"
+    )
+
+
+async def active_user_ids(
+    db: AsyncSession, tenant_id: int, user_ids: Iterable[int] | None = None
+) -> set[int]:
+    """Which of these people (or everyone, without a list) are active members of the company."""
+    query = active_user_select(tenant_id)
+    if user_ids is not None:
+        query = query.where(Membership.user_id.in_(list(user_ids)))
+    return set((await db.scalars(query)).all())
+
+
+async def active_people(db: AsyncSession, tenant_id: int) -> list[tuple[int, str, str]]:
+    """The company's active members as (user ID, name, email), by name."""
+    rows = await db.execute(
+        select(User.id, User.name, User.email)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.tenant_id == tenant_id, Membership.status == "active")
+        .order_by(User.name)
+    )
+    return [(user_id, name, email) for user_id, name, email in rows.all()]
+
+
 async def teammate_user_ids(db: AsyncSession, tenant_id: int, user_id: int) -> list[int]:
     own_teams = (
         select(TeamMember.team_id)
@@ -779,3 +923,231 @@ async def teammate_user_ids(db: AsyncSession, tenant_id: int, user_id: int) -> l
             )
         ).all()
     )
+
+
+async def disable_role_membership(
+    db: AsyncSession, tenant_id: int, user_id: int, roles: tuple[str, ...]
+) -> int | None:
+    """Ends the person's active membership when it holds one of these roles. Returns its id, or
+    None when they hold no such role here."""
+    member = await db.scalar(
+        select(Membership)
+        .join(Role, Role.id == Membership.role_id)
+        .where(
+            Membership.tenant_id == tenant_id,
+            Membership.user_id == user_id,
+            Membership.status == "active",
+            Role.name.in_(roles),
+        )
+    )
+    if member is None:
+        return None
+    member.status = "disabled"
+    return int(member.id)
+
+
+async def revoke_open_invitations(
+    db: AsyncSession, tenant_id: int, email: str, roles: tuple[str, ...]
+) -> list[int]:
+    """Withdraws the unused invitations sent to this address for one of the system roles, and
+    returns their ids."""
+    invites = (
+        await db.scalars(
+            select(Invitation)
+            .join(Role, Role.id == Invitation.role_id)
+            .where(
+                Invitation.tenant_id == tenant_id,
+                Invitation.email == email,
+                Invitation.used_at.is_(None),
+                Invitation.revoked_at.is_(None),
+                Role.tenant_id.is_(None),
+                Role.name.in_(roles),
+            )
+        )
+    ).all()
+    for invite in invites:
+        invite.revoked_at = now()
+    return [int(invite.id) for invite in invites]
+
+
+async def set_industry(db: AsyncSession, tenant_id: int, industry: str) -> None:
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant.industry = industry
+
+
+async def update_profile(
+    db: AsyncSession,
+    tenant_id: int,
+    name: str,
+    industry: str,
+    company_size: str,
+    business_model: str | None = None,
+) -> None:
+    """Renames the company and sets its industry and size, and its kind of business when given."""
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant.name, tenant.industry, tenant.company_size = name, industry, company_size
+    if business_model is not None:
+        tenant.business_model = business_model
+
+
+async def set_business_model(db: AsyncSession, tenant_id: int, business_model: str) -> None:
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise ApiError("not_found", "Company not found.", 404)
+    tenant.business_model = business_model
+
+
+async def set_workspace_access(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    member_id: int,
+    permissions: list[str],
+    ip: str,
+) -> schemas.MemberOut:
+    """Gives a member workspace access on top of their role. Only permissions in GRANTABLE, and only
+    those the person giving them holds; an Owner's membership is not changed this way."""
+    await lock_workspace(db, tenant_id, user_id, "members:manage")
+    wanted = sorted(set(permissions))
+    unknown = set(wanted) - GRANTABLE
+    if unknown:
+        raise ApiError(
+            "invalid_permissions", f"These cannot be given here: {', '.join(sorted(unknown))}.", 422
+        )
+    caller, caller_role = await membership(db, user_id, tenant_id)
+    if caller_role.name != "owner" and not set(wanted) <= set(permissions_of(caller, caller_role)):
+        raise ApiError("forbidden", "You can only give access you hold yourself.", 403)
+    row = (
+        await db.execute(
+            select(Membership, Role)
+            .join(Role, Role.id == Membership.role_id)
+            .where(Membership.id == member_id, Membership.tenant_id == tenant_id)
+        )
+    ).first()
+    if row is None:
+        raise ApiError("not_found", "Member not found.", 404)
+    member, role = row
+    if role.name == "owner":
+        raise ApiError("invalid_member", "An Owner already holds every permission.", 422)
+    member.extra_permissions = wanted
+    record(
+        db,
+        "membership.workspace_access_set",
+        tenant_id=tenant_id,
+        user_id=user_id,
+        ip=ip,
+        details={"membership_id": member.id, "permissions": ",".join(wanted) or "none"},
+    )
+    await db.flush()
+    return (await member_outputs(db, [(member, role)]))[0]
+
+
+# Archiving by plan: an account that moves to a smaller plan keeps what fits and archives the rest,
+# and gets it back when the plan has room. An archived membership is kept but closed, so nobody can
+# open an archived company or sign in to it, and its records stay as they are.
+
+
+async def owner_companies(db: AsyncSession, user_id: int) -> list[tuple[int, str, str]]:
+    """The companies this person owns, active or archived, as (id, name, status), oldest first.
+    Read under the person's own context; each name under its company's."""
+    rows = (
+        await db.execute(
+            select(Membership.tenant_id, Membership.status)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                Membership.user_id == user_id,
+                Membership.status.in_(("active", "archived")),
+                Role.tenant_id.is_(None),
+                Role.name == "owner",
+            )
+            .order_by(Membership.tenant_id)
+        )
+    ).all()
+    out = []
+    for tenant_id, status in rows:
+        await set_context(db, user_id=user_id, tenant_id=tenant_id)
+        tenant = await db.get(Tenant, tenant_id)
+        out.append((int(tenant_id), tenant.name if tenant else str(tenant_id), str(status)))
+    return out
+
+
+async def seat_holders(
+    db: AsyncSession, tenant_id: int
+) -> tuple[list[tuple[int, int, str, bool]], list[tuple[int, str]]]:
+    """Under the company's context: its memberships that hold or held a seat, as (membership id,
+    user id, status, is an Owner), oldest first; and its open invitations, as (id, email)."""
+    members = (
+        await db.execute(
+            select(Membership.id, Membership.user_id, Membership.status, Role.name)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                Membership.tenant_id == tenant_id,
+                Membership.status.in_(("active", "archived")),
+            )
+            .order_by(Membership.id)
+        )
+    ).all()
+    invites = (
+        await db.execute(
+            select(Invitation.id, Invitation.email)
+            .where(
+                Invitation.tenant_id == tenant_id,
+                Invitation.used_at.is_(None),
+                Invitation.revoked_at.is_(None),
+                Invitation.expires_at > now(),
+            )
+            .order_by(Invitation.id)
+        )
+    ).all()
+    return (
+        [
+            (int(m_id), int(u_id), str(status), role == "owner")
+            for m_id, u_id, status, role in members
+        ],
+        [(int(i_id), str(email)) for i_id, email in invites],
+    )
+
+
+async def set_membership_status(
+    db: AsyncSession, tenant_id: int, membership_ids: Iterable[int], status: str
+) -> None:
+    """Archives (`archived`) or restores (`active`) memberships, under the company's context.
+    Only active and archived memberships move; a disabled one stays as it is."""
+    ids = list(membership_ids)
+    if not ids:
+        return
+    for member in (
+        await db.scalars(
+            select(Membership).where(
+                Membership.tenant_id == tenant_id,
+                Membership.id.in_(ids),
+                Membership.status.in_(("active", "archived")),
+            )
+        )
+    ).all():
+        member.status = status
+
+
+async def archive_company(db: AsyncSession, tenant_id: int) -> None:
+    """Closes a company: every active membership archived, open invitations withdrawn."""
+    members, invites = await seat_holders(db, tenant_id)
+    await set_membership_status(
+        db, tenant_id, [m_id for m_id, _, status, _ in members if status == "active"], "archived"
+    )
+    await withdraw_invitations(db, tenant_id, [i_id for i_id, _ in invites])
+
+
+async def withdraw_invitations(db: AsyncSession, tenant_id: int, ids: Iterable[int]) -> None:
+    wanted = list(ids)
+    if not wanted:
+        return
+    for invite in (
+        await db.scalars(
+            select(Invitation).where(Invitation.tenant_id == tenant_id, Invitation.id.in_(wanted))
+        )
+    ).all():
+        invite.revoked_at = now()

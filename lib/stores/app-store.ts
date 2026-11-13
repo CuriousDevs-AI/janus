@@ -64,11 +64,31 @@ function nextId(prefix: string) {
   return `${prefix}-${idCounter}`;
 }
 
-/** One copy of each record by id, the latest one kept; an earlier counter-made id could repeat. */
-function unique<T extends { id: string }>(items: T[] | undefined): T[] {
-  const byId = new Map<string, T>();
-  for (const item of items ?? []) byId.set(item.id, item);
-  return [...byId.values()];
+/**
+ * Each record once, with an id of its own. An earlier per-browser counter could give two records the
+ * same id: an exact copy is dropped, and a different record that shares an id gets a new one, so no
+ * record is lost.
+ */
+function unique<T extends { id: string }>(items: T[] | undefined): { items: T[]; changed: boolean } {
+  const seen = new Map<string, string>();
+  const out: T[] = [];
+  let changed = false;
+  for (const item of items ?? []) {
+    const json = JSON.stringify(item);
+    const earlier = seen.get(item.id);
+    if (earlier === undefined) {
+      seen.set(item.id, json);
+      out.push(item);
+    } else if (earlier === json) {
+      changed = true;
+    } else {
+      const renamed = { ...item, id: `${item.id.replace(/-\d+$/, "")}-${crypto.randomUUID()}` };
+      seen.set(renamed.id, JSON.stringify(renamed));
+      out.push(renamed);
+      changed = true;
+    }
+  }
+  return { items: out, changed };
 }
 
 const HUMAN_ACTOR: ActivityActor = { type: "human", userId: currentUser.id, userName: currentUser.name };
@@ -677,11 +697,16 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     const saved = { ...current, ...(persisted as Partial<AppState>) } as AppState;
     if (demoMode) return saved;
     const next = { ...saved } as Record<string, unknown>;
+    let repaired = false;
     for (const [key, value] of Object.entries(next)) {
       if (Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string")) {
-        next[key] = unique(value as { id: string }[]);
+        const result = unique(value as { id: string }[]);
+        next[key] = result.items;
+        repaired ||= result.changed;
       }
     }
+    // Save the repaired copy once, so the server's copy is cleaned too (only by people who may save it).
+    if (repaired) setTimeout(() => useAppStore.setState({}), 0);
     for (const key of Object.keys(demoSeeds) as (keyof typeof demoSeeds)[]) {
       const seeded = new Set((demoSeeds[key] as { id: string }[]).map((item) => item.id));
       const kept = ((next[key] as { id: string }[] | undefined) ?? []).filter((item) => !seeded.has(item.id));

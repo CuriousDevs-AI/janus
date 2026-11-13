@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 WorkspaceType = Literal[
     "crm_sales",
@@ -87,7 +87,7 @@ class AgentOut(BaseModel):
     department: str
     status: str
     workspaceId: str | None
-    configuration: dict
+    configuration: dict[str, Any]
 
 
 class AgentCreate(BaseModel):
@@ -97,7 +97,7 @@ class AgentCreate(BaseModel):
         str, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)
     ]
     workspaceId: int | None = None
-    configuration: dict = Field(default_factory=dict)
+    configuration: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentUpdate(BaseModel):
@@ -108,7 +108,7 @@ class AgentUpdate(BaseModel):
         str | None, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)
     ] = None
     status: AgentStatus | None = None
-    configuration: dict | None = None
+    configuration: dict[str, Any] | None = None
 
 
 class WorkflowOut(BaseModel):
@@ -116,18 +116,47 @@ class WorkflowOut(BaseModel):
     name: str
     description: str
     status: str
-    trigger: dict
-    actions: list
+    trigger: dict[str, Any]
+    actions: list[Any]
     requiresApproval: bool
     workspaceId: str | None
+    folderId: str | None = None
+
+
+class FolderIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class FolderOut(BaseModel):
+    id: str
+    name: str
+    count: int
+
+
+class MoveToFolder(BaseModel):
+    """The folder to file a workflow in, or null to unfile it."""
+
+    model_config = ConfigDict(extra="forbid")
+    folderId: int | None = None
+
+
+class TemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    trigger: dict[str, Any]
+    steps: list[Any]
+    modules: list[str]
 
 
 class WorkflowCreate(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
     description: str = Field(default="", max_length=1000)
-    trigger: dict = Field(default_factory=dict)
-    actions: list = Field(default_factory=list, max_length=100)
+    trigger: dict[str, Any] = Field(default_factory=dict)
+    actions: list[Any] = Field(default_factory=list, max_length=100)
     workspaceId: int | None = None
+    folderId: int | None = None
     requiresApproval: bool = True
 
 
@@ -137,8 +166,8 @@ class WorkflowUpdate(BaseModel):
     ] = None
     description: str | None = Field(default=None, max_length=1000)
     status: WorkflowStatus | None = None
-    trigger: dict | None = None
-    actions: list | None = Field(default=None, max_length=100)
+    trigger: dict[str, Any] | None = None
+    actions: list[Any] | None = Field(default=None, max_length=100)
     requiresApproval: bool | None = None
 
 
@@ -146,11 +175,16 @@ class ExecutionOut(BaseModel):
     id: str
     workflowId: str
     status: str
-    event: dict
-    result: dict
+    event: dict[str, Any]
+    result: dict[str, Any]
     approvedBy: str | None
     createdAt: datetime
     completedAt: datetime | None
+    # What the Runs tab shows: the record the run is about, and each step's outcome.
+    recordRef: dict[str, Any] | None = None
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    startedAt: datetime | None = None
+    endedAt: datetime | None = None
 
 
 class ReportSummary(BaseModel):

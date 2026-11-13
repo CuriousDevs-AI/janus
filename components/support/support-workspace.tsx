@@ -17,8 +17,8 @@ import { useRenewalsStore } from "@/lib/stores/renewals-store";
 import { useFeedbackStore } from "@/lib/stores/feedback-store";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { customerHealth } from "@/lib/customer-health";
+import { usePeople } from "@/lib/people-directory";
 import { useCrmLinkOptions } from "@/lib/record-links";
-import { users } from "@/lib/mock-data";
 import type { Ticket } from "@/lib/types";
 import { todayIso } from "@/lib/today";
 
@@ -249,6 +249,8 @@ function RenewalsView() {
   const setContractEnd = useRenewalsStore((state) => state.setContractEnd);
   const tickets = useAppStore((state) => state.tickets);
   const links = useCrmLinkOptions();
+  // The company's people on a real account; the demo's own team in the preview.
+  const people = usePeople();
   const [customerId, setCustomerId] = React.useState("");
   const [contractEnd, setContractEndDraft] = React.useState("2027-03-31");
   const [value, setValue] = React.useState("");
@@ -282,7 +284,7 @@ function RenewalsView() {
             <select aria-label="Customer" className={selectClass} value={customerId} onChange={(e) => setCustomerId(e.target.value)}><option value="">Customer…</option>{links.customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
             <Input aria-label="Contract end" type="date" value={contractEnd} onChange={(e) => setContractEndDraft(e.target.value)} />
             <Input aria-label="Contract value" type="number" min={0} placeholder="Value ₹" value={value} onChange={(e) => setValue(e.target.value)} />
-            <select aria-label="Renewal owner" className={selectClass} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Owner…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Renewal owner" className={selectClass} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Owner…</option>{people.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
             <Button disabled={!customerId || !owner || value === ""} onClick={save}>Add renewal</Button>
           </div>
         </CardContent>
@@ -330,6 +332,8 @@ function QueuesView() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const open = useOpenTickets();
+  // The company's people on a real account; the demo's own team in the preview.
+  const users = usePeople();
   React.useEffect(() => {
     syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
   }, []);

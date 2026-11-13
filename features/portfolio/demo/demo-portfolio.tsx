@@ -13,15 +13,14 @@ import { CompanyLogo } from "@/components/shared/company-logo";
 import { LogoPicker } from "@/components/shared/logo-picker";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
 import { activeCompanyId, readCompanies, removeCompany, seedCompanies, subscribeCompanies, switchCompany, updateCompany, type CompanyRecord } from "@/lib/company";
-import { summarise, type CompanySummary } from "@/lib/group-summary";
-import { answerFor, insightsFor, type Answer } from "@/lib/portfolio-insights";
+import { summarise, type CompanySummary } from "@/features/portfolio/demo/group-summary";
+import { answerFor, insightsFor, type Answer } from "@/features/portfolio/demo/insights";
+import { Bars, Kpi, palette } from "@/features/portfolio/components/figures";
 import { lakh } from "@/lib/demo-universe";
 import { useLoginAccount } from "@/lib/demo-persona";
-import { memoryItems } from "@/lib/mock-data/memory";
-import { getCustomerById } from "@/lib/mock-data/customers";
+import { useSession } from "@/components/auth/session-provider";
 
 const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you run, at a glance."],
@@ -32,7 +31,6 @@ const titles: Record<string, [string, string]> = {
   notifications: ["Notifications", "What needs you, from every company."],
   people: ["Portfolio access", "Who else can see the Portfolio. Each company's own people and roles are in its Business Management."],
 };
-const palette = ["#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626"];
 const tone = { high: "danger", medium: "warning", low: "neutral" } as const;
 const workspaceName = (id: string) => getWorkspaceDefinition(id as WorkspaceId).name;
 const stageLabel: Record<string, string> = { new: "New", qualified: "Qualified", proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost" };
@@ -45,13 +43,12 @@ function usePortfolio() {
 }
 const open = (id: string, to?: string) => id === activeCompanyId() && to ? window.location.assign(to) : switchCompany(id, to);
 
-export function PortfolioPage() {
+/** The preview's Portfolio: the demo companies kept in this browser. A real account never sees it. */
+export function DemoPortfolio() {
   const view = useSearchParams().get("view") ?? "overview";
   const login = useLoginAccount();
   const { summaries, hydrated } = usePortfolio();
   const [title, description] = titles[view] ?? titles.overview;
-  // The Portfolio runs on the preview's company records. A live account has none yet.
-  if (!demoMode) return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio, for owners of several companies, is not available yet for live accounts. <Link className="text-accent underline" href="/settings?tab=workspace&view=overview&workspace=business">Go to the Business overview</Link></div>;
   if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under Portfolio access.</div>;
   return <div className="mx-auto flex max-w-[1240px] flex-col">
     <PageHeader title={title} description={description} actions={<Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button>} />
@@ -69,14 +66,11 @@ function FirstCompany() {
   </section>;
 }
 
-const Kpi = ({ label, value, detail }: { label: string; value: string; detail: string }) => <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 
 function Overview({ list }: { list: CompanySummary[] }) {
   const total = { people: list.reduce((s, i) => s + i.hr.people, 0), pipeline: list.reduce((s, i) => s + (i.crm?.pipeline ?? 0), 0), won: list.reduce((s, i) => s + (i.crm?.wonValue ?? 0), 0), waiting: list.reduce((s, i) => s + i.hr.pendingLeave, 0), pay: list.reduce((s, i) => s + i.hr.monthlyPay, 0) };
   const attention = list.flatMap((item) => item.attention.map((entry) => ({ ...entry, company: item.company }))).sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.severity] - ({ high: 0, medium: 1, low: 2 })[b.severity]);
   const insights = insightsFor(list);
-  const remembered = memoryItems.filter((item) => item.status === "approved" && item.kind !== "stable_fact").slice(0, 5);
-  const acme = list.find((item) => item.company.id === "acme");
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Kpi label="Companies" value={String(list.length)} detail="Under your login" />
@@ -95,9 +89,6 @@ function Overview({ list }: { list: CompanySummary[] }) {
       </SectionCard>
     </div>
     <CompanyCards list={list} />
-    {acme && remembered.length > 0 && <SectionCard title="What Janus remembers" description={`Approved notes from ${acme.company.name}. Other companies add theirs as they work.`}>
-      <ul className="grid gap-3 md:grid-cols-2">{remembered.map((item) => <li key={item.id} className="border border-border bg-surface-2 p-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.label}{getCustomerById(item.customerId) ? ` · ${getCustomerById(item.customerId)!.name}` : ""}</p><p className="mt-1">{item.value}</p></li>)}</ul>
-    </SectionCard>}
   </>;
 }
 
@@ -118,10 +109,6 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
   </div>;
 }
 
-function Bars({ rows, format }: { rows: { id: string; label: string; value: number; color: string }[]; format: (value: number) => string }) {
-  const max = Math.max(1, ...rows.map((row) => row.value));
-  return <ul className="flex flex-col gap-3">{rows.map((row) => <li key={row.id}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.label}</span><span className="tabular-nums text-muted-foreground">{format(row.value)}</span></div><div className="h-2.5 bg-surface-2"><div className="h-2.5" style={{ width: `${Math.max(2, (row.value / max) * 100)}%`, background: row.color }} /></div></li>)}</ul>;
-}
 
 function Analytics({ list }: { list: CompanySummary[] }) {
   const crm = list.filter((item) => item.crm);
@@ -136,7 +123,7 @@ function Analytics({ list }: { list: CompanySummary[] }) {
         <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars format={lakh} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.pipeline, color: colors.get(item.company.id)! }))} /></SectionCard>
         <SectionCard title="Won so far" description="Closed deals by company."><Bars format={lakh} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.wonValue, color: colors.get(item.company.id)! }))} /></SectionCard>
       </div>
-      <SectionCard title="Leads captured by month" description="October is the real count so far; earlier months are history.">
+      <SectionCard title="Leads captured by month" description="Counted from each company's leads, by the month they came in.">
         <svg viewBox="0 0 560 200" role="img" aria-label="Leads captured per month for each company" className="h-auto w-full">
           <g stroke="var(--border)" strokeWidth="1"><line x1="40" y1="170" x2="520" y2="170" /><line x1="40" y1="100" x2="520" y2="100" /><line x1="40" y1="30" x2="520" y2="30" /></g>
           {months.map((month, index) => <text key={month} x={x(index)} y="190" textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">{month}</text>)}
@@ -241,6 +228,7 @@ type Person = { id: string; name: string; email: string; role: string; companies
 const accessKey = "janus.portfolio-access";
 const roles: [string, string][] = [["Co-owner", "Sees everything in the Portfolio and can add companies."], ["Group finance", "Sees Analytics and Finance, not people or notifications."], ["Group analyst", "Sees Overview and Analytics, read only."]];
 function People({ list }: { list: CompanySummary[] }) {
+  const { user } = useSession();
   const [people, setPeople] = React.useState<Person[]>(() => { try { return JSON.parse(window.localStorage.getItem(accessKey) ?? "[]"); } catch { return []; } });
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState({ name: "", email: "", role: roles[1][0], companies: [] as string[] });
@@ -248,7 +236,7 @@ function People({ list }: { list: CompanySummary[] }) {
   const error = !form.name.trim() ? "Enter their name." : !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim()) ? "Enter a valid email." : people.some((item) => item.email.toLowerCase() === form.email.trim().toLowerCase()) ? "That person already has access." : "";
   return <>
     <SectionCard title="Who can see the Portfolio" description="You always can. Add people who need the view across companies." action={<Button size="sm" onClick={() => setAdding(true)}><Plus className="mr-1 size-4" />Add person</Button>}>
-      <ul className="divide-y divide-border"><li className="flex items-center justify-between gap-3 py-3 first:pt-0"><div><p className="text-sm font-medium">Pankaj Neema</p><p className="text-xs text-muted-foreground">Owner · every company</p></div><Badge variant="success">Owner</Badge></li>
+      <ul className="divide-y divide-border"><li className="flex items-center justify-between gap-3 py-3 first:pt-0"><div><p className="text-sm font-medium">{user.name}</p><p className="text-xs text-muted-foreground">{user.email} · Owner · every company</p></div><Badge variant="success">Owner</Badge></li>
         {people.map((person) => <li key={person.id} className="flex items-center justify-between gap-3 py-3 last:pb-0"><div className="min-w-0"><p className="truncate text-sm font-medium">{person.name} <span className="font-normal text-muted-foreground">· {person.email}</span></p><p className="text-xs text-muted-foreground">{person.role} · {person.companies.length ? person.companies.map((id) => list.find((item) => item.company.id === id)?.company.name ?? id).join(", ") : "every company"}</p></div><Button size="sm" variant="ghost" aria-label={`Remove ${person.name}`} onClick={() => { save(people.filter((item) => item.id !== person.id)); toast.success(`${person.name} no longer has access.`); }}><Trash2 className="size-4" /></Button></li>)}
       </ul>
     </SectionCard>

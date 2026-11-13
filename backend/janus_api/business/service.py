@@ -1,11 +1,12 @@
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth.models import User
 from janus_api.business import schemas
+from janus_api.business.engine import enqueue_event as enqueue_event
 from janus_api.business.models import (
     AgentDefinition,
     AutomationExecution,
@@ -214,9 +215,7 @@ async def list_workspace_members(
     ]
 
 
-async def accessible_workspace_ids(
-    db: AsyncSession, tenant_id: int, user_id: int
-) -> list[int]:
+async def accessible_workspace_ids(db: AsyncSession, tenant_id: int, user_id: int) -> list[int]:
     """Return active department workspaces this user is explicitly assigned to."""
     return list(
         (
@@ -250,7 +249,7 @@ async def ensure_workspace_access(
             BusinessWorkspace.status == "active",
             or_(
                 BusinessWorkspace.workspace_type == raw.replace("-", "_"),
-                BusinessWorkspace.id == int(raw) if raw.isdigit() else False,
+                BusinessWorkspace.id == int(raw) if raw.isdigit() else false(),
             ),
         )
     )
@@ -339,6 +338,7 @@ def workflow_out(item: AutomationWorkflow) -> schemas.WorkflowOut:
         actions=item.actions,
         requiresApproval=item.requires_approval,
         workspaceId=str(item.workspace_id) if item.workspace_id else None,
+        folderId=str(item.folder_id) if item.folder_id else None,
     )
 
 
@@ -352,6 +352,11 @@ def execution_out(item: AutomationExecution) -> schemas.ExecutionOut:
         approvedBy=str(item.approved_by) if item.approved_by else None,
         createdAt=item.created_at,
         completedAt=item.completed_at,
+        recordRef={key: item.event[key] for key in ("lead_id", "ticket_id") if key in item.event}
+        or None,
+        steps=list((item.result or {}).get("steps", [])),
+        startedAt=item.created_at,
+        endedAt=item.completed_at,
     )
 
 

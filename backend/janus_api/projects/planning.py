@@ -12,7 +12,7 @@ from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
-from janus_api.org.models import Membership
+from janus_api.org import service as org_service
 from janus_api.projects.models import Project
 from janus_api.projects.planning_models import ProjectMilestone, ProjectTask
 from janus_api.timeline.service import record_event
@@ -79,14 +79,7 @@ async def _active_member(db: Db, tenant_id: int, user_id: str | None) -> int | N
         value = int(user_id)
     except ValueError as error:
         raise ApiError("invalid_user", "Choose a person from the company.", 422) from error
-    active = await db.scalar(
-        select(Membership.id).where(
-            Membership.tenant_id == tenant_id,
-            Membership.user_id == value,
-            Membership.status == "active",
-        )
-    )
-    if active is None:
+    if not await org_service.active_member(db, tenant_id, value):
         raise ApiError("not_in_company", "That person is not an active member of the company.", 422)
     return value
 
@@ -297,7 +290,9 @@ async def list_tasks(project_key: str, actor: Manage, db: Db) -> list[TaskOut]:
         TaskOut(
             external_key=row.external_key,
             title=row.title,
-            milestone_key=milestone_keys.get(row.milestone_id),
+            milestone_key=(
+                milestone_keys.get(row.milestone_id) if row.milestone_id is not None else None
+            ),
             assignee_user_id=str(row.assignee_user_id) if row.assignee_user_id else None,
             due_on=row.due_on,
             status=row.status,

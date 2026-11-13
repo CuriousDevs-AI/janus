@@ -20,12 +20,16 @@ function saved<T>(key: string, id: string): Partial<T> | null {
     return raw ? (JSON.parse(raw).state as Partial<T>) : null;
   } catch { return null; }
 }
-/** Leads captured per month. Earlier months are history scaled to the company's size; the last is this month's real count. */
+/** Leads captured in each of the last six months, counted from the records' own dates. */
 function monthly(leads: Lead[]) {
-  const scale = Math.min(1, leads.length / 24);
-  const base = [["May", 11], ["Jun", 14], ["Jul", 15], ["Aug", 13], ["Sep", 17]] as const;
-  return [...base.map(([label, value]) => ({ label, leads: Math.round(value * scale) })), { label: "Oct", leads: leads.filter((item) => item.createdAt >= "2026-10-01").length }];
+  const today = new Date(`${DEMO_TODAY}T12:00:00+05:30`);
+  return Array.from({ length: 6 }, (_, index) => {
+    const month = new Date(today.getFullYear(), today.getMonth() - 5 + index, 1);
+    const key = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+    return { label: month.toLocaleString("en-IN", { month: "short" }), leads: leads.filter((item) => item.createdAt.slice(0, 7) === key).length };
+  });
 }
+
 const open = new Set(["new", "qualified", "demo", "proposal", "negotiation", "approval"]);
 
 /**

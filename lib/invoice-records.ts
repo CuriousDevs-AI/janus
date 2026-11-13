@@ -41,6 +41,7 @@ interface ServerInvoice {
   same_state: boolean;
   total_paise: number;
   due_paise: number;
+  opening?: boolean;
   created_by: string;
   lines: ServerLine[];
   payments: ServerPayment[];
@@ -69,6 +70,8 @@ const toInvoice = (row: ServerInvoice): Invoice => ({
     date: payment.paid_on,
   })),
   createdBy: row.created_by,
+  serverTotal: rupees(row.total_paise),
+  opening: row.opening || undefined,
 });
 
 const toNote = (row: ServerNote, invoiceId: string): CreditNote => ({

@@ -19,7 +19,7 @@ from janus_api.auth.service import Actor
 from janus_api.core.config import get_settings
 from janus_api.core.deps import Db
 from janus_api.core.errors import ApiError
-from janus_api.org.models import Membership
+from janus_api.org import service as org_service
 from janus_api.team import schemas
 from janus_api.team.models import (
     TeamAttachment,
@@ -66,11 +66,12 @@ async def _space(db: Db, tenant_id: int, space_id: int) -> TeamSpace:
 
 
 async def _member(db: Db, space_id: int, user_id: int) -> TeamSpaceMember | None:
-    return await db.scalar(
+    found: TeamSpaceMember | None = await db.scalar(
         select(TeamSpaceMember).where(
             TeamSpaceMember.space_id == space_id, TeamSpaceMember.user_id == user_id
         )
     )
+    return found
 
 
 async def _readable(db: Db, actor: Actor, space: TeamSpace) -> TeamSpaceMember | None:
@@ -256,15 +257,16 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
         return []
     ids = [row.id for row in rows]
     people = await _people(db, {row.author_id for row in rows})
-    replies = dict(
-        (
+    replies: dict[int | None, int] = {
+        parent: count
+        for parent, count in (
             await db.execute(
                 select(TeamMessage.parent_id, func.count())
                 .where(TeamMessage.parent_id.in_(ids))
                 .group_by(TeamMessage.parent_id)
             )
         ).all()
-    )
+    }
     reactions: dict[int, list[schemas.ReactionOut]] = {}
     grouped = await db.execute(
         select(
@@ -293,14 +295,14 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
         .where(TeamAttachment.message_id.in_(ids))
         .order_by(TeamAttachment.id)
     )
-    for row in attached.all():
-        attachments.setdefault(row.message_id, []).append(
+    for attached_row in attached.all():
+        attachments.setdefault(attached_row.message_id, []).append(
             schemas.AttachmentOut(
-                id=str(row.id),
-                filename=row.filename,
-                contentType=row.content_type,
-                sizeBytes=row.size_bytes,
-                isImage=row.content_type in IMAGE_TYPES,
+                id=str(attached_row.id),
+                filename=attached_row.filename,
+                contentType=attached_row.content_type,
+                sizeBytes=attached_row.size_bytes,
+                isImage=attached_row.content_type in IMAGE_TYPES,
             )
         )
     posts = await _posts_out(db, actor, rows)
@@ -323,7 +325,7 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
                 reactions=[] if deleted else reactions.get(row.id, []),
                 attachments=[] if deleted else attachments.get(row.id, []),
                 kind=row.kind,
-                **posts.get(row.id, {}),  # type: ignore[arg-type]
+                **posts.get(row.id, {}),
             )
         )
     return out
@@ -458,17 +460,7 @@ async def open_conversation(
         raise ApiError("no_people", "Choose at least one person.", 422)
     if actor.user.id in people:
         raise ApiError("self_conversation", "You cannot start a conversation with yourself.", 422)
-    active = set(
-        (
-            await db.scalars(
-                select(Membership.user_id).where(
-                    Membership.tenant_id == tenant_id,
-                    Membership.user_id.in_(people),
-                    Membership.status == "active",
-                )
-            )
-        ).all()
-    )
+    active = await org_service.active_user_ids(db, tenant_id, people)
     if active != people:
         raise ApiError("person_not_found", "That person is not a member of this company.", 404)
     everyone = people | {actor.user.id}
@@ -508,7 +500,7 @@ async def list_messages(
 ) -> list[schemas.MessageOut]:
     space = await _space(db, actor.session.tenant_id, space_id)
     await _readable(db, actor, space)
-    query: Select = select(TeamMessage).where(
+    query: Select[tuple[TeamMessage]] = select(TeamMessage).where(
         TeamMessage.space_id == space.id, TeamMessage.parent_id.is_(None)
     )
     if before_id:
@@ -658,13 +650,8 @@ async def mark_read(db: Db, actor: Actor, space_id: int, data: schemas.ReadIn) -
 
 async def list_people(db: Db, actor: Actor) -> list[schemas.PersonOut]:
     """Everyone in the company who can be messaged. Any member can see this list."""
-    rows = await db.execute(
-        select(User.id, User.name)
-        .join(Membership, Membership.user_id == User.id)
-        .where(Membership.tenant_id == actor.session.tenant_id, Membership.status == "active")
-        .order_by(User.name)
-    )
-    return [schemas.PersonOut(id=user_id, name=name) for user_id, name in rows.all()]
+    people = await org_service.active_people(db, actor.session.tenant_id)
+    return [schemas.PersonOut(id=user_id, name=name) for user_id, name, _ in people]
 
 
 def _clean_name(raw: str | None) -> str:
@@ -866,13 +853,14 @@ async def call_people(db: Db, space_id: int) -> list[schemas.CallPersonOut]:
 
 
 async def _presence(db: Db, space_id: int, user_id: int) -> TeamVoicePresence | None:
-    return await db.scalar(
+    found: TeamVoicePresence | None = await db.scalar(
         select(TeamVoicePresence).where(
             TeamVoicePresence.space_id == space_id,
             TeamVoicePresence.user_id == user_id,
             TeamVoicePresence.seen_at > _now() - CALL_STALE,
         )
     )
+    return found
 
 
 async def join_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
@@ -1025,8 +1013,8 @@ async def prune_call(db: Db, space_id: int) -> None:
             TeamSignal.space_id == space_id, TeamSignal.created_at <= _now() - SIGNAL_TTL
         )
     )
-    for row in old.all():
-        await db.delete(row)
+    for signal in old.all():
+        await db.delete(signal)
     await db.flush()
 
 
@@ -1068,14 +1056,7 @@ def ice_for(label: str) -> schemas.IceConfigOut:
 
 
 async def _active_member(db: Db, tenant_id: int, user_id: int) -> bool:
-    found = await db.scalar(
-        select(Membership.user_id).where(
-            Membership.tenant_id == tenant_id,
-            Membership.user_id == user_id,
-            Membership.status == "active",
-        )
-    )
-    return found is not None
+    return await org_service.active_member(db, tenant_id, user_id)
 
 
 async def create_post(
@@ -1217,17 +1198,11 @@ async def mail_for(db: Db, actor: Actor, message: schemas.MessageOut) -> list[tu
     )
     tenant_id = actor.session.tenant_id
     if message.kind == "announcement":
-        rows = (
-            await db.execute(
-                select(User.email)
-                .join(Membership, Membership.user_id == User.id)
-                .where(
-                    Membership.tenant_id == tenant_id,
-                    Membership.status == "active",
-                    User.id != actor.user.id,
-                )
-            )
-        ).all()
+        rows = [
+            (email,)
+            for user_id, _, email in await org_service.active_people(db, tenant_id)
+            if user_id != actor.user.id
+        ]
         subject = f"Announcement: {message.title or (message.body or '')[:60]}"
         text = (
             f"{actor.user.name} posted an announcement.\n\n"

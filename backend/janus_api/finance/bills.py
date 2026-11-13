@@ -11,7 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 
 from janus_api.audit import service as audit
@@ -19,7 +19,7 @@ from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
 from janus_api.finance.models import FinanceBill, FinanceBillPayment
-from janus_api.operations.models import OpsPoLine, OpsPurchaseOrder
+from janus_api.operations import service as operations
 from janus_api.rules.service import ensure_open, rules_for
 
 router = APIRouter(prefix="/v1/finance", tags=["Finance"])
@@ -36,7 +36,24 @@ class BillCreate(BaseModel):
     bill_date: date
     due_date: date
     amount_paise: int = Field(gt=0, le=MAX_PAISE)
+    # The GST inside the amount, when the supplier's bill shows it.
+    gst_paise: int = Field(default=0, ge=0, le=MAX_PAISE)
+    # TDS deducted from the bill and paid to the government, and its section (194C, 194J…).
+    tds_paise: int = Field(default=0, ge=0, le=MAX_PAISE)
+    tds_section: str | None = Field(default=None, pattern=r"^[0-9]{3}[A-Z]{0,3}(\([a-z0-9]+\))?$")
     po_key: str | None = Field(default=None, max_length=64)
+    # Its GST cannot be taken as input credit (Section 17(5): food, cars, personal use).
+    itc_blocked: bool = False
+
+    @model_validator(mode="after")
+    def gst_within_amount(self) -> "BillCreate":
+        if self.gst_paise >= self.amount_paise:
+            raise ValueError("The GST must be less than the bill's amount.")
+        if self.tds_paise >= self.amount_paise - self.gst_paise:
+            raise ValueError("The TDS must be less than the bill before GST.")
+        if self.tds_paise and not self.tds_section:
+            raise ValueError("Say which section the TDS is under, such as 194C.")
+        return self
 
 
 class BillPaymentIn(BaseModel):
@@ -63,6 +80,12 @@ class BillOut(BaseModel):
     bill_date: date
     due_date: date
     amount_paise: int
+    tds_paise: int = 0
+    tds_section: str | None = None
+    # An opening balance from before Janus, not a cost.
+    opening: bool = False
+    gst_paise: int = 0
+    itc_blocked: bool = False
     po_key: str | None
     match: str
     paid_paise: int
@@ -73,11 +96,6 @@ class BillOut(BaseModel):
 
 def _round(value: Decimal) -> int:
     return int(value.quantize(Decimal(1), rounding=ROUND_HALF_UP))
-
-
-async def _received_paise(db: Db, order: OpsPurchaseOrder) -> int:
-    lines = (await db.scalars(select(OpsPoLine).where(OpsPoLine.po_id == order.id))).all()
-    return sum(_round(line.received_qty * line.rate_paise) for line in lines)
 
 
 def _match(bill_paise: int, received_paise: int, tolerance_percent: Decimal) -> str:
@@ -92,15 +110,6 @@ def _match(bill_paise: int, received_paise: int, tolerance_percent: Decimal) -> 
     return "goods above bill"
 
 
-async def _order(db: Db, tenant_id: int, po_key: str) -> OpsPurchaseOrder | None:
-    order: OpsPurchaseOrder | None = await db.scalar(
-        select(OpsPurchaseOrder).where(
-            OpsPurchaseOrder.tenant_id == tenant_id, OpsPurchaseOrder.po_key == po_key
-        )
-    )
-    return order
-
-
 async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
     payments = (
         await db.scalars(
@@ -112,12 +121,10 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
     paid = sum(payment.amount_paise for payment in payments)
     match = "no order"
     if row.po_key is not None:
-        order = await _order(db, row.tenant_id, row.po_key)
+        order = await operations.received_order(db, row.tenant_id, row.po_key)
         rules = await rules_for(db, row.tenant_id)
         match = (
-            _match(
-                row.amount_paise, await _received_paise(db, order), rules.match_tolerance_percent
-            )
+            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )
@@ -129,10 +136,16 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
         bill_date=row.bill_date,
         due_date=row.due_date,
         amount_paise=row.amount_paise,
+        gst_paise=row.gst_paise,
+        itc_blocked=row.itc_blocked,
+        tds_paise=row.tds_paise,
+        tds_section=row.tds_section,
+        opening=row.opening,
         po_key=row.po_key,
         match=match,
         paid_paise=paid,
-        due_paise=max(0, row.amount_paise - paid),
+        # The supplier is paid the bill less the TDS, which goes to the government.
+        due_paise=max(0, row.amount_paise - row.tds_paise - paid),
         created_by=row.created_by_name,
         payments=[
             BillPaymentOut(
@@ -192,13 +205,10 @@ async def record_bill(
         return await _bill_out(db, existing)
     order = None
     if data.po_key is not None:
-        order = await _order(db, tenant_id, data.po_key)
+        order = await operations.received_order(db, tenant_id, data.po_key)
         if order is None:
             raise ApiError("po_not_found", "The purchase order was not found.", 422)
-        if (
-            _match(data.amount_paise, await _received_paise(db, order), Decimal(0))
-            == "goods not received"
-        ):
+        if _match(data.amount_paise, order.received_paise, Decimal(0)) == "goods not received":
             raise ApiError(
                 "goods_not_received",
                 f"No goods have been received against {order.number} yet.",
@@ -216,6 +226,10 @@ async def record_bill(
         bill_date=data.bill_date,
         due_date=data.due_date,
         amount_paise=data.amount_paise,
+        gst_paise=data.gst_paise,
+        itc_blocked=data.itc_blocked,
+        tds_paise=data.tds_paise,
+        tds_section=data.tds_section,
         po_key=data.po_key,
         created_by=actor.user.id,
         created_by_name=actor.user.name,
@@ -229,8 +243,37 @@ async def record_bill(
         user_id=actor.user.id,
         tenant_id=tenant_id,
         ip=request_ip(request),
-        details={"bill": row.number, "amount_paise": data.amount_paise},
+        details={"bill": row.number, "amount_paise": data.amount_paise, "vendor": row.vendor[:160]},
     )
+    return await _bill_out(db, row)
+
+
+class BlockedCreditIn(BaseModel):
+    blocked: bool
+
+
+@router.put("/bills/{bill_id}/blocked-credit", response_model=BillOut)
+async def set_blocked_credit(
+    bill_id: int, data: BlockedCreditIn, actor: Billing, db: Db, request: Request
+) -> BillOut:
+    """Marks whether a bill's GST is blocked credit, in an open period only, since it changes
+    that month's GST."""
+    tenant_id = actor.session.tenant_id
+    row = await _bill(db, tenant_id, bill_id, lock=True)
+    if row.opening:
+        raise ApiError("opening_bill", "An opening balance has no GST credit of its own.", 422)
+    await ensure_open(db, tenant_id, row.bill_date)
+    if row.itc_blocked != data.blocked:
+        row.itc_blocked = data.blocked
+        await db.flush()
+        audit.record(
+            db,
+            "finance.bill_credit_blocked" if data.blocked else "finance.bill_credit_unblocked",
+            user_id=actor.user.id,
+            tenant_id=tenant_id,
+            ip=request_ip(request),
+            details={"bill": row.number, "gst_paise": row.gst_paise},
+        )
     return await _bill_out(db, row)
 
 
@@ -262,12 +305,10 @@ async def pay_bill(
         response.status_code = 200
         return await _bill_out(db, row)
     if row.po_key is not None:
-        order = await _order(db, tenant_id, row.po_key)
+        order = await operations.received_order(db, tenant_id, row.po_key)
         rules = await rules_for(db, tenant_id)
         match = (
-            _match(
-                row.amount_paise, await _received_paise(db, order), rules.match_tolerance_percent
-            )
+            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )
@@ -283,7 +324,7 @@ async def pay_bill(
             FinanceBillPayment.bill_id == row.id
         )
     )
-    due = row.amount_paise - int(paid or 0)
+    due = row.amount_paise - row.tds_paise - int(paid or 0)
     if data.amount_paise > due:
         raise ApiError(
             "over_payment", f"Payment is more than the {due} paise still owed on {row.number}.", 422

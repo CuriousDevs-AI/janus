@@ -10,15 +10,17 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { demoAccounts, checkLogin } from "@/lib/demo-accounts";
 import { homeFor, signIn } from "@/lib/demo-persona";
 import type { Me } from "@/lib/api/types";
-import { homeForPermissions, managesBusiness } from "@/lib/access";
+import { PORTFOLIO_ROLES, homeForPermissions, managesBusiness } from "@/lib/access";
 
 const schema = z.object({
-  email: z.string().email("Enter a valid work email"),
+  // An email, or the username chosen at signup. The preview's accounts sign in by email only.
+  email: z.string().trim().min(3, "Enter your email or username"),
   password: z.string().min(1, "Password is required"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -53,6 +55,13 @@ export default function LoginPage() {
         router.replace(`/verify-email?email=${encodeURIComponent(me.user.email)}`);
         return;
       }
+      // Someone who owns or oversees two or more companies starts on the Portfolio, across them;
+      // a single new company still starts on its own setup.
+      const overseen = me.tenants.filter((item) => item.status === "active" && PORTFOLIO_ROLES.includes(item.role));
+      if (overseen.length >= 2) {
+        router.replace("/portfolio?view=overview");
+        return;
+      }
       if (!managesBusiness(me.permissions)) {
         router.replace(homeForPermissions(me.permissions));
         return;
@@ -84,11 +93,11 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{demoMode ? "Email" : "Email or username"}</Label>
           <Input
             id="email"
-            type="email"
-            placeholder="you@company.com"
+            autoComplete="username"
+            placeholder={demoMode ? "you@company.com" : "you@company.com or your username"}
             {...register("email")}
           />
           {errors.email && (
@@ -105,9 +114,9 @@ export default function LoginPage() {
               Forgot password?
             </Link>
           </div>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
+            autoComplete="current-password"
             placeholder="••••••••"
             {...register("password")}
           />

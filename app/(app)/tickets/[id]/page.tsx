@@ -59,7 +59,8 @@ function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }
   const ticketsStore = useAppStore((s) => s.tickets);
   const otherTickets = ticketsStore.filter((t) => t.customerId === ticket?.customerId && t.id !== ticket?.id);
   const company = useCompany(customer?.companyId);
-  const membersApi = useApi<{ user_id: string; name: string }[]>(demoMode ? null : "/members");
+  // Everyone in the company, names only: any member may assign, not only those who manage members.
+  const membersApi = useApi<{ id: number; name: string }[]>(demoMode ? null : "/team/people");
 
   React.useEffect(() => {
     syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
@@ -79,7 +80,7 @@ function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }
   // A real account's people are its members on the server; the demo team is the demo's own.
   const people = demoMode
     ? users.filter((u) => u.role.includes("support") || u.role === "owner").map((u) => ({ id: u.id, name: u.name }))
-    : (membersApi.data ?? []).map((m) => ({ id: m.user_id, name: m.name }));
+    : (membersApi.data ?? []).map((m) => ({ id: String(m.id), name: m.name }));
   const assignee = people.find((p) => p.id === ticket.assigneeId);
   const showHandoff = !!ticket.handoff && !["resolved", "closed"].includes(ticket.status);
   const showAiSupport = !showHandoff && ["open", "ai_handling", "waiting_customer"].includes(ticket.status) && ticket.aiConfidence !== undefined;

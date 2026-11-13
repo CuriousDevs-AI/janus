@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -19,7 +20,7 @@ class BusinessWorkspace(Base):
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(String(1000), default="")
     status: Mapped[str] = mapped_column(String(20), server_default="active")
-    settings: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -52,11 +53,21 @@ class AgentDefinition(Base):
     name: Mapped[str] = mapped_column(String(160))
     department: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(20), server_default="draft")
-    configuration: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class AutomationFolder(Base):
+    """A folder the company files its workflows in. Deleting it leaves its workflows unfiled."""
+
+    __tablename__ = "automation_folders"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_automation_folders_name"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AutomationWorkflow(Base):
@@ -68,8 +79,11 @@ class AutomationWorkflow(Base):
     )
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(String(1000), default="")
-    trigger: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    actions: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    folder_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("automation_folders.id", ondelete="SET NULL")
+    )
+    trigger: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    actions: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     status: Mapped[str] = mapped_column(String(20), server_default="draft")
     requires_approval: Mapped[bool] = mapped_column(server_default="true")
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
@@ -81,12 +95,20 @@ class AutomationWorkflow(Base):
 
 class AutomationExecution(Base):
     __tablename__ = "automation_executions"
-    __table_args__ = (Index("ix_automation_executions_tenant_id", "tenant_id"),)
+    __table_args__ = (
+        Index("ix_automation_executions_tenant_id", "tenant_id"),
+        # The runs the worker still has to carry out.
+        Index(
+            "ix_automation_executions_due",
+            "id",
+            postgresql_where=text("status IN ('queued', 'approved')"),
+        ),
+    )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
     workflow_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("automation_workflows.id"))
     status: Mapped[str] = mapped_column(String(20), server_default="pending")
-    event: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    result: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    event: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     approved_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

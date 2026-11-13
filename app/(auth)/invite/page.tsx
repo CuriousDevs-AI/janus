@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
+import { roleLabel } from "@/lib/access";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,7 @@ function Invite() {
         <>
           <p className="text-sm text-muted-foreground">
             {invitation.data.inviter} invited you to {invitation.data.tenant} as{" "}
-            {invitation.data.role}.
+            {roleLabel(invitation.data.role)}.
           </p>
           <form
             className="flex flex-col gap-4"

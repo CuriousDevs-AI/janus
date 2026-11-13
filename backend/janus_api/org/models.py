@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -24,7 +25,10 @@ class Tenant(Base):
     timezone: Mapped[str] = mapped_column(default="Asia/Kolkata")
     industry: Mapped[str] = mapped_column(String(120), server_default="")
     company_size: Mapped[str] = mapped_column(String(80), server_default="")
-    business_hours: Mapped[dict[str, str]] = mapped_column(
+    # What kind of business it runs (trading, retail, import_export, ...); "" until chosen.
+    business_model: Mapped[str] = mapped_column(String(20), server_default="")
+    # Opening hours, and the setup wizard's finished steps (a list) under "setup_steps".
+    business_hours: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text('\'{"start":"09:00","end":"18:00"}\'::jsonb')
     )
     default_channel: Mapped[str] = mapped_column(String(20), server_default="whatsapp")
@@ -50,6 +54,11 @@ class Membership(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     role_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("roles.id"))
     status: Mapped[str] = mapped_column(default="active")
+    # Workspace access on top of the role, from org.service.GRANTABLE: a Finance agent's
+    # billing:manage, for one. Granted by someone who manages members and holds it.
+    extra_permissions: Mapped[list[str]] = mapped_column(
+        ARRAY(String), default=list, server_default="{}"
+    )
 
 
 class Invitation(Base):

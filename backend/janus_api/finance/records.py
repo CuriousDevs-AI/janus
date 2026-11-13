@@ -122,6 +122,8 @@ class InvoiceOut(BaseModel):
     sgst_paise: int
     igst_paise: int
     total_paise: int
+    # An opening balance from before Janus, not a sale.
+    opening: bool = False
     paid_paise: int
     credited_paise: int
     due_paise: int
@@ -213,6 +215,7 @@ async def _invoice_out(db: Db, row: FinanceInvoice) -> InvoiceOut:
         due_date=row.due_date,
         same_state=row.same_state,
         taxable_paise=row.taxable_paise,
+        opening=row.opening,
         cgst_paise=row.cgst_paise,
         sgst_paise=row.sgst_paise,
         igst_paise=row.igst_paise,
@@ -327,10 +330,11 @@ async def create_invoice(
         response.status_code = 200
         return await _invoice_out(db, existing)
     await ensure_open(db, tenant_id, data.invoice_date)
+    # Opening balances have their own series, so the invoice series stays continuous.
     count = await db.scalar(
         select(func.count())
         .select_from(FinanceInvoice)
-        .where(FinanceInvoice.tenant_id == tenant_id)
+        .where(FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.opening.is_(False))
     )
     row = FinanceInvoice(
         tenant_id=tenant_id,
@@ -372,7 +376,11 @@ async def create_invoice(
         user_id=actor.user.id,
         tenant_id=tenant_id,
         ip=request_ip(request),
-        details={"invoice": row.number, "total_paise": row.total_paise},
+        details={
+            "invoice": row.number,
+            "total_paise": row.total_paise,
+            "customer": (row.customer_company or row.customer)[:160],
+        },
     )
     return await _invoice_out(db, row)
 

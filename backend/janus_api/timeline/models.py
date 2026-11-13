@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -40,5 +41,5 @@ class ProjectTimelineEntry(Base):
     kind: Mapped[str] = mapped_column(String(20))
     author_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
-    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

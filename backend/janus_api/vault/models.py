@@ -24,6 +24,4 @@ class VendorBankAccount(Base):
     requested_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     approved_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

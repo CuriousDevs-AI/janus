@@ -1,0 +1,229 @@
+"""The weekly Portfolio digest: one email on Monday morning with each company's week.
+
+A person turns it on or off for themselves. The worker sends it from the same summary the Portfolio
+page shows, read company by company under each company's own context, so the email never says more
+than the person could see on the page.
+"""
+
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from janus_api.audit.service import record
+from janus_api.core import email
+from janus_api.core.config import get_settings
+from janus_api.core.errors import ApiError
+from janus_api.core.security import now
+from janus_api.core.tenancy import set_context
+from janus_api.portfolio import schemas
+from janus_api.portfolio.access import readable_companies
+from janus_api.portfolio.attention import fema_text
+from janus_api.portfolio.models import PortfolioDigest
+from janus_api.portfolio.periods import inr, today_ist
+from janus_api.portfolio.summary import summary
+
+IST = ZoneInfo("Asia/Kolkata")
+# Monday, 9 in the morning in India.
+SEND_DAY, SEND_TIME = 0, time(9, 0)
+
+
+def next_due(after: datetime) -> datetime:
+    """The first Monday 9:00 in India strictly after the given moment."""
+    local = after.astimezone(IST)
+    days = (SEND_DAY - local.weekday()) % 7
+    due = datetime.combine(local.date() + timedelta(days=days), SEND_TIME, IST)
+    return due if due > local else due + timedelta(days=7)
+
+
+async def _row(db: AsyncSession, user_id: int) -> PortfolioDigest | None:
+    row: PortfolioDigest | None = await db.scalar(
+        select(PortfolioDigest).where(PortfolioDigest.user_id == user_id)
+    )
+    return row
+
+
+async def get_setting(db: AsyncSession, user_id: int) -> schemas.DigestOut:
+    row = await _row(db, user_id)
+    eligible = bool(await readable_companies(db, user_id))
+    return schemas.DigestOut(
+        enabled=bool(row and row.enabled and eligible),
+        eligible=eligible,
+        nextDueAt=row.next_due_at if row and row.enabled and eligible else None,
+        lastSentAt=row.last_sent_at if row else None,
+    )
+
+
+async def set_setting(
+    db: AsyncSession, user_id: int, tenant_id: int, enabled: bool, ip: str
+) -> schemas.DigestOut:
+    if enabled and not await readable_companies(db, user_id):
+        raise ApiError("forbidden", "The digest is for people who see a Portfolio.", 403)
+    row = await _row(db, user_id)
+    if row is None:
+        row = PortfolioDigest(user_id=user_id, enabled=enabled, next_due_at=next_due(now()))
+        db.add(row)
+    else:
+        row.enabled = enabled
+        if enabled:
+            row.next_due_at = next_due(now())
+    record(
+        db,
+        "portfolio.digest_turned_on" if enabled else "portfolio.digest_turned_off",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        ip=ip,
+    )
+    await db.flush()
+    return await get_setting(db, user_id)
+
+
+def day(iso: str) -> str:
+    """2026-10-26 as 26 Oct 2026."""
+    value = date.fromisoformat(iso)
+    return f"{value.day} {value:%b} {value.year}"
+
+
+async def build(
+    db: AsyncSession, user_id: int, name: str, current_tenant: int | None, ip: str | None
+) -> schemas.DigestPreview | None:
+    """The email for the last full week, Monday to Sunday, or None when the person sees no company.
+
+    Sent on Monday morning, the week is the seven days ending yesterday.
+    """
+    # The week ends yesterday (Sunday); what is owed, late or due is as of today, the day it is
+    # sent, exactly as the Portfolio page reads it, so the two never disagree.
+    today = today_ist()
+    week = await summary(db, user_id, current_tenant, ip, "week", today - timedelta(days=1))
+    if not week.companies:
+        return None
+    period = week.period
+    lines = [
+        f"Hello {name},",
+        "",
+        f"Here is the week across your companies, {day(period.start)} to {day(period.end)},"
+        f" compared with {day(period.previousStart)} to {day(period.previousEnd)}. Money owed,"
+        f" late or due is as of {day(today.isoformat())}.",
+    ]
+    for company in week.companies:
+        lines += ["", company.name, *company_lines(company)]
+    frontend = get_settings().frontend_url.rstrip("/")
+    lines += [
+        "",
+        f"Open the Portfolio: {frontend}/portfolio?view=overview",
+        "You get this email every Monday. Turn it off on the Portfolio's Overview.",
+    ]
+    subject = f"Your week across {len(week.companies)} compan" + (
+        "y" if len(week.companies) == 1 else "ies"
+    )
+    return schemas.DigestPreview(subject=subject, body="\n".join(lines))
+
+
+def company_lines(company: schemas.CompanySummary) -> list[str]:
+    """One company in the email: what happened in the week, then what needs the owner now. Money
+    lines only where the person's role includes money; a company that does not sell gets its cash
+    and filings, not leads and pipeline."""
+    current, before = company.period.current, company.period.previous
+    sells = company.businessModel not in ("holding", "not_started") or (
+        company.books is not None
+        and (Decimal(company.books.current.netSales) or Decimal(company.books.previous.netSales))
+    )
+    lines: list[str] = []
+    if sells:
+        lines += [
+            f"  Leads in: {current.leads} ({before.leads} the week before)",
+            f"  Deals won: {current.wonDeals}, worth {inr(current.wonValue)}"
+            f" ({inr(before.wonValue)} the week before)",
+            f"  Open pipeline: {inr(company.crm.pipelineValue)} in {company.crm.openDeals} deals",
+        ]
+    money, books = company.money, company.books
+    if money is not None and books is not None and sells:
+        profit = Decimal(books.current.profitBeforePayroll)
+        if books.current.salariesComplete:
+            pay: Decimal | None = Decimal(books.current.salariesPosted)
+        elif company.people and company.people.monthlyPayroll:
+            pay = Decimal(company.people.monthlyPayroll) * 7 / 30
+        else:
+            pay = None
+        lines.append(
+            f"  Sales: {inr(books.current.netSales)} ({inr(books.previous.netSales)} the week"
+            " before), before GST"
+        )
+        lines.append(
+            f"  Profit after salaries (estimate): {inr(profit - pay)}"
+            if pay is not None
+            else f"  Profit before salaries: {inr(profit)} (salaries not on record)"
+        )
+    if money is not None:
+        late = Decimal(money.payableLate)
+        soon = Decimal(money.payableDueThisWeek) - late
+        lines += [
+            f"  Customers owe: {inr(money.receivable)}, of which {inr(money.overdue)} is past due"
+            f" on {money.overdueInvoices} invoice{'' if money.overdueInvoices == 1 else 's'}",
+            f"  Supplier bills: {inr(late)} already late, {inr(soon)} more due in the next 7 days",
+            f"  Collected: {inr(current.collected)} ({inr(before.collected)} the week before)",
+        ]
+        if company.businessModel == "import_export" and money.unpaidOver9MonthsInvoices:
+            lines.append(
+                "  Export money: "
+                + fema_text(
+                    inr(money.unpaidOver9Months),
+                    money.unpaidOver9MonthsInvoices,
+                    money.unpaidOldestMonths,
+                )
+            )
+        cash = company.cash
+        if cash is not None and cash.total is not None:
+            months = cash.runwayMonths
+            lasts = (
+                ""
+                if months is None
+                else ", lasts more than 3 years"
+                if months > 36
+                else f", lasts about {months:.1f} months"
+            )
+            lines.append(f"  Cash in the bank: {inr(cash.total)} on {day(cash.asOf)}{lasts}")
+    late_filings = [due for due in company.compliance if due.status == "overdue"]
+    soon_filings = [due for due in company.compliance if due.status == "due_soon"]
+    # Past due and due this week each name their own filings, so neither reads as the other.
+    parts = [
+        f"{len(group)} {kind}: "
+        + ", ".join(f"{due.label} ({day(due.dueOn)})" for due in group[:3])
+        + (f" and {len(group) - 3} more" if len(group) > 3 else "")
+        for kind, group in (("past due", late_filings), ("due this week", soon_filings))
+        if group
+    ]
+    if parts:
+        lines.append(f"  Filings: {'; '.join(parts)}")
+    elif not company.complianceSetUp:
+        lines.append("  Filings: not set up, so none are tracked")
+    if company.openTickets:
+        lines.append(f"  Open support tickets: {company.openTickets}")
+    return lines
+
+
+async def run_once(factory: async_sessionmaker[AsyncSession]) -> bool:
+    """Sends one due digest. The claimed row stays locked until it is rescheduled."""
+    async with factory() as db, db.begin():
+        claim = (await db.execute(text("SELECT * FROM public.claim_portfolio_digest()"))).first()
+        if claim is None:
+            return False
+        await set_context(db, user_id=claim.user_id)
+        row = await _row(db, claim.user_id)
+        if row is None:
+            raise RuntimeError("Claimed digest is missing")
+        message = await build(db, claim.user_id, claim.name, None, None)
+        # Rescheduled whether or not there was anything to say, so an empty week is not retried.
+        row.next_due_at = next_due(now())
+        if message is not None:
+            try:
+                await email.get_sender().send(claim.email, message.subject, message.body)
+            except ApiError:
+                # Mail is down: try again in an hour rather than every second.
+                row.next_due_at = now() + timedelta(hours=1)
+                return True
+            row.last_sent_at = now()
+            record(db, "portfolio.digest_sent", user_id=claim.user_id)
+        return True

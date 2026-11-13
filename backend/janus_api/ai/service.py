@@ -1,10 +1,15 @@
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
+from time import monotonic
 
+import httpx
 from cryptography.fernet import InvalidToken
-from sqlalchemy import select
+from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from janus_api.ai import gateway, schemas
+from janus_api.ai import catalog, gateway, schemas
 from janus_api.ai.models import AICredential, AIUsage
 from janus_api.audit.service import record
 from janus_api.core.config import get_settings
@@ -144,3 +149,140 @@ async def list_usage(db: AsyncSession, after_id: int, limit: int) -> list[schema
         select(AIUsage).where(AIUsage.id > after_id).order_by(AIUsage.id).limit(limit)
     )
     return [gateway.usage_out(row) for row in rows]
+
+
+async def spent_since(db: AsyncSession, feature: str, since: datetime) -> Decimal:
+    """What one feature has cost this company since a moment, in US dollars, as priced by the
+    provider's published rates. Calls whose price is unknown count as nothing."""
+    total = await db.scalar(
+        select(func.coalesce(func.sum(AIUsage.cost_usd), 0)).where(
+            AIUsage.feature == feature, AIUsage.created_at >= since
+        )
+    )
+    return Decimal(total or 0)
+
+
+async def converse(
+    db: AsyncSession,
+    provider: schemas.Provider,
+    system: str,
+    turns: list[tuple[str, str]],
+    *,
+    feature: str,
+    max_tokens: int = 700,
+) -> schemas.CompletionOut:
+    """One answer from this company's model: a system prompt, then (role, text) turns, the last
+    from the user. For other modules, which do not build provider messages themselves."""
+    messages = [schemas.Message(role="system", content=system)]
+    messages += [
+        schemas.Message(role="user" if r == "user" else "assistant", content=t) for r, t in turns
+    ]
+    return await complete(db, provider, messages, feature=feature, max_tokens=max_tokens)
+
+
+async def save_key(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    provider: str,
+    fields: dict[str, object],
+    ip: str,
+) -> schemas.CredentialOut:
+    """Saves a provider's model and key for this company from plain fields, for other modules;
+    the same checks as the AI settings apply."""
+    if provider not in catalog.PROVIDERS:
+        raise ApiError("not_found", "Unknown AI provider.", 404)
+    try:
+        data = schemas.CredentialPut.model_validate(fields)
+    except ValidationError as error:
+        message = error.errors()[0].get("msg", "Invalid AI settings.")
+        raise ApiError("invalid_ai_settings", str(message), 422) from None
+    return await put_credential(db, tenant_id, user_id, provider, data, ip)  # type: ignore[arg-type]
+
+
+def free_providers() -> tuple[catalog.FreeProvider, ...]:
+    """Providers that give a free API key, for other modules to offer."""
+    return catalog.FREE
+
+
+def providers() -> tuple[str, ...]:
+    return catalog.PROVIDERS
+
+
+async def credential_to_move(db: AsyncSession, provider: str) -> tuple[str, str, str | None]:
+    """The company's model, key and endpoint for one provider, decrypted, so another company can
+    keep the same key. For moving a key between companies only; never sent to a browser."""
+    row = await get_credential(db, provider)  # type: ignore[arg-type]
+    try:
+        key = cipher().decrypt(row.secret_encrypted.encode()).decode()
+    except InvalidToken as error:
+        raise ApiError(
+            "encryption_unavailable", "AI credential cannot be decrypted.", 503
+        ) from error
+    return row.model, key, row.base_url
+
+
+async def has_credential(db: AsyncSession, provider: str) -> bool:
+    return (
+        await db.scalar(select(AICredential.id).where(AICredential.provider == provider))
+    ) is not None
+
+
+async def converse_with_key(
+    tenant_id: int,
+    provider: str,
+    model: str,
+    key: str,
+    system: str | None,
+    turns: list[tuple[str, str]],
+    *,
+    feature: str,
+    max_tokens: int = 700,
+) -> schemas.CompletionOut:
+    """One answer from a key that is not a company's own, such as the Portfolio's, recorded in the
+    company's AI usage like its own calls. A built-in provider only, at its official endpoint."""
+    if provider not in catalog.PROVIDERS or provider == "openai_compatible":
+        raise ApiError("not_found", "Unknown AI provider.", 404)
+    credential = AICredential(tenant_id=tenant_id, provider=provider, model=model, base_url=None)
+    messages = [schemas.Message(role="system", content=system)] if system else []
+    messages += [
+        schemas.Message(role="user" if r == "user" else "assistant", content=t) for r, t in turns
+    ]
+    return await gateway.complete(credential, key, messages, feature=feature, max_tokens=max_tokens)
+
+
+def connection_test_prompt() -> str:
+    return Path(__file__).with_name("prompts").joinpath("connection_test.txt").read_text()
+
+
+# OpenRouter's free models change often, so the list is read from its public catalog (no key
+# needed) and kept for an hour; the built-in examples stand in when it cannot be reached.
+_live: dict[str, tuple[float, list[str]]] = {}
+
+
+async def free_models(provider: str) -> list[str]:
+    """The provider's free models as it lists them now, or the built-in examples."""
+    fallback = next((list(item.models) for item in catalog.FREE if item.provider == provider), [])
+    if provider != "openrouter":
+        return fallback
+    cached = _live.get(provider)
+    if cached and monotonic() - cached[0] < 3600:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=8, trust_env=False) as client:
+            response = await client.get("https://openrouter.ai/api/v1/models")
+        found = sorted(
+            item["id"]
+            for item in response.json()["data"]
+            if str(item.get("id", "")).endswith(":free")
+        )
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return fallback
+    if not found:
+        return fallback
+    # The examples Janus suggests, where still free, first; then the rest.
+    ordered = [item for item in fallback if item in found] + [
+        item for item in found if item not in fallback
+    ]
+    _live[provider] = (monotonic(), ordered)
+    return ordered

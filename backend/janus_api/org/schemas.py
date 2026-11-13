@@ -12,7 +12,18 @@ from pydantic import (
     model_validator,
 )
 
-SystemRole = Literal["owner", "admin", "manager", "agent"]
+SystemRole = Literal[
+    "owner",
+    "admin",
+    "manager",
+    "agent",
+    "group_finance",
+    "group_analyst",
+    "group_admin",
+    "company_admin",
+    "finance_manager",
+    "operations_manager",
+]
 MemberStatus = Literal["active", "disabled"]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 
@@ -127,6 +138,12 @@ class MemberOut(BaseModel):
     avatar_url: str | None
     role: str
     status: str
+    # Workspace access given on top of the role.
+    extra_permissions: list[str] = []
+
+
+class WorkspaceAccess(BaseModel):
+    permissions: list[str] = Field(default_factory=list, max_length=10)
 
 
 class RoleOut(BaseModel):

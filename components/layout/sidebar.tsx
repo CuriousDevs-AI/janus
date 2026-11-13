@@ -4,7 +4,7 @@ import * as React from "react";
 import { activeCompany, activeCompanyId, portfolioHome, scoped } from "@/lib/company";
 import { CompanyLogo } from "@/components/shared/company-logo";
 import { hrNavVisible } from "@/lib/hr-nav";
-import { CompanySwitcher } from "@/components/layout/company-switcher";
+import { CompanySwitcher, LiveCompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -27,7 +27,7 @@ import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import type { HrDemoRole } from "@/lib/types";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
-import { managesBusiness, mayOpenWorkspace } from "@/lib/access";
+import { managesBusiness, mayOpenWorkspace, PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
 import { TeamChatSidebarList } from "@/components/team/chat-list";
 import {
   DropdownMenu,
@@ -108,12 +108,14 @@ export function SidebarNav({
     const [itemPath, itemQuery] = item.href.split("?");
     if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) return false;
     const params = new URLSearchParams(itemQuery ?? "");
+    // Filters on a page (its period, a chosen company) keep the page's link highlighted.
+    const ignored = new Set(["workspace", "period", "company", "preview", "add"]);
     for (const [key, value] of params.entries()) {
-      if (key === "workspace") continue;
+      if (ignored.has(key)) continue;
       if (searchParams.get(key) !== value) return false;
     }
     for (const [key] of searchParams.entries()) {
-      if (key !== "workspace" && !params.has(key)) return false;
+      if (!ignored.has(key) && !params.has(key)) return false;
     }
     return true;
   }
@@ -157,21 +159,14 @@ export function SidebarNav({
 
   return (
     <>
-      {/* Top of the sidebar. In a company it is the company itself; in the Portfolio it is the Janus brand. */}
-      {workspaceId === "portfolio" && <div className="flex h-14 items-center border-b border-border px-4">
-        <Link href={portfolioHome} className="flex items-center gap-2 overflow-hidden">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-foreground text-[12px] font-bold text-background">C</span>
-          <span className="flex flex-col leading-none"><span className="text-[13px] font-semibold text-foreground">Curious<span className="text-accent">Devs</span></span><span className="text-[10px] text-muted-foreground">Janus</span></span>
-        </Link>
-      </div>}
+      {/* Top of the sidebar: the company in a company, the Portfolio in the Portfolio, laid out the same. */}
       <div
         className={cn(
-          "border-b border-border",
-          workspaceId === "portfolio" ? "py-2" : "flex h-14 items-center",
+          "flex h-14 items-center border-b border-border",
           collapsed ? "px-2" : "px-3",
         )}
       >
-        {workspaceId === "portfolio" ? <div className={cn("flex items-center gap-2 px-2 py-1.5", collapsed && "justify-center px-0")}><span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-col leading-tight"><span className="truncate text-[12px] font-medium text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</div> : <DropdownMenu>
+        {workspaceId === "portfolio" ? <Link href={portfolioHome} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2", collapsed && "justify-center px-0")}><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-foreground text-[13px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-1 flex-col items-start leading-tight"><span className="max-w-full truncate text-[13px] font-semibold text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</Link> : <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
@@ -235,6 +230,7 @@ export function SidebarNav({
                   <Link
                     href={appendWorkspace(item.href, workspaceId)}
                     onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition-colors",
                       collapsed && "justify-center px-0 py-2",
@@ -275,6 +271,8 @@ export function SidebarNav({
       </nav>}
 
       {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
+      {/* A real account sees the switcher once it can go somewhere: a second company, or a Portfolio. */}
+      {!demoMode && (session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
       {/* Footer */}
       <div
@@ -302,21 +300,32 @@ export function SidebarNav({
                     {currentUser.name}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
-                    {session.role}
+                    {roleLabel(session.role)}
                   </span>
                 </span>
               )}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>{currentUser.email}</DropdownMenuLabel>
+            <DropdownMenuLabel className="break-all normal-case tracking-normal" title={currentUser.email}>{currentUser.email}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings">Settings</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings?tab=billing">Billing</Link>
-            </DropdownMenuItem>
+            {/* Settings belong to one company, so from the Portfolio each company's are reached from
+                its page. The plan belongs to the account and lives in the Portfolio. */}
+            {workspaceId === "portfolio" ? <>
+              <DropdownMenuItem asChild>
+                <Link href="/portfolio?view=billing">Plan and billing</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/portfolio?view=companies">Company settings</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/portfolio?view=people">Portfolio access</Link>
+              </DropdownMenuItem>
+            </> : <>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
+            </>}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => void signOut()}>
               Sign out

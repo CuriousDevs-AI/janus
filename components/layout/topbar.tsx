@@ -13,7 +13,9 @@ import { toast } from "sonner";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { CallPill } from "@/components/team/voice-stage";
 export function Topbar() {
-  const { workspace } = useWorkspace();
+  const { workspace, workspaceId } = useWorkspace();
+  // The Portfolio spans companies; customer chat and Team Chat belong to one company, so they stay there.
+  const inPortfolio = workspaceId === "portfolio";
   const session = useSession();
   const signOut = useSignOut();
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
@@ -44,12 +46,12 @@ export function Topbar() {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        {onTeam ? null : <CallPill />}
-        <ChatPanel />
-        <Button variant={onTeam ? "default" : "secondary"} size="sm" aria-label="Open team chat" aria-current={onTeam ? "page" : undefined} onClick={() => router.push("/team")}>
+        {onTeam || inPortfolio ? null : <CallPill />}
+        {!inPortfolio && <ChatPanel />}
+        {!inPortfolio && <Button variant={onTeam ? "default" : "secondary"} size="sm" aria-label="Open team chat" aria-current={onTeam ? "page" : undefined} onClick={() => router.push("/team")}>
           <Hash className="size-3.5" />
           <span className="hidden sm:inline">Team</span>
-        </Button>
+        </Button>}
         <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
           <Search className="size-3.5" />
           <span className="hidden sm:inline">Go to… ⌘K</span>

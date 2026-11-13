@@ -1,7 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  KeyRound,
+  CreditCard,
   BarChart3,
   Bell,
+  CalendarCheck,
   Bot,
   BrainCircuit,
   Building2,
@@ -120,7 +123,6 @@ export const businessNavSections: NavSection[] = [
       { label: "Profile", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRoundPlus, requiredPermission: "settings:manage" },
       { label: "Security & Sessions", href: "/settings?tab=security&workspace=business", icon: ShieldCheck, requiredPermission: "settings:manage" },
       { label: "Notifications", href: "/settings?tab=notifications&workspace=business", icon: Bell, requiredPermission: "settings:manage" },
-      { label: "Billing & Subscription", href: "/settings?tab=workspace&view=administration&section=billing&workspace=business", icon: WalletCards, requiredPermission: "settings:manage" },
     ],
   },
   {
@@ -137,16 +139,19 @@ export const portfolioNavSections: NavSection[] = [
     { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard },
     { label: "Analytics", href: "/portfolio?view=analytics", icon: BarChart3 },
     { label: "Finance", href: "/portfolio?view=finance", icon: WalletCards },
-    { label: "Work inbox", href: "/work", icon: ShieldCheck },
-    { label: "Activity", href: "/activity", icon: ScrollText },
+    { label: "Work inbox", href: "/portfolio?view=work", icon: ShieldCheck },
+    { label: "Activity", href: "/portfolio?view=activity", icon: ScrollText },
   ] },
   { title: "Manage", items: [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
     { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
+    { label: "AI models & keys", href: "/portfolio?view=ai-keys", icon: KeyRound },
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
+    { label: "Compliance", href: "/portfolio?view=compliance", icon: CalendarCheck },
   ] },
   { title: "Access", items: [
     { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
+    { label: "Plan and billing", href: "/portfolio?view=billing", icon: CreditCard },
   ] },
 ];
 
@@ -228,7 +233,6 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Financial Reports", href: "/workspace/finance-accounting?view=reports", icon: BarChart3 },
       { label: "GST Summary", href: "/workspace/finance-accounting?view=gst", icon: FileText },
       { label: "Finance AI Chat", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "Finance Settings", href: "/settings?tab=billing", icon: Settings2, requiredPermission: "billing:manage" },
     ] },
   ],
   "projects-delivery": [

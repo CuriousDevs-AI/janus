@@ -56,7 +56,7 @@ async def clean_database(admin_engine: AsyncEngine) -> AsyncIterator[None]:
                 " ops_adjustments, ops_dispatches, ops_dispatch_lines, ops_returns, ops_transfers,"
                 " ops_counts, ops_count_lines, ops_purchase_orders, ops_po_lines,"
                 " ops_requisitions, finance_bills, finance_bill_payments, finance_fund_requests,"
-                " jobs, raw_events, company_rules RESTART IDENTITY CASCADE"
+                " jobs, raw_events, company_rules, automation_folders RESTART IDENTITY CASCADE"
             )
         )
         await connection.execute(text("DELETE FROM roles WHERE tenant_id IS NOT NULL"))
@@ -73,3 +73,10 @@ async def client(mailbox: Mailbox) -> AsyncIterator[httpx.AsyncClient]:
         headers={"user-agent": "Janus tests"},
     ) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def no_plan_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests set up more companies and people than the Free plan holds; the billing tests turn
+    the plan limits back on."""
+    monkeypatch.setattr(get_settings(), "plan_limits", False)

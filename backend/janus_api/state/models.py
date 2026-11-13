@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -30,7 +31,7 @@ class WorkspaceState(Base):
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
     store_key: Mapped[str] = mapped_column(String(80))
-    data: Mapped[dict] = mapped_column(JSONB)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
     version: Mapped[int] = mapped_column(Integer, default=1)
     updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(
