@@ -385,6 +385,11 @@ async def ask(
         )[::-1]
 
         view = await portfolio.summary(db, user_id, current_tenant, ip, data.period)
+        if data.companyId is not None:
+            only = [company for company in view.companies if company.id == data.companyId]
+            if not only:
+                raise ApiError("not_found", "That company is not in your Portfolio.", 404)
+            view = view.model_copy(update={"companies": only})
         sources = facts_for(view)
         names: dict[str, int] = {}
         for company in view.companies:
