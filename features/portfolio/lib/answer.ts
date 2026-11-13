@@ -28,7 +28,18 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   const asked = /last (month|quarter|year)|previous (month|quarter|year)/.exec(q)?.[0];
   const unsupported = asked ? `I only have ${period?.label ?? "the period chosen above"} and the same days before it, not "${asked}". Switch the period above for more. ` : "";
   const customer = list.flatMap((item) => item.customers.map((entry) => ({ company: item, ...entry }))).find((entry) => q.includes(entry.name.toLowerCase()));
-  if (customer && /owe|overdue|outstanding|invoice|due|pay/.test(q)) {
+  // One of the group's own companies can be another's customer. Its name then means the company
+  // ("what is owed to Malhotra Retail", "GST due at Malhotra Retail") unless the question asks what
+  // it owes ("what does Malhotra Retail owe"): only then is it the customer.
+  const own = customer ? list.find((item) => item.name.toLowerCase() === customer.name.toLowerCase()) : undefined;
+  if (customer && own) {
+    const name = customer.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b(does|do|did|will)\\s+${name}\\s+(still\\s+)?(owe|pay)|${name}\\s+(still\\s+)?(owes|has to pay|must pay)`).test(q)) {
+      const sellers = list.flatMap((item) => item.customers.filter((entry) => entry.name.toLowerCase() === customer.name.toLowerCase()).map((entry) => ({ company: item, ...entry })));
+      return { text: `${unsupported}${own.name} is one of your own companies. What it buys from the others is shown here as their sales, not what it still owes one by one: Finance, Between your companies, matches each invoice to its bill.`, rows: sellers.map((entry): [string, string] => [`Bought from ${entry.company.name}`, `${inr(Number(entry.current))} this period before GST (${inr(Number(entry.previous))} in the same days before)`]) };
+    }
+  }
+  if (customer && !own && /owe|overdue|outstanding|invoice|due|pay/.test(q)) {
     return { text: `${unsupported}Janus has ${whose(customer.name)} sales here, not what they owe one by one: open ${whose(customer.company.name)} Finance, Receivables for their invoices. Sales before GST this period: ${inr(Number(customer.current))} (${inr(Number(customer.previous))} in the same days before).` };
   }
   if (/biggest customer|top customer|largest customer|main customer|concentrat|depend/.test(q)) {
