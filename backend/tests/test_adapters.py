@@ -120,3 +120,40 @@ def test_production_cannot_print_email_tokens() -> None:
             environment="production",
             email_backend="console",
         )
+
+
+def _production(**extra: object) -> Settings:
+    return Settings(
+        database_url="postgresql+asyncpg://invalid",
+        jwt_secret=SecretStr("x" * 32),
+        environment="production",
+        email_backend="smtp",
+        public_api_url="https://api.example.com",
+        frontend_url="https://app.example.com",
+        **extra,  # type: ignore[arg-type]
+    )
+
+
+def test_production_payments_need_the_sellers_gst_registration() -> None:
+    # No payments, no invoices: the seller's details are not needed yet.
+    _production()
+    with pytest.raises(ValidationError, match="valid GSTIN"):
+        _production(razorpay_key_id="rzp_live_x")
+    with pytest.raises(ValidationError, match="first two digits"):
+        _production(
+            razorpay_key_id="rzp_live_x", janus_gstin="27AAPFU0939F1ZV", janus_state_code="29"
+        )
+    with pytest.raises(ValidationError, match="registered business"):
+        _production(
+            razorpay_key_id="rzp_live_x",
+            janus_gstin="27AAPFU0939F1ZV",
+            janus_state_code="27",
+            janus_address="Pune",
+        )
+    _production(
+        razorpay_key_id="rzp_live_x",
+        janus_gstin="27AAPFU0939F1ZV",
+        janus_state_code="27",
+        janus_legal_name="Example Software Private Limited",
+        janus_address="Pune, Maharashtra",
+    )
