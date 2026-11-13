@@ -8,7 +8,8 @@ import { demoMode } from "@/lib/demo-mode";
 import { GRANTABLE_WORKSPACES, PORTFOLIO_ROLES, roleLabel, WORKSPACE_PERMISSION } from "@/lib/access";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
-import { ArrowRightLeft, Check, Pencil, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ArrowRightLeft, Check, Pencil, Plus, Search, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
+import { StatTile } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/settings/section-ui";
 import { roleMeta, roleOrder } from "@/components/settings/role-meta";
@@ -275,13 +276,24 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
 }
 
 function MembersSection({ members, activeWorkspaceKeys, onInvite, onEdit, onRemove, onSwitchOwner }: { members: AccessMember[]; activeWorkspaceKeys: ReadonlySet<WorkspaceKey>; onInvite: () => void; onEdit: (member: AccessMember) => void; onRemove: (member: AccessMember) => void; onSwitchOwner: () => void }) {
-  const managementMembers = members.filter((member) => member.businessAccess);
-  const workspaceMembers = members.filter((member) => !member.businessAccess);
+  const [show, setShow] = React.useState<"all" | "management" | "workspace">("all");
+  const [find, setFind] = React.useState("");
+  const term = find.trim().toLowerCase();
+  const matches = (member: AccessMember) => !term || `${member.name} ${member.email} ${member.department} ${roleMeta[member.role].label}`.toLowerCase().includes(term);
+  const managementMembers = members.filter((member) => member.businessAccess && matches(member));
+  const workspaceMembers = members.filter((member) => !member.businessAccess && matches(member));
+  const pick = (value: typeof show) => setShow(show === value ? "all" : value);
+  const empty = (none: string) => term ? `Nobody matches “${find.trim()}”.` : none;
 
   return <div className="flex flex-col gap-4">
-    <div className="grid gap-3 sm:grid-cols-3"><MiniMetric label="People" value={String(members.length)} detail="Company members" /><MiniMetric label="Management" value={String(managementMembers.length)} detail="Business-level access" tone="success" /><MiniMetric label="Workspace members" value={String(workspaceMembers.length)} detail="Department access" /></div>
-    <MemberTable title="Business management members" description="People with Business Management access can work with company-level settings, reports and approvals." members={managementMembers} activeWorkspaceKeys={activeWorkspaceKeys} onInvite={onInvite} onEdit={onEdit} onRemove={onRemove} onSwitchOwner={onSwitchOwner} empty="No Business Management members yet." />
-    <MemberTable title="Workspace members" description="Department users only see the active workspaces assigned to them." members={workspaceMembers} activeWorkspaceKeys={activeWorkspaceKeys} onEdit={onEdit} onRemove={onRemove} onSwitchOwner={onSwitchOwner} empty="No workspace members yet." />
+    <div className="grid gap-3 sm:grid-cols-3">
+      <StatTile label="People" value={String(members.length)} detail="Company members" onSelect={() => setShow("all")} active={show === "all"} />
+      <StatTile label="Management" value={String(members.filter((member) => member.businessAccess).length)} detail="Business-level access" onSelect={() => pick("management")} active={show === "management"} />
+      <StatTile label="Workspace members" value={String(members.filter((member) => !member.businessAccess).length)} detail="Department access" onSelect={() => pick("workspace")} active={show === "workspace"} />
+    </div>
+    {members.length > 3 && <label className="relative block max-w-sm"><span className="sr-only">Find a person</span><Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden /><Input value={find} onChange={(event) => setFind(event.target.value)} placeholder="Find by name, email, role or department" className="pl-8" /></label>}
+    {show !== "workspace" && <MemberTable title="Business management members" description="People with Business Management access can work with company-level settings, reports and approvals." members={managementMembers} activeWorkspaceKeys={activeWorkspaceKeys} onInvite={onInvite} onEdit={onEdit} onRemove={onRemove} onSwitchOwner={onSwitchOwner} empty={empty("No Business Management members yet.")} />}
+    {show !== "management" && <MemberTable title="Workspace members" description="Department users only see the active workspaces assigned to them." members={workspaceMembers} activeWorkspaceKeys={activeWorkspaceKeys} onEdit={onEdit} onRemove={onRemove} onSwitchOwner={onSwitchOwner} empty={empty("No workspace members yet.")} />}
   </div>;
 }
 
@@ -335,8 +347,4 @@ function RequestsSection({ onNotice }: { onNotice: (message: string) => void }) 
 function AuditSection() {
   const logs = isFirstCompany ? [["Pankaj Neema updated Meera Singh’s workspace access", "Today, 09:32", "Access"], ["Arjun Mehta’s role changed to Sales Manager", "Yesterday, 16:10", "Role"], ["Invite sent to tarun@acmetraders.in", "Today, 10:20", "Invitation"]] : [];
   return <SectionCard title="Audit logs" description="A clear record of people, role and workspace changes for owner review."><div className="flex flex-col divide-y divide-border">{logs.map(([event, date, type]) => <div key={event} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex size-7 items-center justify-center rounded-md bg-accent-muted text-accent"><ShieldCheck className="size-3.5" /></span><div className="min-w-0 flex-1"><p className="text-sm">{event}</p><p className="mt-1 text-[11px] text-muted-foreground">{date}</p></div><Badge variant="neutral">{type}</Badge></div>)}</div></SectionCard>;
-}
-
-function MiniMetric({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: "neutral" | "success" }) {
-  return <div className="rounded-lg border border-border bg-surface p-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p><p className={`mt-2 text-2xl font-semibold ${tone === "success" ? "text-success" : "text-foreground"}`}>{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
