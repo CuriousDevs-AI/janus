@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth.models import User
-from janus_api.business import schemas
+from janus_api.business import engine, schemas
 from janus_api.business.engine import enqueue_event as enqueue_event
 from janus_api.business.models import (
     AgentDefinition,
@@ -339,6 +339,9 @@ def workflow_out(item: AutomationWorkflow) -> schemas.WorkflowOut:
         requiresApproval=item.requires_approval,
         workspaceId=str(item.workspace_id) if item.workspace_id else None,
         folderId=str(item.folder_id) if item.folder_id else None,
+        # Only when already loaded: the database sets it, and a fresh write leaves it unread.
+        updatedAt=item.__dict__.get("updated_at"),
+        problems=engine.problems(item.trigger, item.actions or []),
     )
 
 
