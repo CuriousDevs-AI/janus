@@ -210,6 +210,7 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
   const [model, setModel] = React.useState<BusinessModel>("");
   const [saving, setSaving] = React.useState(false);
   const [touched, setTouched] = React.useState(false);
+  const [created, setCreated] = React.useState<{ id: string; name: string } | null>(null);
   const error = name.trim().length < 2 ? "Give the company a name." : "";
   // Say a full plan before the form is filled in, not in a toast after it.
   const billing = usePortfolioApi<Billing>("/billing");
@@ -219,24 +220,33 @@ export function AddCompany({ onClose }: { onClose: () => void }) {
     setTouched(true);
     if (error) return;
     setSaving(true);
-    let created: { id: string; name: string };
+    let made: { id: string; name: string };
     try {
-      created = await api("/portfolio/companies", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), businessModel: model }) });
+      made = await api("/portfolio/companies", { method: "POST", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), businessModel: model }) });
     } catch (failure) {
       toast.error(message(failure));
       setSaving(false);
       return;
     }
-    toast.success(`${created.name} added. Opening it to finish setup.`);
+    setSaving(false);
+    setCreated(made);
+  }
+  // The company exists: the person chooses to set it up now or to stay in the Portfolio. Staying is a
+  // full load, so the new company is listed everywhere, the switcher included, since the session's
+  // companies are read once per load.
+  const stay = () => window.location.assign("/portfolio?view=companies"); // eslint-disable-line @next/next/no-location-assign-relative-destination
+  async function setUp(company: { id: string; name: string }) {
+    setSaving(true);
     try {
-      await switchTenant(created.id, "/setup", created.name);
+      await switchTenant(company.id, "/setup", company.name);
     } catch (failure) {
-      // The company exists, so the form must not offer to add it again. A full load lists it everywhere,
-      // the switcher included, since the session's companies are read once per load.
-      toast.error(`${created.name} was added, but could not be opened yet. ${message(failure)}`);
-      window.location.assign("/portfolio?view=companies"); // eslint-disable-line @next/next/no-location-assign-relative-destination
+      toast.error(`${company.name} could not be opened yet. ${message(failure)}`);
+      stay();
     }
   }
+  if (created) return <Dialog open onOpenChange={(value) => !value && !saving && stay()}><DialogContent><DialogHeader><DialogTitle>{created.name} is added</DialogTitle><DialogDescription>You are its Owner. Set it up now, or come back to it from Companies when you are ready.</DialogDescription></DialogHeader>
+    <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={stay}>Stay in the Portfolio</Button><Button type="button" disabled={saving} onClick={() => void setUp(created)}>{saving ? "Opening…" : "Set it up now"}</Button></DialogFooter>
+  </DialogContent></Dialog>;
   return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent><DialogHeader><DialogTitle>Add a company</DialogTitle><DialogDescription>You become its Owner. It starts empty, with its own people, records and settings, and you set it up next.</DialogDescription></DialogHeader>
     <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       {full && plan && <p role="alert" className="rounded-md border border-warning/30 bg-warning-muted/40 px-3 py-2 text-sm">The {plan.name} plan includes {plan.companies} {plan.companies === 1 ? "company" : "companies"}, and all are in use. <a href="/portfolio?view=billing" className="font-medium text-accent underline-offset-2 hover:underline">Move to a bigger plan</a> to add another.</p>}

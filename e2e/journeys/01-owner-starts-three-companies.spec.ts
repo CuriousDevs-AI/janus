@@ -38,16 +38,24 @@ test.describe("Vikram starts his three companies on Janus", () => {
   test("he adds his other two companies from the Portfolio", async ({ browser }) => {
     const vikram = await signIn(browser, "vikram");
     await open(vikram.page, "/portfolio?view=companies");
-    for (const company of COMPANIES.slice(1)) {
+    for (const [index, company] of COMPANIES.slice(1).entries()) {
       await vikram.page.getByRole("button", { name: /Add company|Add a company/ }).first().click();
       const dialog = vikram.page.getByRole("dialog");
       await dialog.getByLabel("Name").fill(company.name);
       await dialog.getByLabel("Industry (optional)").fill(company.industry);
       await dialog.locator("button[type=submit]").click();
-      // A new company opens straight into its own setup.
-      await vikram.page.waitForURL(/\/setup/, { timeout: 20000 });
-      await expect(vikram.page.locator("body")).toContainText(company.name, { timeout: 15000 });
-      await open(vikram.page, "/portfolio?view=companies");
+      await expect(dialog).toContainText(`${company.name} is added`, { timeout: 15000 });
+      if (index === 0) {
+        // The first he sets up at once: it opens into its own setup.
+        await dialog.getByRole("button", { name: "Set it up now" }).click();
+        await vikram.page.waitForURL(/\/setup/, { timeout: 20000 });
+        await expect(vikram.page.locator("body")).toContainText(company.name, { timeout: 15000 });
+        await open(vikram.page, "/portfolio?view=companies");
+      } else {
+        // The second he leaves for later, and stays in the Portfolio.
+        await dialog.getByRole("button", { name: "Stay in the Portfolio" }).click();
+        await vikram.page.waitForURL(/\/portfolio\?view=companies/, { timeout: 20000 });
+      }
       await expectVisibleText(vikram.page, company.name);
     }
     const summary = await api("vikram", "GET", "/portfolio/summary");
