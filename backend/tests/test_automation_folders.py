@@ -71,7 +71,14 @@ async def test_templates_start_by_hand_and_only_automation_managers_change_folde
         await client.get("/v1/business/automation-templates", headers=owner.headers)
     ).json()
     assert len(templates) >= 3
-    assert all(item["trigger"] == {"type": "manual"} and item["steps"] for item in templates)
+    # Every template runs as it is once its channel or project is chosen: no step Janus refuses.
+    for item in templates:
+        assert item["trigger"]["type"] in {"lead_created", "ticket_created"} and item["needs"]
+        assert all(
+            (step["action"], step["module"])
+            in {("send_notification", "communication"), ("create_task", "projects_delivery")}
+            for step in item["steps"]
+        )
 
     refused = await client.post(
         "/v1/business/automation-folders", headers=agent, json={"name": "Mine"}
@@ -92,4 +99,4 @@ async def test_the_editor_catalog_offers_what_runs(
     assert {"crm_sales", "hr_people"} <= {module["id"] for module in catalog["modules"]}
     assert any(module["connected"] for module in catalog["modules"])
     types = {action["type"] for action in catalog["actions"]}
-    assert {"approval", "list_low_stock"} <= types
+    assert {"approval", "send_notification", "create_task"} <= types
