@@ -211,6 +211,32 @@ async def _details(db: AsyncSession, user_id: int) -> AccountBillingDetails | No
     return row
 
 
+async def _last_number(db: AsyncSession, user_id: int) -> int:
+    """The highest invoice number the account has, so a new one never repeats a number, even
+    after an invoice was removed (a count would hand out the last number again)."""
+    numbers = await db.scalars(
+        select(AccountInvoice.number).where(AccountInvoice.user_id == user_id)
+    )
+    return max((int(number.rsplit("-", 1)[-1]) for number in numbers), default=0)
+
+
+async def _issued(db: AsyncSession, user_id: int) -> dict[str, dict[str, str | None] | None]:
+    """Who an invoice is billed to and who bills, kept on the invoice the day it is issued."""
+    details = await _details(db, user_id)
+    seller = _seller()
+    return {
+        "bill_to": {
+            "legalName": details.legal_name,
+            "gstin": details.gstin,
+            "stateCode": details.state_code,
+            "address": details.address,
+        }
+        if details
+        else None,
+        "seller": seller.model_dump(),
+    }
+
+
 async def set_details(
     db: AsyncSession,
     user_id: int,
@@ -236,6 +262,34 @@ async def set_details(
     return await view(db, user_id, current_tenant)
 
 
+def _invoice_out(
+    item: AccountInvoice, seller: schemas.Seller, bill_to: schemas.BillingDetails | None
+) -> schemas.InvoiceOut:
+    """An invoice with the details it was issued with; one issued before those were kept shows
+    them as they are now, and says so."""
+    kept = item.seller is not None
+    if kept:
+        seller = schemas.Seller.model_validate(item.seller)
+        bill_to = schemas.BillingDetails.model_validate(item.bill_to) if item.bill_to else None
+    return schemas.InvoiceOut(
+        number=item.number,
+        plan=BY_ID[item.plan].name if item.plan in BY_ID else item.plan,
+        issuedOn=item.issued_on.isoformat(),
+        periodStart=item.period_start.isoformat(),
+        periodEnd=item.period_end.isoformat(),
+        amount=_rupees(item.amount_paise),
+        gst=_rupees(item.gst_paise),
+        total=_rupees(item.total_paise),
+        status=item.status,
+        paidOn=item.paid_on.isoformat() if item.paid_on else None,
+        sample=item.sample,
+        billTo=bill_to,
+        seller=seller,
+        issuedDetails=kept,
+        **_split(item.gst_paise, seller.stateCode, bill_to.stateCode if bill_to else None),
+    )
+
+
 async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> schemas.BillingOut:
     owned = await org.owned_tenants(db, user_id)
     row = await _row(db, user_id)
@@ -248,6 +302,16 @@ async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> sc
             .order_by(AccountInvoice.period_start.desc())
         )
     ).all()
+    current_bill_to = (
+        schemas.BillingDetails(
+            legalName=details.legal_name,
+            gstin=details.gstin,
+            stateCode=details.state_code,
+            address=details.address,
+        )
+        if details
+        else None
+    )
     return schemas.BillingOut(
         owner=bool(owned),
         plan=row.plan if row else "free",
@@ -256,23 +320,7 @@ async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> sc
         usage=await _usage(db, user_id, current_tenant, owned),
         gstRate=GST_RATE,
         plans=[_plan_out(plan) for plan in PLANS],
-        invoices=[
-            schemas.InvoiceOut(
-                number=item.number,
-                plan=BY_ID[item.plan].name if item.plan in BY_ID else item.plan,
-                issuedOn=item.issued_on.isoformat(),
-                periodStart=item.period_start.isoformat(),
-                periodEnd=item.period_end.isoformat(),
-                amount=_rupees(item.amount_paise),
-                gst=_rupees(item.gst_paise),
-                total=_rupees(item.total_paise),
-                status=item.status,
-                paidOn=item.paid_on.isoformat() if item.paid_on else None,
-                sample=item.sample,
-                **_split(item.gst_paise, seller.stateCode, details.state_code if details else None),
-            )
-            for item in invoices
-        ],
+        invoices=[_invoice_out(item, seller, current_bill_to) for item in invoices],
         canChange=bool(owned) and _changes_allowed(),
         payments=_payments(),
         chosen=row is not None,
@@ -301,14 +349,7 @@ async def view(db: AsyncSession, user_id: int, current_tenant: int | None) -> sc
             )
             if status == "archived"
         ],
-        billTo=schemas.BillingDetails(
-            legalName=details.legal_name,
-            gstin=details.gstin,
-            stateCode=details.state_code,
-            address=details.address,
-        )
-        if details
-        else None,
+        billTo=current_bill_to,
         seller=seller,
     )
 
@@ -350,14 +391,12 @@ async def change_plan(
         # Test mode: the month is recorded as a paid sample invoice, so a later move refunds it
         # the way a paid one would be.
         today = _today()
-        taken = await db.scalar(
-            select(func.count(AccountInvoice.id)).where(AccountInvoice.user_id == user_id)
-        )
+        taken = await _last_number(db, user_id)
         gst = plan.price_paise * GST_RATE // 100
         db.add(
             AccountInvoice(
                 user_id=user_id,
-                number=f"JNS-{today.year}-{int(taken or 0) + 1:04d}",
+                number=f"JNS-{today.year}-{taken + 1:04d}",
                 plan=plan.id,
                 issued_on=today,
                 period_start=today,
@@ -368,6 +407,7 @@ async def change_plan(
                 status="paid",
                 paid_on=today,
                 sample=True,
+                **await _issued(db, user_id),
             )
         )
         await db.flush()
@@ -453,14 +493,12 @@ async def _settle(
     row = await _row(db, payment.user_id)
     renews = row.renews_on if row else None
     today = _today()
-    taken = await db.scalar(
-        select(func.count(AccountInvoice.id)).where(AccountInvoice.user_id == payment.user_id)
-    )
+    taken = await _last_number(db, payment.user_id)
     amount = BY_ID[payment.plan].price_paise or 0
     db.add(
         AccountInvoice(
             user_id=payment.user_id,
-            number=f"JNS-{today.year}-{int(taken or 0) + 1:04d}",
+            number=f"JNS-{today.year}-{taken + 1:04d}",
             plan=payment.plan,
             issued_on=today,
             period_start=today,
@@ -472,6 +510,7 @@ async def _settle(
             paid_on=today,
             sample=False,
             payment_id=payment_id,
+            **await _issued(db, payment.user_id),
         )
     )
     record(
@@ -546,7 +585,8 @@ async def add_sample_invoices(
             )
         )
     ).all()
-    count = len(taken)
+    count = await _last_number(db, user_id)
+    issued = await _issued(db, user_id)
     today = _today()
     start = today.replace(day=1)
     for back in range(months - 1, -1, -1):
@@ -573,6 +613,7 @@ async def add_sample_invoices(
                 status="due" if newest else "paid",
                 paid_on=None if newest else period_start + timedelta(days=2),
                 sample=True,
+                **issued,
             )
         )
     record(db, "billing.sample_invoices", user_id=user_id, ip=ip, details={"months": months})

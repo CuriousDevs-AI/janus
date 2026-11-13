@@ -2,10 +2,13 @@ import hashlib
 import hmac
 import json
 from datetime import date
+from typing import Any
 
 import httpx
 import pytest
 from pydantic import SecretStr
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from janus_api.billing import change
 from janus_api.billing import service as billing
@@ -376,18 +379,40 @@ async def test_invoices_carry_both_gstins_the_sac_and_the_place_of_supply(
     assert saved.status_code == 200, saved.text
     body = saved.json()
     assert body["billTo"]["stateCode"] == "27" and body["billTo"]["gstin"] == "27AAPFU0939F1ZV"
-    invoice = body["invoices"][0]
-    assert invoice["igst"] == invoice["gst"] and invoice["cgst"] is None
+    # Invoices already issued keep what they were issued with: no buyer, so no split.
+    assert all(item["issuedDetails"] and item["billTo"] is None for item in body["invoices"])
+    assert all(item["igst"] is None and item["cgst"] is None for item in body["invoices"])
 
-    # Within Janus's state, the GST is split into CGST and SGST.
+    async def new_invoice() -> dict[str, Any]:
+        """Moves down and up again, which issues a fresh month on Growth."""
+        await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "startup"})
+        moved = await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "growth"})
+        assert moved.status_code == 200, moved.text
+        newest: dict[str, Any] = max(moved.json()["invoices"], key=lambda item: item["number"])
+        return newest
+
+    # A new invoice names the buyer: Maharashtra, another state than Janus's, so IGST.
+    maharashtra = await new_invoice()
+    assert maharashtra["billTo"]["gstin"] == "27AAPFU0939F1ZV"
+    assert maharashtra["igst"] == maharashtra["gst"] and maharashtra["cgst"] is None
+
+    # Moving within Janus's state splits the GST into CGST and SGST on invoices from then on...
     local = await client.put(
         "/v1/billing/details",
         headers=owner.headers,
         json={"legalName": "Malhotra Textiles Pvt Ltd", "stateCode": "29"},
     )
-    invoice = local.json()["invoices"][0]
-    assert invoice["igst"] is None
-    assert float(invoice["cgst"]) + float(invoice["sgst"]) == float(invoice["gst"])
+    assert local.status_code == 200
+    karnataka = await new_invoice()
+    assert karnataka["igst"] is None and karnataka["billTo"]["gstin"] is None
+    assert float(karnataka["cgst"]) + float(karnataka["sgst"]) == float(karnataka["gst"])
+    # ...and leaves the Maharashtra invoice as it was issued, as does a change to Janus's own GSTIN.
+    monkeypatch.setattr(settings, "janus_gstin", "29AAACJ9999K1Z5")
+    after = (await client.get("/v1/billing", headers=owner.headers)).json()
+    kept = next(item for item in after["invoices"] if item["number"] == maharashtra["number"])
+    assert kept["billTo"]["gstin"] == "27AAPFU0939F1ZV" and kept["igst"] == kept["gst"]
+    assert kept["seller"]["gstin"] == "29AAACJ1234K1Z5"
+    assert after["seller"]["gstin"] == "29AAACJ9999K1Z5"
 
     # Only an Owner keeps the account's billing details.
     member = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
@@ -397,3 +422,24 @@ async def test_invoices_carry_both_gstins_the_sac_and_the_place_of_supply(
         json={"legalName": "Someone Else", "stateCode": "29"},
     )
     assert refused.status_code == 403
+
+
+async def test_a_new_invoice_never_repeats_a_number_after_one_is_removed(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    owner = await signup(client, mailbox)
+    await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "startup"})
+    await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "growth"})
+    first = (await client.get("/v1/billing", headers=owner.headers)).json()["invoices"]
+    numbers = sorted(item["number"] for item in first)
+    assert len(numbers) == 2
+    # The older invoice is removed (as a sample can be); a count would hand out the newer number.
+    async with admin_engine.begin() as db:
+        await db.execute(
+            text("DELETE FROM account_invoices WHERE number = :number"), {"number": numbers[0]}
+        )
+    await client.put("/v1/billing/plan", headers=owner.headers, json={"plan": "startup"})
+    after = (await client.get("/v1/billing", headers=owner.headers)).json()["invoices"]
+    kept = [item["number"] for item in after]
+    assert len(kept) == len(set(kept)) == 2
+    assert max(kept) > numbers[1]

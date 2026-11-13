@@ -37,6 +37,10 @@ class AccountInvoice(Base):
     sample: Mapped[bool] = mapped_column(Boolean, default=False)
     # The Razorpay payment it was paid with, where a refund goes back.
     payment_id: Mapped[str | None] = mapped_column(String(40))
+    # Who it was billed to and Janus's own details, as they were the day it was issued; None on
+    # invoices issued before these were kept, which show the details as they are now.
+    bill_to: Mapped[dict[str, str | None] | None] = mapped_column(JSONB(none_as_null=True))
+    seller: Mapped[dict[str, str | None] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

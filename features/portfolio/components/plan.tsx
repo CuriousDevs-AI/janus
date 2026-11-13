@@ -109,7 +109,7 @@ export function Plan() {
     </SectionCard>
 
     {moving && <ChangePlan from={current} to={moving} pay={data.payments === "razorpay" && moving.price !== null && Number(moving.price) > 0} onClose={() => setMoving(null)} onDone={() => { setMoving(null); billing.reload(); window.dispatchEvent(new Event(sessionChanged)); }} />}
-    {viewing && <InvoiceView invoice={viewing} gstRate={data.gstRate} billTo={data.billTo ?? null} seller={data.seller ?? null} onClose={() => setViewing(null)} />}
+    {viewing && <InvoiceView invoice={viewing} gstRate={data.gstRate} onClose={() => setViewing(null)} />}
   </>;
 }
 
@@ -250,13 +250,17 @@ function BillToCard({ details, onSaved }: { details: BillingDetails | null; onSa
   </SectionCard>;
 }
 
-function InvoiceView({ invoice, gstRate, billTo, seller, onClose }: { invoice: BillingInvoice; gstRate: number; billTo: BillingDetails | null; seller: Billing["seller"]; onClose: () => void }) {
+/** An invoice as it was issued: who it was billed to and Janus's own details are kept on it, so
+ * changing either later never rewrites it. One issued before they were kept shows them as now. */
+function InvoiceView({ invoice, gstRate, onClose }: { invoice: BillingInvoice; gstRate: number; onClose: () => void }) {
   const session = useSession();
+  const billTo = invoice.billTo ?? null;
+  const seller = invoice.seller ?? null;
   const row = (label: string, value: string, strong = false) => <div className={`flex justify-between gap-4 py-1.5 ${strong ? "border-t border-border pt-2 font-semibold" : ""}`}><span className={strong ? "" : "text-muted-foreground"}>{label}</span><span className="tabular-nums">{value}</span></div>;
-  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Invoice {invoice.number}</DialogTitle><DialogDescription>{invoice.sample ? "A sample made for testing: no payment was taken." : `Issued ${day(invoice.issuedOn)}.`}</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Invoice {invoice.number}</DialogTitle><DialogDescription>{invoice.sample ? "A sample made for testing: no payment was taken." : `Issued ${day(invoice.issuedOn)}.`}{invoice.issuedDetails ? "" : " Issued before invoices kept their billing details, so these are the details as they are now."}</DialogDescription></DialogHeader>
     <div className="grid gap-4 text-sm">
       <div className="grid grid-cols-2 gap-3"><div><p className="text-xs text-muted-foreground">From</p><p className="font-medium">{seller?.legalName ?? "Janus"}</p><p className="text-xs text-muted-foreground">{seller?.gstin ? `GSTIN ${seller.gstin}` : "Janus GSTIN not set yet"}{seller?.address ? ` · ${seller.address}` : ""}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Tax invoice</p><p className="font-medium">SAC {seller?.sac ?? "997331"}</p><p className="text-xs text-muted-foreground">Place of supply: {billTo ? `${states[billTo.stateCode] ?? billTo.stateCode} (${billTo.stateCode})` : "not given"}</p></div></div>
-      <div className="grid grid-cols-2 gap-3"><div><p className="text-xs text-muted-foreground">Billed to</p>{billTo ? <><p className="font-medium">{billTo.legalName}</p><p className="text-xs text-muted-foreground">{billTo.gstin ? `GSTIN ${billTo.gstin}` : "Not GST registered"}{billTo.address ? ` · ${billTo.address}` : ""}</p></> : <><p className="font-medium">{session.user.name}</p><p className="text-xs text-warning">Add your legal name and GSTIN under Billed to so this is a full tax invoice.</p></>}</div><div className="text-right"><p className="text-xs text-muted-foreground">Issued</p><p className="font-medium">{day(invoice.issuedOn)}</p><p className="text-xs text-muted-foreground">{invoice.status === "paid" ? `Paid ${invoice.paidOn ? day(invoice.paidOn) : ""}` : "Due"}</p></div></div>
+      <div className="grid grid-cols-2 gap-3"><div><p className="text-xs text-muted-foreground">Billed to</p>{billTo ? <><p className="font-medium">{billTo.legalName}</p><p className="text-xs text-muted-foreground">{billTo.gstin ? `GSTIN ${billTo.gstin}` : "Not GST registered"}{billTo.address ? ` · ${billTo.address}` : ""}</p></> : <><p className="font-medium">{session.user.name}</p><p className="text-xs text-warning">{invoice.issuedDetails ? "Issued before the legal name and GSTIN were given, so it names no business." : "Add your legal name and GSTIN under Billed to so this is a full tax invoice."}</p></>}</div><div className="text-right"><p className="text-xs text-muted-foreground">Issued</p><p className="font-medium">{day(invoice.issuedOn)}</p><p className="text-xs text-muted-foreground">{invoice.status === "paid" ? `Paid ${invoice.paidOn ? day(invoice.paidOn) : ""}` : "Due"}</p></div></div>
       <div className="rounded-lg border border-border px-3 py-2">
         {row(`Janus ${invoice.plan} plan, ${day(invoice.periodStart)} to ${day(invoice.periodEnd)}`, rupees(invoice.amount))}
         {invoice.igst ? row(`IGST at ${gstRate}%`, rupees(invoice.igst)) : invoice.cgst && invoice.sgst ? <>{row(`CGST at ${gstRate / 2}%`, rupees(invoice.cgst))}{row(`SGST at ${gstRate / 2}%`, rupees(invoice.sgst))}</> : row(`GST at ${gstRate}%`, rupees(invoice.gst))}

@@ -54,6 +54,11 @@ class InvoiceOut(BaseModel):
     cgst: str | None = None
     sgst: str | None = None
     igst: str | None = None
+    # Who it was billed to and who billed, as on the day it was issued (or as now, for an invoice
+    # issued before these were kept: see issuedDetails).
+    billTo: BillingDetails | None = None
+    seller: Seller | None = None
+    issuedDetails: bool = False
 
 
 class CompanyUsage(BaseModel):
