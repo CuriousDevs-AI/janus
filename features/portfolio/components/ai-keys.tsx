@@ -19,6 +19,8 @@ type CompanyRow = { company: PortfolioAiCompany; key: PortfolioAiKey };
 /** Providers bill in US dollars; spend is shown in rupees at about this rate. */
 const USD_INR = 88;
 const nameOf = (provider: AiProvider) => providerName[provider] ?? provider;
+/** How much of its monthly cap a company has spent, 0 to 1 and over. */
+const share = (company: PortfolioAiCompany) => Number(company.capUsd) ? Number(company.spentUsd) / Number(company.capUsd) : 0;
 
 /**
  * The AI keys in one place. Portfolio keys belong to the account: Janus Intelligence asks with them,
@@ -94,9 +96,10 @@ export function AiKeys() {
     </SectionCard>
 
     {data.companies.length > 0 && <SectionCard title="AI spend this month" description="What Portfolio questions on paid models cost each company this month, against the cap that stops them. Providers bill in US dollars; rupees here are at about ₹88 to the dollar. A Portfolio key's use is recorded in the company open at the time.">
-      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{data.companies.map((company) => { const spent = Number(company.spentUsd), cap = Number(company.capUsd); return <li key={company.id} className="rounded-lg border border-border p-3">
+      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[...data.companies].sort((a, b) => share(b) - share(a)).map((company) => { const spent = Number(company.spentUsd), cap = Number(company.capUsd), used = share(company); const keys = company.keys.length; return <li key={company.id} className={`rounded-lg border p-3 ${used >= 1 ? "border-danger/40" : used >= 0.8 ? "border-warning/40" : "border-border"}`}>
         <p className="flex items-baseline justify-between gap-2 text-sm"><span className="font-medium">{company.name}</span><span className="tabular-nums text-muted-foreground" title={`US$${spent.toFixed(2)} of US$${cap.toFixed(2)}`}>about {inr(spent * USD_INR)} of {inr(cap * USD_INR)}</span></p>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2"><div className={`h-full rounded-full ${spent >= cap ? "bg-danger" : "bg-accent"}`} style={{ width: `${cap ? Math.min(100, (spent / cap) * 100) : 0}%` }} /></div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2"><div className={`h-full rounded-full transition-[width] ${used >= 1 ? "bg-danger" : used >= 0.8 ? "bg-warning" : "bg-accent"}`} style={{ width: `${Math.min(100, used * 100)}%` }} /></div>
+        <p className={`mt-1.5 text-[11px] ${used >= 1 ? "text-danger" : used >= 0.8 ? "text-warning" : "text-muted-foreground"}`}>{used >= 1 ? "Cap reached: paid questions stop until next month." : spent > 0 ? `${Math.round(used * 100)}% of the cap used.` : "Nothing spent this month."} · {keys ? `${keys} ${keys === 1 ? "key" : "keys"}` : "no key of its own"}</p>
       </li>; })}</ul>
     </SectionCard>}
 

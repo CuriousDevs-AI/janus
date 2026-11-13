@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, Download, Lightbulb, Pencil } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, Lightbulb, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { useRoles } from "@/features/portfolio/lib/companies";
 import { day, inr, monthsOrPart, todayIst } from "@/features/portfolio/lib/format";
 import { CompanyEditor, entityNames, roleNames } from "@/features/portfolio/components/company-editor";
 import { DocumentsCard } from "@/features/portfolio/components/documents";
+import { Kpi } from "@/features/portfolio/components/figures";
 import type { PortfolioCompany, PortfolioComplianceDue, PortfolioCompliancePlan, PortfolioRegisterRow } from "@/features/portfolio/types";
 
 const dueTone = { overdue: "danger", due_soon: "warning", upcoming: "neutral", filed: "success" } as const;
@@ -25,8 +27,11 @@ export function ComplianceView({ list: all, onChanged }: { list: PortfolioCompan
   // Opened for one company (from a notification or the Overview): its filings only.
   const only = useSearchParams().get("company");
   const focused = all.find((item) => item.id === only);
-  const list = focused ? [focused] : all;
-  const [filter, setFilter] = React.useState<"open" | "all">("open");
+  const [filter, setFilter] = React.useState<"open" | "all" | "overdue" | "due_soon">("open");
+  // "Registration details missing" narrows the page to the companies with something missing.
+  const [missingOnly, setMissingOnly] = React.useState(false);
+  const lacking = (item: PortfolioCompany) => item.complianceGaps.some((gap) => gap.kind === "missing");
+  const list = (focused ? [focused] : all).filter((item) => !missingOnly || lacking(item));
   const open = list.flatMap((item) => item.compliance.filter((due) => due.status !== "filed"));
   const pastDue = list.reduce((sum, item) => sum + item.unfiledCount, 0);
   const listed = open.filter((due) => due.status === "overdue").length;
@@ -45,34 +50,65 @@ export function ComplianceView({ list: all, onChanged }: { list: PortfolioCompan
     } catch (failure) { toast.error(message(failure)); }
   };
   const soon = open.filter((due) => due.status === "due_soon").length;
-  const missing = list.reduce((sum, item) => sum + item.complianceGaps.filter((gap) => gap.kind === "missing").length, 0);
+  const missing = (focused ? [focused] : all).reduce((sum, item) => sum + item.complianceGaps.filter((gap) => gap.kind === "missing").length, 0);
+  const pick = (next: typeof filter) => setFilter(filter === next ? "open" : next);
   return <>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Stat label={`Past due, not confirmed${since ? ` since ${day(since)}` : ""}`} value={pastDue} tone={pastDue ? "danger" : "neutral"} />
-      <Stat label="Due in the next 7 days" value={soon} tone={soon ? "warning" : "neutral"} />
-      <Stat label="Registration details missing" value={missing} tone={missing ? "warning" : "neutral"} />
+      {/* Each count is also a filter: click it to show only those, again to show everything still to file. */}
+      <Kpi label={`Past due, not confirmed${since ? ` since ${day(since)}` : ""}`} value={String(pastDue)} tone="danger" detail={filter === "overdue" ? "Showing only these" : pastDue ? "Show only these" : "Nothing past due"} active={filter === "overdue"} onSelect={() => pick("overdue")} />
+      <Kpi label="Due in the next 7 days" value={String(soon)} detail={filter === "due_soon" ? "Showing only these" : soon ? "Show only these" : "Nothing due this week"} active={filter === "due_soon"} onSelect={() => pick("due_soon")} />
+      <Kpi label="Registration details missing" value={String(missing)} detail={missingOnly ? "Showing only those companies" : missing ? "Show only those companies" : "Nothing missing"} active={missingOnly} onSelect={() => setMissingOnly(!missingOnly)} />
     </div>
     {(pastDue > listed || fees > 0) && <p role="status" className="rounded-md border border-danger/30 bg-danger-muted px-3 py-2 text-sm">{pastDue > listed ? `${pastDue} filings are past due and not recorded as filed since ${since ? day(since) : "last April"}; ${listed} of them are in the last 90 days, listed below. ` : ""}{fees > 0 ? `Late fees on those listed come to about ${inr(fees)} so far (an estimate: interest on tax due is extra).` : ""}</p>}
     <div className="flex justify-end"><Button size="sm" variant="outline" onClick={download}><Download className="mr-1 size-4" />Filing register (CSV)</Button></div>
     <p className="text-xs text-muted-foreground">Standard due dates for GST, TDS, PF and ESI, professional tax, advance tax and company or LLP filings, from 90 days back to 30 ahead. Janus is not linked to the government portals: a filing counts as filed only when someone records it here. Extensions and your AGM date can move dates, so confirm with your CA.</p>
-    <div role="group" aria-label="Show" className="flex gap-2"><Button size="sm" variant={filter === "open" ? "default" : "outline"} aria-pressed={filter === "open"} onClick={() => setFilter("open")}>Still to file</Button><Button size="sm" variant={filter === "all" ? "default" : "outline"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>Everything, filed too</Button></div>
-    {focused && <p className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">Showing {focused.name} only.<a className="text-accent hover:underline" href="/portfolio?view=compliance">Show all companies</a></p>}
-    {list.map((item) => {
-      const dues = item.compliance.filter((due) => filter === "all" || due.status !== "filed");
-      return <SectionCard key={item.id} title={item.name} description={item.registration?.entityType ? `${entityNames[item.registration.entityType]}${item.compliancePlan?.gstin ? ` · GSTIN ${item.compliancePlan.gstin}` : ""}` : item.compliancePlan?.gstin ? `GSTIN ${item.compliancePlan.gstin}` : "No registration details yet"}>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div role="group" aria-label="Show" className="flex gap-2"><Button size="sm" variant={filter === "open" ? "default" : "outline"} aria-pressed={filter === "open"} onClick={() => setFilter("open")}>Still to file</Button><Button size="sm" variant={filter === "all" ? "default" : "outline"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>Everything, filed too</Button></div>
+      {/* One company at a time, or all; the count is what is past due in each. */}
+      {all.length > 1 && <nav aria-label="Company" className="flex flex-wrap gap-1.5">{[{ id: null as string | null, name: "All companies", late: all.reduce((sum, item) => sum + item.compliance.filter((due) => due.status === "overdue").length, 0) }, ...all.map((item) => ({ id: item.id as string | null, name: item.name, late: item.compliance.filter((due) => due.status === "overdue").length }))].map((chip) => {
+        const on = (focused?.id ?? null) === chip.id;
+        return <Link key={chip.id ?? "all"} href={chip.id ? `/portfolio?view=compliance&company=${chip.id}` : "/portfolio?view=compliance"} aria-current={on ? "page" : undefined} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}>{chip.name}{chip.late > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${on ? "bg-background text-danger" : "bg-danger-muted text-danger"}`} title={`${chip.late} past due`}>{chip.late}</span>}</Link>;
+      })}</nav>}
+    </div>
+    {(() => {
+      const shown = list.map((item) => ({ item, dues: item.compliance.filter((due) => filter === "all" || (filter === "open" ? due.status !== "filed" : due.status === filter)) }))
+        // Narrowed to past due or due this week, a company with none of those is left out.
+        .filter(({ dues }) => filter === "open" || filter === "all" || dues.length > 0);
+      if (shown.length === 0) return <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{missingOnly ? "No company has registration details missing." : filter === "overdue" ? "Nothing is past due." : "Nothing is due in the next 7 days."} <button type="button" className="text-accent hover:underline" onClick={() => { setFilter("open"); setMissingOnly(false); }}>Show everything still to file</button></p>;
+      return shown.map(({ item, dues }) => <SectionCard key={item.id} title={item.name} description={item.registration?.entityType ? `${entityNames[item.registration.entityType]}${item.compliancePlan?.gstin ? ` · GSTIN ${item.compliancePlan.gstin}` : ""}` : item.compliancePlan?.gstin ? `GSTIN ${item.compliancePlan.gstin}` : "No registration details yet"}>
         <div className="grid gap-4">
-          {!item.complianceSetUp && <p role="status" className="rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-sm"><span className="font-medium">Not set up.</span> No filings are tracked for {item.name}, so nothing here can be called up to date. Choose what applies below{item.complianceGaps.some((gap) => gap.switch) ? ", or switch on what its records suggest" : ""}.</p>}
-          <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
-          <DocumentsCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
+          {!item.complianceSetUp && <p role="status" className="rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-sm"><span className="font-medium">Not set up.</span> No filings are tracked for {item.name}, so nothing here can be called up to date. Choose what applies under &ldquo;Registration, documents and what to file&rdquo;{item.complianceGaps.some((gap) => gap.switch) ? ", or switch on what its records suggest" : ""}.</p>}
           {item.complianceGaps.length > 0 && <ul className="grid gap-1.5">{item.complianceGaps.map((gap) => <li key={gap.text} className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${gap.kind === "missing" ? "border-warning/30 bg-warning-muted" : "border-accent-border bg-accent-muted/50"}`}>{gap.kind === "missing" ? <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden /> : <Lightbulb className="mt-px size-3.5 shrink-0 text-accent" aria-hidden />}<span className="flex-1"><span className="font-medium">{gap.kind === "missing" ? "Missing: " : "Suggested: "}</span>{gap.text}</span>{gap.switch && handlesMoney(item) && <SwitchOn item={item} part={gap.switch} onSaved={onChanged} />}</li>)}</ul>}
-          {handlesMoney(item) && <PlanForm item={item} onSaved={onChanged} />}
-          {item.compliance.length === 0 ? <p className="text-sm text-muted-foreground">No filings set up for this company yet. Choose what applies above.</p>
+          {item.compliance.length === 0 ? <p className="text-sm text-muted-foreground">No filings set up for this company yet. Choose what applies under &ldquo;Registration, documents and what to file&rdquo;.</p>
             : dues.length === 0 ? <p className="text-sm text-muted-foreground">Nothing left to file in this window.</p>
             : <ul className="flex flex-col divide-y divide-border">{dues.map((due) => <DueRow key={due.key} item={item} due={due} canMark={handlesMoney(item)} onChanged={onChanged} />)}</ul>}
+          <Setup item={item}>
+            <RegistrationCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
+            <DocumentsCard item={item} canEdit={handlesMoney(item)} onSaved={onChanged} />
+            {handlesMoney(item) && <PlanForm item={item} onSaved={onChanged} />}
+          </Setup>
         </div>
-      </SectionCard>;
-    })}
+      </SectionCard>);
+    })()}
   </>;
+}
+
+/** A company's registration, documents and filing plan: set once, so folded away under its filings.
+ * It opens by itself while something there needs attention. */
+function Setup({ item, children }: { item: PortfolioCompany; children: React.ReactNode }) {
+  const docs = item.documents ?? [];
+  const stale = docs.filter((doc) => doc.status === "expired" || doc.status === "expiring").length;
+  const needs = !item.complianceSetUp || item.complianceGaps.some((gap) => gap.kind === "missing") || stale > 0;
+  const [open, setOpen] = React.useState(needs);
+  const id = React.useId();
+  const summary = [item.registration?.pan ? "Registration on record" : "No registration details", `${docs.length} ${docs.length === 1 ? "document" : "documents"}${stale ? `, ${stale} expired or expiring` : ""}`, item.complianceSetUp ? "filings chosen" : "no filings chosen"].join(" · ");
+  return <div className="rounded-md border border-border">
+    <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-surface-2">
+      <span><span className="text-sm font-medium">Registration, documents and what to file</span><span className={`block text-xs ${stale ? "text-warning" : "text-muted-foreground"}`}>{summary}</span></span>
+      <ChevronDown aria-hidden className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+    </button>
+    {open && <div id={id} className="grid gap-4 border-t border-border p-3">{children}</div>}
+  </div>;
 }
 
 /** Turns on one part of the filing plan that the company's own records suggest. */
@@ -89,10 +125,6 @@ function SwitchOn({ item, part, onSaved }: { item: PortfolioCompany; part: "tds"
     } catch (failure) { toast.error(message(failure)); setBusy(false); }
   }
   return <Button type="button" size="sm" variant="outline" className="h-6 shrink-0 px-2 text-xs" disabled={busy} onClick={() => void turnOn()}>{busy ? "Switching on…" : "Switch on"}</Button>;
-}
-
-function Stat({ label, value, tone }: { label: string; value: number; tone: "danger" | "warning" | "neutral" }) {
-  return <div className="rounded-xl border border-border bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className={`mt-2 text-2xl font-semibold tabular-nums ${tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : ""}`}>{value}</p></div>;
 }
 
 function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due: PortfolioComplianceDue; canMark: boolean; onChanged: () => void }) {

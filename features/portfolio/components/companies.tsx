@@ -50,8 +50,10 @@ const settingsOf = (item: PortfolioCompany) => openIn(item, "/settings?tab=works
 
 function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: PortfolioCompany[]; period: PortfolioPeriod; onAdd?: () => void; onOpen: (id: string) => void; onEdit: (item: PortfolioCompany) => void; canEdit: (item: PortfolioCompany) => boolean }) {
   const { owns } = useRoles();
+  const params = useSearchParams();
   const [query, setQuery] = React.useState("");
-  const [health, setHealth] = React.useState("all");
+  // A link can open the table already filtered, as the Overview's "Companies needing you" does.
+  const [health, setHealth] = React.useState(() => ["red", "amber", "green"].find((value) => value === params.get("health")) ?? "all");
   const [kind, setKind] = React.useState("all");
   const [sort, setSort] = React.useState<SortKey>("health");
   const [compare, setCompare] = React.useState<string[]>([]);
@@ -76,7 +78,7 @@ function CompanyTable({ list, period, onAdd, onOpen, onEdit, canEdit }: { list: 
       </div>
       {shown.length === 0 ? <p className="text-sm text-muted-foreground">No company matches.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm">
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="w-8 py-2"><span className="sr-only">Compare</span></th><th className="py-2 pr-3">Company</th><th className="px-3 py-2">Health</th>{money && <th className="px-3 py-2">Sales</th>}<th className="px-3 py-2">Open pipeline</th><th className="px-3 py-2">People</th><th className="px-3 py-2">Filings past due</th><th className="py-2 pl-3" /></tr></thead>
-        <tbody>{shown.map((item) => <tr key={item.id} className="border-b border-border last:border-0">
+        <tbody>{shown.map((item) => <tr key={item.id} onClick={(event) => { if (!(event.target as HTMLElement).closest("a,button,input,label")) onOpen(item.id); }} className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-surface-2">
           <td className="py-2.5"><input type="checkbox" aria-label={`Compare ${item.name}`} checked={compare.includes(item.id)} disabled={!compare.includes(item.id) && compare.length >= 4} onChange={() => toggle(item.id)} /></td>
           <td className="py-2.5 pr-3"><button type="button" className="text-left font-medium text-accent hover:underline" onClick={() => onOpen(item.id)}>{item.name}</button><p className="text-xs text-muted-foreground">{businessName(item)}{item.industry ? ` · ${item.industry}` : ""}{item.current ? " · open now" : ""}</p></td>
           <td className="px-3">{item.health ? <Badge variant={healthTone[item.health.status]} title={item.health.reasons.join("\n") || "Nothing needs attention"}>{healthName[item.health.status]}</Badge> : "—"}</td>

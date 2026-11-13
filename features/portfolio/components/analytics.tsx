@@ -9,6 +9,7 @@ import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
 import { CustomersKept } from "@/features/portfolio/components/customers-kept";
 import { LastYear } from "@/features/portfolio/components/last-year";
+import { Section, SectionNav } from "@/features/portfolio/components/section-nav";
 import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
 import { sells } from "@/features/portfolio/lib/business";
 import { groupBooks, outsideSales, RATE_MINIMUM, total, winRate, winRateText } from "@/features/portfolio/lib/companies";
@@ -44,6 +45,8 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
   const collected = total(list, "current", (figures) => figures.collected);
   const collectedBefore = total(list, "previous", (figures) => figures.collected);
   return <>
+    <SectionNav sections={[{ id: "an-headline", label: "Headline" }, { id: "an-sales", label: money ? "Group sales" : "Value won" }, { id: "an-last-year", label: "Against last year" }, { id: "an-kept", label: "Customers kept" }, { id: "an-months", label: "Month by month" }, { id: "an-share", label: "Share and conversion" }, { id: "an-channels", label: "Where leads come from" }, { id: "an-details", label: "Details" }]} />
+    <Section id="an-headline">
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
       {money && <Kpi label="Sales" value={inr(salesNow)} detail={`${change(salesNow, salesBefore)} · group, before GST`} delta={<Delta now={salesNow} before={salesBefore} compact />} />}
       {money && <Kpi label="Margin" value={salesNow ? `${percent(profit, salesNow)}%` : "—"} detail={`${inr(profit)} profit before salaries`} />}
@@ -54,15 +57,17 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
     </div>
 
     <Leaders list={list} money={money} />
+    </Section>
 
-    <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
-      <GroupLine money={money} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} />
-      <SalesHeatmap money={money} />
-    </div>
+    <Section id="an-sales"><div className="grid gap-4 xl:grid-cols-[1fr_auto]">
+      <GroupLine money={money} color={color} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} />
+      <SalesHeatmap money={money} color={color} />
+    </div></Section>
 
-    {money && <LastYear list={list} />}
-    {money && <CustomersKept list={list} />}
+    {money && <Section id="an-last-year"><LastYear list={list} /></Section>}
+    {money && <Section id="an-kept"><CustomersKept list={list} /></Section>}
 
+    <Section id="an-months">
     <div className="flex items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">Month by month</h2>
       <div role="group" aria-label="How many months" className="flex gap-1">{[6, 12].map((value) => <Button key={value} size="sm" variant={months === value ? "default" : "outline"} aria-pressed={months === value} onClick={() => setMonths(value)}>{value} months</Button>)}</div>
@@ -70,13 +75,14 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
     {trends.loading ? <div role="status" aria-label="Loading the months" className="grid gap-4 lg:grid-cols-2">{[0, 1, 2, 3].map((index) => <div key={index} className="h-[340px] animate-pulse rounded-xl border border-border bg-surface-2" />)}</div>
       : trends.error ? <div role="alert" className="flex items-center gap-3 text-sm text-danger">{trends.error}<Button size="sm" variant="secondary" onClick={trends.reload}>Try again</Button></div>
       : trends.data && <div className={`transition-opacity duration-200 ${trends.stale ? "opacity-50" : ""}`}><Trends data={trends.data} money={money} color={color} onOpen={(id) => router.push(`/portfolio?view=companies&company=${id}`)} /></div>}
+    </Section>
 
-    <div className="grid gap-4 lg:grid-cols-2">
+    <Section id="an-share"><div className="grid gap-4 lg:grid-cols-2">
       {money && <Share list={list} color={color} period={period} />}
       <Conversion list={list} color={color} />
-    </div>
-    <Channels list={list} />
-    <Details list={list} />
+    </div></Section>
+    <Section id="an-channels"><Channels list={list} /></Section>
+    <Section id="an-details"><Details list={list} /></Section>
   </>;
 }
 

@@ -27,8 +27,13 @@ export function Activity({ list }: { list: PortfolioCompany[] }) {
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <div role="group" aria-label="How far back" className="flex gap-1">{[1, 7, 30].map((value) => <Button key={value} size="sm" variant={days === value ? "default" : "outline"} aria-pressed={days === value} onClick={() => setDays(value)}>{value === 1 ? "Today" : `${value} days`}</Button>)}</div>
       <select aria-label="Company" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={company} onChange={(event) => setCompany(event.target.value)}><option value="all">All companies</option>{list.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-      <select aria-label="Area" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={area} onChange={(event) => setArea(event.target.value)}><option value="all">Every area</option>{areas.map((value) => <option key={value}>{value}</option>)}</select>
     </div>
+    {/* The areas, with how many things happened in each for the company chosen: click one to see only it. */}
+    {areas.length > 1 && <div role="group" aria-label="Area" className="mb-4 flex flex-wrap gap-1.5">{["all", ...areas].map((value) => {
+      const count = (feed.data?.items ?? []).filter((item) => (company === "all" || item.companyId === company) && (value === "all" || item.area === value)).length;
+      const on = area === value;
+      return <button key={value} type="button" aria-pressed={on} onClick={() => setArea(value)} disabled={!count && !on} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-40 ${on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}>{value === "all" ? "Every area" : value}<span className={`tabular-nums ${on ? "" : "text-muted-foreground"}`}>{count}</span></button>;
+    })}</div>}
     {feed.loading ? <div role="status" aria-label="Loading" className="h-40 animate-pulse rounded-md bg-surface-2" />
       : feed.error ? <div role="alert" className="flex items-center gap-3 text-sm text-danger">{feed.error}<Button size="sm" variant="secondary" onClick={feed.reload}>Try again</Button></div>
       : groups.length === 0 ? <p className="text-sm text-muted-foreground">Nothing happened in this time{company !== "all" || area !== "all" ? " that matches the filters" : ""}.</p>
