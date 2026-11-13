@@ -2,11 +2,13 @@
 
 import { syncBudgetLines } from "@/lib/finance-records";
 import * as React from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { demoMode } from "@/lib/demo-mode";
 import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -303,32 +305,28 @@ function OverviewView() {
   const projects = useProjectsStore((state) => state.projects);
   const milestones = useProjectsStore((state) => state.milestones);
   const tasks = useProjectsStore((state) => state.tasks);
-  const counts = { active: projects.filter((p) => p.status === "active").length, late: projects.filter((p) => projectHealth(p, milestones, tasks) === "late").length, atRisk: projects.filter((p) => projectHealth(p, milestones, tasks) === "at risk").length, openTasks: tasks.filter((t) => t.status !== "done").length };
+  const counts = { active: projects.filter((p) => p.status === "active").length, late: projects.filter((p) => projectHealth(p, milestones, tasks) === "late").length, atRisk: projects.filter((p) => projectHealth(p, milestones, tasks) === "at risk").length, openTasks: tasks.filter((t) => t.status !== "done").length, overdueTasks: tasks.filter((t) => t.status !== "done" && t.due < TODAY).length };
+  const to = (view: string, extra: Record<string, string> = {}) => workspaceHref("projects-delivery", view, extra);
+  const order = { late: 0, "at risk": 1, "on track": 2, done: 3 } as const;
   return (
     <>
       {projects.length === 0 ? <Card><CardContent className="p-6 text-sm text-muted-foreground">No projects yet. Create one from Projects; it draws its budget from a fund allocation.</CardContent></Card> : null}
       <div className="grid gap-3 sm:grid-cols-4">
-        <Kpi label="Active projects" value={String(counts.active)} />
-        <Kpi label="Late" value={String(counts.late)} tone={counts.late > 0 ? "warning" : undefined} />
-        <Kpi label="At risk" value={String(counts.atRisk)} tone={counts.atRisk > 0 ? "warning" : undefined} />
-        <Kpi label="Open tasks" value={String(counts.openTasks)} />
+        <Kpi label="Active projects" value={String(counts.active)} href={to("projects")} />
+        <Kpi label="Late" value={String(counts.late)} detail={counts.late ? "Past their end, or tasks overdue" : undefined} tone={counts.late > 0 ? "warning" : undefined} href={to("projects", { health: "late" })} />
+        <Kpi label="At risk" value={String(counts.atRisk)} detail={counts.atRisk ? "Milestone or task due soon" : undefined} tone={counts.atRisk > 0 ? "warning" : undefined} href={to("projects", { health: "at risk" })} />
+        <Kpi label="Open tasks" value={String(counts.openTasks)} detail={counts.overdueTasks ? `${counts.overdueTasks} overdue` : undefined} href={to("tasks", counts.overdueTasks ? { show: "overdue" } : {})} />
       </div>
       <Card>
-        <CardHeader><CardTitle className="text-base">Project health</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Project health</CardTitle><p className="text-xs text-muted-foreground">Late first. Open a project to see it in the list.</p></CardHeader>
         <CardContent className="grid gap-2 text-sm">
-          {projects.map((p) => <p key={p.id} className="flex items-center justify-between gap-3"><span>{p.name} · {p.client}</span><Badge variant={healthTone(projectHealth(p, milestones, tasks)) as "neutral"}>{projectHealth(p, milestones, tasks)}</Badge></p>)}
+          {[...projects].sort((a, b) => order[projectHealth(a, milestones, tasks)] - order[projectHealth(b, milestones, tasks)]).map((p) => { const open = tasks.filter((t) => t.projectId === p.id && t.status !== "done"); const done = tasks.filter((t) => t.projectId === p.id).length - open.length; const all = open.length + done; return <Link key={p.id} href={to("projects", { project: p.id })} className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2">
+            <span className="min-w-0"><span className="font-medium">{p.name}</span> <span className="text-muted-foreground">· {p.client}</span>
+              {all ? <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2"><span className="block h-full rounded-full bg-accent" style={{ width: `${(done / all) * 100}%` }} /></span>{done} of {all} tasks done</span> : null}</span>
+            <Badge variant={healthTone(projectHealth(p, milestones, tasks)) as "neutral"}>{projectHealth(p, milestones, tasks)}</Badge></Link>; })}
         </CardContent>
       </Card>
     </>
-  );
-}
-
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${tone === "warning" ? "text-amber-700" : ""}`}>{value}</p>
-    </div>
   );
 }
 
@@ -370,6 +368,13 @@ function ProjectsView({ me }: { me: string }) {
   }, []);
   const links = useCrmLinkOptions();
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
+  const params = useSearchParams();
+  type Health = "all" | "late" | "at risk" | "on track" | "done";
+  const [health, setHealth] = React.useState<Health>(() => { const asked = params.get("health"); return asked === "late" || asked === "at risk" || asked === "on track" || asked === "done" ? asked : "all"; });
+  const [picked, setPicked] = React.useState(() => params.get("project") ?? "");
+  const healthOf = (p: Project) => projectHealth(p, milestones, tasks);
+  const shown = projects.filter((p) => (health === "all" || healthOf(p) === health) && (!picked || p.id === picked));
+  const pickedProject = projects.find((p) => p.id === picked);
 
   async function save() {
     const ownerChosen = form.ownerId || undefined;
@@ -412,13 +417,18 @@ function ProjectsView({ me }: { me: string }) {
           <Button className="w-fit" onClick={save}>Create project</Button>
         </CardContent>
       </Card>
+      {projects.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-2">
+        <FilterChips<Health> label="Show projects" value={health} onChange={(value) => { setHealth(value); setPicked(""); }} options={[{ value: "all", label: "All", count: projects.length }, ...(["late", "at risk", "on track", "done"] as const).map((value) => ({ value, label: value === "done" ? "Closed" : value[0].toUpperCase() + value.slice(1), count: projects.filter((p) => healthOf(p) === value).length, tone: value === "late" || value === "at risk" ? "warning" as const : undefined }))]} />
+        {pickedProject ? <p className="text-xs text-muted-foreground">Showing {pickedProject.name} only. <button type="button" className="text-accent hover:underline" onClick={() => setPicked("")}>Show all</button></p> : null}
+      </div> : null}
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[760px] text-sm">
             <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Project</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Owner</th><th className="px-4 py-2">End</th><th className="px-4 py-2 text-right">Budget</th><th className="px-4 py-2">Health</th><th className="px-4 py-2" /></tr></thead>
             <tbody>
-              {projects.length === 0 ? <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No projects yet.</td></tr> : null}
-              {projects.map((p) => {
+              {projects.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No projects yet.</td></tr> : null}
+              {projects.length > 0 && shown.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No project is {health === "done" ? "closed" : health}. <button type="button" className="text-accent hover:underline" onClick={() => { setHealth("all"); setPicked(""); }}>Show all</button></td></tr> : null}
+              {shown.map((p) => {
                 const health = projectHealth(p, milestones, tasks);
                 return (
                   <tr key={p.id} className="border-b border-border last:border-0">
@@ -541,6 +551,15 @@ function TasksView() {
   const [title, setTitle] = React.useState("");
   const [assignee, setAssignee] = React.useState("");
   const [due, setDue] = React.useState(addDays(TODAY, 7));
+  const params = useSearchParams();
+  type Show = "open" | "overdue" | "mine" | "done" | "all";
+  const [show, setShow] = React.useState<Show>(() => params.get("show") === "overdue" ? "overdue" : "open");
+  const [onProject, setOnProject] = React.useState("");
+  const me = useSession().user.name ?? "";
+  const late = (t: (typeof tasks)[number]) => t.status !== "done" && t.due < TODAY;
+  const match = (t: (typeof tasks)[number], kind: Show) => kind === "all" || (kind === "open" ? t.status !== "done" : kind === "overdue" ? late(t) : kind === "done" ? t.status === "done" : t.status !== "done" && t.assignee.toLowerCase() === me.toLowerCase());
+  const inProject = tasks.filter((t) => !onProject || t.projectId === onProject);
+  const shown = inProject.filter((t) => match(t, show)).sort((a, b) => Number(b.status !== "done") - Number(a.status !== "done") || a.due.localeCompare(b.due));
 
   return (
     <>
@@ -558,8 +577,13 @@ function TasksView() {
       </Card>
       <Card>
         <CardContent className="grid gap-2 p-4 text-sm">
+          {tasks.length > 0 ? <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <FilterChips<Show> label="Show tasks" value={show} onChange={setShow} options={[{ value: "open", label: "Open", count: inProject.filter((t) => match(t, "open")).length }, { value: "overdue", label: "Overdue", count: inProject.filter(late).length, tone: "warning" }, ...(me ? [{ value: "mine" as const, label: "Mine", count: inProject.filter((t) => match(t, "mine")).length }] : []), { value: "done", label: "Done", count: inProject.filter((t) => t.status === "done").length }, { value: "all", label: "All", count: inProject.length }]} />
+            {projects.length > 1 ? <select aria-label="Tasks for project" className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={onProject} onChange={(e) => setOnProject(e.target.value)}><option value="">Every project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select> : null}
+          </div> : null}
           {tasks.length === 0 ? <p className="text-muted-foreground">No tasks yet.</p> : null}
-          {tasks.map((t) => {
+          {tasks.length > 0 && shown.length === 0 ? <p className="text-muted-foreground">No task here. <button type="button" className="text-accent hover:underline" onClick={() => { setShow("all"); setOnProject(""); }}>Show all</button></p> : null}
+          {shown.map((t) => {
             const project = projects.find((p) => p.id === t.projectId);
             const overdue = t.status !== "done" && t.due < TODAY;
             return (

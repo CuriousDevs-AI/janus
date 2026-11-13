@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { message } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterChips, StatTile as Kpi, rowClick, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,12 +108,16 @@ function ReceivablesView() {
   const open = invoices.filter((i) => !i.cancelled).map((i) => ({ invoice: i, owed: dueAmount(i, creditNotes), late: Math.floor((Date.parse(today) - Date.parse(i.dueDate)) / 86_400_000) })).filter((row) => row.owed >= 1).sort((a, b) => a.invoice.dueDate.localeCompare(b.invoice.dueDate));
   const byCustomer = new Map<string, typeof open>();
   for (const row of open) { const name = row.invoice.customerCompany || row.invoice.customer; byCustomer.set(name, [...(byCustomer.get(name) ?? []), row]); }
-  const customers = [...byCustomer.entries()];
+  const [lateOnly, setLateOnly] = React.useState(false);
+  const customers = [...byCustomer.entries()].filter(([, rows]) => !lateOnly || rows.some((row) => row.late > 0)).map(([name, rows]) => [name, lateOnly ? rows.filter((row) => row.late > 0) : rows] as const);
+  const lateCustomers = [...byCustomer.values()].filter((rows) => rows.some((row) => row.late > 0)).length;
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Who owes what, oldest first</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0"><CardTitle className="text-base">Who owes what, oldest first</CardTitle>
+        {byCustomer.size > 0 ? <FilterChips<"all" | "late"> label="Show customers" value={lateOnly ? "late" : "all"} onChange={(value) => setLateOnly(value === "late")} options={[{ value: "all", label: "Everyone who owes", count: byCustomer.size }, { value: "late", label: "Past due", count: lateCustomers, tone: "warning" }]} /> : null}
+      </CardHeader>
       <CardContent className="grid gap-4 text-sm">
-        {customers.length === 0 ? <p className="text-muted-foreground">No customer owes anything.</p> : customers.map(([name, rows]) => {
+        {customers.length === 0 ? <p className="text-muted-foreground">{lateOnly ? "No customer is past due." : "No customer owes anything."}</p> : customers.map(([name, rows]) => {
           const total = rows.reduce((sum, row) => sum + row.owed, 0), late = rows.filter((row) => row.late > 0).reduce((sum, row) => sum + row.owed, 0);
           return <div key={name} className="grid gap-1.5">
             <p className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-medium">{name}</span><span className="tabular-nums">{money(total)} owed{late > 0 ? <span className="text-danger"> · {money(late)} past due</span> : null}</span></p>
@@ -506,7 +511,7 @@ function ReportsView() {
         ))}
       </div>
       <Card>
-        <CardHeader><CardTitle className="text-base">Receivables aging</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Receivables aging</CardTitle><p className="text-xs text-muted-foreground">How late the money still owed is. Open a bucket for its invoices.</p></CardHeader>
         <CardContent className="grid gap-2 text-sm tabular-nums">
           {aging.map((row) => <div key={row.bucket} className="flex justify-between border-b border-border pb-2 last:border-0"><span>{row.bucket}</span><span>{money(row.amount)}</span></div>)}
           <p className="text-xs text-muted-foreground">Petty cash in hand: {money(pettyCashBalance(topUps, expenses))}. Figures come from the records in this workspace.</p>
@@ -804,7 +809,9 @@ function OverviewView() {
   const collected = invoices.reduce((sum, invoice) => sum + invoice.payments.reduce((s, p) => s + p.amount, 0), 0);
   const outstanding = invoices.reduce((sum, invoice) => sum + dueAmount(invoice, creditNotes), 0);
   const overdue = invoices.filter((invoice) => invoiceStatus(invoice, creditNotes) === "overdue").reduce((sum, invoice) => sum + dueAmount(invoice, creditNotes), 0);
-  const buckets = ["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"].map((label) => ({ label, value: invoices.filter((invoice) => agingBucket(invoice, creditNotes) === label).reduce((sum, invoice) => sum + dueAmount(invoice, creditNotes), 0) }));
+  const buckets = ["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"].map((label) => { const inBucket = invoices.filter((invoice) => agingBucket(invoice, creditNotes) === label); return { label, count: inBucket.length, value: inBucket.reduce((sum, invoice) => sum + dueAmount(invoice, creditNotes), 0) }; });
+  const widest = Math.max(1, ...buckets.map((bucket) => bucket.value));
+  const to = (view: string, extra: Record<string, string> = {}) => workspaceHref("finance-accounting", view, extra);
 
   return (
     <>
@@ -812,33 +819,27 @@ function OverviewView() {
         <Card><CardContent className="p-6 text-sm text-muted-foreground">No invoices yet. Create the first one from Invoices. Finance figures start at zero for a new company.</CardContent></Card>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-4">
-        <Kpi label="Invoiced" value={money(invoiced)} />
-        <Kpi label="Collected" value={money(collected)} />
-        <Kpi label="Outstanding" value={money(outstanding)} />
-        <Kpi label="Overdue" value={money(overdue)} tone={overdue > 0 ? "warning" : undefined} />
+        <Kpi label="Invoiced" value={money(invoiced)} detail={`${invoices.filter((invoice) => !invoice.cancelled).length} invoices`} href={to("invoices")} />
+        <Kpi label="Collected" value={money(collected)} detail={invoiced ? `${Math.round((collected / invoiced) * 100)}% of invoiced` : undefined} href={to("invoices", { status: "paid" })} />
+        <Kpi label="Outstanding" value={money(outstanding)} detail="Who owes what" href={to("receivables")} />
+        <Kpi label="Overdue" value={money(overdue)} detail={overdue > 0 ? "Open to chase" : "Nothing late"} tone={overdue > 0 ? "warning" : undefined} href={to("invoices", { status: "overdue" })} />
       </div>
       <Card>
         <CardHeader><CardTitle className="text-base">Receivables aging</CardTitle></CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-5">
-          {buckets.map((bucket) => (
-            <div key={bucket.label} className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">{bucket.label}</p>
-              <p className="mt-1 font-semibold tabular-nums">{money(bucket.value)}</p>
-            </div>
-          ))}
+          {buckets.map((bucket, index) => {
+            const body = <>
+              <p className="text-xs text-muted-foreground">{bucket.label}{bucket.count ? ` · ${bucket.count}` : ""}</p>
+              <p className={`mt-1 font-semibold tabular-nums ${index >= 2 && bucket.value > 0 ? "text-danger" : ""}`}>{money(bucket.value)}</p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2"><div className={`h-full rounded-full ${index === 0 ? "bg-accent" : index === 1 ? "bg-amber-500" : "bg-danger"}`} style={{ width: `${bucket.value ? Math.max(4, (bucket.value / widest) * 100) : 0}%` }} /></div>
+            </>;
+            return bucket.count ? <Link key={bucket.label} href={to("invoices", { aging: bucket.label })} title={`Open the ${bucket.count} invoice${bucket.count === 1 ? "" : "s"} ${bucket.label === "Current" ? "not yet due" : `${bucket.label} late`}`} className="rounded-md border border-border p-3 transition-colors hover:border-accent-border hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">{body}</Link>
+              : <div key={bucket.label} className="rounded-md border border-border p-3">{body}</div>;
+          })}
         </CardContent>
       </Card>
       <p className="text-xs text-muted-foreground">Invoiced is the total of all invoices, including GST. Outstanding subtracts payments and approved credit notes. Janus does not estimate revenue from the pipeline.</p>
     </>
-  );
-}
-
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${tone === "warning" ? "text-amber-700" : ""}`}>{value}</p>
-    </div>
   );
 }
 
@@ -851,9 +852,32 @@ function InvoicesView({ me }: { me: string }) {
   const [creating, setCreating] = React.useState(false);
   const [paying, setPaying] = React.useState<Invoice | null>(null);
   const [selected, setSelected] = React.useState<Invoice | null>(null);
+  const params = useSearchParams();
+  type Show = "all" | "unpaid" | "overdue" | "paid";
+  const [show, setShow] = React.useState<Show>(() => { const asked = params.get("status"); return asked === "unpaid" || asked === "overdue" || asked === "paid" ? asked : "all"; });
+  const [aging, setAging] = React.useState(() => params.get("aging") ?? "");
+  const [find, setFind] = React.useState("");
+  const live = invoices.filter((invoice) => !invoice.cancelled);
+  const statusOf = (invoice: Invoice) => invoiceStatus(invoice, creditNotes);
+  const counts = { all: invoices.length, unpaid: live.filter((invoice) => statusOf(invoice) !== "paid").length, overdue: live.filter((invoice) => statusOf(invoice) === "overdue").length, paid: invoices.filter((invoice) => statusOf(invoice) === "paid").length };
+  const term = find.trim().toLowerCase();
+  const shown = invoices.filter((invoice) => {
+    const status = statusOf(invoice);
+    if (show === "unpaid" && (status === "paid" || invoice.cancelled)) return false;
+    if (show === "overdue" && (status !== "overdue" || invoice.cancelled)) return false;
+    if (show === "paid" && status !== "paid") return false;
+    if (aging && agingBucket(invoice, creditNotes) !== aging) return false;
+    return !term || `${invoice.number} ${invoice.customer} ${invoice.customerCompany ?? ""}`.toLowerCase().includes(term);
+  });
+  const shownDue = shown.reduce((sum, invoice) => sum + dueAmount(invoice, creditNotes), 0);
 
   return (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FilterChips<Show> label="Show invoices" value={show} onChange={(value) => { setShow(value); setAging(""); }} options={[{ value: "all", label: "All", count: counts.all }, { value: "unpaid", label: "Unpaid", count: counts.unpaid }, { value: "overdue", label: "Overdue", count: counts.overdue, tone: "warning" }, { value: "paid", label: "Paid", count: counts.paid }]} />
+        <Input aria-label="Find an invoice" placeholder="Find by number or customer" value={find} onChange={(event) => setFind(event.target.value)} className="h-8 w-full max-w-[240px]" />
+      </div>
+      {aging ? <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Showing invoices {aging === "Current" ? "not yet due" : `${aging} late`}.<button type="button" className="text-accent hover:underline" onClick={() => setAging("")}>Show all ages</button></p> : null}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Each invoice carries GST: same state splits into CGST and SGST, another state uses IGST.</p>
         <Button size="sm" onClick={() => setCreating(true)}>New invoice</Button>
@@ -864,10 +888,11 @@ function InvoicesView({ me }: { me: string }) {
             <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Invoice</th><th className="px-4 py-2">Customer</th><th className="px-4 py-2">Date</th><th className="px-4 py-2">Due</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-right">Due now</th><th className="px-4 py-2">Status</th><th className="px-4 py-2" /></tr></thead>
             <tbody>
               {invoices.length === 0 ? <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">No invoices yet.</td></tr> : null}
-              {invoices.map((invoice) => {
+              {invoices.length > 0 && shown.length === 0 ? <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">No invoice matches. <button type="button" className="text-accent hover:underline" onClick={() => { setShow("all"); setAging(""); setFind(""); }}>Show all</button></td></tr> : null}
+              {shown.map((invoice) => {
                 const status = invoiceStatus(invoice, creditNotes);
                 return (
-                  <tr key={invoice.id} className="border-b border-border last:border-0">
+                  <tr key={invoice.id} onClick={(event) => rowClick(event, () => setSelected(invoice))} className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-surface-2">
                     <td className="px-4 py-3 font-medium"><button className="hover:underline" onClick={() => setSelected(invoice)}>{invoice.number}</button></td>
                     <td className="px-4 py-3">{invoice.customer}<span className="block text-xs text-muted-foreground">{invoice.customerCompany}</span></td>
                     <td className="px-4 py-3 text-muted-foreground">{invoice.date}</td>
@@ -880,6 +905,7 @@ function InvoicesView({ me }: { me: string }) {
                 );
               })}
             </tbody>
+            {shown.length > 1 && (show !== "all" || aging || term) ? <tfoot><tr className="border-t border-border bg-surface-2 text-sm font-medium"><td className="px-4 py-2" colSpan={5}>{shown.length} invoices shown</td><td className="px-4 py-2 text-right tabular-nums">{money(shownDue)}</td><td colSpan={2} /></tr></tfoot> : null}
           </table>
         </CardContent>
       </Card>
