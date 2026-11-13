@@ -31,8 +31,10 @@ if ! grep -q '^JANUS_ENCRYPTION_KEY=.\+' "$BACKEND/.env"; then
 fi
 
 # Email: real email when backend/.env sets JANUS_EMAIL_BACKEND=smtp with an SMTP server,
-# otherwise each email is printed in this terminal as an [api] dev_email line.
-EMAIL_BACKEND="$(grep '^JANUS_EMAIL_BACKEND=' "$BACKEND/.env" | cut -d= -f2- | tr -d '"' || true)"
+# otherwise each email is printed in this terminal as an [api] dev_email line. Set
+# JANUS_EMAIL_BACKEND=console for one run (the e2e tests read emails from the log) to print them
+# without touching backend/.env, so no real email goes out.
+EMAIL_BACKEND="${JANUS_EMAIL_BACKEND:-$(grep '^JANUS_EMAIL_BACKEND=' "$BACKEND/.env" | cut -d= -f2- | tr -d '"' || true)}"
 [ "$EMAIL_BACKEND" = "smtp" ] || EMAIL_BACKEND=console
 
 # This run's settings, without touching backend/.env: the email backend, links to this web port.
