@@ -198,13 +198,13 @@ export default function LeadsPage() {
     };
     load().catch((error) => {
       if (!controller.signal.aborted)
-        setResult({ after, rows: demoLeadRows.map((lead) => ({ lead })), error: message(error) });
+        setResult({ after, rows: demoMode ? demoLeadRows.map((lead) => ({ lead })) : [], error: message(error) });
     });
     return () => controller.abort();
   }, [after, version]);
 
   const loaded = result?.after === after ? result : null;
-  const usingDemo = Boolean(loaded?.error);
+  const usingDemo = demoMode && Boolean(loaded?.error);
   const canEditRows = canWrite && !usingDemo;
   // Owners and managers can hand a lead to someone they manage.
   const assignees = demoMode && (session.permissions.includes("*") || can(session, "leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
@@ -376,6 +376,7 @@ export default function LeadsPage() {
           </>
         }
       />
+      {!demoMode && loaded?.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your leads could not be read: {loaded.error}. Refresh to try again; nothing is lost.</p>}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search name, mobile, email or company…" className="w-full sm:w-[25rem]" />

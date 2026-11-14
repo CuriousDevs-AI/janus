@@ -1,4 +1,5 @@
 "use client";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -44,9 +45,9 @@ export default function CustomersPage() {
   const router = useRouter();
   const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
   const deals = useApi<Deal[]>("/deals?limit=100&after_id=0");
-  const usingDemo = Boolean(leads.error || deals.error);
-  const leadRows = React.useMemo(() => leads.data ?? (leads.error ? demoLeadRows : []), [leads.data, leads.error]);
-  const dealRows = React.useMemo(() => deals.data ?? (deals.error ? demoDealRows : []), [deals.data, deals.error]);
+  const usingDemo = demoMode;
+  const leadRows = React.useMemo(() => leads.data ?? (demoMode ? demoLeadRows : []), [leads.data]);
+  const dealRows = React.useMemo(() => deals.data ?? (demoMode ? demoDealRows : []), [deals.data]);
 
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
@@ -125,6 +126,7 @@ export default function CustomersPage() {
           </div>
         }
       />
+      {!demoMode && (leads.error || deals.error) && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {leads.error || deals.error}. Refresh to try again; nothing is lost.</p>}
 
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search customers or companies…" className="w-72" />

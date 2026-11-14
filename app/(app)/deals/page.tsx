@@ -1,4 +1,5 @@
 "use client";
+import { demoMode } from "@/lib/demo-mode";
 import { useState } from "react";
 import { can } from "@/lib/permissions";
 import Link from "next/link";
@@ -30,7 +31,7 @@ export default function DealsPage() {
   const canWrite = can(session, "leads:write");
   const [cursors, setCursors] = useState(["0"]);
   const result = useApi<Deal[]>(`/deals?after_id=${cursors.at(-1)}&limit=100`);
-  const usingDemo = Boolean(result.error);
+  const usingDemo = demoMode;
   const writable = canWrite && !usingDemo;
   const [query, setQuery] = useState("");
   const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
@@ -104,6 +105,7 @@ export default function DealsPage() {
           </>
         }
       />
+      {!demoMode && result.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your deals could not be read: {result.error}. Refresh to try again; nothing is lost.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 pb-4">
         <SearchInput
           value={query}
