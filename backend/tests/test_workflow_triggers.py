@@ -163,13 +163,22 @@ async def test_a_spend_request_and_a_credit_note_start_their_workflows(
     note_text = "{{credit_note.kind}} {{credit_note.amount}}: {{credit_note.reason}}"
     for trigger, message in (("spend_requested", spend_text), ("credit_note_raised", note_text)):
         made = await _workflow(
-            client, owner, [_post(message)], trigger={"type": trigger}, requiresApproval=False
+            client,
+            owner,
+            [_post(message)],
+            name=f"Alert on {trigger}",
+            trigger={"type": trigger},
+            requiresApproval=False,
         )
         on = await client.post(f"/v1/business/automations/{made}/on", headers=owner.headers)
         assert on.status_code == 200, on.text
     # A field the trigger does not give is named in words, not as a code.
     wrong = await _workflow(
-        client, owner, [_post("{{spend.amount}}")], trigger={"type": "credit_note_raised"}
+        client,
+        owner,
+        [_post("{{spend.amount}}")],
+        name="Wrong field",
+        trigger={"type": "credit_note_raised"},
     )
     shown = (await client.get(f"/v1/business/automations/{wrong}", headers=owner.headers)).json()
     assert any("does not start from a spend request" in text for text in shown["problems"])
