@@ -200,7 +200,7 @@ function ReportView({ definition, found, readable, periodLabel, periodKey, loadi
   const people = useHrPeopleStore((state) => state.employees);
   const leaves = useHrPeopleStore((state) => state.leaveRequests);
   const demoSummary = demoMode ? { leads: crm.leads, openDeals: crm.openDeals, wonDeals: crm.wonDeals, pipelineValue: lakh(crm.pipeline) } : undefined;
-  const summaryData = sales.data ?? (sales.error ? demoSummary : undefined);
+  const summaryData = sales.data ?? (demoMode && sales.error ? demoSummary : undefined);
   const hrMetrics = demoMode && definition.department === "HR" ? hrReportMetrics(definition.id, people, leaves) : null;
   const legacy = hrMetrics ?? (summaryData && definition.id === "sales-summary" ? [["Leads", String(summaryData.leads)], ["Open deals", String(summaryData.openDeals)], ["Won deals", String(summaryData.wonDeals)], ["Pipeline", summaryData.pipelineValue]] : summaryData && definition.id === "sales-pipeline" ? [["Open deals", String(summaryData.openDeals)], ["Pipeline", summaryData.pipelineValue]] : null);
   const shown: ReportFigures | null = fromRecords ?? (legacy ? { covers: "now", rows: legacy.map(([label, value]) => ({ label, value })) } : null);
