@@ -89,6 +89,52 @@ def refusals(actions: list[Any]) -> list[dict[str, Any]]:
     return refused
 
 
+# What a step must be told before it can run, by action: (config field, what to ask for).
+REQUIRED: dict[str, tuple[tuple[str, str], ...]] = {
+    "send_notification": (
+        ("channel", "choose the Team Chat channel to post in"),
+        ("message", "write the message to post"),
+    ),
+    "create_task": (
+        ("project", "choose the project to add the task to"),
+        ("title", "name the task"),
+    ),
+}
+# The record a workflow's trigger gives its steps, for {{lead.name}} and the like.
+TRIGGER_RECORD = {"lead_created": "lead", "ticket_created": "ticket"}
+
+
+def problems(trigger: dict[str, Any] | None, actions: list[Any]) -> list[str]:
+    """Why a workflow would not run as it stands, in words for the person: a step Janus does not
+    carry out, a step not filled in, or a field its trigger does not give. Empty when ready."""
+    found = [f"Step {item['index'] + 1}: {item['reason']}" for item in refusals(actions)]
+    enabled = [
+        (index, step)
+        for index, step in enumerate(actions)
+        if not (isinstance(step, dict) and step.get("disabled") is True)
+    ]
+    if not enabled:
+        return ["Add a step: this workflow does nothing yet."]
+    record = TRIGGER_RECORD.get(str((trigger or {}).get("type") or ""))
+    for index, step in enabled:
+        action, module = step_action(step)
+        if not is_supported(action, module) or not isinstance(step, dict):
+            continue
+        raw = step.get("config")
+        config: dict[str, Any] = raw if isinstance(raw, dict) else {}
+        for field, ask in REQUIRED.get(action, ()):
+            if not str(config.get(field) or "").strip():
+                found.append(f"Step {index + 1}: {ask}.")
+        for field, _ in REQUIRED.get(action, ()):
+            for match in TOKEN.finditer(str(config.get(field) or "")):
+                if match.group(1) != record:
+                    found.append(
+                        f"Step {index + 1} uses {match.group(0)}, but this workflow does not start"
+                        f" from a {match.group(1)}."
+                    )
+    return found
+
+
 def refused_result(actions: list[Any]) -> dict[str, Any]:
     refused = refusals(actions)
     return {

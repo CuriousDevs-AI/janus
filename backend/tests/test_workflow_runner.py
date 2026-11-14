@@ -191,7 +191,9 @@ async def test_unsupported_steps_are_refused_without_running_anything(
     assert supported[("send_notification", "communication")] is True
     assert supported[("create_task", "projects_delivery")] is True
     assert supported[("create_task", "crm_sales")] is False
-    assert supported[("list_low_stock", "operations_inventory")] is False
+    # The catalog offers only core steps and those the templates use; a step it does not list is
+    # still refused when a workflow carries one.
+    assert ("list_low_stock", "operations_inventory") not in supported
 
     low_stock = {"id": "stock", "module": "operations_inventory", "action": "list_low_stock"}
     workflow = await _workflow(client, owner, [_post("Hi"), low_stock], requiresApproval=False)
