@@ -34,6 +34,7 @@ import { CompanyProfileSection } from "@/components/settings/company-profile-sec
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
+import { LiveAccessReview } from "@/components/business/company-settings";
 import { usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 const timezones = [
@@ -106,7 +107,8 @@ export function WorkspaceSection() {
   // The plan is the account's and lives in the Portfolio; an old link here says so.
   if (view === "settings" && requestedSection === "billing") return <BillingSection />;
 
-  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
+  // Exports, retention and backups have no service behind them yet, so a live account does not see a tab for them.
+  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", demoMode ? "Currency & Timezone" : "Hours & Timezone"], ["security", demoMode ? "Security & Privacy" : "Access & Security"], ...(demoMode ? [["data", "Data Management"]] : [])];
   return (
     <div className="flex flex-col gap-5">
       <h1 className="sr-only">Business Settings</h1>
@@ -114,9 +116,10 @@ export function WorkspaceSection() {
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
           {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership.">{demoMode ? <StructurePanel /> : <RealStructure />}</SectionCard>}
-          {settingsSection === "locale" && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
-          {settingsSection === "security" && <SectionCard title="Security & privacy" description="Control account protection and business data safeguards.">{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <UnavailableMessage text="Security policy status is not connected yet. Configure sessions and two-step verification from the account security area." />}</SectionCard>}
-          {settingsSection === "data" && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
+          {settingsSection === "locale" && !demoMode && <LiveHours />}
+          {settingsSection === "locale" && demoMode && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
+          {settingsSection === "security" && <SectionCard title={demoMode ? "Security & privacy" : "Who can get in"} description={demoMode ? "Control account protection and business data safeguards." : "Everyone with access to this business, from its member list. Check it whenever someone leaves."}>{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <LiveAccessReview />}</SectionCard>}
+          {settingsSection === "data" && demoMode && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
       </main>
     </div>
   );
@@ -445,6 +448,44 @@ function RealStructure() {
       })}
     </ul>
   );
+}
+
+type SavedHours = { timezone: string; businessHoursStart: string | null; businessHoursEnd: string | null };
+
+/** The business's timezone and working hours, as saved: the form starts from them, not from defaults. */
+function LiveHours() {
+  const saved = apiUse<SavedHours>("/business/setup");
+  if (saved.loading) return <SectionCard><p className="text-sm text-muted-foreground">Loading your hours…</p></SectionCard>;
+  if (saved.error || !saved.data) return <SectionCard title="Hours & timezone"><UnavailableMessage text={saved.error ?? "Your hours could not be loaded."} /></SectionCard>;
+  return <HoursForm initial={saved.data} onSaved={saved.reload} />;
+}
+
+function HoursForm({ initial, onSaved }: { initial: SavedHours; onSaved: () => void }) {
+  const [timezone, setTimezone] = React.useState(initial.timezone || "Asia/Kolkata");
+  const [start, setStart] = React.useState(initial.businessHoursStart ?? "09:00");
+  const [end, setEnd] = React.useState(initial.businessHoursEnd ?? "18:00");
+  const [saving, setSaving] = React.useState(false);
+  const dirty = timezone !== initial.timezone || start !== (initial.businessHoursStart ?? "09:00") || end !== (initial.businessHoursEnd ?? "18:00");
+  const wrong = start && end && start >= end ? "Closing time must be after opening time." : "";
+  const options = timezones.some((item) => item.value === timezone) ? timezones : [{ value: timezone, label: timezone }, ...timezones];
+  async function save() {
+    setSaving(true);
+    try {
+      await api("/business/setup", { method: "PATCH", body: JSON.stringify({ timezone, businessHoursStart: start, businessHoursEnd: end }) });
+      toast.success("Hours saved");
+      onSaved();
+    } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
+  }
+  return <SectionCard title="Hours & timezone" description="When your business is open, and the timezone it works in. Amounts are always in rupees.">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{options.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow>
+      <FieldRow label="Opens at"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></FieldRow>
+      <FieldRow label="Closes at"><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></FieldRow>
+    </div>
+    {wrong && <p role="alert" className="mt-2 text-xs text-danger">{wrong}</p>}
+    <p className="mt-3 text-[11px] text-muted-foreground">Saved with your business. Janus does not yet hold back messages or workflows outside these hours.</p>
+    <div className="mt-4 flex justify-end"><Button disabled={!dirty || Boolean(wrong) || saving} onClick={save}>{saving ? "Saving…" : "Save hours"}</Button></div>
+  </SectionCard>;
 }
 
 function UnavailableMessage({ text }: { text: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">{text}</div>; }
