@@ -4,7 +4,6 @@ import * as React from "react";
 import { activeCompany } from "@/lib/company";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
-import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bell, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
@@ -275,8 +274,8 @@ function BusinessOverviewPanel() {
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
       </div> : <div className="grid gap-3 sm:grid-cols-3">
-        <OverviewKpi label="People" value={String(people.length)} detail="In HR & People" />
-        <OverviewKpi label="Departments" value={String(new Set(people.map((item) => item.department)).size)} detail="Teams on record" />
+        <OverviewKpi label="People" value={demoMode ? String(people.length) : "—"} detail={demoMode ? "In HR & People" : "See HR & People"} />
+        <OverviewKpi label="Departments" value={demoMode ? String(new Set(people.map((item) => item.department)).size) : "—"} detail={demoMode ? "Teams on record" : "See Business Settings"} />
         <OverviewKpi label="CRM & Sales" value="Off" detail="Switch it on under Workspaces" />
       </div>}
 
@@ -430,10 +429,25 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function UnavailableSection({ title, description }: { title: string; description: string }) { return <SectionCard title={title} description={description}><UnavailableMessage text="No verified records are available for this section yet." /></SectionCard>; }
 /** The company's departments as HR keeps them, with how many people each has. */
+type HrRecords = { records: Record<string, Array<{ key: string; data: Record<string, unknown> }>> };
+type Department = { id: string; name: string; active?: boolean; headId?: string | null };
+
+/**
+ * Departments and how many people are in each, from the HR records the server keeps: never from
+ * this browser, which would show another company's or the demo's departments.
+ */
 function RealStructure() {
-  const departments = useHrOrgStore((state) => state.departments).filter((item) => item.active);
-  const employees = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
-  if (departments.length === 0) return <UnavailableMessage text="No departments yet. Add them under HR, in Departments & roles." />;
+  const spaces = apiUse<Array<{ type: string; status: string }>>("/workspaces");
+  const hrOn = spaces.data?.some((item) => item.type === "hr_people" && item.status === "active");
+  const hr = apiUse<HrRecords>(hrOn ? "/hr/records" : null);
+  if (spaces.loading || (hrOn && hr.loading)) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!hrOn) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text="Departments are kept in HR & People, which is not switched on for this business." /><Link href="/settings?tab=workspace&view=workspaces&workspace=business&activate=hr-people" className="text-sm font-medium text-accent hover:underline">Switch on HR &amp; People</Link></div>;
+  if (hr.error) return <UnavailableMessage text={`Departments could not be read: ${hr.error}`} />;
+  const setting = hr.data?.records.config?.find((item) => item.key === "org.departments")?.data.value;
+  const departments = (Array.isArray(setting) ? (setting as Department[]) : []).filter((item) => item.active !== false);
+  const employees = (hr.data?.records.employee ?? []).map((item) => item.data as { id: string; name?: string; department?: string; status?: string }).filter((item) => item.status !== "archived");
+  if (departments.length === 0) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text={`No departments yet${employees.length ? `, so the ${employees.length} ${employees.length === 1 ? "person" : "people"} in HR belong to none` : ""}.`} /><Link href="/workspace/hr-people?view=organization&workspace=hr-people" className="text-sm font-medium text-accent hover:underline">Add departments in HR &amp; People</Link></div>;
+  const unplaced = employees.filter((item) => !departments.some((department) => department.name === item.department)).length;
   return (
     <ul className="divide-y divide-border">
       {departments.map((department) => {
@@ -441,11 +455,12 @@ function RealStructure() {
         const head = employees.find((item) => item.id === department.headId)?.name;
         return (
           <li key={department.id} className="flex items-center justify-between gap-3 py-3 text-sm">
-            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : null}</span>
+            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : <span className="font-normal text-warning"> · no head</span>}</span>
             <span className="text-muted-foreground">{people} {people === 1 ? "person" : "people"}</span>
           </li>
         );
       })}
+      {unplaced > 0 && <li className="flex items-center justify-between gap-3 py-3 text-sm"><span className="text-muted-foreground">In no department</span><span className="text-muted-foreground">{unplaced} {unplaced === 1 ? "person" : "people"}</span></li>}
     </ul>
   );
 }
