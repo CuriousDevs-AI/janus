@@ -16,6 +16,7 @@ import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { useSession } from "@/components/auth/session-provider";
 import { useLocationsStore, type CompanyLocation } from "@/lib/stores/company-locations-store";
+import { LiveCompanyProfile } from "@/components/business/company-settings";
 
 type Location = CompanyLocation;
 type CompanyProfile = {
@@ -34,7 +35,12 @@ const initialProfile: CompanyProfile = {
 };
 
 
+/** The company's profile: its real record on a live account, the made-up one in the preview. */
 export function CompanyProfileSection() {
+  return demoMode ? <DemoCompanyProfile /> : <LiveCompanyProfile locations={<LocationsCard />} />;
+}
+
+function DemoCompanyProfile() {
   const session = useSession();
   const connectedProfile = React.useMemo(() => ({
     ...initialProfile,
@@ -57,14 +63,8 @@ export function CompanyProfileSection() {
   const initial = demoMode ? initialProfile : connectedProfile;
   const [draft, setDraft] = React.useState(initial);
   const [saved, setSaved] = React.useState(initial);
-  const storedLocations = useLocationsStore((state) => state.locations);
-  const saveLocationToStore = useLocationsStore((state) => state.saveLocation);
-  const employees = useHrPeopleStore((state) => state.employees);
-  const locations = React.useMemo(() => storedLocations.map((place) => ({ ...place, people: employees.filter((person) => person.status !== "archived" && place.address.includes(person.branch)).length })), [storedLocations, employees]);
   const [logo, setLogo] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState(false);
-  const [locationOpen, setLocationOpen] = React.useState(false);
-  const [editingLocation, setEditingLocation] = React.useState<Location | null>(null);
   const [saving, setSaving] = React.useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const set = (key: keyof CompanyProfile, value: string | boolean) => setDraft((current) => ({ ...current, [key]: value }));
@@ -96,12 +96,6 @@ export function CompanyProfileSection() {
     setLogo(URL.createObjectURL(file));
     toast.success("Logo added to this draft");
   }
-  function openLocation(location?: Location) { setEditingLocation(location ?? null); setLocationOpen(true); }
-  function saveLocation(value: Location) {
-    saveLocationToStore(value);
-    setLocationOpen(false);
-    toast.success(editingLocation ? "Location updated" : "Location added");
-  }
 
   const taxRecords = demoMode
     ? [["GSTIN", profile.gstin, profile.gstin ? "Verified" : "Not added"], ["PAN", profile.pan, profile.pan ? "Verified" : "Not added"], ["CIN", profile.cin, profile.cin ? "Added" : "Not added"], ["Udyam (MSME)", "", "Not added"]]
@@ -126,19 +120,38 @@ export function CompanyProfileSection() {
       <div className="divide-y divide-border">{taxRecords.map(([label, value, status]) => <div key={label} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-[170px] flex-1"><p className="text-sm font-semibold">{label}</p><p className="mt-0.5 text-xs text-muted-foreground">{label === "GSTIN" && draft.state ? `State: ${draft.state} (06)` : label === "PAN" ? "Company PAN" : label === "CIN" ? "Corporate Identification Number" : "Optional"}</p></div><span className="font-mono text-xs text-muted-foreground">{value ? (revealed ? value : value.slice(0, 3) + "••••••" + value.slice(-2)) : "Not connected"}</span><Badge variant={status === "Verified" ? "success" : status === "Added" ? "neutral" : status === "Not added" ? "accent" : "warning"}>{status}</Badge>{(status === "Not added" || status === "Not connected") && <Button size="sm" variant="link" onClick={() => toast.success("Tax registration setup opened")}>Set up</Button>}</div>)}</div>
     </SectionCard>
 
-    <SectionCard title="Locations" description="Offices, warehouses and branches. Used for stock, attendance and GST." action={<Button size="sm" variant="secondary" onClick={() => openLocation()}><Plus className="size-3.5" />Add location</Button>}>
-      <div className="divide-y divide-border">{locations.length === 0 ? <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">No locations connected yet. Add your first office, branch or warehouse.</div> : locations.map((location) => <div key={location.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex size-8 items-center justify-center rounded-md bg-accent-muted text-accent"><MapPin className="size-4" /></span><div className="min-w-[180px] flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{location.name}</p><Badge variant="neutral">{location.kind}{location.gst ? ` · ${location.gst}` : ""}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{location.address}</p></div><span className="text-xs text-muted-foreground">{location.people} people</span><Button size="sm" variant="link" onClick={() => openLocation(location)}>Edit</Button></div>)}</div>
-    </SectionCard>
+    <LocationsCard />
 
     {dirty && <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-foreground px-4 py-3 text-sm text-background shadow-xl"><span className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-300" />Core company details sync to Janus. Contact, tax and location fields remain local until their storage API is connected.</span><span className="flex gap-2"><Button size="sm" variant="ghost" className="text-background hover:bg-white/10 hover:text-background" onClick={discard}>Discard</Button><Button size="sm" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</Button></span></div>}
-    <LocationDialog open={locationOpen} location={editingLocation} onClose={() => setLocationOpen(false)} onSave={saveLocation} />
   </div>;
 }
 
+/** Offices, warehouses and branches, saved with the company. Operations stocks them. */
+function LocationsCard() {
+  const storedLocations = useLocationsStore((state) => state.locations);
+  const saveLocationToStore = useLocationsStore((state) => state.saveLocation);
+  const employees = useHrPeopleStore((state) => state.employees);
+  const locations = React.useMemo(() => storedLocations.map((place) => ({ ...place, people: employees.filter((person) => person.status !== "archived" && person.branch && place.address.includes(person.branch)).length })), [storedLocations, employees]);
+  const [locationOpen, setLocationOpen] = React.useState(false);
+  const [editingLocation, setEditingLocation] = React.useState<Location | null>(null);
+  function openLocation(location?: Location) { setEditingLocation(location ?? null); setLocationOpen(true); }
+  function saveLocation(value: Location) {
+    saveLocationToStore(value);
+    setLocationOpen(false);
+    toast.success(editingLocation ? "Location updated" : "Location added");
+  }
+  return <>
+    <SectionCard title="Locations" description="Offices, warehouses and branches. Operations keeps stock at each one." action={<Button size="sm" variant="secondary" onClick={() => openLocation()}><Plus className="size-3.5" />Add location</Button>}>
+      <div className="divide-y divide-border">{locations.length === 0 ? <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">No locations connected yet. Add your first office, branch or warehouse.</div> : locations.map((location) => <div key={location.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex size-8 items-center justify-center rounded-md bg-accent-muted text-accent"><MapPin className="size-4" /></span><div className="min-w-[180px] flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{location.name}</p><Badge variant="neutral">{location.kind}{location.gst ? ` · ${location.gst}` : ""}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{location.address}</p></div><span className="text-xs text-muted-foreground">{location.people} people</span><Button size="sm" variant="link" onClick={() => openLocation(location)}>Edit</Button></div>)}</div>
+    </SectionCard>
+    <LocationDialog open={locationOpen} location={editingLocation} onClose={() => setLocationOpen(false)} onSave={saveLocation} />
+  </>;
+}
+
 function LocationDialog({ open, location, onClose, onSave }: { open: boolean; location: Location | null; onClose: () => void; onSave: (location: Location) => void }) {
-  const [name, setName] = React.useState(""); const [kind, setKind] = React.useState("Office"); const [address, setAddress] = React.useState(""); const [people, setPeople] = React.useState("0"); const [gst, setGst] = React.useState("");
+  const [name, setName] = React.useState(""); const [kind, setKind] = React.useState("Office"); const [address, setAddress] = React.useState(""); const [gst, setGst] = React.useState("");
   // The dialog is intentionally reset when its selected location changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  React.useEffect(() => { setName(location?.name ?? ""); setKind(location?.kind ?? "Office"); setAddress(location?.address ?? ""); setPeople(String(location?.people ?? 0)); setGst(location?.gst ?? ""); }, [location, open]);
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>{location ? "Edit location" : "Add location"}</DialogTitle><DialogDescription>Use locations for people, inventory and tax reporting.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Location name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Delhi office" /></FieldRow><div className="grid gap-4 sm:grid-cols-2"><FieldRow label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>Office</option><option>Warehouse</option><option>Branch</option></select></FieldRow><FieldRow label="People assigned"><Input value={people} onChange={(e) => setPeople(e.target.value)} inputMode="numeric" /></FieldRow></div><FieldRow label="Address"><Input value={address} onChange={(e) => setAddress(e.target.value)} /></FieldRow><FieldRow label="GSTIN note"><Input value={gst} onChange={(e) => setGst(e.target.value)} placeholder="Optional" /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!name.trim() || !address.trim()} onClick={() => onSave({ id: location?.id ?? Date.now(), name: name.trim(), kind, address: address.trim(), people: Number(people) || 0, gst })}>Save location</Button></DialogFooter></DialogContent></Dialog>;
+  React.useEffect(() => { setName(location?.name ?? ""); setKind(location?.kind ?? "Office"); setAddress(location?.address ?? ""); setGst(location?.gst ?? ""); }, [location, open]);
+  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>{location ? "Edit location" : "Add location"}</DialogTitle><DialogDescription>People count here when their branch is part of the address. Operations keeps stock at each location.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Location name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Delhi office" /></FieldRow><FieldRow label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>Office</option><option>Warehouse</option><option>Branch</option></select></FieldRow><FieldRow label="Address"><Input value={address} onChange={(e) => setAddress(e.target.value)} /></FieldRow><FieldRow label="GSTIN note"><Input value={gst} onChange={(e) => setGst(e.target.value)} placeholder="Optional" /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!name.trim() || !address.trim()} onClick={() => onSave({ id: location?.id ?? Date.now(), name: name.trim(), kind, address: address.trim(), people: location?.people ?? 0, gst })}>Save location</Button></DialogFooter></DialogContent></Dialog>;
 }

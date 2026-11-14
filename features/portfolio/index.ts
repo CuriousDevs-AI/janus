@@ -15,3 +15,7 @@ export { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 export { Intelligence, type DepartmentChat } from "@/features/portfolio/components/intelligence";
 export { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
 export { WorkInbox } from "@/features/portfolio/components/work-inbox";
+// Business Settings shows and edits the same company record the Portfolio does.
+export { CompanyEditor, PeopleList, entityNames } from "@/features/portfolio/components/company-editor";
+export { businessModels } from "@/features/portfolio/lib/business";
+export type { PortfolioRegistration } from "@/features/portfolio/types";
