@@ -20,3 +20,4 @@ export { CompanyEditor, PeopleList, entityNames } from "@/features/portfolio/com
 export { businessModels } from "@/features/portfolio/lib/business";
 export type { PortfolioRegistration } from "@/features/portfolio/types";
 export { RATE_MINIMUM } from "@/features/portfolio/lib/rates";
+export { Advisor } from "@/features/portfolio/components/advisor";
