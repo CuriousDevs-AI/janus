@@ -1,4 +1,5 @@
 "use client";
+import { demoMode } from "@/lib/demo-mode";
 
 import Link from "next/link";
 import { can } from "@/lib/permissions";
@@ -32,10 +33,12 @@ export default function DashboardPage() {
     canViewSources ? "/sources?limit=50&after_id=0" : null,
   );
 
-  const usingDemoLeads = Boolean(leads.error);
-  const usingDemoDeals = Boolean(deals.error);
-  const usingDemoSources = !canViewSources || Boolean(sources.error);
-  const usingDemo = usingDemoLeads || usingDemoDeals || usingDemoSources;
+  // The demo's sample records are the demo's alone: a real business never sees them, even on an error
+  // or when its role cannot manage sources.
+  const usingDemoLeads = demoMode;
+  const usingDemoDeals = demoMode;
+  const usingDemoSources = demoMode;
+  const usingDemo = demoMode;
   const leadRows = leads.data ?? (usingDemoLeads ? demoLeadRows : []);
   const dealRows = deals.data ?? (usingDemoDeals ? demoDealRows : []);
   const openDeals = dealRows.filter((deal) => !["won", "lost"].includes(deal.stage));
@@ -52,7 +55,7 @@ export default function DashboardPage() {
     sources.reload();
   };
   const loading = leads.loading || deals.loading || sources.loading;
-  const growthTrend = usingDemo ? demoGrowthTrend : [];
+  const growthTrend = usingDemo ? demoGrowthTrend : sixMonths(leadRows, dealRows);
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-6 py-6">
@@ -150,7 +153,7 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2"><TrendingUp className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">Growth snapshot</h2></div>
-              <p className="mt-1 text-[11px] text-muted-foreground">Lead volume and open pipeline movement over the last six months.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Leads that came in each month, and the value of the deals opened, over the last six months.</p>
             </div>
             
           </div>
@@ -163,13 +166,13 @@ export default function DashboardPage() {
                   <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                   <YAxis yAxisId="pipeline" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={(value) => `₹${Math.round(value / 100000)}L`} />
                   <YAxis yAxisId="leads" orientation="right" hide />
-                  <Tooltip formatter={(value, name) => [name === "pipeline" ? formatCurrencyINR(Number(value)) : value, name === "pipeline" ? "Pipeline" : "Leads"]} contentStyle={{ borderRadius: 8, borderColor: "var(--border)", background: "var(--surface)", fontSize: 12 }} />
+                  <Tooltip formatter={(value, name) => [name === "pipeline" ? formatCurrencyINR(Number(value)) : value, name === "pipeline" ? "Deals opened" : "Leads"]} contentStyle={{ borderRadius: 8, borderColor: "var(--border)", background: "var(--surface)", fontSize: 12 }} />
                   <Area yAxisId="pipeline" type="monotone" dataKey="pipeline" stroke="var(--accent)" strokeWidth={2.5} fill="url(#dashboardPipeline)" />
                   <Area yAxisId="leads" type="monotone" dataKey="leads" stroke="var(--success)" strokeWidth={2} fill="none" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          ) : <div className="mt-5 flex h-64 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">Trend charts will populate from connected CRM records.</div>}
+          ) : <div className="mt-5 flex h-64 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">No leads or deals yet. Each month fills in as they come in.</div>}
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-5">
@@ -184,4 +187,20 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+}
+
+/** The last six months from the records on this page: leads that came in, and the value of deals opened. */
+function sixMonths(leads: Lead[], deals: Deal[]) {
+  const monthOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7);
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - 5 + index, 15);
+    return { key: date.toLocaleDateString("en-CA").slice(0, 7), month: date.toLocaleDateString("en-IN", { month: "short" }) };
+  });
+  if (!leads.length && !deals.length) return [];
+  return months.map(({ key, month }) => ({
+    month,
+    leads: leads.filter((lead) => monthOf(lead.createdAt) === key).length,
+    pipeline: deals.filter((deal) => monthOf(deal.createdAt) === key).reduce((sum, deal) => sum + Number(deal.amount), 0),
+  }));
 }
