@@ -309,6 +309,17 @@ export function SidebarNav({
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel className="break-all normal-case tracking-normal" title={currentUser.email}>{currentUser.email}</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {/* You as a person, the same in every workspace: profile, password and devices, emails. */}
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=profile&workspace=${workspaceId}`}>My account</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=security&workspace=${workspaceId}`}>Password and devices</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=notifications&workspace=${workspaceId}`}>Notifications</Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {/* Settings belong to one company, so from the Portfolio each company's are reached from
                 its page. The plan belongs to the account and lives in the Portfolio. */}
             {workspaceId === "portfolio" ? <>
@@ -323,7 +334,7 @@ export function SidebarNav({
               </DropdownMenuItem>
             </> : <>
               <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
+                <Link href={workspaceId === "business" ? "/settings?tab=workspace&view=settings&workspace=business" : "/settings"}>Company settings</Link>
               </DropdownMenuItem>
             </>}
             <DropdownMenuSeparator />
