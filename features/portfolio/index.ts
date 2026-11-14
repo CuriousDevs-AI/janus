@@ -19,3 +19,4 @@ export { WorkInbox } from "@/features/portfolio/components/work-inbox";
 export { CompanyEditor, PeopleList, entityNames } from "@/features/portfolio/components/company-editor";
 export { businessModels } from "@/features/portfolio/lib/business";
 export type { PortfolioRegistration } from "@/features/portfolio/types";
+export { RATE_MINIMUM } from "@/features/portfolio/lib/companies";
