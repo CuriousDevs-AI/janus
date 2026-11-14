@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { answerFromKnowledge, answerLive, type Answer } from "@/features/portfolio/lib/answer";
+import { isAdviceQuestion, type AdvisorOut } from "@/features/portfolio/lib/advisor";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
@@ -94,6 +95,21 @@ export function Intelligence({ list: all, period, company, department }: { list:
     setQ("");
     if (box.current) box.current.style.height = "auto";
     box.current?.focus({ preventScroll: true });
+    if (model.id === RULES && company && isAdviceQuestion(clean)) {
+      // One company open: the Advisor's findings, the same the Advisor page and the morning brief show.
+      setTurns((current) => [...current, { q: clean, pending: true }]);
+      try {
+        const advice = await api<AdvisorOut>("/business/advisor");
+        const top = advice.findings.slice(0, 3);
+        const rules: Answer = top.length
+          ? { text: `${top.length === 1 ? "One thing" : `${top.length} things`} would help ${advice.company} most now, most serious first. Open Advisor to add them to your plan; I check each against your figures.`, rows: top.map((item): [string, string] => [item.title, `${item.sees} This week: ${item.action}`]) }
+          : { text: `Nothing in ${advice.company}'s figures needs fixing right now. Keep the records current and I will say when something does.` };
+        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, rules } : turn));
+      } catch (error) {
+        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, error: message(error) } : turn));
+      }
+      return;
+    }
     if (model.id === RULES) {
       const fromRecords = answerLive(clean, list, period);
       const mine = (knowledge.data ?? []).filter((item) => list.some((entry) => entry.id === item.companyId));

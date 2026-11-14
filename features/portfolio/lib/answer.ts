@@ -1,7 +1,7 @@
 import { attentionOf, femaAge, outsideSales, payrollFor, RATE_MINIMUM, winRate, winRateText } from "@/features/portfolio/lib/companies";
 import { businessName, sells } from "@/features/portfolio/lib/business";
 import { day, inr, todayIst } from "@/features/portfolio/lib/format";
-import { findings } from "@/features/portfolio/lib/advisor";
+import { isAdviceQuestion } from "@/features/portfolio/lib/advisor";
 
 /** "Kavita Stores'" and "Neema Textiles'", "Asha's". */
 const whose = (name: string) => name.endsWith("s") ? `${name}'` : `${name}'s`;
@@ -25,16 +25,8 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   if (/^\s*(hi|hello|hey|namaste|good (morning|afternoon|evening))\b[\s!.?]*$/.test(q)) {
     return { text: `Hello. Ask me about ${named ? named.name : "your companies"} in plain words, for example: what needs my attention, how is my sales team doing, what is our conversion this month, or how much do customers owe.` };
   }
-  // Advice: the advisor's findings, as a short plan.
-  if (/\b(improve|improvement|grow|advice|advise|suggest|recommend|plan|fix)\b/.test(q) && !/\bforecast\b/.test(q)) {
-    const all = scope.flatMap((item) => findings(item).map((finding) => ({ finding, company: item })));
-    if (!all.length) return { text: `Nothing in ${named ? `${named.name}'s` : "your"} figures needs fixing right now. Keep the records current and I will say when something does.` };
-    const top = all.slice(0, 3);
-    return {
-      text: `Three things would help ${named ? named.name : "most"} now, most serious first. Open Advisor to add them to your plan; I check each against your figures.`,
-      rows: top.map(({ finding, company }): [string, string] => [`${finding.title}${scope.length > 1 ? ` · ${company.name}` : ""}`, `${finding.sees} This week: ${finding.action}`]),
-    };
-  }
+  // Advice comes from the Advisor, which reads one company at a time.
+  if (isAdviceQuestion(q)) return { text: `I advise on one company at a time. Open ${named ? named.name : "a company"} in Business Management and choose Janus Intelligence, Advisor: it lists what to fix first, why, and a plan I check against your figures.` };
   // Janus does not forecast: say so before anything else can match "sales" or "pipeline".
   if (/forecast|predict|next (month|quarter|year)|will (we|it|sales|revenue)|going to (sell|make|earn)/.test(q)) {
     const open = scope.reduce((sum, item) => sum + Number(item.crm.pipelineValue), 0);
