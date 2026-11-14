@@ -3,7 +3,7 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { redirect, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, Copy, Download, FlaskConical, Lock, MoreHorizontal, Pause, Pencil, Play, RotateCcw, ShieldAlert, Sparkles, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,16 @@ const demoAgentRecords: Agent[] = [
   { id: "demo-agent-support", key: "support-triage", name: "Support Triage Agent", department: "customer_support", status: "paused", workspaceId: null, configuration: { description: "Classifies incoming support requests and routes urgent issues.", ownerName: "Support team", approvalMode: "Ask before every action", lastRunAt: "Yesterday · 17:20", "Runs · 7d": "11", "Actions taken": "11", "Waiting approval": "0", Failed: "0", "Success rate": "98%", "Avg run time": "2.9s", instructions: "Classify customer issues and escalate anything requiring a human.", readPermissions: true, knowledgeCollectionIds: ["support-knowledge"], approvers: ["owner"], readScopes: ["tickets", "customers"], actions: ["assign_owner", "create_task"], triggers: ["New support ticket"], limits: { dailyRuns: 100, dailyActions: 250, workingHours: "09:00–18:00" } } },
 ];
 
+/**
+ * A real business's agents are the scheduled briefs on AI Agents, which have no page of their own;
+ * this detail page is the demo's preview only.
+ */
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  if (!demoMode) redirect("/agents?workspace=business");
+  return <DemoAgentDetail params={params} />;
+}
+
+function DemoAgentDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const search = useSearchParams();
@@ -50,7 +59,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const [menu, setMenu] = React.useState(false);
   const [copyOpen, setCopyOpen] = React.useState(false);
   const [testOutput, setTestOutput] = React.useState<Record<string, unknown> | null>(null);
-  const agent = useApi<Agent>(isDemoAgent ? null : `/business/agents/${id}`);
+  const agent = useApi<Agent>(null);
   const [demoItem, setDemoItem] = React.useState<Agent | null>(() => isDemoAgent ? demoAgentRecords.find((record) => record.id === id) ?? (assistant ? fromAssistant(assistant) : null) : null);
   const item = agent.data ?? demoItem;
 
