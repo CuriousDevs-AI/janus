@@ -150,3 +150,59 @@ async def test_the_ai_agents_email_a_health_brief_and_a_monthly_review(
     # Agents are not reports: the library does not list them.
     shown = (await client.get("/v1/business/reports/figures", headers=owner.headers)).json()
     assert "health-brief" not in shown["figures"]
+
+
+async def test_the_funnel_and_rep_reports_count_leads_by_how_far_they_got_and_who_owns_them(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    owner = await signup(client, mailbox)
+    ids = []
+    for index, name in enumerate(("Asha Traders", "Ravi Stores", "Meena Exports")):
+        made = await client.post(
+            "/v1/leads",
+            headers={**owner.headers, "Idempotency-Key": f"funnel-{index}"},
+            json={"name": name, "phone": f"98765432{index:02d}", "source": "manual"},
+        )
+        assert made.status_code == 201, made.text
+        ids.append(made.json()["id"])
+    won, lost, unowned = ids
+    deal = await client.post(
+        f"/v1/leads/{won}/deal",
+        headers=owner.headers,
+        json={"name": "Cartons", "amount": "12500.00", "stage": "new"},
+    )
+    assert deal.status_code == 200, deal.text
+    closed = await client.put(
+        f"/v1/deals/{deal.json()['id']}",
+        headers=owner.headers,
+        json={"name": "Cartons", "amount": "12500.00", "stage": "won", "version": 1},
+    )
+    assert closed.status_code == 200, closed.text
+    dropped = await client.patch(
+        f"/v1/leads/{lost}",
+        headers=owner.headers,
+        json={"name": "Ravi Stores", "phone": "9876543201", "stage": "lost"},
+    )
+    assert dropped.status_code == 200, dropped.text
+    async with admin_engine.begin() as connection:
+        await connection.execute(
+            text("UPDATE leads SET owner_id = NULL WHERE id = :id"), {"id": int(unowned)}
+        )
+
+    figures = (
+        await client.get("/v1/business/reports/figures?period=month", headers=owner.headers)
+    ).json()["figures"]
+    funnel = {row["label"]: row["value"] for row in figures["conversion-funnel"]["rows"]}
+    assert funnel == {
+        "Leads in": "3",
+        "Qualified or further": "1 · 33%",
+        "Proposal or further": "1 · 33%",
+        "Won": "1 · 33%",
+        "Lost": "1 · 33%",
+    }
+    reps = figures["rep-performance"]
+    assert [(row["label"], row["value"], row["warn"]) for row in reps["rows"]] == [
+        ("Owner", "2 new · 1 won · ₹12,500 · 0 open", False),
+        ("Nobody yet", "1 new · none won · 1 open", True),
+    ]
+    assert reps["note"].startswith("1 open lead has no owner")

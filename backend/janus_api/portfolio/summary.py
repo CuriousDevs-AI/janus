@@ -305,6 +305,24 @@ async def company_summary(
         ),
         key=lambda item: (-max(item.current, item.previous), item.source),
     )
+    funnel_now = await crm.funnel(db, tenant_id, *span_now)
+    funnel_before = await crm.funnel(db, tenant_id, *span_before)
+    if funnel_now.leads or funnel_before.leads:
+        out.funnel = schemas.FunnelCompare(
+            current=schemas.FunnelStep(**vars(funnel_now)),
+            previous=schemas.FunnelStep(**vars(funnel_before)),
+        )
+    out.reps = [
+        schemas.RepLine(
+            name=rep.name,
+            assigned=rep.owner_id is not None,
+            leads=rep.leads,
+            won=rep.won,
+            wonValue=rupees(rep.won_value),
+            openLeads=rep.open_leads,
+        )
+        for rep in await crm.reps(db, tenant_id, *span_now)
+    ]
     if money:
         out.books = schemas.BooksCompare(
             current=await books_for(db, tenant_id, *span_now),
