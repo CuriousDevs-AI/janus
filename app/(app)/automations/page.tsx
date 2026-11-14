@@ -29,7 +29,9 @@ type StatusFilter = "all" | Automation["status"];
 
 export default function AutomationsPage() {
   const { workspaceId } = useWorkspace();
-  if (workspaceId === "business") return <BusinessAutomationCenter />;
+  // The workflows Janus runs are the company's, wherever they are opened from; the CRM list
+  // below is the demo's preview only.
+  if (workspaceId === "business" || !demoMode) return <BusinessAutomationCenter />;
   return <CrmAutomationsPage />;
 }
 
