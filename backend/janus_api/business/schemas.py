@@ -194,17 +194,3 @@ class ReportSummary(BaseModel):
     pipelineValue: str
     dataSources: list[str]
     unavailable: list[str]
-
-
-class IntelligenceAsk(BaseModel):
-    question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
-    ]
-    workspaceId: str | None = None
-
-
-class IntelligenceAnswer(BaseModel):
-    answer: str
-    sources: list[str]
-    unavailable: list[str]
-    requiresApproval: bool = False
