@@ -4,17 +4,18 @@ import * as React from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { FilterChips } from "@/components/shared/stat-tile";
-import { Intelligence, KnowledgeCard, usePortfolioApi, WorkInbox, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
+import { Advisor, Intelligence, KnowledgeCard, usePortfolioApi, WorkInbox, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 /** The three things Janus Intelligence does for one business. Older links to the earlier sections
  * still land on the one that does that job now. */
 const views = [
   { value: "ask", label: "Ask Janus" },
+  { value: "advisor", label: "Advisor" },
   { value: "todo", label: "What needs you" },
   { value: "knowledge", label: "What Janus knows" },
 ] as const;
 type View = (typeof views)[number]["value"];
-const earlier: Record<string, View> = { chat: "ask", memory: "ask", history: "ask", insights: "todo", performance: "todo", risks: "todo", planning: "todo", forecasts: "todo", recommendations: "todo" };
+const earlier: Record<string, View> = { chat: "ask", memory: "ask", history: "ask", insights: "advisor", performance: "advisor", risks: "advisor", planning: "advisor", forecasts: "advisor", recommendations: "advisor" };
 export const intelligenceView = (requested: string | null): View => views.find((item) => item.value === requested)?.value ?? earlier[requested ?? ""] ?? "ask";
 
 const periods: { value: PortfolioPeriodKey; label: string }[] = [
@@ -40,8 +41,9 @@ export function JanusIntelligence({ requested }: { requested: string | null }) {
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><Sparkles className="size-5 text-accent" aria-hidden />Janus Intelligence</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           {view === "ask" ? `Ask about ${company?.name ?? "your business"} in plain words. Janus answers from its records and shows the figure behind each answer.`
+            : view === "advisor" ? `Janus as your business advisor: how each part of ${company?.name ?? "the business"} stands, what it sees and why it matters, what went wrong this week, and a 30-day plan it keeps and checks.`
             : view === "todo" ? "Everything waiting on someone, most urgent first: overdue money, approvals, filings and late work. Open one to deal with it."
-            : "What Janus may use beside your records: facts you told it and documents you added. It never remembers anything on its own."}
+            : "What Janus may use beside your records: facts you told it, documents you added and the plan you keep in Advisor. Everyone who can see the company's figures can see it, and Janus never remembers anything on its own."}
         </p>
       </div>
       {view === "ask" && <FilterChips label="Period" value={period} options={periods} onChange={setPeriod} />}
@@ -53,7 +55,8 @@ export function JanusIntelligence({ requested }: { requested: string | null }) {
     {summary.error && !summary.data ? <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">Janus could not read this company&apos;s records: {summary.error}</p>
       : !company ? <p className="text-sm text-muted-foreground" role="status">{summary.loading ? "Reading your records…" : "Your role does not include this company's figures, so Janus has nothing to answer from. Ask the Owner for access."}</p>
       : view === "ask" ? <Intelligence list={[company]} company={company} period={summary.data?.period} />
+      : view === "advisor" ? <Advisor company={company} />
       : view === "todo" ? <WorkInbox list={[company]} />
-      : <KnowledgeCard list={[company]} />}
+      : <KnowledgeCard list={[company]} bare />}
   </div>;
 }

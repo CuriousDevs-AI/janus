@@ -15,7 +15,8 @@ import type { PortfolioCompany, PortfolioKnowledgeItem } from "@/features/portfo
 
 /** What Janus knows about each company beyond its records: facts the owner approved, facts Janus
  * suggested that wait for approval, and documents kept in passages. */
-export function KnowledgeCard({ list }: { list: PortfolioCompany[] }) {
+/** `bare` drops the card's own heading, for a page that already names it. */
+export function KnowledgeCard({ list, bare = false }: { list: PortfolioCompany[]; bare?: boolean }) {
   const roles = useRoles();
   const owned = list.filter((item) => roles.owns(item));
   const items = usePortfolioApi<PortfolioKnowledgeItem[]>("/portfolio/knowledge");
@@ -47,7 +48,7 @@ export function KnowledgeCard({ list }: { list: PortfolioCompany[] }) {
   const documents = Object.values(all.filter((item) => item.kind === "document").reduce<Record<string, PortfolioKnowledgeItem[]>>((groups, item) => { (groups[item.document ?? item.id] ??= []).push(item); return groups; }, {}));
   const ownsCompany = (id: string) => owned.some((item) => item.id === id);
 
-  return <SectionCard title="What Janus knows" description="Facts and documents Janus uses beside your records, per company. Everyone who sees a company's Portfolio can see its knowledge. Janus never remembers anything on its own: what it suggests waits for the owner.">
+  const content = <>
     <div className="flex flex-col gap-4">
       {items.error && <p className="text-sm text-danger">{items.error}</p>}
       {suggested.length > 0 && <div className="flex flex-col gap-2 border border-warning/40 bg-surface-2 p-3">
@@ -67,5 +68,8 @@ export function KnowledgeCard({ list }: { list: PortfolioCompany[] }) {
         <Button className="self-start" size="sm" onClick={add} disabled={saving || body.trim().length < 2 || !companyId}>{kind === "fact" ? "Add fact" : "Add document"}</Button>
       </div> : <p className="text-xs text-muted-foreground">Only a company&apos;s Owner adds to what Janus knows about it.</p>}
     </div>
-  </SectionCard>;
+  </>;
+  return bare
+    ? <section className="rounded-lg border border-border bg-surface p-4">{content}</section>
+    : <SectionCard title="What Janus knows" description="Facts and documents Janus uses beside your records, per company. Everyone who can see a company's figures can see what Janus knows about it. Janus never remembers anything on its own: what it suggests waits for the owner.">{content}</SectionCard>;
 }
