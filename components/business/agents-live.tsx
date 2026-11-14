@@ -62,7 +62,7 @@ export function LiveAgents() {
       </article>;
     })}</div>
 
-    <SchedulesPanel schedules={mine} loading={schedules.loading} error={schedules.error} demo={false} onNew={() => setSetting(agents[0])} onChanged={() => schedules.reload()} words={{ title: "Your agents", description: "Each runs at 9 in the morning, India time. Send one now to see exactly what it emails.", emptyTitle: "No agent is running yet", emptyText: "Set up the Business Health Monitor above to start your mornings with what needs you.", action: "Set up an agent" }} />
+    <SchedulesPanel schedules={mine} loading={schedules.loading} error={schedules.error} demo={false} onNew={() => setSetting(agents[0])} onChanged={() => schedules.reload()} words={{ title: "Your agents", description: "Each runs at 9 in the morning, India time. Send one now to see exactly what it emails.", emptyTitle: "No agent is running yet", emptyText: "Set up the Business Health Monitor above to start your mornings with what needs you.", action: "Set up an agent", hidePeriod: true }} />
 
     <SectionCard title="Agents that act when something happens" description="Telling approvers about a spend request, flagging a credit note or write-off, alerting the team to a new lead or ticket: these run the moment it happens, as Workflows.">
       <Button size="sm" variant="outline" asChild><Link href="/automations?workspace=business"><Workflow className="size-3.5" />Open Workflows<ArrowRight className="size-3.5" /></Link></Button>
