@@ -25,10 +25,10 @@ const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
 /** The first questions for one business on its own: what an owner asks most days. */
 const ownSuggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["What needs my attention?", TriangleAlert],
-  ["Why did sales change?", TrendingDown],
+  ["How can I improve the business?", Sparkles],
+  ["How is my sales team doing?", Building2],
+  ["What is our conversion this month?", TrendingDown],
   ["How much profit did we make?", Scale],
-  ["What are the biggest financial risks?", Landmark],
-  ["Who is my biggest customer?", Building2],
   ["Any GST or TDS due?", FileCheck2],
 ];
 /** Questions about one company that Janus rules can answer when the company is named. */
@@ -173,7 +173,8 @@ export function Intelligence({ list: all, period, company, department }: { list:
             {list.map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(focus === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${focus === item.id ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}
           </div>
         </div>}
-        {(shown.length > 0 || focused) && <div className="rounded-xl border border-border bg-surface p-4">
+        {/* Once a conversation starts the opening suggestions are gone, so they move here. */}
+        {(shown.length > 0 || (focused && !company)) && <div className="rounded-xl border border-border bg-surface p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{focused && !company ? `Try asking about ${focused.name}` : "Try asking"}</p>
           <ul className="flex flex-col gap-1">{tries.map((text) => <li key={text}><button type="button" disabled={busy} onClick={() => void ask(text)} className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50">{text}</button></li>)}</ul>
         </div>}

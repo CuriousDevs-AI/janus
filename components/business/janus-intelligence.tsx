@@ -43,7 +43,7 @@ export function JanusIntelligence({ requested }: { requested: string | null }) {
           {view === "ask" ? `Ask about ${company?.name ?? "your business"} in plain words. Janus answers from its records and shows the figure behind each answer.`
             : view === "advisor" ? `Janus as your business advisor: how each part of ${company?.name ?? "the business"} stands, what it sees and why it matters, what went wrong this week, and a 30-day plan it keeps and checks.`
             : view === "todo" ? "Everything waiting on someone, most urgent first: overdue money, approvals, filings and late work. Open one to deal with it."
-            : "What Janus may use beside your records: facts you told it and documents you added. It never remembers anything on its own."}
+            : "What Janus may use beside your records: facts you told it, documents you added and the plan you keep in Advisor. Everyone who can see the company's figures can see it, and Janus never remembers anything on its own."}
         </p>
       </div>
       {view === "ask" && <FilterChips label="Period" value={period} options={periods} onChange={setPeriod} />}
@@ -57,6 +57,6 @@ export function JanusIntelligence({ requested }: { requested: string | null }) {
       : view === "ask" ? <Intelligence list={[company]} company={company} period={summary.data?.period} />
       : view === "advisor" ? <Advisor company={company} />
       : view === "todo" ? <WorkInbox list={[company]} />
-      : <KnowledgeCard list={[company]} />}
+      : <KnowledgeCard list={[company]} bare />}
   </div>;
 }
