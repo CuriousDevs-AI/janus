@@ -651,6 +651,9 @@ async def add_note(
     db.add(note)
     lead.last_activity_at = now()
     lead.next_follow_up_on = data.nextFollowUpOn
+    # A new lead someone has spoken to has been contacted; later stages are left as they are.
+    if lead.stage == "new":
+        lead.stage = "contacted"
     await db.flush()
     record(
         db,

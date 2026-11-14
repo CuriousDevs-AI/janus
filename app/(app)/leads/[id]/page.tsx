@@ -216,7 +216,9 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       : "Unassigned";
   const currentStage = stages.indexOf(leadData.stage as (typeof stages)[number]);
   const sourceLabel = label(leadData.source);
-  const hasRecentActivity = leadData.lastActivityAt !== leadData.createdAt;
+  // A follow-up note already explains its own activity; the generic line is for anything else.
+  const explained = (notes.data ?? []).some((note) => Math.abs(Date.parse(note.createdAt) - Date.parse(leadData.lastActivityAt)) < 5000);
+  const hasRecentActivity = leadData.lastActivityAt !== leadData.createdAt && !explained;
   // One list, newest first, as the timeline's label says.
   const timeline = [
     ...(notes.data ?? []).map((note) => ({
