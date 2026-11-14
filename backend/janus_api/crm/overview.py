@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import Date, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.crm.models import Deal, Lead
@@ -191,8 +191,6 @@ async def reps(db: AsyncSession, tenant_id: int, start: date, end: date) -> list
 
     Leads nobody owns are one line with owner_id None, so unassigned work shows too.
     """
-    from janus_api.auth.models import User
-
     came_in = (
         select(Lead.owner_id, func.count(Lead.id))
         .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end))
@@ -221,10 +219,11 @@ async def reps(db: AsyncSession, tenant_id: int, start: date, end: date) -> list
     }
     owners = leads.keys() | still_open.keys() | wins.keys()
     named = [owner for owner in owners if owner is not None]
+    # Through app_member_names(): the worker, which also builds this report, cannot read users.
     names = (
         {
-            row.id: row.name
-            for row in await db.execute(select(User.id, User.name).where(User.id.in_(named)))
+            int(row.id): str(row.name)
+            for row in await db.execute(text("SELECT id, name FROM app_member_names()"))
         }
         if named
         else {}
