@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { JanusIntelligence } from "@/components/business/janus-intelligence";
+import { DepartmentIntelligence } from "@/components/business/department-chat";
 
 const INTELLIGENCE_VIEWS = [
   { value: "chat", label: "Business AI Chat" },
@@ -183,6 +184,11 @@ function AskYourBusinessPageInner() {
   // A real business gets the Portfolio's Janus for its own company; the demo keeps its preview.
   if (workspaceId === "business" && !demoMode) {
     return <JanusIntelligence requested={requestedIntelligenceView} />;
+  }
+
+  // Each department's chat is the same Janus, opening on what that team asks; the demo keeps its preview.
+  if ((departmentChat || crmAssistant) && !demoMode) {
+    return <DepartmentIntelligence workspaceId={workspaceId} workspaceName={workspace.name} />;
   }
 
   if (workspaceId === "business" && intelligenceView === "knowledge") {

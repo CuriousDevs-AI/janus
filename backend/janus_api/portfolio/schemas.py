@@ -712,6 +712,8 @@ class AskIn(BaseModel):
     period: PeriodKey = "month"
     # Asked from one company's Business Management: answer from that company's records alone.
     companyId: Annotated[str, StringConstraints(max_length=20)] | None = None
+    # Asked from a department's chat (HR, Finance…): the figures it leads with.
+    topic: Literal["sales", "people", "finance", "stock", "support", "projects"] | None = None
 
 
 class Source(BaseModel):

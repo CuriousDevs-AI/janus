@@ -159,6 +159,21 @@ async def test_a_model_answers_only_from_the_portfolio_and_cites_it(
         json={"question": "Sales?", "model": model, "companyId": "999999"},
     )
     assert elsewhere.status_code == 404, elsewhere.text
+    # From a department's chat, the model is told which figures to lead with.
+    prompts: list[str] = []
+
+    def department(request: httpx.Request) -> httpx.Response:
+        prompts.append(json.loads(request.content)["messages"][0]["content"])
+        return _chat("Nobody is on leave today.")
+
+    provider_transport(monkeypatch, department)
+    hr = await client.post(
+        "/v1/portfolio/intelligence/ask",
+        headers=owner.headers,
+        json={"question": "Leave?", "model": model, "companyId": company["id"], "topic": "people"},
+    )
+    assert hr.status_code == 200, hr.text
+    assert "Asked from the HR & People" in prompts[0]
 
     # Janus rules answer on the page, not here; a spent budget stops the model.
     rules = await client.post(
