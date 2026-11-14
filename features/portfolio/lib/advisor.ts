@@ -112,7 +112,7 @@ export function findings(company: PortfolioCompany): Finding[] {
   const gaps = company.complianceGaps.filter((item) => item.kind === "missing");
   if (gaps.length) out.push({
     id: "registration-gaps", area: "compliance", severity: "low",
-    title: "Registration details are missing", sees: gaps.slice(0, 3).map((item) => item.text).join(" "),
+    title: "Registration details are missing", sees: `Missing: ${gaps.slice(0, 4).map((item) => item.text.replace(/\.$/, "")).join(", ")}.`,
     matters: "Janus decides which filings apply from the entity type, PAN and registrations; with gaps it can miss one.",
     action: "Fill in the company's legal details in Business Settings.", href: "/settings?tab=workspace&view=settings&workspace=business",
     plan: "Complete the company's legal details.", measure: { label: "details missing", now: gaps.length, target: 0, better: "lower" },
