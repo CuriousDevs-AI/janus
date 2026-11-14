@@ -46,7 +46,16 @@ const extras: [string, string, string][] = [
   ["reports:read", "Business Reports", "Read the business's reports"],
 ];
 const workspaces = workspaceDefinitions.filter((item) => !["business", "portfolio", "team-chat"].includes(item.id));
-const opens = (permissions: string[]) => workspaces.filter((item) => mayOpenWorkspace(item.id, permissions)).map((item) => item.name.replace(" & Success", ""));
+const opens = (permissions: string[]) => workspaces.filter((item) => mayOpenWorkspace(item.id, permissions));
+const names = (list: typeof workspaces) => list.map((item) => item.name.replace(" & Success", ""));
+/** The department workspaces switched on for this business, by id ("finance-accounting"); null until loaded. */
+const OnContext = React.createContext<Set<string> | null>(null);
+/** What a set of permissions opens: the switched-on workspaces, then the rest, which open once switched on. */
+function useOpens(permissions: string[]) {
+  const on = React.useContext(OnContext);
+  const all = opens(permissions);
+  return on ? { now: names(all.filter((item) => on.has(item.id))), later: names(all.filter((item) => !on.has(item.id))) } : { now: names(all), later: [] };
+}
 const ago = (iso?: string | null) => {
   if (!iso) return "Never signed in";
   const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
@@ -72,6 +81,8 @@ export function LivePeopleAccess({ initialSection = "members" }: { initialSectio
   const session = useSession();
   const [section, setSection] = React.useState<Section>(() => sections.some(([value]) => value === initialSection) ? initialSection as Section : "members");
   const members = useApi<Member[]>("/members");
+  const spaces = useApi<Array<{ type: string; status: string }>>("/workspaces");
+  const on = React.useMemo(() => spaces.data ? new Set(spaces.data.filter((item) => item.status === "active").map((item) => item.type.replaceAll("_", "-"))) : null, [spaces.data]);
   const roles = useApi<Role[]>("/roles");
   const invitations = useApi<Invitation[]>("/invitations");
   const [inviting, setInviting] = React.useState(false);
@@ -83,7 +94,7 @@ export function LivePeopleAccess({ initialSection = "members" }: { initialSectio
   const active = (members.data ?? []).filter((item) => item.status === "active");
   const quiet = active.filter((item) => !item.last_active_at || past(item.last_active_at, 30));
 
-  return <div className="flex flex-col gap-5">
+  return <OnContext.Provider value={on}><div className="flex flex-col gap-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
       <div>
         <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p>
@@ -104,7 +115,7 @@ export function LivePeopleAccess({ initialSection = "members" }: { initialSectio
     {section === "teams" && <TeamsTab members={active} />}
     {section === "activity" && <ActivityTab />}
     {inviting && <InviteDialog roles={assignable} onClose={() => setInviting(false)} onDone={() => { setInviting(false); invitations.reload(); setSection("invitations"); }} />}
-  </div>;
+  </div></OnContext.Provider>;
 }
 
 type Loaded<T> = { data?: T; loading: boolean; error?: string; reload: () => void };
@@ -128,13 +139,13 @@ function MembersTab({ members, roles, assignable, me }: { members: Loaded<Member
         const self = member.user_id === me;
         const off = member.status !== "active";
         const canEdit = !self && (member.role !== "owner" || assignable.some((role) => role.name === "owner"));
-        const where = opens(permissionsOf(member));
+        const where = <Opens permissions={permissionsOf(member)} />;
         return <li key={member.id} className={`flex flex-wrap items-start gap-3 py-3 ${off ? "opacity-60" : ""}`}>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-muted text-xs font-semibold text-accent">{member.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
           <div className="min-w-[200px] flex-1">
             <p className="flex flex-wrap items-center gap-2 text-sm font-medium">{member.name}{self && <Badge variant="neutral">You</Badge>}{off && <Badge variant="warning">Switched off</Badge>}</p>
             <p className="truncate text-xs text-muted-foreground">{member.email} · {ago(member.last_active_at)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{where.length ? `Opens ${where.join(", ")}` : "Opens no department workspace"}{member.extra_permissions?.length ? ` · extra: ${member.extra_permissions.map((key) => extras.find(([value]) => value === key)?.[1] ?? key).join(", ")}` : ""}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{where}{member.extra_permissions?.length ? ` · extra: ${member.extra_permissions.map((key) => extras.find(([value]) => value === key)?.[1] ?? key).join(", ")}` : ""}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit && !off ? <select aria-label={`Role of ${member.name}`} className="h-8 rounded-md border border-input bg-surface-2 px-2 text-xs" value={member.role} disabled={busy !== null} onChange={(event) => { const next = event.target.value; if (window.confirm(`Make ${member.name} ${roleLabel(next)}? ${roleText[next] ?? ""}`)) void change(member, { role: next }, `${member.name} is now ${roleLabel(next)}.`); }}>
@@ -215,11 +226,11 @@ function RolesTab({ roles, members, loading }: { roles: Role[]; members: Member[
   return <SectionCard title="Roles" description="What each role lets a person do. Roles are set by Janus; to let one person into one more department, give them extra access in Members.">
     {loading ? <p className="text-sm text-muted-foreground">Loading roles…</p> : <ul className="grid gap-3 md:grid-cols-2">{sorted.map((role) => {
       const holders = members.filter((item) => item.role === role.name && item.status === "active");
-      const where = opens(role.permissions);
+
       return <li key={role.id} className="rounded-lg border border-border p-3">
         <div className="flex items-center justify-between gap-2"><p className="flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck className="size-3.5 text-accent" />{roleLabel(role.name)}</p><span className="text-xs text-muted-foreground">{holders.length} {holders.length === 1 ? "person" : "people"}</span></div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{roleText[role.name] ?? ""}</p>
-        <p className="mt-2 text-xs"><span className="font-medium">Opens:</span> <span className="text-muted-foreground">{where.length ? where.join(", ") : "no department workspace"}</span></p>
+        <p className="mt-2 text-xs"><Opens permissions={role.permissions} label /></p>
         <p className="mt-1 text-xs"><span className="font-medium">Can:</span> <span className="text-muted-foreground">{[role.permissions.includes("members:manage") && "invite and manage people", role.permissions.includes("approvals:manage") && "decide approvals", role.permissions.includes("portfolio:finance") ? "see the company's money" : role.permissions.includes("portfolio:read") && "see the company's figures", role.permissions.includes("settings:manage") && "change settings", role.permissions.includes("billing:manage") && "handle billing and Finance"].filter(Boolean).join(", ") || "work in what it opens"}</span></p>
         {holders.length > 0 && <p className="mt-1 truncate text-xs text-muted-foreground">{holders.map((item) => item.name).join(", ")}</p>}
       </li>;
@@ -283,4 +294,11 @@ function ActivityTab() {
         <span className="text-xs text-muted-foreground">{new Date(item.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span>
       </li>)}</ul>}
   </SectionCard>;
+}
+
+/** "Opens CRM & Sales", only what is switched on, with the rest named as opening once switched on. */
+function Opens({ permissions, label }: { permissions: string[]; label?: boolean }) {
+  const { now, later } = useOpens(permissions);
+  const text = now.length ? now.join(", ") : "no department workspace switched on";
+  return <>{label ? <><span className="font-medium">Opens:</span> <span className="text-muted-foreground">{text}</span></> : `Opens ${text}`}{later.length > 0 && <span className="text-muted-foreground/80">{` · once switched on: ${later.join(", ")}`}</span>}</>;
 }
