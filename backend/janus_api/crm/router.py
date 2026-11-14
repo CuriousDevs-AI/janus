@@ -68,6 +68,22 @@ async def update_lead(
     )
 
 
+@router.get("/leads/{lead_id}/notes", response_model=list[schemas.NoteOut])
+async def lead_notes(lead_id: Identifier, actor: Reader, db: Db) -> list[schemas.NoteOut]:
+    return await service.list_notes(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id
+    )
+
+
+@router.post("/leads/{lead_id}/notes", response_model=schemas.NoteOut, status_code=201)
+async def add_lead_note(
+    lead_id: Identifier, data: schemas.NoteIn, actor: Writer, db: Db
+) -> schemas.NoteOut:
+    return await service.add_note(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id, data
+    )
+
+
 @router.delete("/leads/{lead_id}", status_code=204)
 async def delete_lead(lead_id: Identifier, actor: Writer, db: Db) -> None:
     await service.delete_lead(

@@ -86,6 +86,8 @@ export interface Lead {
   recordingReference: string | null;
   createdAt: string;
   lastActivityAt: string;
+  /** When someone agreed to follow up next, if a date was set. */
+  nextFollowUpOn?: string | null;
 }
 export interface Contact {
   id: string;

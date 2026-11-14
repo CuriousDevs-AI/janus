@@ -14,7 +14,7 @@ from janus_api.business.service import enqueue_event
 from janus_api.core.errors import ApiError, ProcessingError
 from janus_api.core.security import now
 from janus_api.crm import schemas
-from janus_api.crm.models import Contact, Deal, Lead
+from janus_api.crm.models import Contact, Deal, Lead, LeadNote
 from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut, LeadSource, ManualLeadIn
 from janus_api.org.service import active_member, teammate_user_ids
 from janus_api.sources.models import IngestReceipt, SourceConnection
@@ -169,6 +169,7 @@ def lead_out(lead: Lead, contact: Contact | None = None, owner: User | None = No
         recordingReference=lead.recording_reference,
         createdAt=lead.created_at,
         lastActivityAt=lead.last_activity_at,
+        nextFollowUpOn=lead.next_follow_up_on,
     )
 
 
@@ -590,3 +591,79 @@ _LEAD_PROBLEMS = {
     "invalid_contact_fields": "Check the lead's details.",
     "invalid_phone": "Enter a mobile number with its country code, such as +91 98111 22334.",
 }
+
+
+async def _visible_lead(
+    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], lead_id: int
+) -> Lead:
+    """The lead, if this person may see it; the same rule as the lead list."""
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id == lead_id)
+    if owners is not None:
+        query = query.where(Lead.owner_id.in_(owners))
+    lead = await db.scalar(query)
+    if lead is None:
+        raise ApiError("not_found", "Lead not found.", 404)
+    return lead
+
+
+async def list_notes(
+    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], lead_id: int
+) -> list[schemas.NoteOut]:
+    lead = await _visible_lead(db, tenant_id, user_id, permissions, lead_id)
+    rows = (
+        await db.execute(
+            select(LeadNote, User.name)
+            .outerjoin(User, User.id == LeadNote.author_id)
+            .where(LeadNote.tenant_id == tenant_id, LeadNote.lead_id == lead.id)
+            .order_by(LeadNote.created_at.desc(), LeadNote.id.desc())
+        )
+    ).all()
+    return [
+        schemas.NoteOut(
+            id=str(note.id),
+            body=note.body,
+            author=name,
+            nextFollowUpOn=note.next_follow_up_on,
+            createdAt=note.created_at,
+        )
+        for note, name in rows
+    ]
+
+
+async def add_note(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    lead_id: int,
+    data: schemas.NoteIn,
+) -> schemas.NoteOut:
+    """Writes down a follow-up: it counts as activity and sets when to follow up next."""
+    lead = await _visible_lead(db, tenant_id, user_id, permissions, lead_id)
+    note = LeadNote(
+        tenant_id=tenant_id,
+        lead_id=lead.id,
+        author_id=user_id,
+        body=data.body.strip(),
+        next_follow_up_on=data.nextFollowUpOn,
+    )
+    db.add(note)
+    lead.last_activity_at = now()
+    lead.next_follow_up_on = data.nextFollowUpOn
+    await db.flush()
+    record(
+        db,
+        "lead.followed_up",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"lead_id": lead.id, "next": str(data.nextFollowUpOn or "")},
+    )
+    author = await db.get(User, user_id)
+    return schemas.NoteOut(
+        id=str(note.id),
+        body=note.body,
+        author=author.name if author else None,
+        nextFollowUpOn=note.next_follow_up_on,
+        createdAt=note.created_at or now(),
+    )

@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, cast, func, select, text
+from sqlalchemy import Date, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.crm.models import Deal, Lead
@@ -165,6 +165,8 @@ async def quiet_leads(
         Lead.tenant_id == tenant_id,
         Lead.stage.not_in(("won", "lost")),
         Lead.last_activity_at <= cutoff,
+        # Someone agreed to follow up on a later day: not quiet until that day has passed.
+        or_(Lead.next_follow_up_on.is_(None), Lead.next_follow_up_on < today),
     )
     count = await db.scalar(select(func.count(Lead.id)).where(*quiet))
     rows = await db.execute(
