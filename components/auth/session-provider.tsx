@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { setStorePermissions } from "@/lib/stores/workspace-storage";
 import { rememberTenant, watchTenant } from "@/lib/live-company";
+import { scopeApiCache } from "@/lib/api/use-api";
 
 const SessionContext = createContext<Me | null>(null);
 const demoSession = (): Me => ({
@@ -36,9 +37,30 @@ export function useSession() {
   if (!value) throw new Error("Session unavailable");
   return value;
 }
+/** Read once per page load: the session to paint with until /me answers. */
+let firstPaint: Me | null | undefined;
+/** This tab's last session, so a reload paints the app at once while /me checks it again. */
+const SESSION_KEY = "janus.session.v1";
+function readSessionCache(): Me | null {
+  try { const text = sessionStorage.getItem(SESSION_KEY); return text ? (JSON.parse(text) as Me) : null; } catch { return null; }
+}
+function writeSessionCache(value: Me | null) {
+  if (!value) firstPaint = null;
+  try { if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify(value)); else sessionStorage.removeItem(SESSION_KEY); } catch { /* storage blocked: no instant paint */ }
+}
+function cachedSession() {
+  if (firstPaint === undefined) {
+    firstPaint = readSessionCache();
+    if (firstPaint) scopeApiCache(`${firstPaint.tenant.id}:${firstPaint.user.id}`);
+  }
+  return firstPaint;
+}
+const noSubscribe = () => () => {};
 export function useSignOut() {
   const router = useRouter();
   return async () => {
+    writeSessionCache(null);
+    scopeApiCache(null);
     if (demoMode) { demoSignOut(); router.replace("/login"); return; }
     try {
       await api("/auth/logout", { method: "POST" });
@@ -53,7 +75,10 @@ export function useSignOut() {
   };
 }
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Me | null>(() => demoMode ? demoSession() : null);
+  const [fetched, setSession] = useState<Me | null>(() => demoMode ? demoSession() : null);
+  // Until /me answers, this tab's last session paints the app (not on the server, which has none).
+  const remembered = useSyncExternalStore(noSubscribe, cachedSession, () => null);
+  const session = fetched ?? (demoMode ? null : remembered);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const account = useDemoAccount();
@@ -79,6 +104,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     api<Me>("/me")
       .then((value) => {
         if (active) {
+          scopeApiCache(`${value.tenant.id}:${value.user.id}`);
+          writeSessionCache(value);
           setSession(value);
           // Before any store loads: a session in another company than last time drops the old company's copies.
           rememberTenant(value.tenant.id);
@@ -89,8 +116,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((error) => {
         if (!active) return;
-        if (error instanceof APIError && error.status === 401)
+        if (error instanceof APIError && error.status === 401) {
+          writeSessionCache(null);
+          scopeApiCache(null);
           window.location.replace("/login");
+        }
         else setError(message(error));
       });
     return () => {
