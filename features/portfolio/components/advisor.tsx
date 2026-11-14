@@ -59,7 +59,7 @@ export function Advisor({ company }: { company: PortfolioCompany }) {
   }
 
   return <div className="flex flex-col gap-5">
-    <section aria-label="How each area stands" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <section aria-label="How each area stands" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       {status.map((item) => <div key={item.area} className="rounded-lg border border-border bg-surface p-3">
         <div className="flex items-center gap-2"><span className={`size-2 rounded-full ${dot[item.status]}`} aria-hidden /><span className="text-sm font-semibold">{areaNames[item.area]}</span></div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.reason}</p>
