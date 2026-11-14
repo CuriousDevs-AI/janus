@@ -121,6 +121,9 @@ class WorkflowOut(BaseModel):
     requiresApproval: bool
     workspaceId: str | None
     folderId: str | None = None
+    updatedAt: datetime | None = None
+    # Why it would not run as it stands, in words for the person; empty when it is ready.
+    problems: list[str] = Field(default_factory=list)
 
 
 class FolderIn(BaseModel):
@@ -148,6 +151,8 @@ class TemplateOut(BaseModel):
     trigger: dict[str, Any]
     steps: list[Any]
     modules: list[str]
+    # What the person chooses before it runs: "channel" for a Team Chat post, "project" for a task.
+    needs: list[str] = Field(default_factory=list)
 
 
 class WorkflowCreate(BaseModel):
