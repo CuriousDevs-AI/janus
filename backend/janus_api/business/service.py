@@ -87,6 +87,8 @@ async def get_setup(db: AsyncSession, tenant_id: int) -> schemas.SetupOut:
         industry=tenant.industry,
         companySize=tenant.company_size,
         timezone=tenant.timezone,
+        businessHoursStart=(tenant.business_hours or {}).get("start"),
+        businessHoursEnd=(tenant.business_hours or {}).get("end"),
         setupCompleted=len(completed) == len(steps),
         completedSteps=completed,
         nextStep=next((step for step in steps if step not in completed), None),
