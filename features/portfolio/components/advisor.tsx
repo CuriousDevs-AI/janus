@@ -11,7 +11,7 @@ import { useApi } from "@/lib/api/use-api";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import { day, todayIst } from "@/features/portfolio/lib/format";
-import { areaNames, areas, findings, planTitle, readPlan, type Finding } from "@/features/portfolio/lib/advisor";
+import { areaNames, areas, findings, measured, planTitle, readPlan, type Finding } from "@/features/portfolio/lib/advisor";
 import type { PortfolioCompany, PortfolioKnowledgeItem } from "@/features/portfolio/types";
 
 type Run = { id: string; workflowId: string; status: string; createdAt: string; result: Record<string, unknown> };
@@ -49,7 +49,7 @@ export function Advisor({ company }: { company: PortfolioCompany }) {
     setSaving(finding.id);
     const due = addDays(todayIst(), 30);
     try {
-      await api("/portfolio/knowledge", { method: "POST", body: JSON.stringify({ companyId: company.id, kind: "fact", title: planTitle(finding, due), body: `Plan to ${day(due)}: ${finding.plan} On ${day(todayIst())} ${finding.measure.label} was ${finding.measure.now}; the target is ${finding.measure.target}.` }) });
+      await api("/portfolio/knowledge", { method: "POST", body: JSON.stringify({ companyId: company.id, kind: "fact", title: planTitle(finding, due), body: `Plan to ${day(due)}: ${finding.plan} On ${day(todayIst())} ${finding.measure.label} was ${measured(finding, finding.measure.now)}; the target is ${measured(finding, finding.measure.target)}.` }) });
       knowledge.reload();
       toast.success("Added to your plan. Janus checks it against your figures each time you open Advisor.");
     } catch (error) { toast.error(message(error)); } finally { setSaving(null); }
@@ -76,7 +76,7 @@ export function Advisor({ company }: { company: PortfolioCompany }) {
               {open ? <Target className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden /> : <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />}
               <div className="min-w-0">
                 <p className="text-sm font-medium">{open ? open.plan : item.body.replace(/^Plan to [^:]+: /, "").split(" On ")[0]}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{open ? `Now ${open.measure.now} ${open.measure.label}, target ${open.measure.target}. ${left >= 0 ? `${left} day${left === 1 ? "" : "s"} left` : `${-left} day${left === -1 ? "" : "s"} past the date`}.` : "Done: Janus no longer sees this in your figures."}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{open ? `Now ${measured(open, open.measure.now)} ${open.measure.label}, target ${measured(open, open.measure.target)}. ${left >= 0 ? `${left} day${left === 1 ? "" : "s"} left` : `${-left} day${left === -1 ? "" : "s"} past the date`}.` : "Done: Janus no longer sees this in your figures."}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">

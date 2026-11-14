@@ -26,7 +26,7 @@ export type Finding = {
   /** The 30-day plan line, with a target the figures can confirm. */
   plan: string;
   /** The figure the plan moves, now, to compare against when it was committed. */
-  measure: { label: string; now: number; target: number; better: "lower" | "higher" };
+  measure: { label: string; now: number; target: number; better: "lower" | "higher"; money?: true };
 };
 
 export const areaNames: Record<Area, string> = { sales: "Sales", money: "Money", compliance: "Compliance", team: "Team", operations: "Operations" };
@@ -57,7 +57,7 @@ export function findings(company: PortfolioCompany): Finding[] {
     title: "Won deals are not invoiced", sees: `Deals worth ${inr(n(now.wonValue))} were won this period, but no invoice has been raised.`,
     matters: "Until it is invoiced, won work is not a sale: nobody owes you for it, no GST is accounted, and the clock to get paid has not started.",
     action: "Raise the invoices for this period's won deals in Finance & Accounting.", href: finance("invoices"),
-    plan: "Invoice every won deal within a day of winning it.", measure: { label: "₹ won but not invoiced", now: n(now.wonValue), target: 0, better: "lower" },
+    plan: "Invoice every won deal within a day of winning it.", measure: { label: "won but not invoiced", now: n(now.wonValue), target: 0, better: "lower", money: true },
   });
   if (money && n(money.overdue) > 0) {
     const share = n(money.receivable) ? Math.round((n(money.overdue) / n(money.receivable)) * 100) : 100;
@@ -66,7 +66,7 @@ export function findings(company: PortfolioCompany): Finding[] {
       title: "Customers are paying late", sees: `${inr(n(money.overdue))} is overdue on ${plural(money.overdueInvoices, "invoice")}, ${share}% of what customers owe.`,
       matters: "Money owed past its due date is cash you have already earned and are lending your customers for free; the older it gets, the less of it comes in.",
       action: "Call the three largest overdue customers this week and agree a date for each.", href: finance("receivables"),
-      plan: "Halve the overdue amount in 30 days.", measure: { label: "₹ overdue", now: n(money.overdue), target: Math.round(n(money.overdue) / 2), better: "lower" },
+      plan: "Halve the overdue amount in 30 days.", measure: { label: "overdue", now: n(money.overdue), target: Math.round(n(money.overdue) / 2), better: "lower", money: true },
     });
   }
   if (books && n(books.netSales) > 0 && n(books.profitBeforePayroll) < 0) out.push({
@@ -74,7 +74,7 @@ export function findings(company: PortfolioCompany): Finding[] {
     title: "Selling at a loss", sees: `Supplier bills of ${inr(n(books.costs))} are more than sales of ${inr(n(books.netSales))} this period, before salaries.`,
     matters: "More sales at today's prices would deepen the loss: the gap is in pricing or in costs, not in volume.",
     action: "Check the margin on your three biggest sales and the three biggest bills; raise prices or cut the cost that does not pay back.", href: finance("profit-loss"),
-    plan: "Bring the period back to a profit before salaries.", measure: { label: "₹ profit before salaries", now: n(books.profitBeforePayroll), target: 0, better: "higher" },
+    plan: "Bring the period back to a profit before salaries.", measure: { label: "profit before salaries", now: n(books.profitBeforePayroll), target: 0, better: "higher", money: true },
   });
   const top = [...company.customers].sort((a, b) => n(b.current) - n(a.current))[0];
   const sales = company.customers.reduce((sum, item) => sum + n(item.current), 0);
@@ -209,3 +209,6 @@ export function readPlan(title: string): { id: string; due: string } | null {
   const [id, due] = title.slice(PLAN_PREFIX.length).split(" · ");
   return id && due ? { id, due } : null;
 }
+
+/** A measure's figure in words: "₹1.3L" for money, the number otherwise. */
+export const measured = (finding: Finding, value: number) => finding.measure.money ? inr(value) : String(value);
