@@ -205,6 +205,21 @@ async def enqueue_event(
         await db.flush()
 
 
+# Where a lead came from, as a message says it: "came in from WhatsApp", "from a team member".
+SOURCE_WORDS = {
+    "website": "your website",
+    "whatsapp": "WhatsApp",
+    "phone_call": "a phone call",
+    "webhook": "a connected app",
+    "api": "a connected app",
+    "csv_import": "an import",
+    "meta_lead_ads": "Meta ads",
+    "indiamart": "IndiaMART",
+    "manual": "a team member",
+    "referral": "a referral",
+}
+
+
 async def _context(db: AsyncSession, run: AutomationExecution) -> Values:
     """The record a run is about, as the fields a step's text may use: {{lead.name}}."""
     from janus_api.crm.models import Contact, Lead
@@ -228,7 +243,7 @@ async def _context(db: AsyncSession, run: AutomationExecution) -> Values:
             "name": contact.name or "New lead",
             "company": contact.company,
             "requirement": lead.requirement,
-            "source": lead.source,
+            "source": SOURCE_WORDS.get(lead.source, lead.source.replace("_", " ")),
             "stage": lead.stage,
         }
     ticket_id = run.event.get("ticket_id")
