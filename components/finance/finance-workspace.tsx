@@ -856,7 +856,7 @@ function InvoicesView({ me }: { me: string }) {
   type Show = "all" | "unpaid" | "overdue" | "paid";
   const [show, setShow] = React.useState<Show>(() => { const asked = params.get("status"); return asked === "unpaid" || asked === "overdue" || asked === "paid" ? asked : "all"; });
   const [aging, setAging] = React.useState(() => params.get("aging") ?? "");
-  const [find, setFind] = React.useState("");
+  const [find, setFind] = React.useState(() => params.get("q") ?? "");
   const live = invoices.filter((invoice) => !invoice.cancelled);
   const statusOf = (invoice: Invoice) => invoiceStatus(invoice, creditNotes);
   const counts = { all: invoices.length, unpaid: live.filter((invoice) => statusOf(invoice) !== "paid").length, overdue: live.filter((invoice) => statusOf(invoice) === "overdue").length, paid: invoices.filter((invoice) => statusOf(invoice) === "paid").length };

@@ -78,8 +78,8 @@ export const openIn = (item: PortfolioCompany, to: string = businessHome) => ite
 
 /** Won ÷ (won + lost), all time. Null with no closed deal. */
 export const winRate = (item: PortfolioCompany) => { const closed = item.crm.wonDeals + item.crm.lostDeals; return closed ? Math.round((item.crm.wonDeals / closed) * 100) : null; };
-/** Fewer closed deals than this, and a win rate says little: it is shown with its count and never ranked. */
-export const RATE_MINIMUM = 5;
+export { RATE_MINIMUM } from "@/features/portfolio/lib/rates";
+import { RATE_MINIMUM } from "@/features/portfolio/lib/rates";
 /** The win rate as text, with how many deals it rests on when they are few: "100% (1 deal)". */
 export function winRateText(item: PortfolioCompany) {
   const rate = winRate(item);

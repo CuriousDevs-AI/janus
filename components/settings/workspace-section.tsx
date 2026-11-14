@@ -34,7 +34,7 @@ import { CompanyProfileSection } from "@/components/settings/company-profile-sec
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
-import { usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
+import { inr, usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -109,7 +109,6 @@ export function WorkspaceSection() {
   const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
@@ -224,7 +223,7 @@ function BusinessOverviewPanel() {
   // The API sends the pipeline as a decimal string; show it as rupees, like every other amount.
   const pipelineAmount = Number(data?.pipelineValue);
   const pipeline = data?.pipelineValue != null && Number.isFinite(pipelineAmount) ? formatCurrencyINR(pipelineAmount, false) : "—";
-  const unavailable = loading ? "Loading verified CRM records…" : error ? "CRM summary is unavailable right now." : null;
+  const unavailable = loading ? "Reading your records…" : error ? "CRM summary is unavailable right now." : null;
   const company = activeCompany();
   const crmOn = !demoMode || company.workspaces.includes("crm-sales");
   // The finance-flavoured panels below are written for the first company only.
@@ -242,13 +241,12 @@ function BusinessOverviewPanel() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
             <Badge variant="neutral">Owner view</Badge>
           </div>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Business overview</h2>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+        <Button size="sm" variant="secondary" onClick={() => (mine ? figures.reload() : window.location.reload())}>
           <RefreshCw className="size-3.5" />
           Refresh
         </Button>
@@ -259,7 +257,7 @@ function BusinessOverviewPanel() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Janus brief</p>
-            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.leads} leads, ${mine.crm.openDeals} open deals and ${formatCurrencyINR(Number(mine.crm.pipelineValue), false)} in open pipeline.` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
+            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.openDeals ? `${mine.crm.openDeals} open deal${mine.crm.openDeals === 1 ? "" : "s"} worth ${inr(Number(mine.crm.pipelineValue))} in the pipeline.` : "No open deals in the pipeline."}` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
           </div>
         </div>
         <Link href="/ai?workspace=business" className="shrink-0 text-sm font-medium text-accent hover:underline">Ask Janus →</Link>
@@ -267,7 +265,7 @@ function BusinessOverviewPanel() {
 
       {demoMode && !company.setupDone && <section className="flex flex-wrap items-center justify-between gap-3 border border-warning/40 bg-warning-muted px-4 py-3"><div><p className="text-sm font-medium">Finish setting up {company.name}</p><p className="text-xs text-muted-foreground">Choose its workspaces and add the first people to switch the company on.</p></div><Button size="sm" asChild><Link href={`/setup?finish=${company.id}`}>Continue setup</Link></Button></section>}
 
-      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} stale={figures.stale} /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
+      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : !demoMode && figures.loading ? <OverviewSkeleton /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
@@ -297,7 +295,7 @@ function BusinessOverviewPanel() {
         <InsightGraph />
       </>}
 
-      {!mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
+      {demoMode && !mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
           <Badge variant="success">HR & People connected</Badge>
@@ -306,6 +304,15 @@ function BusinessOverviewPanel() {
       </SectionCard>}
     </div>
   );
+}
+
+/** The overview's shape while its figures load, so nothing jumps when they arrive. */
+function OverviewSkeleton() {
+  return <div className="flex flex-col gap-6" role="status" aria-label="Reading your records">
+    <div className="h-24 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-[104px] animate-pulse rounded-lg border border-[#e4e4df] bg-white" />)}</div>
+    <div className="h-64 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
+  </div>;
 }
 
 function OverviewKpi({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -473,8 +480,7 @@ function WorkspacesPanel() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business setup</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Create and manage the workspaces your business uses.</p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-3.5" />Activate workspace</Button>
