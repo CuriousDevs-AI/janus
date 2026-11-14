@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import Select, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -523,6 +523,8 @@ async def member_outputs(
     from janus_api.auth.service import user_directory
 
     profiles = await user_directory(db, [member.user_id for member, _ in rows])
+    users = [member.user_id for member, _ in rows]
+    active = await last_active(db, rows[0][0].tenant_id, users) if rows else {}
     return [
         schemas.MemberOut(
             id=str(member.id),
@@ -533,9 +535,30 @@ async def member_outputs(
             role=role.name,
             status=member.status,
             extra_permissions=sorted(member.extra_permissions or []),
+            last_active_at=active.get(member.user_id),
         )
         for member, role in rows
     ]
+
+
+# A sign-in, a session refresh (every few minutes while Janus is open) or moving into the company.
+ACTIVE_ACTIONS = ("auth.login", "auth.refresh", "auth.tenant_switched", "auth.invitation_accepted")
+
+
+async def last_active(db: AsyncSession, tenant_id: int, user_ids: list[int]) -> dict[int, datetime]:
+    """When each person last used Janus in this company, from the audit log."""
+    from janus_api.audit.models import AuditLog
+
+    rows = await db.execute(
+        select(AuditLog.user_id, func.max(AuditLog.created_at))
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.user_id.in_(user_ids),
+            AuditLog.action.in_(ACTIVE_ACTIONS),
+        )
+        .group_by(AuditLog.user_id)
+    )
+    return {user_id: at for user_id, at in rows if user_id is not None}
 
 
 async def list_members(
