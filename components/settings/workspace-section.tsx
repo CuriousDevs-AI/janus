@@ -223,7 +223,7 @@ function BusinessOverviewPanel() {
   // The API sends the pipeline as a decimal string; show it as rupees, like every other amount.
   const pipelineAmount = Number(data?.pipelineValue);
   const pipeline = data?.pipelineValue != null && Number.isFinite(pipelineAmount) ? formatCurrencyINR(pipelineAmount, false) : "—";
-  const unavailable = loading ? "Loading verified CRM records…" : error ? "CRM summary is unavailable right now." : null;
+  const unavailable = loading ? "Reading your records…" : error ? "CRM summary is unavailable right now." : null;
   const company = activeCompany();
   const crmOn = !demoMode || company.workspaces.includes("crm-sales");
   // The finance-flavoured panels below are written for the first company only.
@@ -265,7 +265,7 @@ function BusinessOverviewPanel() {
 
       {demoMode && !company.setupDone && <section className="flex flex-wrap items-center justify-between gap-3 border border-warning/40 bg-warning-muted px-4 py-3"><div><p className="text-sm font-medium">Finish setting up {company.name}</p><p className="text-xs text-muted-foreground">Choose its workspaces and add the first people to switch the company on.</p></div><Button size="sm" asChild><Link href={`/setup?finish=${company.id}`}>Continue setup</Link></Button></section>}
 
-      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
+      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : !demoMode && figures.loading ? <OverviewSkeleton /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
@@ -295,7 +295,7 @@ function BusinessOverviewPanel() {
         <InsightGraph />
       </>}
 
-      {!mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
+      {demoMode && !mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
           <Badge variant="success">HR & People connected</Badge>
@@ -304,6 +304,15 @@ function BusinessOverviewPanel() {
       </SectionCard>}
     </div>
   );
+}
+
+/** The overview's shape while its figures load, so nothing jumps when they arrive. */
+function OverviewSkeleton() {
+  return <div className="flex flex-col gap-6" role="status" aria-label="Reading your records">
+    <div className="h-24 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-[104px] animate-pulse rounded-lg border border-[#e4e4df] bg-white" />)}</div>
+    <div className="h-64 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
+  </div>;
 }
 
 function OverviewKpi({ label, value, detail }: { label: string; value: string; detail: string }) {
