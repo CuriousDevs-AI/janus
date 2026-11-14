@@ -15,3 +15,4 @@ export { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 export { Intelligence, type DepartmentChat } from "@/features/portfolio/components/intelligence";
 export { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
 export { WorkInbox } from "@/features/portfolio/components/work-inbox";
+export { Advisor } from "@/features/portfolio/components/advisor";
