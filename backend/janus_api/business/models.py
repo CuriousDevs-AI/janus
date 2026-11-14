@@ -42,24 +42,6 @@ class WorkspaceMember(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class AgentDefinition(Base):
-    __tablename__ = "business_agents"
-    __table_args__ = (UniqueConstraint("tenant_id", "agent_key"),)
-    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
-    workspace_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("business_workspaces.id")
-    )
-    agent_key: Mapped[str] = mapped_column(String(80))
-    name: Mapped[str] = mapped_column(String(160))
-    department: Mapped[str] = mapped_column(String(40))
-    status: Mapped[str] = mapped_column(String(20), server_default="draft")
-    configuration: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
 class AutomationFolder(Base):
     """A folder the company files its workflows in. Deleting it leaves its workflows unfiled."""
 
