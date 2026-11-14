@@ -19,6 +19,8 @@ from janus_api.portfolio.periods import inr
 NAMES: dict[str, str] = {
     "sales-summary": "Sales summary",
     "sales-pipeline": "Pipeline",
+    "conversion-funnel": "Conversion funnel",
+    "rep-performance": "Rep performance",
     "lead-sources": "Lead sources",
     "profit-loss": "Profit & Loss",
     "cash-flow": "Cash flow",
@@ -179,6 +181,79 @@ def _review(company: portfolio.CompanySummary) -> Figures:
     return Figures(covers="period", rows=rows)
 
 
+def _share(part: int, whole: int) -> str:
+    return f"{part} · {_round(part * 100 / whole)}%" if whole else str(part)
+
+
+def _funnel(funnel: portfolio.FunnelCompare | None) -> Figures | None:
+    """How far this period's leads have got, beside the same days before."""
+    if not funnel:
+        return None
+    now, before = funnel.current, funnel.previous
+
+    def step(label: str, key: str) -> Row:
+        current, previous = getattr(now, key), getattr(before, key)
+        return Row(
+            label=label,
+            value=_share(current, now.leads),
+            before=_share(previous, before.leads),
+            href=_crm("/leads"),
+        )
+
+    won_rate = now.won * 100 / now.leads if now.leads else 0
+    won_before = before.won * 100 / before.leads if before.leads else 0
+    rows = [
+        _count("Leads in", now.leads, before.leads, _crm("/leads")),
+        step("Qualified or further", "qualified"),
+        step("Proposal or further", "proposal"),
+        step("Won", "won"),
+        step("Lost", "lost"),
+    ]
+    rows[3].warn = bool(before.leads and now.leads and won_rate < won_before)
+    return Figures(
+        covers="period",
+        rows=rows,
+        note="Counts the leads that came in during the period by how far each has got by today, so"
+        " a recent period has had less time to close.",
+    )
+
+
+def _reps(reps: list[portfolio.RepLine]) -> Figures | None:
+    """Each lead owner's new leads, wins and open leads; leads nobody owns are flagged."""
+    if not reps:
+        return None
+    rows = []
+    for rep in reps:
+        # An owner's figure is what they won; leads nobody owns are counted by how many wait.
+        if rep.assigned:
+            value = f"{inr(rep.wonValue)} won"
+            detail = f"{rep.leads} new · {rep.won} won · {rep.openLeads} open now"
+        else:
+            value = f"{rep.openLeads} open"
+            detail = f"{rep.leads} new · nobody follows them up"
+        rows.append(
+            Row(
+                label=rep.name,
+                value=value,
+                change=detail,
+                href=_crm("/leads"),
+                warn=not rep.assigned and rep.openLeads > 0,
+            )
+        )
+    unowned = next((rep for rep in reps if not rep.assigned and rep.openLeads), None)
+    return Figures(
+        covers="period",
+        rows=rows,
+        note=(
+            f"{unowned.openLeads} open"
+            + (" lead has" if unowned.openLeads == 1 else " leads have")
+            + " no owner, so nobody is answerable for following them up. Assign them in CRM."
+            if unowned
+            else "New leads and deals won are for the period; open leads are as of today."
+        ),
+    )
+
+
 def figures(report: str, company: portfolio.CompanySummary) -> Figures | None:  # noqa: C901
     if report == "health-brief":
         return _health(company)
@@ -213,6 +288,10 @@ def figures(report: str, company: portfolio.CompanySummary) -> Figures | None:  
                 Row(label="Lost, all time", value=str(crm.lostDeals)),
             ],
         )
+    if report == "conversion-funnel":
+        return _funnel(company.funnel)
+    if report == "rep-performance":
+        return _reps(company.reps)
     if report == "lead-sources":
         if not company.leadSources:
             return None
