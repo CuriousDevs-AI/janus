@@ -8,7 +8,7 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import type { HrEmployee, HrLeaveRequest } from "@/lib/types";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, BarChart3, CalendarClock, Download, ExternalLink, FileBarChart, Filter, MoreHorizontal, Pencil, Pin, Plus, Search, Share2, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, BarChart3, Bookmark, CalendarClock, Download, ExternalLink, FileBarChart, Filter, Pin, Search, Share2, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AcquisitionSection } from "@/components/analytics/acquisition-section";
@@ -22,33 +22,19 @@ import { useApi } from "@/lib/api/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SectionCard } from "@/components/settings/section-ui";
-import { leadSourceConnections } from "@/lib/mock-data/lead-sources";
 import { reportCatalogue as baseCatalogue, reportDepartments, type ReportDefinition, type ReportDepartment } from "@/lib/report-catalogue";
 import { demoMode } from "@/lib/demo-mode";
 import { todayIso } from "@/lib/today";
 import { FilterChips } from "@/components/shared/stat-tile";
-import { reportFigures, reportsFromRecords, type ReportFigures, type ReportRow } from "@/components/business/report-figures";
-import { usePortfolioApi, type PortfolioCompany, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
+import { reportsFromRecords, type ReportFigures, type ReportFiguresOut, type ReportPeriod, type ReportRow } from "@/components/business/report-figures";
+import { SaveReportDialog, SavedReportsPanel, ScheduleReportDialog, SchedulesPanel, type ReportSchedule, type SavedReport } from "@/components/business/report-keeping";
+import { api, message } from "@/lib/api/client";
+import { toast } from "sonner";
+import { usePortfolioApi } from "@/features/portfolio";
 
 type Summary = { leads: number; openDeals: number; wonDeals: number; pipelineValue: string };
 type ReportTab = "library" | "my" | "scheduled";
-type CustomReport = { id: string; name: string; source: string; lastRun: string; owner: string; metrics: string[]; groupBy: string; chart: string };
-type ScheduledReport = { id: string; report: string; recipients: string; channel: "Email" | "WhatsApp"; frequency: string; lastSent: string; status: "Active" | "Paused" };
-
-const demoCustomReports: CustomReport[] = [
-  { id: "demo-report-pipeline", name: "Weekly pipeline review", source: "CRM & Sales", lastRun: "Today · 09:15", owner: "Pankaj Neema", metrics: ["Leads", "Open deals", "Pipeline value"], groupBy: "Stage", chart: "Bar" },
-  { id: "demo-report-source", name: "Lead source quality", source: "CRM & Sales", lastRun: "Yesterday · 18:00", owner: "Sales team", metrics: ["Leads", "Won deals"], groupBy: "Source", chart: "Table" },
-];
-
-const demoScheduledReports: ScheduledReport[] = [
-  { id: "demo-schedule-sales", report: "Sales summary", recipients: `owner@${activeSpec.company.domain}, sales@${activeSpec.company.domain}`, channel: "Email", frequency: "Weekly · 09:00", lastSent: "Today · 09:00", status: "Active" },
-  { id: "demo-schedule-pipeline", report: "Pipeline", recipients: `owner@${activeSpec.company.domain}`, channel: "Email", frequency: "Monthly · 09:00", lastSent: "1 Oct 2026", status: "Paused" },
-];
-
 export default function AnalyticsPage() {
   const { workspaceId } = useWorkspace();
   const businessReports = workspaceId === "business";
@@ -73,6 +59,14 @@ export default function AnalyticsPage() {
   );
 }
 
+const demoSaved: SavedReport[] = [
+  { id: "demo-saved-pipeline", name: "Weekly pipeline review", report: "sales-pipeline", period: "month", note: "Reviewed every Monday", createdByName: "Pankaj Neema", createdAt: "2026-10-05T09:00:00+05:30", mine: true },
+  { id: "demo-saved-sales", name: "Board pack: sales this quarter", report: "sales-summary", period: "quarter", note: "", createdByName: "Sales team", createdAt: "2026-10-01T09:00:00+05:30", mine: false },
+];
+const demoSchedules: ReportSchedule[] = [
+  { id: "demo-schedule-sales", report: "sales-summary", reportName: "Sales summary", period: "month", frequency: "weekly", recipients: [{ id: "1", name: "Owner", email: `owner@${activeSpec.company.domain}` }], paused: false, nextDueAt: "2026-11-16T09:00:00+05:30", lastSentAt: "2026-11-09T09:00:00+05:30", lastProblem: null, createdByName: "Owner" },
+];
+
 function BusinessReports() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -81,44 +75,74 @@ function BusinessReports() {
   const activeTab: ReportTab = rawTab === "my" || rawTab === "scheduled" ? rawTab : legacySection === "scheduled" ? "scheduled" : legacySection === "custom" ? "my" : "library";
   const reportId = searchParams.get("report");
   const rawPeriod = searchParams.get("period");
-  const periodKey: PortfolioPeriodKey = rawPeriod === "quarter" || rawPeriod === "fy" ? rawPeriod : "month";
-  // The company's own records, as the Portfolio reads them. A role without Portfolio access keeps
-  // the CRM summary alone.
-  const figures = usePortfolioApi<PortfolioSummary>(demoMode ? null : `/portfolio/summary?period=${periodKey}`, { keepPrevious: true });
-  const company = figures.data?.companies.find((item) => item.current);
+  const periodKey: ReportPeriod = rawPeriod === "quarter" || rawPeriod === "fy" ? rawPeriod : "month";
+  // Every report's figures from the company's own records, read by the API the same way the
+  // scheduled emails are. A role that cannot read the records keeps the CRM summary alone.
+  const figures = usePortfolioApi<ReportFiguresOut>(demoMode ? null : `/business/reports/figures?period=${periodKey}`, { keepPrevious: true });
+  const found = React.useMemo(() => figures.data?.figures ?? {}, [figures.data]);
   const spaces = useApi<Array<{ type: string; status: string }>>(demoMode ? null : "/workspaces");
-  const reportCatalogue = React.useMemo(() => demoCatalogue.map((item) => company && reportFigures(item.id, company) ? { ...item, live: true } : item), [company]);
+  const reportCatalogue = React.useMemo(() => demoCatalogue.map((item) => found[item.id] ? { ...item, live: true } : item), [found]);
+  const names = React.useMemo(() => new Map(reportCatalogue.map((item) => [item.id, item.name])), [reportCatalogue]);
   const report = reportCatalogue.find((item) => item.id === reportId);
   const [query, setQuery] = React.useState("");
   const [department, setDepartment] = React.useState<ReportDepartment | "All">("All");
-  const [pinned, setPinned] = React.useState<string[]>(["sales-summary"]);
-  const [notice, setNotice] = React.useState<string | null>(null);
-  const [builderOpen, setBuilderOpen] = React.useState(false);
-  const [scheduleOpen, setScheduleOpen] = React.useState(false);
-  const [customReports, setCustomReports] = React.useState<CustomReport[]>(() => demoMode ? demoCustomReports : []);
-  const [scheduledReports, setScheduledReports] = React.useState<ScheduledReport[]>(() => demoMode ? demoScheduledReports : []);
+  const livePins = useApi<{ reports: string[] }>(demoMode ? null : "/business/reports/pins");
+  const [localPins, setLocalPins] = React.useState<string[] | null>(null);
+  const pinned = localPins ?? livePins.data?.reports ?? ["sales-summary"];
+  const liveSaved = useApi<SavedReport[]>(demoMode || activeTab !== "my" ? null : "/business/reports/saved");
+  const liveSchedules = useApi<ReportSchedule[]>(demoMode ? null : "/business/reports/schedules");
+  const [demoSavedList, setDemoSavedList] = React.useState(demoSaved);
+  const [demoScheduleList, setDemoScheduleList] = React.useState(demoSchedules);
+  const saved = demoMode ? demoSavedList : liveSaved.data ?? [];
+  const schedules = demoMode ? demoScheduleList : liveSchedules.data ?? [];
+  const [saving, setSaving] = React.useState<{ report: string; period: ReportPeriod } | "new" | null>(null);
+  const [scheduling, setScheduling] = React.useState<string | "new" | null>(null);
+  const liveReports = reportCatalogue.filter((item) => item.live);
 
   function setTab(tab: ReportTab) { router.replace(`/analytics?workspace=business&tab=${tab}`); }
-  function openReport(definition: ReportDefinition) { router.push(`/analytics?workspace=business&tab=library&report=${definition.id}&period=${periodKey}`); }
+  function openReport(definition: ReportDefinition, period: ReportPeriod = periodKey) { router.push(`/analytics?workspace=business&tab=library&report=${definition.id}&period=${period}`); }
   function connectWorkspace(definition: ReportDefinition) { router.push(`/settings?tab=workspace&view=workspaces&workspace=business&activate=${definition.requiredWorkspace}`); }
-  function togglePin(id: string) { setPinned((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
+  function togglePin(id: string) {
+    const next = pinned.includes(id) ? pinned.filter((item) => item !== id) : [...pinned, id];
+    setLocalPins(next);
+    if (!demoMode) api("/business/reports/pins", { method: "PUT", body: JSON.stringify({ reports: next }) }).catch((error) => { toast.error(message(error)); setLocalPins(pinned); });
+  }
+  async function saveReport(value: { name: string; report: string; period: ReportPeriod; note: string }) {
+    if (demoMode) setDemoSavedList((current) => [...current, { ...value, id: `demo-${Date.now()}`, createdByName: "You", createdAt: new Date().toISOString(), mine: true }]);
+    else { await api("/business/reports/saved", { method: "POST", body: JSON.stringify(value) }); liveSaved.reload(); }
+    setSaving(null);
+    toast.success(`“${value.name}” saved under My reports.`);
+  }
+  async function deleteSaved(item: SavedReport) {
+    if (demoMode) { setDemoSavedList((current) => current.filter((other) => other.id !== item.id)); return; }
+    await api(`/business/reports/saved/${item.id}`, { method: "DELETE" });
+    liveSaved.reload();
+  }
+  async function saveSchedule(value: { report: string; period: ReportPeriod; frequency: ReportSchedule["frequency"]; recipients: number[] }) {
+    if (demoMode) setDemoScheduleList((current) => [...current, { id: `demo-${Date.now()}`, report: value.report, reportName: names.get(value.report) ?? value.report, period: value.period, frequency: value.frequency, recipients: value.recipients.map((id) => ({ id: String(id), name: "Team member", email: "" })), paused: false, nextDueAt: null, lastSentAt: null, lastProblem: null, createdByName: "You" }]);
+    else { await api("/business/reports/schedules", { method: "POST", body: JSON.stringify(value) }); liveSchedules.reload(); }
+    setScheduling(null);
+    toast.success(`${names.get(value.report) ?? "The report"} will be emailed ${value.frequency === "daily" ? "every morning" : value.frequency === "weekly" ? "every Monday" : "on the 1st"} at 9:00.`);
+  }
   const visible = reportCatalogue.filter((item) => (department === "All" || item.department === department) && `${item.name} ${item.description}`.toLowerCase().includes(query.toLowerCase()));
   // A department is connected once its workspace is switched on for the business.
   const activeTypes = new Set((spaces.data ?? []).filter((item) => item.status === "active").map((item) => item.type.replaceAll("_", "-")));
   const connectedDepartments = new Set<ReportDepartment>(demoMode ? ["Sales", "HR"] : ["Sales", ...reportDepartments.filter((dept) => reportCatalogue.some((item) => item.department === dept && activeTypes.has(item.requiredWorkspace)))]);
   const pinnedReports = visible.filter((item) => pinned.includes(item.id));
   const mostUsed = visible.filter((item) => item.department === "Sales").slice(0, 4);
+  const dialogs = <>
+    {saving && <SaveReportDialog reports={reportCatalogue} initial={saving === "new" ? undefined : saving} onClose={() => setSaving(null)} onSave={saveReport} />}
+    {scheduling && <ScheduleReportDialog reports={liveReports} initial={scheduling === "new" ? undefined : scheduling} onClose={() => setScheduling(null)} onSave={saveSchedule} />}
+  </>;
 
-  if (report) return <ReportView definition={report} company={company} periodLabel={figures.data?.period.label} periodKey={periodKey} loading={figures.loading} stale={figures.stale} onBack={() => router.replace(`/analytics?workspace=business&tab=library`)} onSchedule={() => setScheduleOpen(true)} onNotice={setNotice} />;
+  if (report) return <><ReportView definition={report} found={found[report.id] ?? null} readable={figures.data?.readable ?? false} periodLabel={figures.data?.period?.label} periodKey={periodKey} loading={figures.loading} stale={figures.stale} onBack={() => router.replace(`/analytics?workspace=business&tab=library`)} onSchedule={() => setScheduling(report.id)} onSave={() => setSaving({ report: report.id, period: periodKey })} />{dialogs}</>;
 
   return <div className="mx-auto flex max-w-[1400px] flex-col"><PageHeader title="Business Reports" description="Ready-made reports from your own records, one workspace at a time." />
     <div role="tablist" className="janus-tab-strip sticky top-0 z-20 mx-6 flex gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1"><ReportTabButton active={activeTab === "library"} onClick={() => setTab("library")}>Library</ReportTabButton><ReportTabButton active={activeTab === "my"} onClick={() => setTab("my")}>My reports</ReportTabButton><ReportTabButton active={activeTab === "scheduled"} onClick={() => setTab("scheduled")}>Scheduled</ReportTabButton></div>
-    {notice && <div role="status" className="mx-6 mt-4 rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent">{notice}</div>}
-    {activeTab === "library" && <><div className="grid gap-3 px-6 pt-4 sm:grid-cols-3"><ReportSummaryCard label="Verified reports" value={String(reportCatalogue.filter((item) => item.live).length)} detail="Ready from connected workspaces" /><ReportSummaryCard label="Departments connected" value={`${connectedDepartments.size} / ${reportDepartments.length}`} detail="Connect more workspaces to expand coverage" /><ReportSummaryCard label="Scheduled delivery" value={String(scheduledReports.length)} detail="Scheduled reports and team delivery" /></div><div className="flex flex-col gap-5 px-6 py-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="relative w-full max-w-md"><Search className="pointer-events-none absolute left-3 top-2.5 size-3.5 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reports" aria-label="Search reports" className="pl-9" /></div><div className="flex items-center gap-2 text-xs text-muted-foreground"><Filter className="size-3.5" /><label htmlFor="report-department" className="sr-only">Department</label><select id="report-department" value={department} onChange={(event) => setDepartment(event.target.value as ReportDepartment | "All")} className="h-9 min-w-44 rounded-md border border-input bg-surface-2 px-3 text-sm text-foreground"><option value="All">All departments</option>{reportDepartments.map((item) => <option key={item} value={item}>{item}</option>)}</select></div></div><SectionCard title={pinnedReports.length ? "Pinned reports" : "Most used"} description={pinnedReports.length ? "Your quick access reports." : "Your most-opened connected reports."}><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">{(pinnedReports.length ? pinnedReports : mostUsed).map((item) => <ReportCard key={item.id} report={item} pinned={pinned.includes(item.id)} onPin={() => togglePin(item.id)} onOpen={() => openReport(item)} />)}</div>{(pinnedReports.length ? pinnedReports : mostUsed).length === 0 && <EmptyState title="No reports match your search" description="Try another report name or department." />}</SectionCard><div className="flex flex-col gap-6">{reportDepartments.map((dept) => { const cards = visible.filter((item) => item.department === dept); const catalogCards = cards.filter((item) => !pinned.includes(item.id)); const departmentMatches = `${dept} ${reportCatalogue.find((item) => item.department === dept)?.requiredWorkspace ?? ""}`.toLowerCase().includes(query.toLowerCase()); if (department !== "All" && department !== dept) return null; if (!connectedDepartments.has(dept)) { if (!departmentMatches) return null; const definition = reportCatalogue.find((item) => item.department === dept)!; return <DisconnectedDepartment key={dept} department={dept} definition={definition} onConnect={() => connectWorkspace(definition)} />; } if (catalogCards.length === 0) return null; return <section key={dept}><h2 className="mb-3 text-base font-semibold">{dept}</h2><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{catalogCards.map((item) => <ReportCard key={item.id} report={item} pinned={pinned.includes(item.id)} onPin={() => togglePin(item.id)} onOpen={() => openReport(item)} />)}</div></section>; })}</div></div></>}
-    {activeTab === "my" && <div className="px-6 py-5"><SectionCard title="My reports" description="Custom reports you create and save for your team." action={<Button size="sm" onClick={() => setBuilderOpen(true)}><Plus className="size-3.5" />New report</Button>}>{customReports.length === 0 ? <EmptyState title="No custom reports yet" description="Build a report from connected, permission-allowed data." action={<Button onClick={() => setBuilderOpen(true)}><Plus className="size-3.5" />New report</Button>} /> : <CustomReportsTable reports={customReports} onDelete={(id) => setCustomReports((current) => current.filter((item) => item.id !== id))} onDuplicate={(report) => { setCustomReports((current) => [...current, { ...report, id: `custom-${Date.now()}`, name: `${report.name} copy`, lastRun: "Not run yet" }]); setNotice(`${report.name} duplicated.`); }} onNotice={setNotice} />}</SectionCard></div>}
-    {activeTab === "scheduled" && <div className="px-6 py-5"><SectionCard title="Scheduled reports" description="Deliver reports to your team on a schedule." action={<Button size="sm" onClick={() => setScheduleOpen(true)}><CalendarClock className="size-3.5" />Schedule a report</Button>}>{scheduledReports.length === 0 ? <EmptyState title="No scheduled reports" description="Schedule a verified report for email delivery." action={<Button onClick={() => setScheduleOpen(true)}><CalendarClock className="size-3.5" />Schedule a report</Button>} /> : <ScheduledTable reports={scheduledReports} onNotice={setNotice} onDelete={(id) => setScheduledReports((current) => current.filter((item) => item.id !== id))} onToggle={(id) => setScheduledReports((current) => current.map((item) => item.id === id ? { ...item, status: item.status === "Active" ? "Paused" : "Active" } : item))} />}</SectionCard></div>}
-    <ReportBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} onSave={(reportDefinition) => { setCustomReports((current) => [...current, reportDefinition]); setBuilderOpen(false); setNotice("Custom report saved."); }} />
-    <ScheduleDialog reports={reportCatalogue} open={scheduleOpen} onOpenChange={setScheduleOpen} onSave={(scheduled) => { setScheduledReports((current) => [...current, scheduled]); setScheduleOpen(false); setNotice("Report schedule saved."); }} />
+    {activeTab === "library" && <><div className="grid gap-3 px-6 pt-4 sm:grid-cols-3"><ReportSummaryCard label="Reports with figures" value={String(liveReports.length)} detail="Filled from your own records" /><ReportSummaryCard label="Departments connected" value={`${connectedDepartments.size} / ${reportDepartments.length}`} detail="Connect more workspaces to expand coverage" /><ReportSummaryCard label="Emailed on a schedule" value={String(schedules.filter((item) => !item.paused).length)} detail={schedules.length ? "Reports going to your team" : "None yet: open a report and choose Schedule"} /></div><div className="flex flex-col gap-5 px-6 py-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="relative w-full max-w-md"><Search className="pointer-events-none absolute left-3 top-2.5 size-3.5 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reports" aria-label="Search reports" className="pl-9" /></div><div className="flex items-center gap-2 text-xs text-muted-foreground"><Filter className="size-3.5" /><label htmlFor="report-department" className="sr-only">Department</label><select id="report-department" value={department} onChange={(event) => setDepartment(event.target.value as ReportDepartment | "All")} className="h-9 min-w-44 rounded-md border border-input bg-surface-2 px-3 text-sm text-foreground"><option value="All">All departments</option>{reportDepartments.map((item) => <option key={item} value={item}>{item}</option>)}</select></div></div><SectionCard title={pinnedReports.length ? "Pinned reports" : "Most used"} description={pinnedReports.length ? "Kept at the top for you, on every device." : "Pin a report to keep it here."}><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">{(pinnedReports.length ? pinnedReports : mostUsed).map((item) => <ReportCard key={item.id} report={item} pinned={pinned.includes(item.id)} onPin={() => togglePin(item.id)} onOpen={() => openReport(item)} />)}</div>{(pinnedReports.length ? pinnedReports : mostUsed).length === 0 && <EmptyState title="No reports match your search" description="Try another report name or department." />}</SectionCard><div className="flex flex-col gap-6">{reportDepartments.map((dept) => { const cards = visible.filter((item) => item.department === dept); const catalogCards = cards.filter((item) => !pinned.includes(item.id)); const departmentMatches = `${dept} ${reportCatalogue.find((item) => item.department === dept)?.requiredWorkspace ?? ""}`.toLowerCase().includes(query.toLowerCase()); if (department !== "All" && department !== dept) return null; if (!connectedDepartments.has(dept)) { if (!departmentMatches) return null; const definition = reportCatalogue.find((item) => item.department === dept)!; return <DisconnectedDepartment key={dept} department={dept} definition={definition} onConnect={() => connectWorkspace(definition)} />; } if (catalogCards.length === 0) return null; return <section key={dept}><h2 className="mb-3 text-base font-semibold">{dept}</h2><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{catalogCards.map((item) => <ReportCard key={item.id} report={item} pinned={pinned.includes(item.id)} onPin={() => togglePin(item.id)} onOpen={() => openReport(item)} />)}</div></section>; })}</div></div></>}
+    {activeTab === "my" && <div className="px-6 py-5"><SavedReportsPanel saved={saved} loading={!demoMode && liveSaved.loading} error={demoMode ? undefined : liveSaved.error} names={names} onNew={() => setSaving("new")} onOpen={(item) => { const definition = reportCatalogue.find((entry) => entry.id === item.report); if (definition) openReport(definition, item.period); }} onDelete={deleteSaved} /></div>}
+    {activeTab === "scheduled" && <div className="px-6 py-5"><SchedulesPanel schedules={schedules} loading={!demoMode && liveSchedules.loading} error={demoMode ? undefined : liveSchedules.error} demo={demoMode} onNew={() => setScheduling("new")} onChanged={(next) => { if (demoMode && next) setDemoScheduleList(next); else liveSchedules.reload(); }} /></div>}
+    {dialogs}
   </div>;
 }
 
@@ -144,12 +168,12 @@ function hrReportMetrics(id: string, people: HrEmployee[], leaves: HrLeaveReques
 
 function DisconnectedDepartment({ department, definition, onConnect }: { department: ReportDepartment; definition: ReportDefinition; onConnect: () => void }) { return <div className="flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed border-border bg-surface-2 px-4 py-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">{department}</p><p className="mt-1 text-xs text-muted-foreground">Connect {definition.requiredWorkspace.replaceAll("-", " ")} to unlock reports.</p></div><Button size="sm" variant="secondary" onClick={onConnect}>Connect</Button></div>; }
 
-function ReportView({ definition, company, periodLabel, periodKey, loading, stale, onBack, onSchedule, onNotice }: { definition: ReportDefinition; company?: PortfolioCompany; periodLabel?: string; periodKey: PortfolioPeriodKey; loading: boolean; stale: boolean; onBack: () => void; onSchedule: () => void; onNotice: (message: string) => void }) {
+function ReportView({ definition, found, readable, periodLabel, periodKey, loading, stale, onBack, onSchedule, onSave }: { definition: ReportDefinition; found: ReportFigures | null; readable: boolean; periodLabel?: string; periodKey: ReportPeriod; loading: boolean; stale: boolean; onBack: () => void; onSchedule: () => void; onSave: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const fromRecords = company ? reportFigures(definition.id, company) : null;
+  const fromRecords = found;
   // Without the company's records (a role without Portfolio access), the two sales reports read the CRM summary.
-  const sales = useApi<Summary>(!company && definition.endpoint === "/business/reports/summary" ? definition.endpoint : null);
+  const sales = useApi<Summary>(!readable && definition.endpoint === "/business/reports/summary" ? definition.endpoint : null);
   const people = useHrPeopleStore((state) => state.employees);
   const leaves = useHrPeopleStore((state) => state.leaveRequests);
   const demoSummary = demoMode ? { leads: crm.leads, openDeals: crm.openDeals, wonDeals: crm.wonDeals, pipelineValue: lakh(crm.pipeline) } : undefined;
@@ -162,7 +186,7 @@ function ReportView({ definition, company, periodLabel, periodKey, loading, stal
   const nowWord = shown?.covers === "month" ? "This month" : shown?.covers === "period" ? "This period" : "Now";
   const workspaceName = definition.requiredWorkspace.replaceAll("-", " ");
 
-  function setPeriod(key: PortfolioPeriodKey) { const params = new URLSearchParams(searchParams.toString()); params.set("period", key); router.replace(`/analytics?${params.toString()}`); }
+  function setPeriod(key: ReportPeriod) { const params = new URLSearchParams(searchParams.toString()); params.set("period", key); router.replace(`/analytics?${params.toString()}`); }
   function downloadCsv() {
     if (!shown) return;
     const cell = (value: string | undefined) => `"${(value ?? "").replaceAll("\"", "\"\"")}"`;
@@ -172,19 +196,19 @@ function ReportView({ definition, company, periodLabel, periodKey, loading, stal
     link.href = url; link.download = `${definition.id}-${shown.covers === "period" ? periodKey : todayIso()}.csv`; link.click();
     URL.revokeObjectURL(url);
   }
-  function copyLink() { navigator.clipboard.writeText(window.location.href).then(() => onNotice("Link copied. Anyone who opens it needs access to Business Reports."), () => onNotice("The link could not be copied. Copy it from the address bar.")); }
+  function copyLink() { navigator.clipboard.writeText(window.location.href).then(() => toast.success("Link copied. Anyone who opens it needs access to Business Reports."), () => toast.error("The link could not be copied. Copy it from the address bar.")); }
 
   return <div className={`mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-6 py-6 transition-opacity ${stale ? "opacity-60" : ""}`}>
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
       <div><button type="button" onClick={onBack} className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground print:hidden"><ArrowLeft className="size-3.5" />Back to Library</button>
         <div className="flex items-center gap-2"><Badge variant="neutral">{definition.department}</Badge>{shown ? <Badge variant="success">From your records</Badge> : !waiting && <Badge variant="warning">Not available</Badge>}</div>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{definition.name}</h1><p className="mt-1 text-sm text-muted-foreground">{definition.description}</p></div>
-      <div className="flex flex-wrap gap-2 print:hidden"><Button size="sm" variant="secondary" disabled={!shown} onClick={() => window.print()}><Download className="size-3.5" />Print or PDF</Button><Button size="sm" variant="secondary" disabled={!shown} onClick={downloadCsv}><Download className="size-3.5" />CSV</Button><Button size="sm" variant="secondary" onClick={onSchedule}><CalendarClock className="size-3.5" />Schedule</Button><Button size="sm" variant="secondary" onClick={copyLink}><Share2 className="size-3.5" />Copy link</Button><Link href={`/ai?workspace=business&view=chat&report=${definition.id}&period=${periodKey}`}><Button size="sm"><Sparkles className="size-3.5" />Ask Janus</Button></Link></div>
+      <div className="flex flex-wrap gap-2 print:hidden"><Button size="sm" variant="secondary" disabled={!shown} onClick={() => window.print()}><Download className="size-3.5" />Print or PDF</Button><Button size="sm" variant="secondary" disabled={!shown} onClick={downloadCsv}><Download className="size-3.5" />CSV</Button><Button size="sm" variant="secondary" onClick={onSave}><Bookmark className="size-3.5" />Save</Button><Button size="sm" variant="secondary" disabled={!fromRecords && !demoMode} title={fromRecords || demoMode ? undefined : "Only a report with figures from your records can be emailed."} onClick={onSchedule}><CalendarClock className="size-3.5" />Schedule</Button><Button size="sm" variant="secondary" onClick={copyLink}><Share2 className="size-3.5" />Copy link</Button><Link href={`/ai?workspace=business&view=chat&report=${definition.id}&period=${periodKey}`}><Button size="sm"><Sparkles className="size-3.5" />Ask Janus</Button></Link></div>
     </div>
-    {shown?.covers === "period" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"><span className="text-sm text-muted-foreground">{periodLabel ?? "This period"}, against the same days before</span><span className="print:hidden"><FilterChips<PortfolioPeriodKey> label="Period" value={periodKey} onChange={setPeriod} options={[{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }]} /></span></div>}
+    {shown?.covers === "period" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"><span className="text-sm text-muted-foreground">{periodLabel ?? "This period"}, against the same days before</span><span className="print:hidden"><FilterChips<ReportPeriod> label="Period" value={periodKey} onChange={setPeriod} options={[{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }]} /></span></div>}
     {shown?.covers === "now" && <p className="text-sm text-muted-foreground">As things stand today.</p>}
     {waiting ? <p className="text-sm text-muted-foreground">Loading…</p>
-      : !shown ? <UnavailableReport message={sales.error && !demoMode ? `Report unavailable: ${sales.error}` : reportsFromRecords.has(definition.id) ? `This report fills in from ${workspaceName} records. ${company ? "There are none for it yet." : "Your role does not include them."}` : "This report is not built yet."} />
+      : !shown ? <UnavailableReport message={sales.error && !demoMode ? `Report unavailable: ${sales.error}` : reportsFromRecords.has(definition.id) ? `This report fills in from ${workspaceName} records. ${readable ? "There are none for it yet." : "Your role does not include them."}` : "This report is not built yet."} />
       : <>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{shown.rows.slice(0, 4).map((row) => <ReportTile key={row.label} row={row} />)}</div>
         <SectionCard title="Detail" description={shown.covers === "period" ? "Each figure for this period and the same days of the period before." : "Each figure, with the screen where its records are."}>
@@ -202,19 +226,4 @@ function ReportTile({ row }: { row: ReportRow }) {
 }
 function UnavailableReport({ message }: { message: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">— · {message}</div>; }
 
-function ReportBuilderDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (report: CustomReport) => void }) {
-  const [step, setStep] = React.useState(1); const [name, setName] = React.useState(""); const [metrics, setMetrics] = React.useState<string[]>(["Leads"]); const [groupBy, setGroupBy] = React.useState("Date"); const [chart, setChart] = React.useState("Table");
-  function reset(openState: boolean) { onOpenChange(openState); if (openState) { setStep(1); setName(""); setMetrics(["Leads"]); setGroupBy("Date"); setChart("Table"); } }
-  function save() { if (!name.trim()) return; onSave({ id: `custom-${Date.now()}`, name: name.trim(), source: "CRM & Sales", lastRun: "Not run yet", owner: "You", metrics, groupBy, chart }); }
-  return <Dialog open={open} onOpenChange={reset}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>New report · Step {step} of 4</DialogTitle><DialogDescription>Build a report only from connected, permission-allowed business sources.</DialogDescription></DialogHeader><div className="mb-4 flex gap-1">{[1, 2, 3, 4].map((number) => <div key={number} className={`h-1.5 flex-1 rounded-full ${number <= step ? "bg-accent" : "bg-border"}`} />)}</div>{step === 1 && <div className="flex flex-col gap-3"><Label>Source</Label><button type="button" className="flex items-center gap-3 rounded-lg border border-accent-border bg-accent-muted p-3 text-left"><Checkbox checked /><span><span className="block text-sm font-medium">CRM & Sales</span><span className="block text-xs text-muted-foreground">Connected · Leads, deals and pipeline</span></span></button><div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">Other departments are disabled until their workspace is connected.</div></div>}{step === 2 && <div className="flex flex-col gap-3"><Label>Metrics</Label>{["Leads", "Open deals", "Won deals", "Pipeline value"].map((item) => <label key={item} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"><Checkbox checked={metrics.includes(item)} onCheckedChange={() => setMetrics((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item])} />{item}</label>)}</div>}{step === 3 && <div><Label htmlFor="report-group">Group by</Label><select id="report-group" value={groupBy} onChange={(event) => setGroupBy(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option>Date</option><option>Owner</option><option>Stage</option><option>Source</option></select></div>}{step === 4 && <div className="flex flex-col gap-3"><div><Label htmlFor="custom-report-name">Report name</Label><Input id="custom-report-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Weekly pipeline review" className="mt-1" autoFocus /></div><div><Label>Chart</Label><div className="mt-1 flex gap-2">{["Line", "Bar", "Table"].map((item) => <button key={item} type="button" onClick={() => setChart(item)} className={`rounded-md border px-3 py-2 text-xs ${chart === item ? "border-accent bg-accent-muted text-accent" : "border-border"}`}>{item}</button>)}</div></div><div className="rounded-md bg-surface-2 p-3 text-xs text-muted-foreground">Preview · {metrics.length} metric{metrics.length === 1 ? "" : "s"} grouped by {groupBy} as a {chart.toLowerCase()}.</div></div>}<DialogFooter><Button type="button" variant="secondary" onClick={() => step === 1 ? onOpenChange(false) : setStep((current) => current - 1)}>{step === 1 ? "Cancel" : "Back"}</Button>{step < 4 ? <Button type="button" disabled={step === 2 && metrics.length === 0} onClick={() => setStep((current) => current + 1)}>Continue</Button> : <Button type="button" disabled={!name.trim()} onClick={save}>Save report</Button>}</DialogFooter></DialogContent></Dialog>;
-}
-
-function ScheduleDialog({ reports: reportCatalogue, open, onOpenChange, onSave }: { reports: ReportDefinition[]; open: boolean; onOpenChange: (open: boolean) => void; onSave: (report: ScheduledReport) => void }) {
-  const whatsappConnected = leadSourceConnections.some((source) => source.source === "whatsapp" && source.status === "connected"); const [report, setReport] = React.useState("sales-summary"); const [recipients, setRecipients] = React.useState(""); const [channel, setChannel] = React.useState<"Email" | "WhatsApp">("Email"); const [frequency, setFrequency] = React.useState("Weekly · 09:00");
-  function save() { if (!recipients.trim()) return; const definition = reportCatalogue.find((item) => item.id === report); if (!definition) return; onSave({ id: `schedule-${Date.now()}`, report: definition.name, recipients: recipients.trim(), channel, frequency, lastSent: "Not sent yet", status: "Active" }); setRecipients(""); }
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>Schedule a report</DialogTitle><DialogDescription>Choose a verified report and delivery schedule.</DialogDescription></DialogHeader><div className="flex flex-col gap-3"><div><Label htmlFor="scheduled-report">Report</Label><select id="scheduled-report" value={report} onChange={(event) => setReport(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm">{reportCatalogue.filter((item) => item.live).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div><Label htmlFor="scheduled-recipients">Recipients</Label><Input id="scheduled-recipients" value={recipients} onChange={(event) => setRecipients(event.target.value)} placeholder="owner@company.com, sales@company.com" className="mt-1" /></div><div><Label htmlFor="scheduled-channel">Channel</Label><select id="scheduled-channel" value={channel} onChange={(event) => setChannel(event.target.value as "Email" | "WhatsApp")} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option>Email</option>{whatsappConnected && <option>WhatsApp</option>}</select></div><div><Label htmlFor="scheduled-frequency">Frequency and time</Label><select id="scheduled-frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option>Daily · 09:00</option><option>Weekly · 09:00</option><option>Monthly · 09:00</option></select></div></div><DialogFooter><Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={!recipients.trim()} onClick={save}>Save schedule</Button></DialogFooter></DialogContent></Dialog>;
-}
-
-function CustomReportsTable({ reports, onDelete, onDuplicate, onNotice }: { reports: CustomReport[]; onDelete: (id: string) => void; onDuplicate: (report: CustomReport) => void; onNotice: (message: string) => void }) { return <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-2 py-2">Report</th><th className="px-2 py-2">Source</th><th className="px-2 py-2">Last run</th><th className="px-2 py-2">Owner</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{reports.map((report) => <tr key={report.id} className="border-b border-border last:border-0"><td className="px-2 py-3 font-medium">{report.name}</td><td className="px-2 py-3 text-muted-foreground">{report.source}</td><td className="px-2 py-3 text-muted-foreground">{report.lastRun}</td><td className="px-2 py-3">{report.owner}</td><td className="px-2 py-3"><div className="flex gap-1"><Button size="sm" variant="secondary" onClick={() => onNotice(`${report.name} opened in the report viewer.`)}>Open</Button><Button size="icon" variant="ghost" aria-label={`Edit ${report.name}`} onClick={() => onNotice(`${report.name} is ready to edit in the builder.`)}><Pencil className="size-3.5" /></Button><Button size="icon" variant="ghost" aria-label={`Duplicate ${report.name}`} onClick={() => onDuplicate(report)}><MoreHorizontal className="size-3.5" /></Button><Button size="icon" variant="ghost" aria-label={`Delete ${report.name}`} onClick={() => { if (window.confirm(`Delete ${report.name}?`)) onDelete(report.id); }}><Trash2 className="size-3.5 text-danger" /></Button></div></td></tr>)}</tbody></table></div>; }
-function ScheduledTable({ reports, onNotice, onDelete, onToggle }: { reports: ScheduledReport[]; onNotice: (message: string) => void; onDelete: (id: string) => void; onToggle: (id: string) => void }) { return <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-sm"><thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-2 py-2">Report</th><th className="px-2 py-2">Recipients</th><th className="px-2 py-2">Channel</th><th className="px-2 py-2">Frequency</th><th className="px-2 py-2">Last sent</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{reports.map((report) => <tr key={report.id} className="border-b border-border last:border-0"><td className="px-2 py-3 font-medium">{report.report}</td><td className="px-2 py-3 text-muted-foreground">{report.recipients}</td><td className="px-2 py-3">{report.channel}</td><td className="px-2 py-3">{report.frequency}</td><td className="px-2 py-3 text-muted-foreground">{report.lastSent}</td><td className="px-2 py-3"><Badge variant={report.status === "Active" ? "success" : "warning"}>{report.status}</Badge></td><td className="px-2 py-3"><div className="flex gap-1"><Button size="sm" variant="secondary" onClick={() => onNotice(`${report.report} schedule opened for editing.`)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => onToggle(report.id)}>{report.status === "Active" ? "Pause" : "Resume"}</Button><Button size="icon" variant="ghost" aria-label={`Delete ${report.report} schedule`} onClick={() => onDelete(report.id)}><Trash2 className="size-3.5 text-danger" /></Button></div></td></tr>)}</tbody></table></div>; }
 function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) { return <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-5 py-12 text-center"><BarChart3 className="size-6 text-muted-foreground" /><p className="text-sm font-medium">{title}</p><p className="max-w-md text-xs text-muted-foreground">{description}</p>{action}</div>; }
