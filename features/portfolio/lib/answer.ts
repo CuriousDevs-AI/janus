@@ -48,7 +48,7 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
       return [item.name, Number(top.current) > 0 ? `${top.name}: ${inr(Number(top.current))}${sales > 0 ? `, ${Math.round((Number(top.current) / sales) * 100)}% of sales` : ""}` : `${top.name} bought most before; nothing yet this period`];
     });
     if (!rows.length) return { text: scope.some((item) => item.books) ? "No customer has invoices in this period or the same days before." : "Customers come from the books, and money is not shared with your role." };
-    return { text: `${unsupported}Each company's biggest customer this period, by sales before GST, and their share of its sales. A share over 40% means a lot rides on one customer.`, rows };
+    return { text: `${unsupported}${scope.length === 1 ? "The biggest customer" : "Each company's biggest customer"} this period, by sales before GST, and their share of ${scope.length === 1 ? "sales" : "its sales"}. A share over 40% means a lot rides on one customer.`, rows };
   }
   const why = /why|reason|explain|what changed|drop|fall|fell|rise|rose|grew|declin/.test(q);
   if (why && /sale|revenue|income|turnover/.test(q)) {

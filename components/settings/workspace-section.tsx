@@ -109,7 +109,6 @@ export function WorkspaceSection() {
   const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
@@ -242,10 +241,9 @@ function BusinessOverviewPanel() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
             <Badge variant="neutral">Owner view</Badge>
           </div>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Business overview</h2>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
@@ -473,8 +471,7 @@ function WorkspacesPanel() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business setup</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Create and manage the workspaces your business uses.</p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-3.5" />Activate workspace</Button>
