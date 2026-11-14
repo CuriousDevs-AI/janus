@@ -94,7 +94,8 @@ function BusinessReports() {
   const [demoSavedList, setDemoSavedList] = React.useState(demoSaved);
   const [demoScheduleList, setDemoScheduleList] = React.useState(demoSchedules);
   const saved = demoMode ? demoSavedList : liveSaved.data ?? [];
-  const schedules = demoMode ? demoScheduleList : liveSchedules.data ?? [];
+  // The AI Agents' briefs are scheduled the same way but are managed on AI Agents.
+  const schedules = demoMode ? demoScheduleList : (liveSchedules.data ?? []).filter((item) => !["health-brief", "monthly-review"].includes(item.report));
   const [saving, setSaving] = React.useState<{ report: string; period: ReportPeriod } | "new" | null>(null);
   const [scheduling, setScheduling] = React.useState<string | "new" | null>(null);
   const liveReports = reportCatalogue.filter((item) => item.live);
