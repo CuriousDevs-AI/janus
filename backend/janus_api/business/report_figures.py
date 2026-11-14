@@ -34,6 +34,16 @@ NAMES: dict[str, str] = {
 }
 
 
+# The AI Agents: scheduled briefs that watch the business and email what they find. They are
+# emailed like reports, but are not in the library.
+AGENT_NAMES: dict[str, str] = {
+    "health-brief": "Business health brief",
+    "monthly-review": "Monthly business review",
+}
+ALL_NAMES = {**NAMES, **AGENT_NAMES}
+SEVERITY = {"high": "Needs you now", "medium": "Needs you soon", "low": "Worth a look"}
+
+
 class Row(BaseModel):
     label: str
     value: str
@@ -102,7 +112,78 @@ def _count(label: str, now: int, before: int, href: str | None = None) -> Row:
     )
 
 
+def _health(company: portfolio.CompanySummary) -> Figures:
+    """What needs the owner today, then the figures behind a healthy business."""
+    rows = [
+        Row(label=SEVERITY[item.severity], value=item.text, warn=item.severity == "high")
+        for item in company.attention[:6]
+    ] or [Row(label="Needs you", value="Nothing urgent today")]
+    books, owed, cash = company.books, company.money, company.cash
+    if books:
+        rows.append(
+            _money("Sales this month so far", books.current.netSales, books.previous.netSales)
+        )
+    if owed:
+        rows.append(
+            Row(
+                label="Customers owe",
+                value=inr(owed.receivable),
+                change=f"{inr(owed.overdue)} overdue on {owed.overdueInvoices} invoices",
+                warn=_n(owed.overdue) > 0,
+            )
+        )
+    if cash and cash.total is not None:
+        runway = cash.runwayMonths
+        rows.append(
+            Row(
+                label=f"Cash in the bank, {_day(cash.asOf)}",
+                value=inr(cash.total),
+                change=f"Lasts about {runway:g} months" if runway is not None else None,
+            )
+        )
+    # Filings past due or due this week are already among what needs the owner, above.
+    waiting = sum(item.count for item in company.approvals)
+    if waiting:
+        rows.append(Row(label="Waiting for a decision", value=f"{waiting} approvals"))
+    return Figures(covers="now", rows=rows)
+
+
+def _review(company: portfolio.CompanySummary) -> Figures:
+    """The last full month against the month before: sales, money, customers and people."""
+    now, before = company.period.current, company.period.previous
+    books = company.books
+    rows = [
+        _count("Leads in", now.leads, before.leads),
+        _count("Deals won", now.wonDeals, before.wonDeals),
+        _money("Won value", now.wonValue, before.wonValue),
+    ]
+    if books:
+        rows += [
+            _money("Sales before GST", books.current.netSales, books.previous.netSales),
+            _money("Collected", now.collected, before.collected),
+            _money("Supplier bills", books.current.costs, books.previous.costs),
+            _money(
+                "Profit before salaries",
+                books.current.profitBeforePayroll,
+                books.previous.profitBeforePayroll,
+            ),
+        ]
+    if company.customers:
+        top = max(company.customers, key=lambda item: _n(item.current))
+        rows.append(_money(f"Biggest customer: {top.name}", top.current, top.previous))
+    if company.people:
+        rows.append(Row(label="People", value=str(company.people.headcount)))
+    for row in rows:
+        if row.change:
+            row.change = row.change.replace("the same days before", "the month before")
+    return Figures(covers="period", rows=rows)
+
+
 def figures(report: str, company: portfolio.CompanySummary) -> Figures | None:  # noqa: C901
+    if report == "health-brief":
+        return _health(company)
+    if report == "monthly-review":
+        return _review(company)
     now, before = company.period.current, company.period.previous
     books, owed = company.books, company.money
     if report == "sales-summary":
