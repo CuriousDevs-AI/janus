@@ -25,9 +25,10 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/settings/section-ui";
 import { reportCatalogue as baseCatalogue, reportDepartments, type ReportDefinition, type ReportDepartment } from "@/lib/report-catalogue";
 import { demoMode } from "@/lib/demo-mode";
+import { workspaceDefinitions } from "@/lib/workspace-config";
 import { todayIso } from "@/lib/today";
 import { FilterChips } from "@/components/shared/stat-tile";
-import { reportsFromRecords, type ReportFigures, type ReportFiguresOut, type ReportPeriod, type ReportRow } from "@/components/business/report-figures";
+import { type ReportFigures, type ReportFiguresOut, type ReportPeriod, type ReportRow } from "@/components/business/report-figures";
 import { SaveReportDialog, SavedReportsPanel, ScheduleReportDialog, SchedulesPanel, type ReportSchedule, type SavedReport } from "@/components/business/report-keeping";
 import { api, message } from "@/lib/api/client";
 import { toast } from "sonner";
@@ -98,7 +99,6 @@ function BusinessReports() {
   const schedules = demoMode ? demoScheduleList : (liveSchedules.data ?? []).filter((item) => !["health-brief", "monthly-review"].includes(item.report));
   const [saving, setSaving] = React.useState<{ report: string; period: ReportPeriod } | "new" | null>(null);
   const [scheduling, setScheduling] = React.useState<string | "new" | null>(null);
-  const liveReports = reportCatalogue.filter((item) => item.live);
 
   function setTab(tab: ReportTab) { router.replace(`/analytics?workspace=business&tab=${tab}`); }
   function openReport(definition: ReportDefinition, period: ReportPeriod = periodKey) { router.push(`/analytics?workspace=business&tab=library&report=${definition.id}&period=${period}`); }
@@ -129,6 +129,8 @@ function BusinessReports() {
   // A department is connected once its workspace is switched on for the business.
   const activeTypes = new Set((spaces.data ?? []).filter((item) => item.status === "active").map((item) => item.type.replaceAll("_", "-")));
   const connectedDepartments = new Set<ReportDepartment>(demoMode ? ["Sales", "HR"] : ["Sales", ...reportDepartments.filter((dept) => reportCatalogue.some((item) => item.department === dept && activeTypes.has(item.requiredWorkspace)))]);
+  // Only reports a switched-on department shows count, and only they can be emailed.
+  const liveReports = reportCatalogue.filter((item) => item.live && connectedDepartments.has(item.department));
   const pinnedReports = visible.filter((item) => pinned.includes(item.id));
   const mostUsed = visible.filter((item) => item.department === "Sales").slice(0, 4);
   const dialogs = <>
@@ -151,7 +153,7 @@ function ReportSummaryCard({ label, value, detail }: { label: string; value: str
 function ReportTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`shrink-0 rounded-sm px-3 py-2 text-[12px] transition-colors ${active ? "bg-white font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"}`}>{children}</button>; }
 
 function ReportCard({ report, pinned, onPin, onOpen }: { report: ReportDefinition; pinned: boolean; onPin: () => void; onOpen: () => void }) {
-  return <div className="group flex flex-col rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent-border hover:bg-surface-2"><div className="flex items-start justify-between gap-3"><button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-2 text-left"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><FileBarChart className="size-4" /></span><span className="min-w-0"><span className="block text-sm font-semibold">{report.name}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{report.description}</span></span></button><button type="button" aria-label={`${pinned ? "Unpin" : "Pin"} ${report.name}`} onClick={onPin} className={`rounded-md p-1.5 ${pinned ? "text-accent" : "text-muted-foreground opacity-60 hover:opacity-100"}`}><Pin className="size-3.5" fill={pinned ? "currentColor" : "none"} /></button></div><div className="mt-4 flex items-center justify-between gap-2 text-[11px] text-muted-foreground"><span>{report.live ? "From your records" : reportsFromRecords.has(report.id) ? "Shows once there are records" : "Coming soon"}</span><button type="button" onClick={onOpen} className="font-medium text-accent opacity-0 transition-opacity group-hover:opacity-100">Open <ExternalLink className="inline size-3" /></button></div></div>;
+  return <div className="group flex flex-col rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent-border hover:bg-surface-2"><div className="flex items-start justify-between gap-3"><button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-2 text-left"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><FileBarChart className="size-4" /></span><span className="min-w-0"><span className="block text-sm font-semibold">{report.name}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{report.description}</span></span></button><button type="button" aria-label={`${pinned ? "Unpin" : "Pin"} ${report.name}`} onClick={onPin} className={`rounded-md p-1.5 ${pinned ? "text-accent" : "text-muted-foreground opacity-60 hover:opacity-100"}`}><Pin className="size-3.5" fill={pinned ? "currentColor" : "none"} /></button></div><div className="mt-4 flex items-center justify-between gap-2 text-[11px] text-muted-foreground"><span>{report.live ? "From your records" : "Shows once there are records"}</span><button type="button" onClick={onOpen} className="font-medium text-accent opacity-0 transition-opacity group-hover:opacity-100">Open <ExternalLink className="inline size-3" /></button></div></div>;
 }
 
 /** In the demo the HR workspace is connected, so its three reports are live. */
@@ -167,7 +169,7 @@ function hrReportMetrics(id: string, people: HrEmployee[], leaves: HrLeaveReques
   return null;
 }
 
-function DisconnectedDepartment({ department, definition, onConnect }: { department: ReportDepartment; definition: ReportDefinition; onConnect: () => void }) { return <div className="flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed border-border bg-surface-2 px-4 py-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">{department}</p><p className="mt-1 text-xs text-muted-foreground">Connect {definition.requiredWorkspace.replaceAll("-", " ")} to unlock reports.</p></div><Button size="sm" variant="secondary" onClick={onConnect}>Connect</Button></div>; }
+function DisconnectedDepartment({ department, definition, onConnect }: { department: ReportDepartment; definition: ReportDefinition; onConnect: () => void }) { return <div className="flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed border-border bg-surface-2 px-4 py-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">{department}</p><p className="mt-1 text-xs text-muted-foreground">Switch on {workspaceDefinitions.find((item) => item.id === definition.requiredWorkspace)?.name ?? "its workspace"} to see these reports.</p></div><Button size="sm" variant="secondary" onClick={onConnect}>Connect</Button></div>; }
 
 function ReportView({ definition, found, readable, periodLabel, periodKey, loading, stale, onBack, onSchedule, onSave }: { definition: ReportDefinition; found: ReportFigures | null; readable: boolean; periodLabel?: string; periodKey: ReportPeriod; loading: boolean; stale: boolean; onBack: () => void; onSchedule: () => void; onSave: () => void }) {
   const router = useRouter();
@@ -185,7 +187,7 @@ function ReportView({ definition, found, readable, periodLabel, periodKey, loadi
   const waiting = !shown && (loading || sales.loading);
   const hasBefore = Boolean(shown?.rows.some((row) => row.before !== undefined));
   const nowWord = shown?.covers === "month" ? "This month" : shown?.covers === "period" ? "This period" : "Now";
-  const workspaceName = definition.requiredWorkspace.replaceAll("-", " ");
+  const workspaceName = workspaceDefinitions.find((item) => item.id === definition.requiredWorkspace)?.name ?? definition.requiredWorkspace;
 
   function setPeriod(key: ReportPeriod) { const params = new URLSearchParams(searchParams.toString()); params.set("period", key); router.replace(`/analytics?${params.toString()}`); }
   function downloadCsv() {
@@ -209,7 +211,7 @@ function ReportView({ definition, found, readable, periodLabel, periodKey, loadi
     {shown?.covers === "period" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"><span className="text-sm text-muted-foreground">{periodLabel ?? "This period"}, against the same days before</span><span className="print:hidden"><FilterChips<ReportPeriod> label="Period" value={periodKey} onChange={setPeriod} options={[{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }]} /></span></div>}
     {shown?.covers === "now" && <p className="text-sm text-muted-foreground">As things stand today.</p>}
     {waiting ? <p className="text-sm text-muted-foreground">Loading…</p>
-      : !shown ? <UnavailableReport message={sales.error && !demoMode ? `Report unavailable: ${sales.error}` : reportsFromRecords.has(definition.id) ? `This report fills in from ${workspaceName} records. ${readable ? "There are none for it yet." : "Your role does not include them."}` : "This report is not built yet."} />
+      : !shown ? <UnavailableReport message={sales.error && !demoMode ? `Report unavailable: ${sales.error}` : `This report fills in from ${workspaceName} records. ${readable ? "There are none for it yet." : "Your role does not include them."}`} />
       : <>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{shown.rows.slice(0, 4).map((row) => <ReportTile key={row.label} row={row} />)}</div>
         <SectionCard title="Detail" description={shown.covers === "period" ? "Each figure for this period and the same days of the period before." : "Each figure, with the screen where its records are."}>
