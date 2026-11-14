@@ -25,7 +25,7 @@ type AccessEvent = { at: string; actor: string; text: string; kind: "member" | "
 /** What each role is for, in the words an owner would use. */
 const roleText: Record<string, string> = {
   owner: "Everything, including billing and sharing the company. Only an Owner makes another Owner.",
-  admin: "Runs the business day to day: people, workspaces, settings, reports and every department. Not billing.",
+  admin: "Runs the business day to day: people, workspaces, settings, reports and every department except Finance & Accounting, which needs billing access.",
   company_admin: "Like Admin, and sees this company on the Portfolio with its money.",
   manager: "Leads a team: their own and their teammates' leads, stock counts, projects and HR approvals for their people.",
   agent: "Works their own leads in CRM & Sales, and their own HR record.",
