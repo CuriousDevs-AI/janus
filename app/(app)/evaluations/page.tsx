@@ -1,4 +1,6 @@
 "use client";
+import { redirect } from "next/navigation";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import Link from "next/link";
@@ -13,7 +15,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDate } from "@/lib/utils";
 
-export default function EvaluationsPage() {
+function DemoEvaluationsPage() {
   const agents = useAppStore((s) => s.agents);
   const [agentFilter, setAgentFilter] = React.useState<string>("all");
 
@@ -114,4 +116,10 @@ export default function EvaluationsPage() {
       )}
     </div>
   );
+}
+
+/** Only the demo has these; a real business is taken to the page that does this job. */
+export default function Page() {
+  if (!demoMode) redirect("/ai?workspace=crm-sales");
+  return <DemoEvaluationsPage />;
 }

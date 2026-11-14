@@ -130,8 +130,7 @@ function TicketsPageContent() {
             <Radio className="size-4 shrink-0 text-accent" />
             <p className="text-[12.5px] text-foreground">
               New tickets arrive automatically from the same channels as leads — Website Chat, Email, WhatsApp and
-              other <span className="font-medium">Lead Sources</span>. Migrating from Zendesk, Freshdesk, Intercom or
-              Jira Service Desk? Connect it under <span className="font-medium">Integrations</span>.
+              other <span className="font-medium">Lead Sources</span>.
             </p>
           </div>
           <ArrowRight className="size-4 shrink-0 text-accent transition-transform group-hover:translate-x-0.5" />

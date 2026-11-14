@@ -1,4 +1,5 @@
 "use client";
+import { LiveUsage } from "@/components/crm/live-usage";
 
 import {
   Bar,
@@ -64,7 +65,7 @@ function groupByCost(records: UsageRecord[], keyFn: (r: UsageRecord) => string, 
 
 const PER_RUN_COST = 9; // illustrative ₹ / automation run — not separately metered elsewhere on this page
 
-export default function UsagePage() {
+function DemoUsage() {
   const automations = useAppStore((s) => s.automations);
   const rawCategoryData = costByCategory();
   const categoryData = CATEGORY_ORDER.map((cat) => {
@@ -268,4 +269,9 @@ export default function UsagePage() {
       </div>
     </div>
   );
+}
+
+/** A real business sees its own records; the demo keeps its preview. */
+export default function Page() {
+  return demoMode ? <DemoUsage /> : <LiveUsage />;
 }

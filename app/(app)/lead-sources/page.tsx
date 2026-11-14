@@ -7,6 +7,8 @@ import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
 import { demoSourceRows } from "@/lib/api/demo-data";
+import { demoMode } from "@/lib/demo-mode";
+import { sourceOptions } from "@/lib/lead-source-options";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +22,8 @@ export default function LeadSourcesPage() {
   const sources = useApi<Source[]>(
     allowed ? `/sources?limit=50&after_id=${after}` : null,
   );
-  const usingDemo = !allowed || Boolean(sources.error);
-  const sourceRows = sources.data ?? (usingDemo ? demoSourceRows : []);
+  // Sample sources are the demo's alone: a real business never sees them, even on an error.
+  const sourceRows = sources.data ?? (demoMode ? demoSourceRows : []);
   const enabledSources = sourceRows.filter((source) => source.status === "connected");
   const availableSources = sourceRows.filter((source) => source.status === "available");
   return (
@@ -123,11 +125,20 @@ export default function LeadSourcesPage() {
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Available sources ({availableSources.length})
+              {demoMode ? `Available sources (${availableSources.length})` : "Add another source"}
             </h2>
             <p className="text-xs text-muted-foreground">Connect when you are ready to capture more enquiries.</p>
           </div>
-          {availableSources.length === 0 ? (
+          {!demoMode ? (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {sourceOptions.map(([name, description, Icon, href]) => (
+                <Link key={name} href={allowed ? href : "#"} aria-disabled={!allowed} className={`group flex min-h-[120px] gap-3 border border-border bg-surface p-5 shadow-sm transition ${allowed ? "hover:border-accent" : "pointer-events-none opacity-60"}`}>
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2"><Icon className="size-5 text-muted-foreground group-hover:text-accent" /></span>
+                  <span className="flex flex-col gap-1"><span className="text-sm font-medium">{name}</span><span className="text-xs leading-relaxed text-muted-foreground">{description}</span></span>
+                </Link>
+              ))}
+            </div>
+          ) : availableSources.length === 0 ? (
             <p className="text-sm text-muted-foreground">All currently supported sources are connected.</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
