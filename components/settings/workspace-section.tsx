@@ -29,8 +29,8 @@ import { api, message } from "@/lib/api/client";
 import { useApi as apiUse } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import { lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo-universe";
-import { useSession } from "@/components/auth/session-provider";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
+import { ProfileCard } from "@/components/settings/profile-card";
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
@@ -55,16 +55,11 @@ export function WorkspaceSection() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view");
   const requestedSection = searchParams.get("section");
-  const session = useSession();
   const [timezone, setTimezone] = React.useState(tenant.timezone);
   const [hoursStart, setHoursStart] = React.useState(tenant.businessHours.start);
   const [hoursEnd, setHoursEnd] = React.useState(tenant.businessHours.end);
   const [defaultChannel, setDefaultChannel] = React.useState<ChannelType>(tenant.defaultChannel);
   const [settingsSection, setSettingsSection] = React.useState(() => requestedSection || "profile");
-  const [profileName, setProfileName] = React.useState(session.user.name);
-  const [profilePhone, setProfilePhone] = React.useState(session.user.phone ?? "");
-  const [profileTimezone, setProfileTimezone] = React.useState(session.user.timezone || tenant.timezone);
-  const [profileLanguage, setProfileLanguage] = React.useState(session.user.language || "en");
 
   const [regionalSaving, setRegionalSaving] = React.useState(false);
 
@@ -83,26 +78,9 @@ export function WorkspaceSection() {
     }
   }
 
-  async function handleProfileSave() {
-    try {
-      await api("/me", {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: profileName.trim(),
-          phone: profilePhone.trim() || null,
-          timezone: profileTimezone,
-          language: profileLanguage,
-        }),
-      });
-      toast.success("Profile saved");
-    } catch (error) {
-      toast.error(message(error));
-    }
-  }
-
   if (view === "overview") return <BusinessOverviewPanel />;
   if (view === "workspaces") return <WorkspacesPanel />;
-  if (view === "administration") return <AdministrationPanel section={requestedSection} session={session} name={profileName} phone={profilePhone} timezone={profileTimezone} language={profileLanguage} onNameChange={setProfileName} onPhoneChange={setProfilePhone} onTimezoneChange={setProfileTimezone} onLanguageChange={setProfileLanguage} onSave={handleProfileSave} />;
+  if (view === "administration") return <AdministrationPanel section={requestedSection} />;
   // The plan is the account's and lives in the Portfolio; an old link here says so.
   if (view === "settings" && requestedSection === "billing") return <BillingSection />;
 
@@ -122,39 +100,15 @@ export function WorkspaceSection() {
   );
 }
 
-function AdministrationPanel({
-  section,
-  session,
-  name,
-  phone,
-  timezone,
-  language,
-  onNameChange,
-  onPhoneChange,
-  onTimezoneChange,
-  onLanguageChange,
-  onSave,
-}: {
-  section: string | null;
-  session: ReturnType<typeof useSession>;
-  name: string;
-  phone: string;
-  timezone: string;
-  language: string;
-  onNameChange: (value: string) => void;
-  onPhoneChange: (value: string) => void;
-  onTimezoneChange: (value: string) => void;
-  onLanguageChange: (value: string) => void;
-  onSave: () => void;
-}) {
-  if (section === "profile") return <ProfilePanel session={session} name={name} phone={phone} timezone={timezone} language={language} onNameChange={onNameChange} onPhoneChange={onPhoneChange} onTimezoneChange={onTimezoneChange} onLanguageChange={onLanguageChange} onSave={onSave} />;
+function AdministrationPanel({ section }: { section: string | null }) {
+  if (section === "profile") return <ProfileCard />;
   if (section === "billing") return <BillingSection />;
 
   const sections = [
-    { title: "Profile", description: "Your name, contact details, language and personal preferences.", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRound },
+    { title: "Profile", description: "Your name, phone and sign-in email, and the companies you belong to.", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRound },
     { title: "People & Access", description: "Members, invitations, roles, permissions and workspace access.", href: "/settings?tab=team&workspace=business", icon: UsersRound },
-    { title: "Notifications", description: "Choose which business events and approvals reach your team.", href: "/settings?tab=notifications&workspace=business", icon: Bell },
-    { title: "Security & Sessions", description: "Password, sign-in sessions, audit history and account protection.", href: "/settings?tab=security&workspace=business", icon: LockKeyhole },
+    { title: "Notifications", description: "The Monday summary, alerts when a company needs you, and this browser's notifications.", href: "/settings?tab=notifications&workspace=business", icon: Bell },
+    { title: "Security & Sessions", description: "Your password, and every device signed in as you.", href: "/settings?tab=security&workspace=business", icon: LockKeyhole },
   ];
 
   return <div className="flex flex-col gap-5">
@@ -164,51 +118,6 @@ function AdministrationPanel({
         {sections.map(({ title, description, href, icon: Icon }) => <Link key={title} href={href} className="group rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent-border hover:bg-surface-2"><div className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><Icon className="size-4" /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2 text-sm font-medium text-foreground">{title}<ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-accent" /></span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span></span></div></Link>)}
       </div>
     </SectionCard>
-  </div>;
-}
-
-function ProfilePanel({
-  session,
-  name,
-  phone,
-  timezone,
-  language,
-  onNameChange,
-  onPhoneChange,
-  onTimezoneChange,
-  onLanguageChange,
-  onSave,
-}: {
-  session: ReturnType<typeof useSession>;
-  name: string;
-  phone: string;
-  timezone: string;
-  language: string;
-  onNameChange: (value: string) => void;
-  onPhoneChange: (value: string) => void;
-  onTimezoneChange: (value: string) => void;
-  onLanguageChange: (value: string) => void;
-  onSave: () => void;
-}) {
-  const initials = name.trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "U";
-  return <div className="flex flex-col gap-4">
-    <SectionCard title="Profile" description="The details your team sees when you create, approve or assign work.">
-      <div className="flex flex-col gap-5">
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-muted text-sm font-semibold text-accent">{initials}</span>
-          <div className="min-w-0"><p className="text-sm font-medium">{name || "Your profile"}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{session.user.email}</p></div>
-          <Badge variant="neutral" className="ml-auto">{session.role}</Badge>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FieldRow label="Full name"><Input value={name} onChange={(event) => onNameChange(event.target.value)} autoComplete="name" /></FieldRow>
-          <FieldRow label="Email"><Input value={session.user.email} readOnly disabled aria-describedby="profile-email-help" /><span id="profile-email-help" className="text-[11px] text-muted-foreground">Contact an owner to change your sign-in email.</span></FieldRow>
-          <FieldRow label="Phone"><Input value={phone} onChange={(event) => onPhoneChange(event.target.value)} type="tel" autoComplete="tel" placeholder="+91 98xxx xxxxx" /></FieldRow>
-          <FieldRow label="Language"><Select value={language} onValueChange={onLanguageChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="en">English</SelectItem><SelectItem value="hi">Hindi</SelectItem></SelectContent></Select></FieldRow>
-          <FieldRow label="Timezone"><Select value={timezone} onValueChange={onTimezoneChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></FieldRow>
-        </div>
-      </div>
-    </SectionCard>
-    <div className="flex justify-end"><Button onClick={onSave} disabled={!name.trim()}>Save profile</Button></div>
   </div>;
 }
 
