@@ -73,7 +73,13 @@ async def test_templates_start_by_hand_and_only_automation_managers_change_folde
     assert len(templates) >= 3
     # Every template runs as it is once its channel or project is chosen: no step Janus refuses.
     for item in templates:
-        assert item["trigger"]["type"] in {"lead_created", "ticket_created"} and item["needs"]
+        assert item["trigger"]["type"] in {
+            "lead_created",
+            "ticket_created",
+            "spend_requested",
+            "credit_note_raised",
+        }
+        assert item["needs"]
         assert all(
             (step["action"], step["module"])
             in {("send_notification", "communication"), ("create_task", "projects_delivery")}
@@ -95,6 +101,8 @@ async def test_the_editor_catalog_offers_what_runs(
         "manual",
         "lead_created",
         "ticket_created",
+        "spend_requested",
+        "credit_note_raised",
     ]
     assert {"crm_sales", "hr_people"} <= {module["id"] for module in catalog["modules"]}
     assert any(module["connected"] for module in catalog["modules"])
