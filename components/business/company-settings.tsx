@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, CircleAlert, CircleCheck, Eye, EyeOff, Pencil } from "lucide-react";
+import { ArrowRight, CircleAlert, CircleCheck, Download, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
@@ -175,5 +176,53 @@ export function LiveAccessReview() {
       <Button size="sm" variant="outline" asChild><Link href="/settings?tab=security&workspace=business">Your password and signed-in devices</Link></Button>
     </div>
     <p className="text-[11px] text-muted-foreground">Two-step sign-in is not available in Janus yet.</p>
+  </div>;
+}
+
+const exported = [
+  ["Sales", "Leads, contacts, deals and calls"],
+  ["Finance", "Invoices, payments, credit notes, bills, bank lines, budgets, payroll postings"],
+  ["People", "Employees, leave, attendance and the rest of HR, and payslips"],
+  ["Stock", "Items, batches, movements, purchase orders, dispatches, returns, transfers"],
+  ["Projects", "Projects, milestones, tasks, timesheets, change requests"],
+  ["Support", "Tickets and WhatsApp conversations"],
+  ["Company", "Registration, filings, document details, rules, members and their roles"],
+];
+
+/**
+ * The Owner's copy of everything the business keeps in Janus: one ZIP of spreadsheets, for an
+ * accountant, an audit, a backup of their own, or moving to another system.
+ */
+export function LiveDataExport() {
+  const session = useSession();
+  const owner = (session.tenant.role ?? "").toLowerCase() === "owner";
+  const [busy, setBusy] = React.useState(false);
+  const [done, setDone] = React.useState<string | null>(null);
+  async function download() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/backend/business/export", { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(body?.error?.message ?? "The export could not be made. Try again in a minute.");
+      }
+      const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? "janus-export.zip";
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url; link.download = name; link.click();
+      URL.revokeObjectURL(url);
+      setDone(name);
+      toast.success("Your records are downloading.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "The export could not be made."); } finally { setBusy(false); }
+  }
+  return <div className="flex flex-col gap-4">
+    <ul className="grid gap-2 sm:grid-cols-2">{exported.map(([title, text]) => <li key={title} className="rounded-lg border border-border bg-surface-2 p-3"><p className="text-sm font-medium">{title}</p><p className="mt-0.5 text-xs text-muted-foreground">{text}</p></li>)}</ul>
+    <p className="text-xs text-muted-foreground">One ZIP of spreadsheets (CSV) that open in Excel or Google Sheets, with a note explaining each folder. Left out on purpose: passwords, sign-in and API keys, encrypted bank account numbers, uploaded document files, and the team&apos;s chat messages.</p>
+    <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+      {owner ? <Button disabled={busy} onClick={() => void download()}>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}{busy ? "Preparing your records…" : "Download all records"}</Button>
+        : <p className="text-sm text-muted-foreground">Only the business&apos;s Owner can export all of its records.</p>}
+      {done && <span className="text-xs text-muted-foreground">Downloaded {done}.</span>}
+    </div>
+    <p className="text-[11px] text-muted-foreground">Every export is recorded in the audit log with who made it. Keep the file somewhere safe: it holds customer, salary and bank details.</p>
   </div>;
 }
