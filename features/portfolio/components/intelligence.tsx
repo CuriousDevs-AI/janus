@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
-import { answerLive, type Answer } from "@/features/portfolio/lib/answer";
+import { answerFromKnowledge, answerLive, type Answer } from "@/features/portfolio/lib/answer";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
 import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
-import type { PortfolioAsked, PortfolioCompany, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
+import type { PortfolioAsked, PortfolioCompany, PortfolioKnowledgeItem, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
 
 const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["Which company needs immediate attention?", TriangleAlert],
@@ -63,6 +63,8 @@ export function Intelligence({ list: all, period, company, department }: { list:
   const models = usePortfolioApi<PortfolioModels>(preview ? null : "/portfolio/intelligence/models");
   const history = usePortfolioApi<PortfolioAsked[]>(preview ? null : "/portfolio/intelligence/history");
   const available = models.data ?? rulesOnly;
+  // Janus rules answer from the records first, then from the facts and documents the owner approved.
+  const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>(preview ? null : "/portfolio/knowledge");
   const [chosen, setChosen] = React.useState(RULES);
   const model = available.options.find((option) => option.id === chosen) ?? available.options[0];
   // Each department keeps its own conversation, apart from Janus Intelligence's.
@@ -92,7 +94,12 @@ export function Intelligence({ list: all, period, company, department }: { list:
     setQ("");
     if (box.current) box.current.style.height = "auto";
     box.current?.focus({ preventScroll: true });
-    if (model.id === RULES) { setTurns((current) => [...current, { q: clean, rules: answerLive(clean, list, period) }]); return; }
+    if (model.id === RULES) {
+      const fromRecords = answerLive(clean, list, period);
+      const mine = (knowledge.data ?? []).filter((item) => list.some((entry) => entry.id === item.companyId));
+      setTurns((current) => [...current, { q: clean, rules: fromRecords.matched === false ? answerFromKnowledge(clean, mine, fromRecords) : fromRecords }]);
+      return;
+    }
     setTurns((current) => [...current, { q: clean, pending: true }]);
     const settle = (done: Turn) => setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? done : turn));
     try {
@@ -219,7 +226,7 @@ function RulesAnswer({ answer }: { answer: Answer }) {
   return <>
     <p className="leading-relaxed">{answer.text}</p>
     {answer.rows && answer.rows.length > 0 && <Rows rows={answer.rows} />}
-    <p className="mt-2.5 text-[11px] text-muted-foreground">Janus rules · free · from the figures on the Portfolio</p>
+    <p className="mt-2.5 text-[11px] text-muted-foreground">Janus rules · free · {answer.knowledge ? "quoted from what you told Janus" : "from your records"}</p>
   </>;
 }
 
