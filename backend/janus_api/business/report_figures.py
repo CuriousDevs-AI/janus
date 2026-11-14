@@ -224,11 +224,18 @@ def _reps(reps: list[portfolio.RepLine]) -> Figures | None:
         return None
     rows = []
     for rep in reps:
-        won = f"{rep.won} won · {inr(rep.wonValue)}" if rep.won else "none won"
+        # An owner's figure is what they won; leads nobody owns are counted by how many wait.
+        if rep.assigned:
+            value = f"{inr(rep.wonValue)} won"
+            detail = f"{rep.leads} new · {rep.won} won · {rep.openLeads} open now"
+        else:
+            value = f"{rep.openLeads} open"
+            detail = f"{rep.leads} new · nobody follows them up"
         rows.append(
             Row(
                 label=rep.name,
-                value=f"{rep.leads} new · {won} · {rep.openLeads} open",
+                value=value,
+                change=detail,
                 href=_crm("/leads"),
                 warn=not rep.assigned and rep.openLeads > 0,
             )
