@@ -147,6 +147,19 @@ def _health(company: portfolio.CompanySummary) -> Figures:
     waiting = sum(item.count for item in company.approvals)
     if waiting:
         rows.append(Row(label="Waiting for a decision", value=f"{waiting} approvals"))
+    # What the Advisor sees, the same as on the page: the three most serious, with this week's step.
+    from janus_api.business.advisor import findings
+
+    for item in findings(company)[:3]:
+        rows.append(
+            Row(
+                label=f"Janus advises: {item.title}",
+                value=item.action,
+                change=item.sees,
+                href=item.href,
+                warn=item.severity == "high",
+            )
+        )
     return Figures(covers="now", rows=rows)
 
 

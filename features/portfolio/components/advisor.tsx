@@ -11,7 +11,7 @@ import { useApi } from "@/lib/api/use-api";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import { day, todayIst } from "@/features/portfolio/lib/format";
-import { areaNames, areas, findings, measured, planTitle, readPlan, type Finding } from "@/features/portfolio/lib/advisor";
+import { areaNames, measured, planTitle, readPlan, type AdvisorOut, type Finding } from "@/features/portfolio/lib/advisor";
 import type { PortfolioCompany, PortfolioKnowledgeItem } from "@/features/portfolio/types";
 
 type Run = { id: string; workflowId: string; status: string; createdAt: string; result: Record<string, unknown> };
@@ -27,8 +27,9 @@ const daysUntil = (iso: string) => Math.round((new Date(`${iso}T12:00:00+05:30`)
  * Janus knows, and checked against the figures every time this page opens.
  */
 export function Advisor({ company }: { company: PortfolioCompany }) {
-  const list = React.useMemo(() => findings(company), [company]);
-  const status = areas(list);
+  const advice = useApi<AdvisorOut>("/business/advisor");
+  const list = advice.data?.findings ?? [];
+  const status = advice.data?.areas ?? [];
   const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>("/portfolio/knowledge");
   const runs = useApi<Run[]>("/business/automations/executions");
   const owner = useRoles().owns(company);
@@ -58,6 +59,8 @@ export function Advisor({ company }: { company: PortfolioCompany }) {
     try { await api(`/portfolio/companies/${item.companyId}/knowledge/${item.id}`, { method: "DELETE" }); knowledge.reload(); } catch (error) { toast.error(message(error)); }
   }
 
+  if (advice.loading) return <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" role="status" aria-label="Reading your records">{[0, 1, 2, 3, 4].map((item) => <div key={item} className="h-[76px] animate-pulse rounded-lg border border-border bg-surface" />)}</div>;
+  if (advice.error) return <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">Janus could not read this company&apos;s figures: {advice.error}</p>;
   return <div className="flex flex-col gap-5">
     <section aria-label="How each area stands" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       {status.map((item) => <div key={item.area} className="rounded-lg border border-border bg-surface p-3">

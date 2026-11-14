@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from janus_api.audit.service import record
 from janus_api.auth.models import User
 from janus_api.auth.service import Actor
+from janus_api.business.advisor import AdvisorOut, advise
 from janus_api.business.models import ReportPins, ReportSchedule, SavedReport
 from janus_api.business.report_figures import ALL_NAMES, Figures, all_figures
 from janus_api.business.report_mail import current, deliver, next_due
@@ -142,6 +143,15 @@ async def read_figures(actor: Reports, db: Db, period: PeriodKey = "month") -> F
     if seen is None:
         return FiguresOut(readable=False)
     return FiguresOut(readable=True, period=seen[1], figures=all_figures(seen[0]))
+
+
+@router.get("/business/advisor", response_model=AdvisorOut)
+async def read_advisor(actor: Reports, db: Db) -> AdvisorOut:
+    """What Janus as an advisor sees in this company's figures, most serious first."""
+    seen = await current(db, actor.user.id, actor.session.tenant_id, "month")
+    if seen is None:
+        raise ApiError("forbidden", "Your role does not include this company's figures.", 403)
+    return advise(seen[0])
 
 
 def _saved_out(row: SavedReport, names: dict[int, tuple[str, str]], me: int) -> SavedOut:
