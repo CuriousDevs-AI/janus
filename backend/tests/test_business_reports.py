@@ -201,8 +201,8 @@ async def test_the_funnel_and_rep_reports_count_leads_by_how_far_they_got_and_wh
         "Lost": "1 · 33%",
     }
     reps = figures["rep-performance"]
-    assert [(row["label"], row["value"], row["warn"]) for row in reps["rows"]] == [
-        ("Owner", "2 new · 1 won · ₹12,500 · 0 open", False),
-        ("Nobody yet", "1 new · none won · 1 open", True),
+    assert [(row["label"], row["value"], row["change"], row["warn"]) for row in reps["rows"]] == [
+        ("Owner", "₹12,500 won", "2 new · 1 won · 0 open now", False),
+        ("Nobody yet", "1 open", "1 new · nobody follows them up", True),
     ]
     assert reps["note"].startswith("1 open lead has no owner")
