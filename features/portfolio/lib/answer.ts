@@ -45,11 +45,16 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     }
     const owners = reps.filter((rep) => rep.assigned).sort((a, b) => Number(b.wonValue) - Number(a.wonValue) || b.leads - a.leads);
     if (!owners.length) return { text: open ? `No lead has an owner yet: all ${open} open lead${open === 1 ? " is" : "s are"} unassigned. Assign them in CRM & Sales, Leads.` : "No leads came in or were won this period, and none are open." };
+    const rows = reps.map((rep): [string, string] => [rep.assigned ? rep.name : "Nobody yet", `${rep.leads} new · ${rep.won} won${rep.won ? ` (${inr(Number(rep.wonValue))})` : ""} · ${rep.openLeads} open now${scope.length > 1 ? ` · ${rep.company}` : ""}`]);
+    if (owners.length === 1) {
+      const only = owners[0];
+      return { text: unsupported + `Only ${only.name} owns leads: ${only.leads} new this period, ${only.won} won${only.won ? ` (${inr(Number(only.wonValue))})` : ""} and ${only.openLeads} open now.${open ? ` ${open} open lead${open === 1 ? " has" : "s have"} no owner.` : ""}`, rows };
+    }
     const most = [...owners].sort((a, b) => b.leads - a.leads)[0];
     const lead = owners[0];
     return {
       text: unsupported + `${most.name} has the most new leads this period (${most.leads}).${Number(lead.wonValue) > 0 ? ` ${lead.name} won the most: ${inr(Number(lead.wonValue))} from ${lead.won} deal${lead.won === 1 ? "" : "s"}.` : " Nobody has won a deal yet this period."}${open ? ` ${open} open lead${open === 1 ? " has" : "s have"} no owner.` : ""}`,
-      rows: reps.map((rep): [string, string] => [rep.assigned ? rep.name : "Nobody yet", `${rep.leads} new · ${rep.won} won${rep.won ? ` (${inr(Number(rep.wonValue))})` : ""} · ${rep.openLeads} open now${scope.length > 1 ? ` · ${rep.company}` : ""}`]),
+      rows,
     };
   }
   // What each department asks most: answered before the broader rules below can take the words.
