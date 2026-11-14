@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, or_, select, update
 
 from janus_api.auth.service import Actor
-from janus_api.business import engine, schemas, service
+from janus_api.business import engine, export, schemas, service
 from janus_api.business.models import (
     AgentDefinition,
     AutomationExecution,
@@ -81,6 +81,24 @@ async def update_workspace_member(
         data,
         actor.user.id,
         request_ip(request),
+    )
+
+
+@router.get(
+    "/business/export",
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_business(actor: Owner, db: Db, request: Request) -> Response:
+    """Every record of the business as spreadsheets in one ZIP. Owner only; audited."""
+    name, body = await export.build(db, actor.session.tenant_id, actor.user.id, request_ip(request))
+    return Response(
+        body,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
     )
 
 
