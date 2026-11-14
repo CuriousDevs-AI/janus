@@ -150,7 +150,11 @@ def _health(company: portfolio.CompanySummary) -> Figures:
     # What the Advisor sees, the same as on the page: the three most serious, with this week's step.
     from janus_api.business.advisor import findings
 
-    for item in findings(company)[:3]:
+    # Filings are already in what needs the owner, above, so the advice skips them.
+    advice = [
+        item for item in findings(company) if item.id not in ("compliance-off", "filings-overdue")
+    ]
+    for item in advice[:3]:
         rows.append(
             Row(
                 label=f"Janus advises: {item.title}",
