@@ -5,9 +5,10 @@ import { day, inr, todayIst } from "@/features/portfolio/lib/format";
 /** "Kavita Stores'" and "Neema Textiles'", "Asha's". */
 const whose = (name: string) => name.endsWith("s") ? `${name}'` : `${name}'s`;
 const healthWord = { red: "Needs you", amber: "Watch", green: "On track" } as const;
-import type { FunnelStep, PortfolioCompany, PortfolioPeriod } from "@/features/portfolio/types";
+import type { FunnelStep, PortfolioCompany, PortfolioKnowledgeItem, PortfolioPeriod } from "@/features/portfolio/types";
 
-export type Answer = { text: string; rows?: [string, string][] };
+/** matched: false when no rule fits; knowledge: true when the answer quotes what the owner told Janus. */
+export type Answer = { text: string; rows?: [string, string][]; matched?: false; knowledge?: true };
 
 /** Answers from the figures on the page only, naming the company and the number, and says when it cannot. */
 export function answerLive(question: string, list: PortfolioCompany[], period?: PortfolioPeriod): Answer {
@@ -277,6 +278,30 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const best = top((item) => item.crm, (item) => Number(item.crm.pipelineValue));
     return { text: named ? `${named.name} has ${inr(Number(named.crm.pipelineValue))} open in ${named.crm.openDeals} deal${named.crm.openDeals === 1 ? "" : "s"} and has won ${inr(Number(named.crm.wonValue))}.` : `${best?.name} holds the largest open pipeline, ${inr(Number(best?.crm.pipelineValue ?? 0))}.`, rows: scope.map((item) => [item.name, `${item.period.current.leads} leads this period · ${inr(Number(item.crm.pipelineValue))} open · ${inr(Number(item.crm.wonValue))} won`]) };
   }
-  if (one) return { text: `I could not match that to ${named!.name}'s records, and I will not guess. I can answer about what needs you, sales and why they changed, leads and who owns them, conversion, profit, money owed, cash, supplier bills, approvals, people, leave, claims and payroll, stock, projects, support tickets, GST and filings.` };
-  return { text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, money owed, people, leave, claims and payroll, stock, delivery, support tickets, supplier bills, cash, GST and filings. Name a company to narrow it." };
+  if (one) return { matched: false, text: `I could not match that to ${named!.name}'s records, and I will not guess. I can answer about what needs you, sales and why they changed, leads and who owns them, conversion, profit, money owed, cash, supplier bills, approvals, people, leave, claims and payroll, stock, projects, support tickets, GST and filings.` };
+  return { matched: false, text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, money owed, people, leave, claims and payroll, stock, delivery, support tickets, supplier bills, cash, GST and filings. Name a company to narrow it." };
+}
+
+const STOP = new Set("a an and are as at be but by can do does did for from has have how i in is it its me my of on or our so that the their them there these they this to us was we what when where which who why will with you your".split(" "));
+/** The words that carry a question's meaning, singular: "Refunds?" gives "refund". */
+const words = (text: string) => new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2 && !STOP.has(word)).map((word) => word.length > 4 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word));
+
+/**
+ * For a question the records cannot answer: the facts and document passages the owner approved that
+ * share its words, best first. Janus quotes them as they were written and never adds to them.
+ */
+export function answerFromKnowledge(question: string, items: PortfolioKnowledgeItem[], fallback: Answer): Answer {
+  const asked = words(question);
+  const found = items
+    .filter((item) => item.status === "approved")
+    .map((item) => ({ item, score: [...words(`${item.title} ${item.body}`)].filter((word) => asked.has(word)).length }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+  if (!found.length) return fallback;
+  return {
+    knowledge: true,
+    text: `From what you told Janus${found.every((entry) => entry.item.company === found[0].item.company) ? ` about ${found[0].item.company}` : ""}, word for word:`,
+    rows: found.map(({ item }): [string, string] => [item.kind === "fact" ? "Fact" : item.title, item.body]),
+  };
 }
