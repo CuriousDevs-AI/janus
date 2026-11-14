@@ -160,6 +160,7 @@ async def company_summary(
     """
     tenant_id = company.id
     sales = await crm.pipeline(db, tenant_id)
+    quiet_count, quiet_list = await crm.quiet_leads(db, tenant_id, today)
     out = schemas.CompanySummary(
         id=str(tenant_id),
         name=company.name,
@@ -177,6 +178,17 @@ async def company_summary(
             lostDeals=sales.lost_deals,
             pipelineValue=str(sales.pipeline_value),
             wonValue=str(sales.won_value),
+            quietLeads=quiet_count,
+            quietList=[
+                schemas.QuietLead(
+                    id=str(item.id),
+                    name=item.name,
+                    company=item.company,
+                    stage=item.stage,
+                    days=item.days,
+                )
+                for item in quiet_list
+            ],
         ),
         money=await money_summary(db, tenant_id, today) if money else None,
         period=schemas.PeriodCompare(

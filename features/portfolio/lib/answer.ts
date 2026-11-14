@@ -29,6 +29,12 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   const asked = /last (month|quarter|year)|previous (month|quarter|year)/.exec(q)?.[0];
   const unsupported = asked ? `I only have ${period?.label ?? "the period chosen above"} and the same days before it, not "${asked}". Switch the period above for more. ` : "";
   // What each department asks most: answered before the broader rules below can take the words.
+  if (/\bleads?\b/.test(q) && /attention|need|follow|quiet|stale|chase|call|untouched|waiting|pending|stuck|ignored|forgot/.test(q)) {
+    const quiet = scope.reduce((sum, item) => sum + (item.crm.quietLeads ?? 0), 0);
+    const rows = scope.flatMap((item) => (item.crm.quietList ?? []).map((lead): [string, string] => [lead.name + (lead.company ? `, ${lead.company}` : ""), `${lead.stage.replaceAll("_", " ")} · no activity for ${lead.days} day${lead.days === 1 ? "" : "s"}${scope.length > 1 ? ` · ${item.name}` : ""}`]));
+    if (!quiet) return { text: `No open lead has gone quiet${named ? ` at ${named.name}` : ""}: every one has had a call, message or move in the last 3 days.` };
+    return { text: `${quiet} open lead${quiet === 1 ? " has" : "s have"} had no call, message or move for 3 days or more${rows.length < quiet ? `. The ${rows.length} waiting longest` : ""}. Follow them up from CRM & Sales, Leads.`, rows };
+  }
   if (/\b(tickets?|support|escalat\w*|complaints?)\b/.test(q)) {
     const rows = scope.filter((item) => item.support).map((item): [string, string] => [item.name, `${item.support!.open} open · ${item.support!.urgent} urgent · ${item.support!.escalated} escalated · ${item.support!.olderThanWeek} open more than a week`]);
     if (!rows.length) return { text: "Support tickets are not shared with your role." };
