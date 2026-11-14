@@ -38,11 +38,11 @@ export function Topbar() {
         >
           <Menu className="size-4" />
         </Button>
+        {/* The area only: each page carries its own title, so it is not said twice. On a phone,
+            where the menu is closed, the page's name shows instead. */}
         <div className="flex min-w-0 items-center gap-2">
-          <span className="max-w-[min(38vw,280px)] truncate text-sm font-medium">{title}</span>
-          <span className="hidden border border-accent-border bg-accent-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent sm:inline-flex">
-            <span className="max-w-[180px] truncate">{workspace.name}</span>
-          </span>
+          <span className="hidden max-w-[280px] truncate text-sm font-medium sm:inline">{workspace.name}</span>
+          <span className="max-w-[50vw] truncate text-sm font-medium sm:hidden">{title}</span>
         </div>
       </div>
       <div className="flex items-center gap-3">
