@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from janus_api.auth import models as auth_models
 from janus_api.business.engine import run_once as run_workflow_once
+from janus_api.business.report_mail import run_once as report_once
 from janus_api.core.db import check_database_role, session_factory
 from janus_api.portfolio.alerts import add_owner_defaults
 from janus_api.portfolio.alerts import run_once as alert_once
@@ -62,7 +63,8 @@ async def main() -> None:
                 ran = await run_workflow_once(factory)
                 mailed = await digest_once(factory)
                 alerted = await alert_once(factory)
-                if ingested or sent or ran or mailed or alerted:
+                reported = await report_once(factory)
+                if ingested or sent or ran or mailed or alerted or reported:
                     continue
             except Exception as error:
                 logging.getLogger("janus").error(
