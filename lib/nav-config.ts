@@ -117,16 +117,10 @@ export const businessNavSections: NavSection[] = [
       { label: "Workflows", href: "/automations?workspace=business", icon: Workflow, requiredPermission: "agents:manage" },
     ],
   },
+  // Your own profile, password and notifications are in My account (the menu on your name), the
+  // same in every workspace; this menu keeps the company's settings.
   {
     title: "Settings",
-    items: [
-      { label: "Profile", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRoundPlus, requiredPermission: "settings:manage" },
-      { label: "Security & Sessions", href: "/settings?tab=security&workspace=business", icon: ShieldCheck, requiredPermission: "settings:manage" },
-      { label: "Notifications", href: "/settings?tab=notifications&workspace=business", icon: Bell, requiredPermission: "settings:manage" },
-    ],
-  },
-  {
-    title: "Business Settings",
     items: [
       { label: "Business Settings", href: "/settings?tab=workspace&view=settings", icon: Settings2, requiredPermission: "settings:manage" },
     ],

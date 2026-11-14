@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useSession } from "@/components/auth/session-provider";
+import { sessionChanged, useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { roleLabel } from "@/lib/access";
@@ -34,13 +34,13 @@ export function ProfileCard() {
     try {
       if (!demoMode) await api("/me", { method: "PATCH", body: JSON.stringify({ name: name.trim(), phone: phone.trim() || null }) });
       toast.success("Profile saved.");
-      // The name shows across the app from the session, which is read when the page loads.
-      if (!demoMode) window.setTimeout(() => window.location.reload(), 600);
+      // The name shows across the app from the session: read it again rather than reload the page.
+      if (!demoMode) window.dispatchEvent(new Event(sessionChanged));
     } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   }
 
   return <div className="flex flex-col gap-4">
-    <SectionCard title="Profile" description="What your team sees on what you create, approve or assign.">
+    <SectionCard title="Your details" description="What your team sees on what you create, approve or assign.">
       <form onSubmit={save} className="flex flex-col gap-5">
         <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-muted text-sm font-semibold text-accent">{initials}</span>
