@@ -12,13 +12,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from janus_api.business.models import ReportSchedule
-from janus_api.business.report_figures import NAMES, Figures, figures
+from janus_api.business.report_figures import AGENT_NAMES, ALL_NAMES, Figures, figures
 from janus_api.core import email
 from janus_api.core.config import get_settings
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
 from janus_api.portfolio import schemas as portfolio
+from janus_api.portfolio.periods import today_ist
 from janus_api.portfolio.summary import summary
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -50,7 +51,7 @@ def next_due(frequency: str, after: datetime) -> datetime:
 
 
 async def current(
-    db: AsyncSession, user_id: int, tenant_id: int, period: str
+    db: AsyncSession, user_id: int, tenant_id: int, period: str, report: str = ""
 ) -> tuple[portfolio.CompanySummary, portfolio.Period] | None:
     """The business as this person's role sees it, or None where it cannot read the records."""
     # Imported here: loading it first, as the worker would, trips a circular import in sign-in.
@@ -58,22 +59,36 @@ async def current(
 
     if tenant_id not in await readable_companies(db, user_id):
         return None
-    view = await summary(db, user_id, tenant_id, None, period)
+    # The monthly review is of the last full month, against the month before it.
+    if report == "monthly-review":
+        last = today_ist().replace(day=1) - timedelta(days=1)
+        view = await summary(db, user_id, tenant_id, None, "month", last)
+    else:
+        view = await summary(db, user_id, tenant_id, None, period)
     await set_context(db, user_id=user_id, tenant_id=tenant_id)
     company = next((item for item in view.companies if item.id == str(tenant_id)), None)
     return (company, view.period) if company else None
 
 
 def message(
-    name: str, company: str, report: str, period: str, found: Figures | None
+    name: str, company: str, report: str, period: str, found: Figures | None, label: str = ""
 ) -> tuple[str, str]:
     """The email: the report's figures as plain lines, and the link to the page."""
-    title = NAMES[report]
+    title = ALL_NAMES[report]
     frontend = get_settings().frontend_url.rstrip("/")
-    link = f"{frontend}/analytics?workspace=business&tab=library&report={report}&period={period}"
+    agent = report in AGENT_NAMES
+    link = (
+        f"{frontend}/settings?tab=workspace&view=overview&workspace=business"
+        if agent
+        else f"{frontend}/analytics?workspace=business&tab=library&report={report}&period={period}"
+    )
     lines = [f"Hello {name},", ""]
     assert found is not None
-    if found.covers == "period":
+    if report == "monthly-review":
+        lines.append(f"{title} for {company}, {label}, against the month before:")
+    elif report == "health-brief":
+        lines.append(f"{title} for {company}, this morning:")
+    elif found.covers == "period":
         lines.append(
             f"{title} for {company}, {PERIOD_WORDS[period]}, against the same days before:"
         )
@@ -91,9 +106,9 @@ def message(
         lines += ["", found.note]
     lines += [
         "",
-        f"Open the report: {link}",
-        "You get this because someone in your business scheduled it for you. Ask them, or an"
-        " admin, to take you off it in Business Reports, Scheduled.",
+        f"{'Open the Business Overview' if agent else 'Open the report'}: {link}",
+        "You get this because someone in your business set it up for you. Ask them, or an"
+        f" admin, to take you off it in {'AI Agents' if agent else 'Business Reports, Scheduled'}.",
     ]
     return f"{title} · {company}", "\n".join(lines)
 
@@ -103,13 +118,14 @@ async def deliver(db: AsyncSession, row: ReportSchedule, recipients: list[dict[s
     problems: list[str] = []
     sent = 0
     for person in recipients:
-        seen = await current(db, int(person["id"]), row.tenant_id, row.period)
+        seen = await current(db, int(person["id"]), row.tenant_id, row.period, row.report)
         company = seen[0] if seen else None
         found = figures(row.report, company) if company else None
         if company is None or found is None:
             problems.append(f"{person['name']}: their role does not include these figures")
             continue
-        subject, body = message(person["name"], company.name, row.report, row.period, found)
+        label = seen[1].label if seen else ""
+        subject, body = message(person["name"], company.name, row.report, row.period, found, label)
         try:
             await email.get_sender().send(person["email"], subject, body)
         except ApiError:

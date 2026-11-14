@@ -18,7 +18,7 @@ from janus_api.audit.service import record
 from janus_api.auth.models import User
 from janus_api.auth.service import Actor
 from janus_api.business.models import ReportPins, ReportSchedule, SavedReport
-from janus_api.business.report_figures import NAMES, Figures, all_figures
+from janus_api.business.report_figures import ALL_NAMES, Figures, all_figures
 from janus_api.business.report_mail import current, deliver, next_due
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
@@ -47,6 +47,9 @@ ReportId = Literal[
     "tickets-sla",
     "stock-levels",
     "project-status",
+    # The AI Agents' scheduled briefs.
+    "health-brief",
+    "monthly-review",
 ]
 PeriodKey = Literal["month", "quarter", "fy"]
 Frequency = Literal["daily", "weekly", "monthly"]
@@ -240,7 +243,7 @@ def _schedule_out(row: ReportSchedule, names: dict[int, tuple[str, str]]) -> Sch
     return ScheduleOut(
         id=str(row.id),
         report=row.report,
-        reportName=NAMES.get(row.report, row.report),
+        reportName=ALL_NAMES.get(row.report, row.report),
         period=row.period,
         frequency=row.frequency,
         recipients=[
