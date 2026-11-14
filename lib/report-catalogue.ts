@@ -13,7 +13,7 @@ export interface ReportDefinition {
 /**
  * One source of truth for the ready-made Business Reports library.
  * `live` here is the default; Business Reports marks a report live once the company's own
- * records can fill it (components/business/report-figures.ts), and never shows invented values.
+ * records can fill it (GET /business/reports/figures), and never shows invented values.
  */
 export const reportCatalogue: ReportDefinition[] = [
   { id: "sales-summary", name: "Sales summary", description: "Leads in, deals won and sales, against the same days before.", department: "Sales", requiredWorkspace: "crm-sales", endpoint: "/business/reports/summary", live: true },
