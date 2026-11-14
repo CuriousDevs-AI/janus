@@ -63,6 +63,25 @@ class Lead(Base):
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # When someone agreed to follow up next; a lead waiting for that day has not gone quiet.
+    next_follow_up_on: Mapped[date | None] = mapped_column(Date)
+
+
+class LeadNote(Base):
+    """What happened on a call or meeting with a lead, who wrote it, and the next follow-up set."""
+
+    __tablename__ = "lead_notes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "lead_id"], ["leads.tenant_id", "leads.id"], ondelete="CASCADE"
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    lead_id: Mapped[int] = mapped_column(BigInteger)
+    author_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(String(2000))
+    next_follow_up_on: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Deal(Base):

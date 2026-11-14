@@ -106,6 +106,7 @@ class LeadOut(BaseModel):
     recordingUrl: str | None
     createdAt: datetime
     lastActivityAt: datetime
+    nextFollowUpOn: date | None = None
 
 
 LeadStage = Literal[
@@ -182,4 +183,21 @@ class DealEvent(BaseModel):
     action: str
     userId: str | None
     details: dict[str, str | int | bool]
+    createdAt: datetime
+
+
+class NoteIn(BaseModel):
+    """A follow-up: what happened, and when to follow up next (empty for no date)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=2, max_length=2000)
+    nextFollowUpOn: date | None = None
+
+
+class NoteOut(BaseModel):
+    id: str
+    body: str
+    author: str | None
+    nextFollowUpOn: date | None
     createdAt: datetime
