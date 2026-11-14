@@ -37,8 +37,7 @@ export function JanusIntelligence({ requested }: { requested: string | null }) {
   return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
       <div>
-        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" aria-hidden />Janus Intelligence</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{views.find((item) => item.value === view)!.label}</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><Sparkles className="size-5 text-accent" aria-hidden />Janus Intelligence</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           {view === "ask" ? `Ask about ${company?.name ?? "your business"} in plain words. Janus answers from its records and shows the figure behind each answer.`
             : view === "todo" ? "Everything waiting on someone, most urgent first: overdue money, approvals, filings and late work. Open one to deal with it."
