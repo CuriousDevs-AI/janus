@@ -16,6 +16,7 @@ import json
 import logging
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select, text
@@ -26,6 +27,7 @@ from janus_api.business.models import AutomationExecution, AutomationWorkflow
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.core.tenancy import set_context
+from janus_api.portfolio.periods import inr
 
 APPROVAL_ACTIONS = frozenset({"approval", "request_approval", "require_approval"})
 # What Janus carries out, by step action, with the modules each is offered under.
@@ -41,7 +43,7 @@ UNSUPPORTED_REASONS = {
         "Use a Projects & Delivery task or a Team Chat message instead."
     ),
 }
-EVENT_TRIGGERS = ("lead_created", "ticket_created")
+EVENT_TRIGGERS = ("lead_created", "ticket_created", "spend_requested", "credit_note_raised")
 # The fields of the record a run is about, by record: {"lead": {"name": ...}}.
 Values = dict[str, dict[str, Any]]
 TOKEN = re.compile(r"\{\{\s*([a-z_]+)\.([a-z_]+)\s*\}\}")
@@ -101,7 +103,19 @@ REQUIRED: dict[str, tuple[tuple[str, str], ...]] = {
     ),
 }
 # The record a workflow's trigger gives its steps, for {{lead.name}} and the like.
-TRIGGER_RECORD = {"lead_created": "lead", "ticket_created": "ticket"}
+TRIGGER_RECORD = {
+    "lead_created": "lead",
+    "ticket_created": "ticket",
+    "spend_requested": "spend",
+    "credit_note_raised": "credit_note",
+}
+# Each record in words, for a step that uses a field its trigger does not give.
+RECORD_WORDS = {
+    "lead": "lead",
+    "ticket": "ticket",
+    "spend": "spend request",
+    "credit_note": "credit note or write-off",
+}
 
 
 def problems(trigger: dict[str, Any] | None, actions: list[Any]) -> list[str]:
@@ -130,7 +144,7 @@ def problems(trigger: dict[str, Any] | None, actions: list[Any]) -> list[str]:
                 if match.group(1) != record:
                     found.append(
                         f"Step {index + 1} uses {match.group(0)}, but this workflow does not start"
-                        f" from a {match.group(1)}."
+                        f" from a {RECORD_WORDS.get(match.group(1), match.group(1))}."
                     )
     return found
 
@@ -232,6 +246,50 @@ async def _context(db: AsyncSession, run: AutomationExecution) -> Values:
             "subject": ticket.subject,
             "priority": ticket.priority,
             "status": ticket.status,
+        }
+    request_id = run.event.get("fund_request_id")
+    if isinstance(request_id, int):
+        from janus_api.finance.models import FinanceFundRequest
+
+        spend = await db.scalar(
+            select(FinanceFundRequest).where(
+                FinanceFundRequest.tenant_id == run.tenant_id, FinanceFundRequest.id == request_id
+            )
+        )
+        if spend is None:
+            raise StepError("record_missing", "The spend request this run is about is gone.")
+        values["spend"] = {
+            "id": spend.id,
+            "number": spend.number,
+            "purpose": spend.purpose,
+            "amount": inr(Decimal(spend.amount_paise) / 100),
+            "requested_by": spend.requested_by_name,
+            "budget_line": spend.budget_line_key,
+        }
+    note_id = run.event.get("credit_note_id")
+    if isinstance(note_id, int):
+        from janus_api.finance.models import FinanceCreditNote, FinanceInvoice
+
+        found = (
+            await db.execute(
+                select(FinanceCreditNote, FinanceInvoice)
+                .join(FinanceInvoice, FinanceInvoice.id == FinanceCreditNote.invoice_id)
+                .where(
+                    FinanceCreditNote.tenant_id == run.tenant_id, FinanceCreditNote.id == note_id
+                )
+            )
+        ).first()
+        if found is None:
+            raise StepError("record_missing", "The credit note this run is about is gone.")
+        note, invoice = found
+        values["credit_note"] = {
+            "id": note.id,
+            "number": note.number,
+            "kind": {"credit": "Credit note", "write-off": "Write-off"}.get(note.kind, note.kind),
+            "amount": inr(Decimal(note.amount_paise) / 100),
+            "reason": note.reason,
+            "invoice": invoice.number,
+            "customer": invoice.customer_company or invoice.customer,
         }
     return values
 

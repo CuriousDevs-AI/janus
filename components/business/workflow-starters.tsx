@@ -43,10 +43,14 @@ export function runSubject(run: WorkflowRun) {
   const ref = run.recordRef ?? run.event;
   if (ref?.lead_id !== undefined) return `New lead #${String(ref.lead_id)}`;
   if (ref?.ticket_id !== undefined) return `New ticket #${String(ref.ticket_id)}`;
+  if (ref?.fund_request_id !== undefined) return "New spend request";
+  if (ref?.credit_note_id !== undefined) return "New credit note";
   return "Started by hand";
 }
 
-const triggerWords: Record<string, string> = { manual: "Run by hand", lead_created: "When a lead comes in", ticket_created: "When a support ticket is opened" };
+const triggerWords: Record<string, string> = { manual: "Run by hand", lead_created: "When a lead comes in", ticket_created: "When a support ticket is opened", spend_requested: "When a spend request is raised", credit_note_raised: "When a credit note or write-off is raised" };
+/** What one run of a workflow is about, by how it starts: "the next lead". */
+const nextOne: Record<string, string> = { lead_created: "lead", ticket_created: "ticket", spend_requested: "spend request", credit_note_raised: "credit note or write-off" };
 export const whenItStarts = (trigger?: Record<string, unknown>) => triggerWords[String(trigger?.type ?? "")] ?? (trigger?.type ? String(trigger.type).replaceAll("_", " ") : "Not set");
 
 /** The ready-made workflows as cards, each opening its short set-up. */
@@ -93,7 +97,7 @@ export function StarterSetup({ starter, onClose, onDone }: { starter: WorkflowSt
       // An alert or a task for each lead is no use if each one first waits for an approval.
       const created = await api<{ id: string }>("/business/automations", { method: "POST", body: JSON.stringify({ name: starter.name, description: starter.description, trigger: starter.trigger ?? { type: "manual" }, actions: steps, requiresApproval: false }) });
       if (switchOn) await api(`/business/automations/${created.id}/on`, { method: "POST" });
-      toast.success(switchOn ? `“${starter.name}” is on. It runs for the next ${starter.trigger?.type === "ticket_created" ? "ticket" : "lead"}.` : `“${starter.name}” saved, switched off.`);
+      toast.success(switchOn ? `“${starter.name}” is on. It runs for the next ${nextOne[String(starter.trigger?.type)] ?? "event"}.` : `“${starter.name}” saved, switched off.`);
       onDone();
     } catch (error) { toast.error(message(error)); setSaving(null); }
   };
@@ -117,7 +121,7 @@ export function StarterSetup({ starter, onClose, onDone }: { starter: WorkflowSt
             : <p className="text-xs text-muted-foreground">There is no open project to add tasks to. Create one in Projects &amp; Delivery first, for example &quot;Sales follow-ups&quot;.</p>}
           <p className="text-[11px] text-muted-foreground">Each task is due the next day.</p>
         </div>}
-        <ul className="grid gap-1 rounded-md bg-surface-2 p-3 text-xs">{(starter.steps ?? []).map((step, index) => { const raw = step as { title?: string; config?: Record<string, unknown> }; const text = String(raw.config?.message ?? raw.config?.title ?? "").replace(/\{\{\s*([a-z_]+)\.([a-z_]+)\s*\}\}/g, (_, record: string, field: string) => `[${record}'s ${field.replaceAll("_", " ")}]`); return <li key={index}><span className="font-medium">{raw.title ?? `Step ${index + 1}`}</span>{text && <span className="text-muted-foreground">: “{text}”</span>}</li>; })}</ul>
+        <ul className="grid gap-1 rounded-md bg-surface-2 p-3 text-xs">{(starter.steps ?? []).map((step, index) => { const raw = step as { title?: string; config?: Record<string, unknown> }; const text = String(raw.config?.message ?? raw.config?.title ?? "").replace(/\{\{\s*([a-z_]+)\.([a-z_]+)\s*\}\}/g, (_, record: string, field: string) => `[${record.replaceAll("_", " ")}'s ${field.replaceAll("_", " ")}]`); return <li key={index}><span className="font-medium">{raw.title ?? `Step ${index + 1}`}</span>{text && <span className="text-muted-foreground">: “{text}”</span>}</li>; })}</ul>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
