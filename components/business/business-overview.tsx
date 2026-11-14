@@ -87,11 +87,11 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
     </div>}
 
     <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-      <GrowthTrend points={months.points} labels={months.labels} loading={months.loading} money={Boolean(money)} />
+      <GrowthTrend points={months.points} labels={months.labels} loading={months.loading} money={Boolean(money) && !financeOff} />
       <MonthTargets company={company} point={months.points.at(-1)} onSaved={onReload} />
     </div>
 
-    {money && <div className="grid gap-4 xl:grid-cols-2">
+    {money && !financeOff && <div className="grid gap-4 xl:grid-cols-2">
       <ChaseList companyName={company.name} />
       <WinBack company={company} />
     </div>}
