@@ -18,7 +18,7 @@ from janus_api.audit.service import record
 from janus_api.auth.models import User
 from janus_api.auth.service import Actor
 from janus_api.business.models import ReportPins, ReportSchedule, SavedReport
-from janus_api.business.report_figures import ALL_NAMES, Figures, all_figures
+from janus_api.business.report_figures import AGENT_NAMES, ALL_NAMES, Figures, all_figures, figures
 from janus_api.business.report_mail import current, deliver, next_due
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
@@ -51,6 +51,7 @@ ReportId = Literal[
     "health-brief",
     "monthly-review",
 ]
+AgentId = Literal["health-brief", "monthly-review"]
 PeriodKey = Literal["month", "quarter", "fy"]
 Frequency = Literal["daily", "weekly", "monthly"]
 PERIOD_WORDS = {"month": "this month", "quarter": "this quarter", "fy": "this financial year"}
@@ -140,6 +141,20 @@ async def read_figures(actor: Reports, db: Db, period: PeriodKey = "month") -> F
     if seen is None:
         return FiguresOut(readable=False)
     return FiguresOut(readable=True, period=seen[1], figures=all_figures(seen[0]))
+
+
+class PreviewOut(BaseModel):
+    name: str
+    figures: Figures | None
+
+
+@router.get("/business/agents/{report}/preview", response_model=PreviewOut)
+async def preview_agent(report: AgentId, actor: Reports, db: Db) -> PreviewOut:
+    """What an agent's next email would say, from today's figures, without sending anything."""
+    seen = await current(db, actor.user.id, actor.session.tenant_id, "month", report)
+    if seen is None:
+        raise ApiError("forbidden", "Your role does not include this company's figures.", 403)
+    return PreviewOut(name=AGENT_NAMES[report], figures=figures(report, seen[0]))
 
 
 def _saved_out(row: SavedReport, names: dict[int, tuple[str, str]], me: int) -> SavedOut:

@@ -40,6 +40,7 @@ export function LiveAgents() {
   const schedules = useApi<ReportSchedule[]>("/business/reports/schedules");
   const mine = (schedules.data ?? []).filter((item) => agentReports.has(item.report));
   const [setting, setSetting] = React.useState<(typeof agents)[number] | null>(null);
+  const [previewing, setPreviewing] = React.useState<(typeof agents)[number] | null>(null);
 
   return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7">
     <div>
@@ -56,7 +57,10 @@ export function LiveAgents() {
         </div>
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{running.length ? `${running.filter((item) => !item.paused).length} running` : "Not set up"}</span>
-          <Button size="sm" onClick={() => setSetting(agent)}>{running.length ? "Add another" : "Set up"}</Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setPreviewing(agent)}>Preview</Button>
+            <Button size="sm" onClick={() => setSetting(agent)}>{running.length ? "Add another" : "Set up"}</Button>
+          </div>
         </div>
       </article>;
     })}</div>
@@ -67,6 +71,7 @@ export function LiveAgents() {
       <Button size="sm" variant="outline" asChild><Link href="/automations?workspace=business"><Workflow className="size-3.5" />Open Workflows<ArrowRight className="size-3.5" /></Link></Button>
     </SectionCard>
 
+    {previewing && <PreviewDialog agent={previewing} onClose={() => setPreviewing(null)} onSetUp={() => { setSetting(previewing); setPreviewing(null); }} />}
     {setting && <SetupDialog agent={setting} onClose={() => setSetting(null)} onDone={() => { setSetting(null); schedules.reload(); }} />}
   </div>;
 }
@@ -96,5 +101,27 @@ function SetupDialog({ agent, onClose, onDone }: { agent: (typeof agents)[number
       </fieldset>
     </div>
     <DialogFooter><Button variant="secondary" disabled={saving} onClick={onClose}>Cancel</Button><Button disabled={chosen.length === 0 || saving} onClick={() => void save()}>{saving && <Loader2 className="size-3.5 animate-spin" />}Switch it on</Button></DialogFooter>
+  </DialogContent></Dialog>;
+}
+
+type Row = { label: string; value: string; before?: string | null; change?: string | null; href?: string | null; warn?: boolean };
+type Preview = { name: string; figures: { rows: Row[]; note?: string | null } | null };
+
+/** The agent's next email as it would read today, built from the live figures; nothing is sent. */
+function PreviewDialog({ agent, onClose, onSetUp }: { agent: (typeof agents)[number]; onClose: () => void; onSetUp: () => void }) {
+  const preview = useApi<Preview>(`/business/agents/${agent.report}/preview`);
+  const rows = preview.data?.figures?.rows ?? [];
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-w-lg">
+    <DialogHeader><DialogTitle>{preview.data?.name ?? agent.name}: preview</DialogTitle><DialogDescription>What it would email if it went out now, from today&apos;s figures. Nothing is sent, and each person gets only what their role can see.</DialogDescription></DialogHeader>
+    {preview.loading ? <p className="text-sm text-muted-foreground">Reading your records…</p>
+      : preview.error ? <p className="text-sm text-danger">{preview.error}</p>
+      : !rows.length ? <p className="text-sm text-muted-foreground">There is nothing in your records for this yet.</p>
+      : <ul className="max-h-[55vh] divide-y divide-border overflow-y-auto rounded-md border border-border">{rows.map((row, index) => <li key={`${row.label}-${index}`} className="px-3 py-2.5 text-sm">
+        <p className={`text-[11px] font-semibold uppercase tracking-wide ${row.warn ? "text-warning" : "text-muted-foreground"}`}>{row.label}</p>
+        <p className="mt-0.5">{row.value}</p>
+        {row.change && <p className="mt-0.5 text-xs text-muted-foreground">{row.change}</p>}
+      </li>)}</ul>}
+    {preview.data?.figures?.note && <p className="text-xs text-muted-foreground">{preview.data.figures.note}</p>}
+    <DialogFooter><Button variant="secondary" onClick={onClose}>Close</Button><Button onClick={onSetUp}>Set it up</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
