@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
 from janus_api.core.deps import CurrentActor, Db, request_ip, require
-from janus_api.org import schemas, service
+from janus_api.org import access_log, schemas, service
 
 router = APIRouter(prefix="/v1", tags=["Organisation"])
 MemberManager = Annotated[Actor, Depends(require("members:manage"))]
@@ -165,3 +165,9 @@ async def set_workspace_access(
         data.permissions,
         request_ip(request),
     )
+
+
+@router.get("/access-log", response_model=list[schemas.AccessEvent])
+async def read_access_log(actor: MemberManager, db: Db) -> list[schemas.AccessEvent]:
+    """The last hundred changes to who can get into the business, newest first."""
+    return await access_log.access_log(db, actor.session.tenant_id)

@@ -140,6 +140,18 @@ class MemberOut(BaseModel):
     status: str
     # Workspace access given on top of the role.
     extra_permissions: list[str] = []
+    # When they last signed in or used Janus in this company (a session refreshes every few
+    # minutes while open), from the audit log; None if never.
+    last_active_at: datetime | None = None
+
+
+class AccessEvent(BaseModel):
+    """One change to who can get into the business, in words: who did what, and when."""
+
+    at: datetime
+    actor: str
+    text: str
+    kind: Literal["member", "invitation", "team", "sign_in"]
 
 
 class WorkspaceAccess(BaseModel):
