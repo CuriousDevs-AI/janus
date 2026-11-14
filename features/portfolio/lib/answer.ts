@@ -295,7 +295,7 @@ export function answerFromKnowledge(question: string, items: PortfolioKnowledgeI
   const found = items
     .filter((item) => item.status === "approved")
     .map((item) => ({ item, score: [...words(`${item.title} ${item.body}`)].filter((word) => asked.has(word)).length }))
-    .filter((entry) => entry.score > 0)
+    .filter((entry, index, all) => entry.score > 0 && all.findIndex((other) => other.item.body.trim().toLowerCase() === entry.item.body.trim().toLowerCase()) === index)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
   if (!found.length) return fallback;

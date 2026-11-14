@@ -91,6 +91,16 @@ async def add(
         tenant_id = await enter_company(db, user_id, data.companyId, "owner")
         company = await org.company(db, tenant_id)
         if data.kind == "fact":
+            # The same fact twice (a double click, a retry) would only repeat itself in answers.
+            same = " ".join(data.body.split()).lower()
+            kept = await db.scalars(
+                select(PortfolioKnowledge.body).where(
+                    PortfolioKnowledge.tenant_id == tenant_id,
+                    PortfolioKnowledge.kind == "fact",
+                )
+            )
+            if any(" ".join(body.split()).lower() == same for body in kept):
+                raise ApiError("duplicate_fact", "Janus already knows this fact.", 409)
             texts, document = [data.body], None
         else:
             texts, document = passages(data.body), secrets.token_hex(8)
