@@ -15,7 +15,8 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   // A company by its full name, or by its first word when no other company shares it ("Neema" alone
   // cannot tell Neema Textiles from Neema Retail).
   const first = (item: PortfolioCompany) => item.name.split(" ")[0].toLowerCase();
-  const named = list.find((item) => q.includes(item.name.toLowerCase())) ?? list.find((item) => new RegExp(`\\b${first(item).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q) && list.filter((other) => first(other) === first(item)).length === 1);
+  // With one company open (Business Management), every answer is about it by name.
+  const named = (list.length === 1 ? list[0] : undefined) ?? list.find((item) => q.includes(item.name.toLowerCase())) ?? list.find((item) => new RegExp(`\\b${first(item).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q) && list.filter((other) => first(other) === first(item)).length === 1);
   const scope = named ? [named] : list;
   const top = <T,>(pick: (item: PortfolioCompany) => T | null | undefined, value: (item: PortfolioCompany) => number) => [...scope].filter((item) => pick(item) !== null && pick(item) !== undefined).sort((a, b) => value(b) - value(a))[0];
   // Janus does not forecast: say so before anything else can match "sales" or "pipeline".
@@ -27,6 +28,47 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   // A period the figures do not cover is said out loud, not quietly swapped for another.
   const asked = /last (month|quarter|year)|previous (month|quarter|year)/.exec(q)?.[0];
   const unsupported = asked ? `I only have ${period?.label ?? "the period chosen above"} and the same days before it, not "${asked}". Switch the period above for more. ` : "";
+  // What each department asks most: answered before the broader rules below can take the words.
+  if (/\bleads?\b/.test(q) && /attention|need|follow|quiet|stale|chase|call|untouched|waiting|pending|stuck|ignored|forgot/.test(q)) {
+    const quiet = scope.reduce((sum, item) => sum + (item.crm.quietLeads ?? 0), 0);
+    const rows = scope.flatMap((item) => (item.crm.quietList ?? []).map((lead): [string, string] => [lead.name + (lead.company ? `, ${lead.company}` : ""), `${lead.stage.replaceAll("_", " ")} · no activity for ${lead.days} day${lead.days === 1 ? "" : "s"}${scope.length > 1 ? ` · ${item.name}` : ""}`]));
+    if (!quiet) return { text: `No open lead has gone quiet${named ? ` at ${named.name}` : ""}: every one has had a call, message or move in the last 3 days.` };
+    return { text: `${quiet} open lead${quiet === 1 ? " has" : "s have"} had no call, message or move for 3 days or more${rows.length < quiet ? `. The ${rows.length} waiting longest` : ""}. Follow them up from CRM & Sales, Leads.`, rows };
+  }
+  if (/\b(tickets?|support|escalat\w*|complaints?)\b/.test(q)) {
+    const rows = scope.filter((item) => item.support).map((item): [string, string] => [item.name, `${item.support!.open} open · ${item.support!.urgent} urgent · ${item.support!.escalated} escalated · ${item.support!.olderThanWeek} open more than a week`]);
+    if (!rows.length) return { text: "Support tickets are not shared with your role." };
+    const open = scope.reduce((sum, item) => sum + (item.support?.open ?? 0), 0), old = scope.reduce((sum, item) => sum + (item.support?.olderThanWeek ?? 0), 0);
+    return { text: open ? `${open} ticket${open === 1 ? " is" : "s are"} open${old ? `, ${old} of them for more than a week` : ""}.` : "No support ticket is open.", rows };
+  }
+  if (/\b(on leave|leave|absent|time off|holiday)\b/.test(q)) {
+    const rows = scope.filter((item) => item.people).map((item): [string, string] => [item.name, `${item.people!.onLeaveToday} on leave today · ${item.people!.pendingLeave} leave request${item.people!.pendingLeave === 1 ? "" : "s"} waiting for approval`]);
+    if (!rows.length) return { text: "Leave is not shared with your role." };
+    const away = scope.reduce((sum, item) => sum + (item.people?.onLeaveToday ?? 0), 0), waiting = scope.reduce((sum, item) => sum + (item.people?.pendingLeave ?? 0), 0);
+    return { text: `${away ? `${away} ${away === 1 ? "person is" : "people are"} on leave today` : "Nobody is on leave today"}; ${waiting ? `${waiting} leave request${waiting === 1 ? " waits" : "s wait"} for a decision, in HR's Leave.` : "no leave request is waiting."}`, rows };
+  }
+  if (/\b(claims?|reimburs\w*)\b/.test(q)) {
+    const rows = scope.filter((item) => item.people).map((item): [string, string] => [item.name, `${item.people!.pendingClaims} waiting${item.people!.pendingClaims && item.people!.claimsValue ? ` · ${inr(Number(item.people!.claimsValue))}` : ""}`]);
+    if (!rows.length) return { text: "Claims are not shared with your role." };
+    const waiting = scope.reduce((sum, item) => sum + (item.people?.pendingClaims ?? 0), 0);
+    return { text: waiting ? `${waiting} expense claim${waiting === 1 ? " waits" : "s wait"} for a decision.` : "No expense claim is waiting.", rows };
+  }
+  if (/\b(suppliers?|vendors?|bills?|payables?|creditors?)\b/.test(q) && !/customer/.test(q)) {
+    const rows = scope.filter((item) => item.money).map((item): [string, string] => [item.name, `${inr(Number(item.money!.payable))} owed to suppliers · ${inr(Number(item.money!.payableLate))} past due · ${inr(Number(item.money!.payableDueThisWeek))} due this week`]);
+    if (!rows.length) return { text: "Money is not shared with your role." };
+    const late = scope.reduce((sum, item) => sum + Number(item.money?.payableLate ?? 0), 0);
+    return { text: `You owe suppliers ${inr(scope.reduce((sum, item) => sum + Number(item.money?.payable ?? 0), 0))}${late > 0 ? `, and ${inr(late)} of it is past its due date` : ""}.`, rows };
+  }
+  if (/\b(cash|bank balance|in the bank|runway)\b/.test(q)) {
+    const known = scope.filter((item) => item.cash?.total != null);
+    if (!known.length) return { text: scope.some((item) => item.money) ? "Janus has no bank statement for this, so it does not know the cash in the bank. Import one in Finance, under Bank." : "Money is not shared with your role." };
+    return { text: `Cash in the bank: ${inr(known.reduce((sum, item) => sum + Number(item.cash!.total), 0))}, from the latest bank statements.`, rows: known.map((item): [string, string] => [item.name, `${inr(Number(item.cash!.total))} on ${day(item.cash!.asOf)}${item.cash!.runwayMonths != null ? ` · lasts about ${item.cash!.runwayMonths} months at the recent pace` : ""}`]) };
+  }
+  if (/\bgst\b/.test(q) && /\b(pay|payable|liabilit\w*|how much|owe)\b/.test(q) && !/\b(due|file|filing|return)\b/.test(q)) {
+    const known = scope.filter((item) => item.gst);
+    if (!known.length) return { text: "GST from the books is not set up, or not shared with your role. Add the GSTIN and choose monthly or quarterly returns in Compliance." };
+    return { text: `GST to pay for ${known[0].gst!.thisMonth.label} so far: ${inr(known.reduce((sum, item) => sum + Number(item.gst!.thisMonth.payable), 0))}. A figure below zero is credit carried forward.`, rows: known.map((item): [string, string] => [item.name, `${inr(Number(item.gst!.thisMonth.output))} on sales · ${inr(Number(item.gst!.thisMonth.input))} input credit · ${inr(Number(item.gst!.thisMonth.payable))} to pay`]) };
+  }
   const customer = list.flatMap((item) => item.customers.map((entry) => ({ company: item, ...entry }))).find((entry) => q.includes(entry.name.toLowerCase()));
   // One of the group's own companies can be another's customer. Its name then means the company
   // ("what is owed to Malhotra Retail", "GST due at Malhotra Retail") unless the question asks what
@@ -164,8 +206,17 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const rows = scope.filter((item) => item.money).map((item): [string, string] => [item.name, `${inr(Number(item.money!.receivable))} owed · ${inr(Number(item.money!.overdue))} overdue`]);
     return rows.length ? { text: `Customers owe ${inr(scope.reduce((sum, item) => sum + Number(item.money?.receivable ?? 0), 0))} in all.`, rows } : { text: "Money is not shared with your role." };
   }
-  if (/stock|inventory|reorder|expir/.test(q)) return { text: "Stock that needs a look.", rows: scope.map((item) => [item.name, `${item.stock?.belowReorder ?? 0} at or under reorder · ${item.stock?.expiringBatches ?? 0} batches expiring in 30 days`]) };
-  if (/project|delivery|milestone|late/.test(q)) return { text: "Delivery across the companies.", rows: scope.map((item) => [item.name, `${item.delivery?.activeProjects ?? 0} active · ${item.delivery?.lateProjects ?? 0} late · ${item.delivery?.overdueMilestones ?? 0} milestones past due`]) };
+  if (/stock|inventory|reorder|expir/.test(q)) {
+    const items = scope.reduce((sum, item) => sum + (item.stock?.items ?? 0), 0);
+    const low = scope.reduce((sum, item) => sum + (item.stock?.belowReorder ?? 0), 0), expiring = scope.reduce((sum, item) => sum + (item.stock?.expiringBatches ?? 0), 0);
+    if (!items) return { text: `No stock items are recorded${named ? ` at ${named.name}` : ""} yet, so there is nothing to check. Add them in Operations & Inventory.` };
+    return { text: low || expiring ? `${low} item${low === 1 ? " is" : "s are"} at or under the reorder level, and ${expiring} batch${expiring === 1 ? "" : "es"} expire${expiring === 1 ? "s" : ""} in the next 30 days.` : `None of the ${items} items is at or under its reorder level, and no batch expires in the next 30 days.`, rows: scope.map((item) => [item.name, `${item.stock?.items ?? 0} items · ${item.stock?.belowReorder ?? 0} at or under reorder · ${item.stock?.expiringBatches ?? 0} batches expiring in 30 days`]) };
+  }
+  if (/project|delivery|milestone|late|accept/.test(q)) {
+    const active = scope.reduce((sum, item) => sum + (item.delivery?.activeProjects ?? 0), 0), late = scope.reduce((sum, item) => sum + (item.delivery?.lateProjects ?? 0), 0);
+    if (!active) return { text: `No project is active${named ? ` at ${named.name}` : ""}. Projects show here once they are in Projects & Delivery.` };
+    return { text: `${active} project${active === 1 ? " is" : "s are"} active${late ? `, ${late} of them late` : ", none late"}.`, rows: scope.map((item) => [item.name, `${item.delivery?.activeProjects ?? 0} active · ${item.delivery?.lateProjects ?? 0} late · ${item.delivery?.overdueMilestones ?? 0} milestones past due · ${item.delivery?.overdueTasks ?? 0} tasks overdue · ${item.delivery?.awaitingAcceptance ?? 0} waiting for the customer to accept`]) };
+  }
   if (/gst|tds|compliance|filing|due/.test(q)) {
     const rows = scope.flatMap((item) => item.compliance.filter((due) => due.status === "overdue" || due.status === "due_soon").map((due): [string, string] => [item.name, `${due.label} for ${due.period}, due ${day(due.dueOn)}${due.status === "overdue" ? " (past due, not recorded as filed)" : ""}`]));
     return { text: rows.length ? "Filings past due or due this week." : "No filing is past due or due this week.", rows };
@@ -180,5 +231,5 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const best = top((item) => item.crm, (item) => Number(item.crm.pipelineValue));
     return { text: named ? `${named.name} has ${inr(Number(named.crm.pipelineValue))} open in ${named.crm.openDeals} deals and has won ${inr(Number(named.crm.wonValue))}.` : `${best?.name} holds the largest open pipeline, ${inr(Number(best?.crm.pipelineValue ?? 0))}.`, rows: scope.map((item) => [item.name, `${item.period.current.leads} leads this period · ${inr(Number(item.crm.pipelineValue))} open · ${inr(Number(item.crm.wonValue))} won`]) };
   }
-  return { text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, money owed, people and payroll, stock, delivery and filings. Name a company to narrow it." };
+  return { text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, money owed, people, leave, claims and payroll, stock, delivery, support tickets, supplier bills, cash, GST and filings. Name a company to narrow it." };
 }

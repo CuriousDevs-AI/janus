@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { TurnCard } from "@/components/ai/turn-card";
 import { EXAMPLE_QUESTIONS, type BusinessAnswer } from "@/lib/services/business-answer";
-import { api } from "@/lib/api/client";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { JanusIntelligence } from "@/components/business/janus-intelligence";
+import { DepartmentIntelligence } from "@/components/business/department-chat";
 
 const INTELLIGENCE_VIEWS = [
   { value: "chat", label: "Business AI Chat" },
@@ -154,26 +154,9 @@ function AskYourBusinessPageInner() {
       return;
     }
 
-    void api<{ answer: string; sources: string[] }>("/business/intelligence/ask", {
-      method: "POST",
-      body: JSON.stringify({ question: trimmed, workspaceId: searchParams.get("workspace") ?? workspaceId }),
-    }).then((result) => setTurns((prev) => prev.map((t) => t.id === id ? {
-      ...t,
-      status: "done",
-      result: {
-        question: trimmed,
-        answer: result.answer,
-        dataUsed: result.sources,
-        calculation: {
-          metric: "Grounded business records",
-          period: "Current records",
-          filters: workspaceId,
-          sources: result.sources.join(", "),
-        },
-        followups: [],
-      },
-    } : t))).catch(() => setTurns((prev) => prev.map((t) => t.id === id ? { ...t, status: "done", result: null } : t)));
-  }, [crmAssistant, departmentChat, searchParams, workspaceId]);
+    // A real account answers in Janus Intelligence and the department chats, which open before this.
+    setTurns((prev) => prev.map((t) => t.id === id ? { ...t, status: "done", result: demoCrmAnswer(trimmed) } : t));
+  }, [crmAssistant, departmentChat]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -183,6 +166,11 @@ function AskYourBusinessPageInner() {
   // A real business gets the Portfolio's Janus for its own company; the demo keeps its preview.
   if (workspaceId === "business" && !demoMode) {
     return <JanusIntelligence requested={requestedIntelligenceView} />;
+  }
+
+  // Each department's chat is the same Janus, opening on what that team asks; the demo keeps its preview.
+  if ((departmentChat || crmAssistant) && !demoMode) {
+    return <DepartmentIntelligence workspaceId={workspaceId} workspaceName={workspace.name} />;
   }
 
   if (workspaceId === "business" && intelligenceView === "knowledge") {
@@ -394,17 +382,7 @@ function CrmAssistantView() {
       return;
     }
 
-    try {
-      const result = await api<{ answer: string; sources: string[]; unavailable?: string[] }>("/business/intelligence/ask", {
-        method: "POST",
-        body: JSON.stringify({ question: trimmed, workspaceId: "crm-sales" }),
-      });
-      const assistantMessage: ChatMessage = { id: `crm-m-${Date.now()}-answer`, role: "assistant", text: result.answer, day: "Today", time: "Just now" };
-      setThreads((current) => current.map((thread) => thread.id === activeId ? { ...thread, messages: [...thread.messages, assistantMessage] } : thread));
-      setNotice(result.unavailable?.length ? `Answer grounded in connected records. Unavailable: ${result.unavailable.join(", ")}.` : "Answer grounded in connected CRM records.");
-    } catch {
-      setNotice("Janus could not load a verified answer. Check the connected CRM data and try again.");
-    }
+
   }
 
   if (!activeThread) return null;
@@ -482,17 +460,9 @@ function BusinessChatView() {
     const userMessage: ChatMessage = { id: `m-${Date.now()}`, role: "user", text: trimmed, day: "Today", time };
     setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, title: thread.messages.length === 0 ? trimmed.slice(0, 36) : thread.title, date: "Today", messages: [...thread.messages, userMessage] } : thread));
     setQuestion("");
-    try {
-      const result = await api<{ answer: string; sources: string[]; unavailable?: string[]; requiresApproval?: boolean }>("/business/intelligence/ask", {
-        method: "POST",
-        body: JSON.stringify({ question: trimmed, workspaceId: "business" }),
-      });
-      const assistantMessage: ChatMessage = { id: `m-${Date.now()}-answer`, role: "assistant", text: result.answer, day: "Today", time: "Just now" };
-      setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, messages: [...thread.messages, assistantMessage] } : thread));
-      setNotice(result.unavailable?.length ? `Answer grounded in connected records. Unavailable: ${result.unavailable.join(", ")}.` : "Answer grounded in connected records.");
-    } catch {
-      setNotice("Janus could not load a verified answer. Check the connected data and try again.");
-    }
+    // Only the preview shows this chat; a real business asks Janus Intelligence.
+    const answer: ChatMessage = { id: `m-${Date.now()}-answer`, role: "assistant", text: demoCrmAnswer(trimmed).answer, day: "Today", time };
+    setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, messages: [...thread.messages, answer] } : thread));
   }
 
   return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-6 py-7">

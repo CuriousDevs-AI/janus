@@ -23,6 +23,16 @@ BusinessModel = Literal[
 ]
 
 
+class QuietLead(BaseModel):
+    """An open lead nobody has called, messaged or moved for some days."""
+
+    id: str
+    name: str
+    company: str | None = None
+    stage: str
+    days: int
+
+
 class CrmSummary(BaseModel):
     leads: int
     openDeals: int
@@ -30,6 +40,9 @@ class CrmSummary(BaseModel):
     lostDeals: int
     pipelineValue: str
     wonValue: str
+    # Open leads with no activity for 3 days or more, and the longest-waiting few.
+    quietLeads: int = 0
+    quietList: list[QuietLead] = []
 
 
 class Ageing(BaseModel):
@@ -712,6 +725,8 @@ class AskIn(BaseModel):
     period: PeriodKey = "month"
     # Asked from one company's Business Management: answer from that company's records alone.
     companyId: Annotated[str, StringConstraints(max_length=20)] | None = None
+    # Asked from a department's chat (HR, Finance…): the figures it leads with.
+    topic: Literal["sales", "people", "finance", "stock", "support", "projects"] | None = None
 
 
 class Source(BaseModel):

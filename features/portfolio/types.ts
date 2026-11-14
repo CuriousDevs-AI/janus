@@ -15,7 +15,8 @@ export interface PortfolioCompany {
   current: boolean;
   members: number;
   openTickets: number;
-  crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string };
+  /** quietLeads: open leads with no activity for 3+ days; quietList: the longest-waiting few. Older servers leave them out. */
+  crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string; quietLeads?: number; quietList?: { id: string; name: string; company: string | null; stage: string; days: number }[] };
   /** From the company's invoices, payments, approved credit notes and bills. Null where the person's role there does not include money (Group analyst). */
   money: null | {
     receivable: string;

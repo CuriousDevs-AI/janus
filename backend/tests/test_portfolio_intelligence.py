@@ -5,6 +5,8 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import HttpUrl
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from janus_api.core.config import get_settings
 from tests.conftest import Mailbox
@@ -159,6 +161,21 @@ async def test_a_model_answers_only_from_the_portfolio_and_cites_it(
         json={"question": "Sales?", "model": model, "companyId": "999999"},
     )
     assert elsewhere.status_code == 404, elsewhere.text
+    # From a department's chat, the model is told which figures to lead with.
+    prompts: list[str] = []
+
+    def department(request: httpx.Request) -> httpx.Response:
+        prompts.append(json.loads(request.content)["messages"][0]["content"])
+        return _chat("Nobody is on leave today.")
+
+    provider_transport(monkeypatch, department)
+    hr = await client.post(
+        "/v1/portfolio/intelligence/ask",
+        headers=owner.headers,
+        json={"question": "Leave?", "model": model, "companyId": company["id"], "topic": "people"},
+    )
+    assert hr.status_code == 200, hr.text
+    assert "Asked from the HR & People" in prompts[0]
 
     # Janus rules answer on the page, not here; a spent budget stops the model.
     rules = await client.post(
@@ -262,3 +279,30 @@ async def test_free_providers_each_keep_their_own_key_and_fixed_address(
         "openrouter.ai/api/v1/chat/completions",
         "api.groq.com/openai/v1/chat/completions",
     ]
+
+
+async def test_quiet_leads_are_open_leads_nobody_has_touched_for_three_days(
+    client: httpx.AsyncClient, mailbox: Mailbox, admin_engine: AsyncEngine
+) -> None:
+    owner = await signup(client, mailbox)
+    for key, name in (("quiet-1", "Meera Traders"), ("fresh-1", "Ravi Textiles")):
+        made = await client.post(
+            "/v1/leads",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={"name": name, "phone": "98765432" + ("10" if key == "quiet-1" else "11")},
+        )
+        assert made.status_code == 201, made.text
+    async with admin_engine.begin() as connection:
+        await connection.execute(
+            text(
+                "UPDATE leads SET last_activity_at = now() - interval '5 days' WHERE contact_id ="
+                " (SELECT id FROM contacts WHERE name = 'Meera Traders')"
+            )
+        )
+    crm = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()["companies"][0][
+        "crm"
+    ]
+    assert crm["quietLeads"] == 1
+    [quiet] = crm["quietList"]
+    # Counted in whole days in India, so five days ago is 5 or, near midnight, 6.
+    assert quiet["name"] == "Meera Traders" and quiet["days"] in (5, 6)
