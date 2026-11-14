@@ -141,17 +141,7 @@ def _health(company: portfolio.CompanySummary) -> Figures:
                 change=f"Lasts about {runway:g} months" if runway is not None else None,
             )
         )
-    late = [item for item in company.compliance if item.status == "overdue"]
-    soon = [item for item in company.compliance if item.status == "due_soon"]
-    if late or soon:
-        rows.append(
-            Row(
-                label="Filings",
-                value=f"{len(late)} past due, {len(soon)} due this week",
-                change=", ".join(f"{item.label} {item.period}" for item in [*late, *soon][:4]),
-                warn=bool(late),
-            )
-        )
+    # Filings past due or due this week are already among what needs the owner, above.
     waiting = sum(item.count for item in company.approvals)
     if waiting:
         rows.append(Row(label="Waiting for a decision", value=f"{waiting} approvals"))
@@ -183,6 +173,9 @@ def _review(company: portfolio.CompanySummary) -> Figures:
         rows.append(_money(f"Biggest customer: {top.name}", top.current, top.previous))
     if company.people:
         rows.append(Row(label="People", value=str(company.people.headcount)))
+    for row in rows:
+        if row.change:
+            row.change = row.change.replace("the same days before", "the month before")
     return Figures(covers="period", rows=rows)
 
 

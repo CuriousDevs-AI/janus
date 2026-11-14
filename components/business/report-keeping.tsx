@@ -109,7 +109,7 @@ export function ScheduleReportDialog({ reports, initial, onClose, onSave }: { re
 }
 
 /** Words for a list of schedules: Business Reports' by default, or an owner's agents. */
-export type ScheduleWords = { title: string; description: string; emptyTitle: string; emptyText: string; action: string };
+export type ScheduleWords = { title: string; description: string; emptyTitle: string; emptyText: string; action: string; hidePeriod?: boolean };
 const reportWords: ScheduleWords = { title: "Scheduled", description: "Reports emailed to your team at 9 in the morning, India time.", emptyTitle: "No reports are emailed yet", emptyText: "Have the sales summary in your inbox every Monday, or receivables on the 1st, without opening Janus.", action: "Email a report" };
 
 export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, demo, words = reportWords }: { schedules: ReportSchedule[]; loading: boolean; error?: string; onNew: () => void; onChanged: (next?: ReportSchedule[]) => void; demo: boolean; words?: ScheduleWords }) {
@@ -138,7 +138,7 @@ export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, de
       : <ul className="divide-y divide-border">{schedules.map((item) => <li key={item.id} className="flex flex-wrap items-start gap-3 py-3">
         <div className="min-w-[220px] flex-1">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium">{item.reportName}{item.paused ? <Badge variant="warning">Paused</Badge> : <Badge variant="success">On</Badge>}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{frequencyWords[item.frequency]} · {periodWords[item.period].toLowerCase()} · to {item.recipients.map((person) => person.name).join(", ") || "nobody still in the business"}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{frequencyWords[item.frequency]}{words.hidePeriod ? "" : ` · ${periodWords[item.period].toLowerCase()}`} · to {item.recipients.map((person) => person.name).join(", ") || "nobody still in the business"}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{item.nextDueAt ? `Next: ${when(item.nextDueAt)}` : "Not sending while paused"}{item.lastSentAt ? ` · Last sent ${when(item.lastSentAt)}` : " · Not sent yet"}</p>
           {item.lastProblem && <p className="mt-1 text-xs text-warning">{item.lastProblem}</p>}
         </div>
