@@ -198,3 +198,37 @@ async def test_a_spend_request_and_a_credit_note_start_their_workflows(
     posted = await _messages(client, owner, space)
     assert any(text.endswith(": ₹3,000 for Packing tape restock") for text in posted), posted
     assert "Credit note ₹500: Late delivery" in posted
+
+
+async def test_saving_changes_keeps_a_ready_workflow_on_and_switches_off_a_broken_one(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _ = await _company(client, mailbox)
+    workflow = await _workflow(
+        client,
+        owner,
+        [_post("New lead: {{lead.name}}")],
+        trigger={"type": "lead_created"},
+        requiresApproval=False,
+    )
+    on = await client.post(f"/v1/business/automations/{workflow}/on", headers=owner.headers)
+    assert on.status_code == 200, on.text
+
+    edited = await client.patch(
+        f"/v1/business/automations/{workflow}/draft",
+        headers=owner.headers,
+        json={"actions": [_post("Fresh lead: {{lead.name}} from {{lead.source}}")]},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["status"] == "active"
+
+    broken = _post("No channel")
+    broken["config"]["channel"] = ""
+    saved = await client.patch(
+        f"/v1/business/automations/{workflow}/draft",
+        headers=owner.headers,
+        json={"actions": [broken]},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["status"] == "draft"
+    assert any("Team Chat channel" in text for text in saved.json()["problems"])
