@@ -109,7 +109,6 @@ export function WorkspaceSection() {
   const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
@@ -242,10 +241,9 @@ function BusinessOverviewPanel() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
             <Badge variant="neutral">Owner view</Badge>
           </div>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Business overview</h2>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
@@ -452,69 +450,98 @@ function UnavailableMessage({ text }: { text: string }) { return <div className=
 function WorkspacesPanel() {
   const searchParams = useSearchParams();
   const activate = searchParams.get("activate");
-  const activationDefinition = workspaceDefinitions.find((workspace) => workspace.id === activate && workspace.status === "planned");
+  const activationDefinition = workspaceDefinitions.find((workspace) => workspace.id === activate && workspace.id !== "business" && workspace.id !== "portfolio");
   const [createOpen, setCreateOpen] = React.useState(Boolean(activationDefinition));
   const [workspaceName, setWorkspaceName] = React.useState(activationDefinition?.name ?? "");
-  const [workspaceType, setWorkspaceType] = React.useState(activationDefinition?.id ?? "hr_people");
-  const [createdWorkspaces, setCreatedWorkspaces] = React.useState<{ id: string; type: string; name: string; description: string }[]>([]);
+  const [workspaceType, setWorkspaceType] = React.useState(activationDefinition?.id ?? "");
+  // The workspaces switched on for this business, as the server holds them; null until loaded.
+  const [records, setRecords] = React.useState<WorkspaceRecord[] | null>(null);
+  const [members, setMembers] = React.useState<Record<string, WorkspacePerson[]>>({});
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const switchedOn = demoMode ? activeCompany().workspaces : null;
-  const created = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio" && (switchedOn ? switchedOn.includes(workspace.id) : workspace.status === "active"));
-  const available = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio" && (switchedOn ? !switchedOn.includes(workspace.id) : workspace.status === "planned"));
+  const departments = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio");
+  const recordFor = (id: string) => records?.find((item) => item.type === id.replaceAll("-", "_"));
+  // Team Chat has no workspace record: it is on for every business.
+  const isOn = (workspace: (typeof departments)[number]) => switchedOn ? switchedOn.includes(workspace.id) : workspace.id === "team-chat" || records === null ? workspace.status === "active" : Boolean(recordFor(workspace.id));
+  const ready = demoMode || records !== null || Boolean(loadError);
+  const created = ready ? departments.filter(isOn) : [];
+  const available = ready ? departments.filter((workspace) => !isOn(workspace)) : [];
 
   React.useEffect(() => {
-    api<{ id: string; type: string; name: string; description: string }[]>("/workspaces")
-      .then((items) => setCreatedWorkspaces(items.filter((item) => item.type !== "crm_sales")))
-      .catch((error) => setLoadError(message(error)));
+    if (demoMode) return;
+    let cancelled = false;
+    api<WorkspaceRecord[]>("/workspaces")
+      .then(async (items) => {
+        if (cancelled) return;
+        setRecords(items);
+        // Who is in each workspace and who leads it; a workspace without a manager has nobody accountable.
+        const lists = await Promise.all(items.map((item) => api<WorkspacePerson[]>(`/workspaces/${item.id}/members`).then((people) => [item.id, people] as const).catch(() => [item.id, null] as const)));
+        if (!cancelled) setMembers(Object.fromEntries(lists.filter((entry): entry is readonly [string, WorkspacePerson[]] => entry[1] !== null)));
+      })
+      .catch((error) => { if (!cancelled) setLoadError(message(error)); });
+    return () => { cancelled = true; };
   }, []);
+  function staffing(workspaceId: string) {
+    const record = recordFor(workspaceId);
+    const people = record ? members[record.id] : undefined;
+    if (!people) return undefined;
+    const leads = people.filter((person) => person.accessLevel === "manager" || person.accessLevel === "owner");
+    const managers = people.filter((person) => person.accessLevel === "manager");
+    return { text: `${people.length} ${people.length === 1 ? "person" : "people"} · ${managers.length ? `managed by ${managers.slice(0, 2).map((person) => person.name).join(", ")}${managers.length > 2 ? ` and ${managers.length - 2} more` : ""}` : leads.length ? "no manager yet, only the Owner" : "nobody leads it yet"}`, warn: managers.length === 0 };
+  }
+  function openActivate(id?: string) {
+    const definition = departments.find((workspace) => workspace.id === (id ?? available[0]?.id));
+    setWorkspaceType(definition?.id ?? "");
+    setWorkspaceName(definition?.name ?? "");
+    setCreateOpen(true);
+  }
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business setup</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Create and manage the workspaces your business uses.</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-3.5" />Activate workspace</Button>
+        {available.length > 0 && <Button size="sm" onClick={() => openActivate()}><Plus className="size-3.5" />Activate workspace</Button>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <WorkspaceMetric label="Active workspaces" value={String(created.length + createdWorkspaces.length)} detail="Ready for your team" />
-        <WorkspaceMetric label="Available to activate" value={String(available.length)} detail="Department workspaces" />
+        <WorkspaceMetric label="Active workspaces" value={ready ? String(created.length) : "—"} detail={ready && created.some((workspace) => staffing(workspace.id)?.warn) ? `${created.filter((workspace) => staffing(workspace.id)?.warn).length} without a manager` : "Switched on for this business"} />
+        <WorkspaceMetric label="Available to activate" value={ready ? String(available.length) : "—"} detail="Department workspaces" />
       </div>
 
       <SectionCard title="Active workspaces" description="These are the workspaces currently enabled for this business. Open one to enter its workflow.">
         <div className="grid gap-3 lg:grid-cols-2">
-          {created.map((workspace) => (
-            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description} href={workspace.id === "crm-sales" ? "/dashboard?workspace=crm-sales" : `/workspace/${workspace.id}?workspace=${workspace.id}`} primary />
-          ))}
-          {createdWorkspaces.map((workspace) => (
-            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description || "Ready for manager and access configuration."} href={`/workspace/${workspace.type.replaceAll("_", "-")}?workspace=${workspace.type.replaceAll("_", "-")}`} />
-          ))}
+          {!ready && <p className="text-sm text-muted-foreground">Loading workspaces…</p>}
+          {created.map((workspace) => {
+            const team = staffing(workspace.id);
+            return <WorkspaceCard key={workspace.id} name={recordFor(workspace.id)?.name || workspace.name} description={recordFor(workspace.id)?.description || workspace.description} staffing={team?.text} warn={team?.warn} href={workspace.id === "crm-sales" ? "/dashboard?workspace=crm-sales" : workspace.id === "team-chat" ? "/team?workspace=team-chat" : `/workspace/${workspace.id}?workspace=${workspace.id}`} />;
+          })}
         </div>
-        {loadError && <div className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800">Additional workspace records are unavailable: {loadError}. CRM & Sales remains available locally.</div>}
+        {created.some((workspace) => staffing(workspace.id)?.warn) && <p className="mt-3 text-xs text-muted-foreground">A workspace without a manager leaves its approvals and follow-ups to you. <Link href="/settings?tab=team" className="text-accent hover:underline">Give it a manager in People & Access</Link></p>}
+        {loadError && <div className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800">The workspace list could not be loaded: {loadError}. Showing the usual workspaces.</div>}
       </SectionCard>
 
-      <SectionCard title="Available workspaces" description="Activate a department when you are ready. Each activation opens the same simple create workflow.">
+      {ready && available.length > 0 && <SectionCard title="Available workspaces" description="Switch on a department when you are ready. Its records stay separate, and you choose who joins it.">
         <div className="grid gap-3 sm:grid-cols-2">
           {available.map((workspace) => (
             <div key={workspace.id} className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><Plus className="size-4" /></span>
               <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-foreground">{workspace.name}</span><span className="mt-1 block text-xs text-muted-foreground">{workspace.description}</span></span>
-              {demoMode && !["crm-sales", "hr-people"].includes(workspace.id) ? <Badge variant="neutral">Coming soon</Badge> : <Button size="sm" variant="secondary" onClick={() => { setWorkspaceType(workspace.id); setCreateOpen(true); }}>Activate</Button>}
+              {demoMode && !["crm-sales", "hr-people"].includes(workspace.id) ? <Badge variant="neutral">Coming soon</Badge> : <Button size="sm" variant="secondary" onClick={() => openActivate(workspace.id)}>Activate</Button>}
             </div>
           ))}
         </div>
-      </SectionCard>
+      </SectionCard>}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
               <DialogTitle>Activate workspace</DialogTitle>
             <DialogDescription>
-              Create a tenant-scoped workspace. Its records and access will stay isolated from CRM & Sales.
+              Switch on a department for this business. Its records stay in it, and only the people you add can open it.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
@@ -531,7 +558,7 @@ function WorkspacesPanel() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="workspace-type" className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Workspace type</label>
-            <Select value={workspaceType} onValueChange={setWorkspaceType}>
+            <Select value={workspaceType} onValueChange={(value) => { if (!workspaceName.trim() || departments.some((workspace) => workspace.name === workspaceName)) setWorkspaceName(departments.find((workspace) => workspace.id === value)?.name ?? ""); setWorkspaceType(value); }}>
               <SelectTrigger id="workspace-type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {available.filter((workspace) => !demoMode || ["crm-sales", "hr-people"].includes(workspace.id)).map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
@@ -541,15 +568,15 @@ function WorkspacesPanel() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
-              disabled={!workspaceName.trim() || saving}
+              disabled={!workspaceName.trim() || !workspaceType || saving}
               onClick={async () => {
                 setSaving(true);
                 try {
-                  const created = await api<{ id: string; type: string; name: string; description: string }>("/workspaces", {
+                  const created = await api<WorkspaceRecord>("/workspaces", {
                     method: "POST",
                     body: JSON.stringify({ type: workspaceType.replaceAll("-", "_"), name: workspaceName.trim() }),
                   });
-                  setCreatedWorkspaces((items) => [...items, created]);
+                  setRecords((items) => [...(items ?? []), created]);
                   setWorkspaceName("");
                   setCreateOpen(false);
                   toast.success("Workspace activated");
@@ -573,8 +600,11 @@ function WorkspaceMetric({ label, value, detail }: { label: string; value: strin
   return <div className="rounded-lg border border-border bg-surface p-4"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><p className="mt-2 text-xl font-semibold text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
-function WorkspaceCard({ name, description, href, primary = false }: { name: string; description: string; href: string; primary?: boolean }) {
-  return <Link href={href} className={`group flex items-center gap-3 rounded-lg border px-4 py-4 transition-colors ${primary ? "border-accent-border bg-accent-muted/40 hover:bg-accent-muted" : "border-border bg-surface hover:border-accent-border hover:bg-surface-2"}`}><span className="flex min-w-0 flex-1 flex-col gap-1"><span className="flex items-center gap-2 text-sm font-medium text-foreground">{name}<Badge variant="success">Active</Badge></span><span className="text-xs text-muted-foreground">{description}</span></span><ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-accent" /></Link>;
+type WorkspaceRecord = { id: string; type: string; name: string; description: string };
+type WorkspacePerson = { membershipId: string; name: string; email: string; accessLevel: string };
+
+function WorkspaceCard({ name, description, href, staffing, warn = false }: { name: string; description: string; href: string; staffing?: string; warn?: boolean }) {
+  return <Link href={href} className="group flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-4 transition-colors hover:border-accent-border hover:bg-surface-2"><span className="flex min-w-0 flex-1 flex-col gap-1"><span className="flex items-center gap-2 text-sm font-medium text-foreground">{name}<Badge variant="success">Active</Badge></span><span className="text-xs text-muted-foreground">{description}</span>{staffing && <span className={`text-xs ${warn ? "text-warning" : "text-muted-foreground"}`}>{staffing}</span>}</span><ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-accent" /></Link>;
 }
 
 function SectionTabs({ items, value, onChange }: { items: string[][]; value: string; onChange: (value: string) => void }) {
