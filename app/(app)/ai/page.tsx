@@ -20,6 +20,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { JanusIntelligence } from "@/components/business/janus-intelligence";
 
 const INTELLIGENCE_VIEWS = [
   { value: "chat", label: "Business AI Chat" },
@@ -109,7 +110,7 @@ function AskYourBusinessPageInner() {
     wonDeals: number;
     pipelineValue: string;
     unavailable: string[];
-  }>(workspaceId === "business" && intelligenceView === "performance" ? "/business/reports/summary" : null);
+  }>(demoMode && workspaceId === "business" && intelligenceView === "performance" ? "/business/reports/summary" : null);
 
   const [turns, setTurns] = React.useState<Turn[]>(() => {
     if (!demoMode || (!departmentChat && !crmAssistant)) return [];
@@ -177,6 +178,11 @@ function AskYourBusinessPageInner() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     submit(inputValue);
+  }
+
+  // A real business gets the Portfolio's Janus for its own company; the demo keeps its preview.
+  if (workspaceId === "business" && !demoMode) {
+    return <JanusIntelligence requested={requestedIntelligenceView} />;
   }
 
   if (workspaceId === "business" && intelligenceView === "knowledge") {

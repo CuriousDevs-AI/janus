@@ -45,17 +45,17 @@ export function WorkInbox({ list }: { list: PortfolioCompany[] }) {
     </div>
     <SectionCard title={`${shown.length} ${shown.length === 1 ? "thing" : "things"} to do`} description="Most urgent first. Open one to do it in its company." action={hidden > 0 ? <Button size="sm" variant="ghost" onClick={() => save({})}><RotateCcw className="size-3.5" />Show {hidden} snoozed</Button> : undefined}>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select aria-label="Company" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={company} onChange={(event) => setCompany(event.target.value)}><option value="all">All companies</option>{list.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+        {list.length > 1 && <select aria-label="Company" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={company} onChange={(event) => setCompany(event.target.value)}><option value="all">All companies</option>{list.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
         <select aria-label="Kind of work" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={kind} onChange={(event) => setKind(event.target.value as WorkKind | "all")}><option value="all">Every kind</option>{kinds.map((value) => <option key={value} value={value}>{workKinds[value]}</option>)}</select>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={urgentOnly} onChange={() => setUrgentOnly(!urgentOnly)} />Urgent only</label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dueOnly} onChange={() => setDueOnly(!dueOnly)} />With a due date</label>
       </div>
-      {shown.length === 0 ? <p className="text-sm text-muted-foreground">{live.length === 0 ? "Nothing needs doing in any company. Well done." : "Nothing matches these filters."}</p>
+      {shown.length === 0 ? <p className="text-sm text-muted-foreground">{live.length === 0 ? list.length > 1 ? "Nothing needs doing in any company. Well done." : "Nothing needs doing right now. Well done." : "Nothing matches these filters."}</p>
         : <ul className="flex flex-col divide-y divide-border">{shown.map((item) => {
           return <li key={item.key} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
             <Badge variant={severityTone[item.priority]}>{severityName[item.priority]}</Badge>
             <div className="min-w-0 flex-1">
-              <p className="text-sm"><span className="font-medium">{item.title}</span> <span className="text-muted-foreground">· {item.company.name} · {workKinds[item.kind]}</span></p>
+              <p className="text-sm"><span className="font-medium">{item.title}</span> <span className="text-muted-foreground">·{list.length > 1 ? ` ${item.company.name} ·` : ""} {workKinds[item.kind]}</span></p>
               <p className="text-xs text-muted-foreground">{item.detail}{item.due ? ` Due ${day(item.due)}.` : ""}</p>
             </div>
             <div className="flex gap-1">
