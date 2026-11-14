@@ -701,30 +701,6 @@ async def workflow_runs(
     return [service.execution_out(item) for item in items]
 
 
-@router.get("/business/automations/{workflow_id}/versions", response_model=list[dict[str, Any]])
-async def workflow_versions(workflow_id: int, actor: CurrentActor, db: Db) -> list[dict[str, Any]]:
-    workflow = await db.scalar(
-        select(AutomationWorkflow).where(
-            AutomationWorkflow.id == workflow_id,
-            AutomationWorkflow.tenant_id == actor.session.tenant_id,
-            AutomationWorkflow.status != "archived",
-        )
-    )
-    if workflow is None:
-        raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
-    )
-    return [
-        {
-            "version": 1,
-            "status": workflow.status,
-            "createdAt": workflow.created_at,
-            "changeNote": "Initial workflow version",
-        }
-    ]
-
-
 @router.patch("/business/automations/{workflow_id}/draft", response_model=schemas.WorkflowOut)
 async def save_workflow_draft(
     workflow_id: int, data: schemas.WorkflowUpdate, actor: Automations, db: Db, request: Request
@@ -751,7 +727,10 @@ async def save_workflow_draft(
     ):
         if value is not None:
             setattr(item, key, value)
-    item.status = "draft"
+    # A switched-on workflow stays on with the saved changes, so its next run uses them. One the
+    # changes leave unable to run is switched off rather than left on to fail; its problems say why.
+    if item.status != "active" or engine.problems(item.trigger, item.actions or []):
+        item.status = "draft"
     from janus_api.audit.service import record
 
     record(
