@@ -43,8 +43,7 @@ export function LiveAgents() {
 
   return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7">
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">AI Agents</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">Agents that watch the business for you</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">AI Agents</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Each agent reads your records on a schedule and emails what it finds. Every person gets only the figures their own role can see, read the morning it goes out.</p>
     </div>
 
