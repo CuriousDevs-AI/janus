@@ -49,7 +49,7 @@ AREAS: dict[str, Area] = {
     "membership": "people",
     "team": "people",
     "hr": "people",
-    "business": "workflows",
+    "business": "settings",
     "portfolio": "settings",
     "org": "settings",
     "ai": "settings",
@@ -69,7 +69,11 @@ class AuditEvent(BaseModel):
 def _words(action: str) -> str:
     if action in WORDS:
         return WORDS[action]
-    name = action.split(".", 1)[-1].replace("_", " ")
+    record, _, name = action.partition(".")
+    name = name.replace("_", " ")
+    # "lead.updated" says what changed only with its record: "Lead updated", not "Updated".
+    if " " not in name:
+        name = f"{record.replace('_', ' ')} {name}"
     return name[:1].upper() + name[1:]
 
 
