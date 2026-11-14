@@ -112,7 +112,7 @@ function PreviewDialog({ agent, onClose, onSetUp }: { agent: (typeof agents)[num
   const preview = useApi<Preview>(`/business/agents/${agent.report}/preview`);
   const rows = preview.data?.figures?.rows ?? [];
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-w-lg">
-    <DialogHeader><DialogTitle>{preview.data?.name ?? agent.name}: preview</DialogTitle><DialogDescription>What it would email if it went out now, from today&apos;s figures. Nothing is sent, and each person gets only what their role can see.</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle>{agent.name}: preview</DialogTitle><DialogDescription>What it would email if it went out now, from today&apos;s figures. Nothing is sent, and each person gets only what their role can see.</DialogDescription></DialogHeader>
     {preview.loading ? <p className="text-sm text-muted-foreground">Reading your records…</p>
       : preview.error ? <p className="text-sm text-danger">{preview.error}</p>
       : !rows.length ? <p className="text-sm text-muted-foreground">There is nothing in your records for this yet.</p>
