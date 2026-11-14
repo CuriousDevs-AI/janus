@@ -35,6 +35,8 @@ SEND_TIME = time(9, 0)
 ReportId = Literal[
     "sales-summary",
     "sales-pipeline",
+    "conversion-funnel",
+    "rep-performance",
     "lead-sources",
     "profit-loss",
     "cash-flow",

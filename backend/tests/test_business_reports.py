@@ -111,6 +111,15 @@ async def test_reports_keep_saved_reports_pins_and_schedules(
     assert after[0]["lastProblem"] is None and after[0]["lastSentAt"] is not None
 
 
+def test_every_report_and_agent_can_be_saved_and_scheduled() -> None:
+    from typing import get_args
+
+    from janus_api.business.report_figures import ALL_NAMES
+    from janus_api.business.reports import ReportId
+
+    assert set(get_args(ReportId)) == set(ALL_NAMES)
+
+
 def test_schedules_fall_due_at_nine_in_india() -> None:
     ist = ZoneInfo("Asia/Kolkata")
     friday = datetime(2026, 11, 13, 10, 0, tzinfo=ist)
@@ -206,3 +215,29 @@ async def test_the_funnel_and_rep_reports_count_leads_by_how_far_they_got_and_wh
         ("Nobody yet", "1 open", "1 new · nobody follows them up", True),
     ]
     assert reps["note"].startswith("1 open lead has no owner")
+
+    # The worker emails the same report on a schedule; its role reads owners' names only through
+    # app_member_names(), so the email names them too.
+    me = await _user_id(client, owner.headers, "owner@example.com")
+    made = await client.post(
+        "/v1/business/reports/schedules",
+        headers=owner.headers,
+        json={
+            "report": "rep-performance",
+            "period": "month",
+            "frequency": "weekly",
+            "recipients": [me],
+        },
+    )
+    assert made.status_code == 201, made.text
+    async with admin_engine.begin() as connection:
+        await connection.execute(
+            text("UPDATE business_report_schedules SET next_due_at = now() - interval '1 minute'")
+        )
+    engine = create_async_engine(os.environ["JANUS_TEST_WORKER_URL"])
+    try:
+        assert await report_once(async_sessionmaker(engine, expire_on_commit=False))
+    finally:
+        await engine.dispose()
+    body = mailbox.messages[-1][2]
+    assert "Owner" in body and "₹12,500 won" in body and "Nobody yet" in body
