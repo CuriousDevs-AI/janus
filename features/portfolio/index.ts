@@ -11,3 +11,4 @@ export type { PortfolioCompany, PortfolioPeriod, PortfolioPeriodKey, PortfolioRe
 // Business Management shows one company with the Portfolio's figures and words for them.
 export { change, day, healthName, healthTone, inr, todayIst } from "@/features/portfolio/lib/format";
 export { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
+export { RATE_MINIMUM } from "@/features/portfolio/lib/companies";
