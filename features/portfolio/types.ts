@@ -59,6 +59,10 @@ export interface PortfolioCompany {
   intercompany: { sales: string; purchases: string; salesBefore: string; purchasesBefore: string; partners: string[] } | null;
   /** Leads by channel, this period and the same days before. */
   leadSources: { source: string; current: number; previous: number }[];
+  /** The period's leads by how far each has got, beside the same days before. Older servers leave it out. */
+  funnel?: null | { current: FunnelStep; previous: FunnelStep };
+  /** Each lead owner in the period; "assigned: false" is the leads nobody owns. Older servers leave it out. */
+  reps?: { name: string; assigned: boolean; leads: number; won: number; wonValue: string; openLeads: number }[];
   /** Registration details, or null where none are recorded. */
   registration: PortfolioRegistration | null;
   /** Missing registration details, and filings the company's own records suggest. */
@@ -247,3 +251,5 @@ export interface BillingPreview {
 }
 /** POST /billing/checkout: what Razorpay Checkout needs. Amount in paise, GST included. */
 export interface BillingCheckout { keyId: string; orderId: string; amount: number; currency: "INR"; plan: string; description: string; name: string; email: string }
+
+export type FunnelStep = { leads: number; qualified: number; proposal: number; won: number; lost: number };
