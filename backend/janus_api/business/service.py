@@ -410,22 +410,3 @@ async def report_summary(
         dataSources=["CRM leads", "CRM deals"],
         unavailable=["expenses", "cash flow", "department metrics"],
     )
-
-
-async def intelligence_answer(
-    db: AsyncSession, tenant_id: int, question: str, workspace_id: int | None
-) -> schemas.IntelligenceAnswer:
-    summary = await report_summary(db, tenant_id, workspace_id)
-    scope = f" for workspace {workspace_id}" if workspace_id else ""
-    answer = (
-        f"For the connected CRM{scope}, Janus found {summary.leads} leads, "
-        f"{summary.openDeals} open deals and {summary.wonDeals} won deals. "
-        f"The current open pipeline is {summary.pipelineValue}. "
-        "This answer is grounded in stored CRM records; no recommendation or external "
-        "action was executed."
-    )
-    return schemas.IntelligenceAnswer(
-        answer=answer,
-        sources=summary.dataSources,
-        unavailable=summary.unavailable,
-    )

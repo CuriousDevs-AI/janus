@@ -137,3 +137,50 @@ async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dic
         )
         for day in leads.keys() | won.keys()
     }
+
+
+@dataclass
+class QuietLead:
+    id: int
+    name: str
+    company: str | None
+    stage: str
+    days: int
+
+
+# A lead still open with no call, message or stage change for this many days has gone quiet.
+QUIET_DAYS = 3
+
+
+async def quiet_leads(
+    db: AsyncSession, tenant_id: int, today: date, limit: int = 5
+) -> tuple[int, list[QuietLead]]:
+    """Open leads nobody has touched for QUIET_DAYS or more: how many, and the longest-waiting."""
+    from datetime import UTC, datetime, time, timedelta
+
+    from janus_api.crm.models import Contact
+
+    cutoff = datetime.combine(today - timedelta(days=QUIET_DAYS), time.max, UTC)
+    quiet = (
+        Lead.tenant_id == tenant_id,
+        Lead.stage.not_in(("won", "lost")),
+        Lead.last_activity_at <= cutoff,
+    )
+    count = await db.scalar(select(func.count(Lead.id)).where(*quiet))
+    rows = await db.execute(
+        select(Lead.id, Contact.name, Contact.company, Lead.stage, Lead.last_activity_at)
+        .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+        .where(*quiet)
+        .order_by(Lead.last_activity_at)
+        .limit(limit)
+    )
+    return int(count or 0), [
+        QuietLead(
+            id=row.id,
+            name=row.name or "Unnamed lead",
+            company=row.company,
+            stage=row.stage,
+            days=(today - row.last_activity_at.date()).days,
+        )
+        for row in rows
+    ]

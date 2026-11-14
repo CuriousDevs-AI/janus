@@ -11,7 +11,7 @@ import { Intelligence, usePortfolioApi, type DepartmentChat, type PortfolioPerio
  */
 export const departmentChats: Record<string, DepartmentChat> = {
   "crm-sales": { name: "CRM & Sales", topic: "sales", placeholder: "Ask about leads, deals, the pipeline or customers…", questions: [
-    ["Why did sales change?", TrendingDown], ["Why did leads change?", Users], ["How big is our pipeline?", Handshake],
+    ["Which leads need attention?", TriangleAlert], ["Why did sales change?", TrendingDown], ["Why did leads change?", Users], ["How big is our pipeline?", Handshake],
     ["What is our win rate?", Scale], ["Who is my biggest customer?", Landmark], ["What do customers owe us?", Wallet],
   ] },
   "hr-people": { name: "HR & People", topic: "people", placeholder: "Ask about people, leave, claims or payroll…", questions: [
