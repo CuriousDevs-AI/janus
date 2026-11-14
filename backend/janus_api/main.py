@@ -10,6 +10,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from janus_api.ai.router import router as ai_router
+from janus_api.audit.router import router as audit_router
 from janus_api.auth.router import router as auth_router
 from janus_api.billing.router import router as billing_router
 from janus_api.business.router import router as business_router
@@ -60,6 +61,7 @@ app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(business_router)
 app.include_router(org_router)
+app.include_router(audit_router)
 app.include_router(portfolio_router)
 app.include_router(billing_router)
 app.include_router(sources_router)

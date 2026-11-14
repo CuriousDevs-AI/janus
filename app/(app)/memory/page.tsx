@@ -1,4 +1,6 @@
 "use client";
+import { redirect } from "next/navigation";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import Link from "next/link";
@@ -43,7 +45,7 @@ const confidenceOptions = [
   { value: "50", label: "50%+" },
 ];
 
-export default function MemoryPage() {
+function DemoMemoryPage() {
   const [items, setItems] = React.useState<MemoryItem[]>(initialMemoryItems);
   const [query, setQuery] = React.useState("");
   const [kindFilter, setKindFilter] = React.useState<string>("all");
@@ -283,4 +285,10 @@ export default function MemoryPage() {
       </Dialog>
     </div>
   );
+}
+
+/** Only the demo has these; a real business is taken to the page that does this job. */
+export default function Page() {
+  if (!demoMode) redirect("/ai?workspace=crm-sales");
+  return <DemoMemoryPage />;
 }

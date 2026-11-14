@@ -73,14 +73,14 @@ export const crmNavSections: NavSection[] = [
     items: [
       { label: "AI Assistant", href: "/ai?workspace=crm-sales", icon: Sparkles, requiredPermission: "ai:manage" },
       { label: "Agents", href: "/agents?workspace=crm-sales", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage" },
-      { label: "Evaluations", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage" },
+      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage", demoOnly: true },
+      { label: "Evaluations", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage", demoOnly: true },
     ],
   },
   {
     title: "CRM Management",
     items: [
-      { label: "Integrations", href: "/integrations", icon: Plug, requiredPermission: "settings:manage" },
+      { label: "Integrations", href: "/integrations", icon: Plug, requiredPermission: "settings:manage", demoOnly: true },
       { label: "Approvals", href: "/approvals", icon: ShieldCheck, requiredPermission: "approvals:manage" },
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Audit Logs", href: "/audit", icon: ScrollText, requiredPermission: "settings:manage" },
