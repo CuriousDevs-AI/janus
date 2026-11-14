@@ -544,7 +544,7 @@ function WorkspacesPanel() {
           <DialogHeader>
               <DialogTitle>Activate workspace</DialogTitle>
             <DialogDescription>
-              Create a tenant-scoped workspace. Its records and access will stay isolated from CRM & Sales.
+              Switch on a department for this business. Its records stay in it, and only the people you add can open it.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
