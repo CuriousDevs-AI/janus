@@ -97,8 +97,7 @@ export function LivePeopleAccess({ initialSection = "members" }: { initialSectio
   return <OnContext.Provider value={on}><div className="flex flex-col gap-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
       <div>
-        <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business Management</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">People &amp; Access</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">People &amp; Access</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Who can sign in to {session.tenant.name}, the role each person holds, and what it lets them open. Employee records are kept in HR &amp; People.</p>
       </div>
       <Button onClick={() => setInviting(true)}><UserPlus className="size-3.5" />Invite someone</Button>
