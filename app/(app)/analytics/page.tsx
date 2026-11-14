@@ -44,6 +44,8 @@ export default function AnalyticsPage() {
   // Panels stay mounted but hidden, and a hidden chart measures 0×0; draw only the open tab's charts.
   const [tab, setTab] = React.useState("acquisition");
   if (businessReports) return <BusinessReports />;
+  // A real business's CRM analytics are its Sales reports, from its own records; the tabs below are the demo's.
+  if (!demoMode) return <BusinessReports home={workspaceId} startOn="Sales" />;
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader title="Analytics" description="Acquisition, sales, AI operations, support, customer health and automation — last 30 days." />
@@ -68,7 +70,8 @@ const demoSchedules: ReportSchedule[] = [
   { id: "demo-schedule-sales", report: "sales-summary", reportName: "Sales summary", period: "month", frequency: "weekly", recipients: [{ id: "1", name: "Owner", email: `owner@${activeSpec.company.domain}` }], paused: false, nextDueAt: "2026-11-16T09:00:00+05:30", lastSentAt: "2026-11-09T09:00:00+05:30", lastProblem: null, createdByName: "Owner" },
 ];
 
-function BusinessReports() {
+/** The ready-made reports from the company's own records. From CRM & Sales it opens on Sales and stays in that workspace. */
+function BusinessReports({ home = "business", startOn = "All" }: { home?: string; startOn?: ReportDepartment | "All" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
@@ -86,7 +89,7 @@ function BusinessReports() {
   const names = React.useMemo(() => new Map(reportCatalogue.map((item) => [item.id, item.name])), [reportCatalogue]);
   const report = reportCatalogue.find((item) => item.id === reportId);
   const [query, setQuery] = React.useState("");
-  const [department, setDepartment] = React.useState<ReportDepartment | "All">("All");
+  const [department, setDepartment] = React.useState<ReportDepartment | "All">(startOn);
   const livePins = useApi<{ reports: string[] }>(demoMode ? null : "/business/reports/pins");
   const [localPins, setLocalPins] = React.useState<string[] | null>(null);
   const pinned = localPins ?? livePins.data?.reports ?? ["sales-summary"];
@@ -100,8 +103,8 @@ function BusinessReports() {
   const [saving, setSaving] = React.useState<{ report: string; period: ReportPeriod } | "new" | null>(null);
   const [scheduling, setScheduling] = React.useState<string | "new" | null>(null);
 
-  function setTab(tab: ReportTab) { router.replace(`/analytics?workspace=business&tab=${tab}`); }
-  function openReport(definition: ReportDefinition, period: ReportPeriod = periodKey) { router.push(`/analytics?workspace=business&tab=library&report=${definition.id}&period=${period}`); }
+  function setTab(tab: ReportTab) { router.replace(`/analytics?workspace=${home}&tab=${tab}`); }
+  function openReport(definition: ReportDefinition, period: ReportPeriod = periodKey) { router.push(`/analytics?workspace=${home}&tab=library&report=${definition.id}&period=${period}`); }
   function connectWorkspace(definition: ReportDefinition) { router.push(`/settings?tab=workspace&view=workspaces&workspace=business&activate=${definition.requiredWorkspace}`); }
   function togglePin(id: string) {
     const next = pinned.includes(id) ? pinned.filter((item) => item !== id) : [...pinned, id];
