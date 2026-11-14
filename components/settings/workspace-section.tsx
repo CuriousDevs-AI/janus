@@ -4,7 +4,6 @@ import * as React from "react";
 import { activeCompany } from "@/lib/company";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
-import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bell, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
@@ -34,6 +33,7 @@ import { CompanyProfileSection } from "@/components/settings/company-profile-sec
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
+import { LiveAccessReview } from "@/components/business/company-settings";
 import { usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 const timezones = [
@@ -106,17 +106,18 @@ export function WorkspaceSection() {
   // The plan is the account's and lives in the Portfolio; an old link here says so.
   if (view === "settings" && requestedSection === "billing") return <BillingSection />;
 
-  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
+  // Exports, retention and backups have no service behind them yet, so a live account does not see a tab for them.
+  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", demoMode ? "Currency & Timezone" : "Hours & Timezone"], ["security", demoMode ? "Security & Privacy" : "Access & Security"], ...(demoMode ? [["data", "Data Management"]] : [])];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
           {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership.">{demoMode ? <StructurePanel /> : <RealStructure />}</SectionCard>}
-          {settingsSection === "locale" && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
-          {settingsSection === "security" && <SectionCard title="Security & privacy" description="Control account protection and business data safeguards.">{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <UnavailableMessage text="Security policy status is not connected yet. Configure sessions and two-step verification from the account security area." />}</SectionCard>}
-          {settingsSection === "data" && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
+          {settingsSection === "locale" && !demoMode && <LiveHours />}
+          {settingsSection === "locale" && demoMode && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
+          {settingsSection === "security" && <SectionCard title={demoMode ? "Security & privacy" : "Who can get in"} description={demoMode ? "Control account protection and business data safeguards." : "Everyone with access to this business, from its member list. Check it whenever someone leaves."}>{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <LiveAccessReview />}</SectionCard>}
+          {settingsSection === "data" && demoMode && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
       </main>
     </div>
   );
@@ -242,10 +243,9 @@ function BusinessOverviewPanel() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
             <Badge variant="neutral">Owner view</Badge>
           </div>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Business overview</h2>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
@@ -272,8 +272,8 @@ function BusinessOverviewPanel() {
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
       </div> : <div className="grid gap-3 sm:grid-cols-3">
-        <OverviewKpi label="People" value={String(people.length)} detail="In HR & People" />
-        <OverviewKpi label="Departments" value={String(new Set(people.map((item) => item.department)).size)} detail="Teams on record" />
+        <OverviewKpi label="People" value={demoMode ? String(people.length) : "—"} detail={demoMode ? "In HR & People" : "See HR & People"} />
+        <OverviewKpi label="Departments" value={demoMode ? String(new Set(people.map((item) => item.department)).size) : "—"} detail={demoMode ? "Teams on record" : "See Business Settings"} />
         <OverviewKpi label="CRM & Sales" value="Off" detail="Switch it on under Workspaces" />
       </div>}
 
@@ -427,10 +427,25 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function UnavailableSection({ title, description }: { title: string; description: string }) { return <SectionCard title={title} description={description}><UnavailableMessage text="No verified records are available for this section yet." /></SectionCard>; }
 /** The company's departments as HR keeps them, with how many people each has. */
+type HrRecords = { records: Record<string, Array<{ key: string; data: Record<string, unknown> }>> };
+type Department = { id: string; name: string; active?: boolean; headId?: string | null };
+
+/**
+ * Departments and how many people are in each, from the HR records the server keeps: never from
+ * this browser, which would show another company's or the demo's departments.
+ */
 function RealStructure() {
-  const departments = useHrOrgStore((state) => state.departments).filter((item) => item.active);
-  const employees = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
-  if (departments.length === 0) return <UnavailableMessage text="No departments yet. Add them under HR, in Departments & roles." />;
+  const spaces = apiUse<Array<{ type: string; status: string }>>("/workspaces");
+  const hrOn = spaces.data?.some((item) => item.type === "hr_people" && item.status === "active");
+  const hr = apiUse<HrRecords>(hrOn ? "/hr/records" : null);
+  if (spaces.loading || (hrOn && hr.loading)) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!hrOn) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text="Departments are kept in HR & People, which is not switched on for this business." /><Link href="/settings?tab=workspace&view=workspaces&workspace=business&activate=hr-people" className="text-sm font-medium text-accent hover:underline">Switch on HR &amp; People</Link></div>;
+  if (hr.error) return <UnavailableMessage text={`Departments could not be read: ${hr.error}`} />;
+  const setting = hr.data?.records.config?.find((item) => item.key === "org.departments")?.data.value;
+  const departments = (Array.isArray(setting) ? (setting as Department[]) : []).filter((item) => item.active !== false);
+  const employees = (hr.data?.records.employee ?? []).map((item) => item.data as { id: string; name?: string; department?: string; status?: string }).filter((item) => item.status !== "archived");
+  if (departments.length === 0) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text={`No departments yet${employees.length ? `, so the ${employees.length} ${employees.length === 1 ? "person" : "people"} in HR belong to none` : ""}.`} /><Link href="/workspace/hr-people?view=organization&workspace=hr-people" className="text-sm font-medium text-accent hover:underline">Add departments in HR &amp; People</Link></div>;
+  const unplaced = employees.filter((item) => !departments.some((department) => department.name === item.department)).length;
   return (
     <ul className="divide-y divide-border">
       {departments.map((department) => {
@@ -438,13 +453,52 @@ function RealStructure() {
         const head = employees.find((item) => item.id === department.headId)?.name;
         return (
           <li key={department.id} className="flex items-center justify-between gap-3 py-3 text-sm">
-            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : null}</span>
+            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : <span className="font-normal text-warning"> · no head</span>}</span>
             <span className="text-muted-foreground">{people} {people === 1 ? "person" : "people"}</span>
           </li>
         );
       })}
+      {unplaced > 0 && <li className="flex items-center justify-between gap-3 py-3 text-sm"><span className="text-muted-foreground">In no department</span><span className="text-muted-foreground">{unplaced} {unplaced === 1 ? "person" : "people"}</span></li>}
     </ul>
   );
+}
+
+type SavedHours = { timezone: string; businessHoursStart: string | null; businessHoursEnd: string | null };
+
+/** The business's timezone and working hours, as saved: the form starts from them, not from defaults. */
+function LiveHours() {
+  const saved = apiUse<SavedHours>("/business/setup");
+  if (saved.loading) return <SectionCard><p className="text-sm text-muted-foreground">Loading your hours…</p></SectionCard>;
+  if (saved.error || !saved.data) return <SectionCard title="Hours & timezone"><UnavailableMessage text={saved.error ?? "Your hours could not be loaded."} /></SectionCard>;
+  return <HoursForm initial={saved.data} onSaved={saved.reload} />;
+}
+
+function HoursForm({ initial, onSaved }: { initial: SavedHours; onSaved: () => void }) {
+  const [timezone, setTimezone] = React.useState(initial.timezone || "Asia/Kolkata");
+  const [start, setStart] = React.useState(initial.businessHoursStart ?? "09:00");
+  const [end, setEnd] = React.useState(initial.businessHoursEnd ?? "18:00");
+  const [saving, setSaving] = React.useState(false);
+  const dirty = timezone !== initial.timezone || start !== (initial.businessHoursStart ?? "09:00") || end !== (initial.businessHoursEnd ?? "18:00");
+  const wrong = start && end && start >= end ? "Closing time must be after opening time." : "";
+  const options = timezones.some((item) => item.value === timezone) ? timezones : [{ value: timezone, label: timezone }, ...timezones];
+  async function save() {
+    setSaving(true);
+    try {
+      await api("/business/setup", { method: "PATCH", body: JSON.stringify({ timezone, businessHoursStart: start, businessHoursEnd: end }) });
+      toast.success("Hours saved");
+      onSaved();
+    } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
+  }
+  return <SectionCard title="Hours & timezone" description="When your business is open, and the timezone it works in. Amounts are always in rupees.">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{options.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow>
+      <FieldRow label="Opens at"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></FieldRow>
+      <FieldRow label="Closes at"><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></FieldRow>
+    </div>
+    {wrong && <p role="alert" className="mt-2 text-xs text-danger">{wrong}</p>}
+    <p className="mt-3 text-[11px] text-muted-foreground">Saved with your business. Janus does not yet hold back messages or workflows outside these hours.</p>
+    <div className="mt-4 flex justify-end"><Button disabled={!dirty || Boolean(wrong) || saving} onClick={save}>{saving ? "Saving…" : "Save hours"}</Button></div>
+  </SectionCard>;
 }
 
 function UnavailableMessage({ text }: { text: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">{text}</div>; }
@@ -473,8 +527,7 @@ function WorkspacesPanel() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business setup</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Create and manage the workspaces your business uses.</p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-3.5" />Activate workspace</Button>

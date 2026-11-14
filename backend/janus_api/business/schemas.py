@@ -22,6 +22,9 @@ class SetupOut(BaseModel):
     industry: str
     companySize: str
     timezone: str
+    # Working hours as HH:MM, so the settings form starts from what was saved.
+    businessHoursStart: str | None = None
+    businessHoursEnd: str | None = None
     setupCompleted: bool
     completedSteps: list[str]
     nextStep: str | None
@@ -34,8 +37,8 @@ class SetupUpdate(BaseModel):
     industry: str | None = Field(default=None, max_length=120)
     companySize: str | None = Field(default=None, max_length=80)
     timezone: str | None = Field(default=None, max_length=80)
-    businessHoursStart: str | None = Field(default=None, max_length=5)
-    businessHoursEnd: str | None = Field(default=None, max_length=5)
+    businessHoursStart: str | None = Field(default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    businessHoursEnd: str | None = Field(default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
     defaultChannel: str | None = Field(default=None, max_length=40)
     completedSteps: list[str] | None = Field(default=None, max_length=20)
 
