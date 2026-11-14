@@ -80,6 +80,9 @@ async def test_the_owner_sees_each_company_with_its_own_numbers(
         "lostDeals": 0,
         "pipelineValue": "1000.50",
         "wonValue": "2000.00",
+        # Both leads came in just now, so neither has gone quiet.
+        "quietLeads": 0,
+        "quietList": [],
     }
     assert retail["crm"]["leads"] == 1 and retail["crm"]["pipelineValue"] == "500.00"
     assert retail["industry"] == "Retail" and retail["members"] == 1
