@@ -3,11 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, CircleCheck, FileCheck2, Gavel } from "lucide-react";
+
+/** Where leads came from, in words. */
+const sourceWords: Record<string, string> = { website: "your website", whatsapp: "WhatsApp", phone_call: "phone calls", webhook: "connected apps", api: "connected apps", csv_import: "imports", meta_lead_ads: "Meta ads", indiamart: "IndiaMART", manual: "entered by hand", referral: "referrals" };
+const deals = (count: number) => `${count} open deal${count === 1 ? "" : "s"}`;
 import { useApi } from "@/lib/api/use-api";
 import { ChaseList, GrowthTrend, MonthTargets, WinBack, useMonths } from "@/components/business/growth-panels";
 import { Badge } from "@/components/ui/badge";
 import { FilterChips, StatTile, workspaceHref } from "@/components/shared/stat-tile";
-import { change, day, healthTone, inr, todayIst, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
+import { change, day, healthTone, inr, RATE_MINIMUM, todayIst, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const card = "rounded-xl border border-[#e4e4df] bg-white p-5";
@@ -35,9 +39,13 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
   // Only workspaces switched on get a card; until the list loads, every one with figures does.
   const on = (type: string) => !spaces.data || spaces.data.some((item) => item.type === type && item.status === "active");
   const off = [["crm_sales", "CRM & Sales"], ["finance_accounting", "Finance & Accounting"], ["hr_people", "HR & People"], ["operations_inventory", "Operations & Inventory"], ["projects_delivery", "Projects & Delivery"], ["customer_support", "Customer Support"]].filter(([type]) => spaces.data && !on(type)).map(([, name]) => name);
+  // Finance switched off with nothing in its books: four ₹0 tiles would read as a business that sold nothing.
+  const financeOff = Boolean(spaces.data) && !on("finance_accounting") && Boolean(money && books)
+    && [books!.netSales, books!.costs, now.collected, money!.receivable].every((value) => n(value) === 0);
   const profit = profitAfterSalaries(company, period);
   const cash = company.cash;
-  const winRate = company.crm.wonDeals + company.crm.lostDeals > 0 ? Math.round((company.crm.wonDeals / (company.crm.wonDeals + company.crm.lostDeals)) * 100) : null;
+  // One or two closed deals make no win rate ("100%" from one deal); Analytics waits for RATE_MINIMUM too.
+  const winRate = company.crm.wonDeals + company.crm.lostDeals >= RATE_MINIMUM ? Math.round((company.crm.wonDeals / (company.crm.wonDeals + company.crm.lostDeals)) * 100) : null;
   const topSource = [...company.leadSources].sort((a, b) => b.current - a.current)[0];
 
   return <div className={`flex flex-col gap-6 transition-opacity ${stale ? "opacity-60" : ""}`}>
@@ -60,7 +68,13 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
         </li>)}</ul>}
     </section>
 
-    {money && books && <div>
+    {financeOff && <section className={card} aria-label="Money">
+      <h3 className="text-sm font-semibold">Money</h3>
+      <p className="mt-1 text-sm text-muted-foreground">Finance &amp; Accounting is not switched on, so there are no invoices, payments or bills to show sales, money owed or profit from.{n(now.wonValue) > 0 ? ` Deals worth ${inr(n(now.wonValue))} were won this period; they count as sales once invoiced.` : ""}</p>
+      <Link href="/settings?tab=workspace&view=workspaces&workspace=business&activate=finance-accounting" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">Switch on Finance &amp; Accounting<ArrowRight className="size-3.5" aria-hidden /></Link>
+    </section>}
+
+    {money && books && !financeOff && <div>
       <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Money</h3>
       <div className={`grid gap-3 sm:grid-cols-2 ${cash?.total != null ? "lg:grid-cols-3 xl:grid-cols-5" : "xl:grid-cols-4"}`}>
         <StatTile label="Sales" value={inr(n(books.netSales))} detail={`${change(n(books.netSales), n(company.books?.previous.netSales))} · before GST`} href={finance("invoices")} />
@@ -85,9 +99,9 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
     <div>
       <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sales and people</h3>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Leads in" value={String(now.leads)} detail={`${change(now.leads, before.leads)}${topSource?.current ? ` · most from ${topSource.source.replaceAll("_", " ")}` : ""}`} href={crm("/leads")} />
+        <StatTile label="Leads in" value={String(now.leads)} detail={`${change(now.leads, before.leads)}${topSource?.current ? ` · most from ${sourceWords[topSource.source] ?? topSource.source.replaceAll("_", " ")}` : ""}`} href={crm("/leads")} />
         <StatTile label="Deals won" value={String(now.wonDeals)} detail={`Worth ${inr(n(now.wonValue))}${winRate !== null ? ` · ${winRate}% of closed deals won` : ""}`} href={crm("/deals")} />
-        <StatTile label="Open pipeline" value={inr(n(company.crm.pipelineValue))} detail={`${company.crm.openDeals} open deals`} href={crm("/deals")} />
+        <StatTile label="Open pipeline" value={inr(n(company.crm.pipelineValue))} detail={deals(company.crm.openDeals)} href={crm("/deals")} />
         {company.people ? <StatTile label="People" value={String(company.people.headcount)} detail={company.people.onLeaveToday ? `${company.people.onLeaveToday} on leave today` : "Nobody on leave today"} href={hr("employees")} />
           : <StatTile label="Members" value={String(company.members)} detail="People who can sign in" href="/settings?tab=team" />}
       </div>
@@ -111,7 +125,7 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
     <div>
       <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</h3>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {on("crm_sales") && <Space name="CRM & Sales" href={crm("/dashboard")} lines={[`${company.crm.leads} leads · ${company.crm.openDeals} open deals`, `${company.crm.wonDeals} won, ${company.crm.lostDeals} lost, all time`]} />}
+        {on("crm_sales") && <Space name="CRM & Sales" href={crm("/dashboard")} lines={[`${company.crm.leads} lead${company.crm.leads === 1 ? "" : "s"} · ${deals(company.crm.openDeals)}`, `${company.crm.wonDeals} won, ${company.crm.lostDeals} lost, all time`]} />}
         {money && on("finance_accounting") && <Space name="Finance & Accounting" href={finance("overview")} lines={[`${inr(n(money.receivable))} owed to you · ${inr(n(money.payable))} you owe`, n(money.payableLate) > 0 ? `${inr(n(money.payableLate))} of bills past due` : n(money.payableDueThisWeek) > 0 ? `${inr(n(money.payableDueThisWeek))} of bills due this week` : "No bill past due"]} warn={n(money.payableLate) > 0} />}
         {company.people && on("hr_people") && <Space name="HR & People" href={hr("employees")} lines={[`${company.people.headcount} people${company.people.monthlyPayroll ? ` · ${inr(n(company.people.monthlyPayroll))} payroll a month` : ""}`, company.people.pendingLeave + company.people.pendingClaims > 0 ? `${company.people.pendingLeave} leave and ${company.people.pendingClaims} claims waiting` : "No leave or claims waiting"]} warn={company.people.pendingLeave + company.people.pendingClaims > 0} />}
         {company.stock && on("operations_inventory") && <Space name="Operations & Inventory" href={workspaceHref("operations-inventory", "overview")} lines={company.stock.items ? [`${company.stock.items} items · ${company.stock.belowReorder} low`, `${company.stock.dispatchesInTransit} dispatches on the way · ${company.stock.expiringBatches} batches expiring`] : ["No items yet"]} warn={company.stock.belowReorder > 0} />}
