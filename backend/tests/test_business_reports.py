@@ -120,3 +120,33 @@ def test_schedules_fall_due_at_nine_in_india() -> None:
     early = datetime(2026, 12, 1, 8, 0, tzinfo=ist)
     assert next_due("monthly", early) == datetime(2026, 12, 1, 9, 0, tzinfo=ist)
     assert next_due("monthly", datetime(2026, 12, 5, tzinfo=ist)).month == 1
+
+
+async def test_the_ai_agents_email_a_health_brief_and_a_monthly_review(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    me = await _user_id(client, owner.headers, "owner@example.com")
+    bodies: dict[str, str] = {}
+    for report, frequency in (("health-brief", "weekly"), ("monthly-review", "monthly")):
+        made = await client.post(
+            "/v1/business/reports/schedules",
+            headers=owner.headers,
+            json={"report": report, "frequency": frequency, "recipients": [me]},
+        )
+        assert made.status_code == 201, made.text
+        sent = await client.post(
+            f"/v1/business/reports/schedules/{made.json()['id']}/send", headers=owner.headers
+        )
+        assert sent.status_code == 200, sent.text
+        assert sent.json()["lastProblem"] is None
+        bodies[report] = mailbox.messages[-1][2]
+    assert "Business health brief for" in bodies["health-brief"]
+    assert "Needs you" in bodies["health-brief"]
+    assert "Open the Business Overview" in bodies["health-brief"]
+    assert "Monthly business review for" in bodies["monthly-review"]
+    assert "against the month before" in bodies["monthly-review"]
+    assert "Leads in: 0" in bodies["monthly-review"]
+    # Agents are not reports: the library does not list them.
+    shown = (await client.get("/v1/business/reports/figures", headers=owner.headers)).json()
+    assert "health-brief" not in shown["figures"]
