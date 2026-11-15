@@ -46,7 +46,8 @@ export default function DashboardPage() {
   const openValue = openDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
   // The suggestions below come from the records on this page, so they always name someone who is really in the list.
   const biggest = [...openDeals].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
-  const unanswered = [...leadRows].filter((lead) => lead.stage === "new").sort((a, b) => b.createdAt.localeCompare(a.createdAt)).sort((a, b) => Number(b.source === "phone_call") - Number(a.source === "phone_call"))[0];
+  // A new lead nobody has called, messaged or logged a follow-up for yet.
+  const unanswered = [...leadRows].filter((lead) => lead.stage === "new" && lead.lastActivityAt === lead.createdAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).sort((a, b) => Number(b.source === "phone_call") - Number(a.source === "phone_call"))[0];
   const connectedSources = (sources.data ?? (usingDemoSources ? demoConnectedSources : [])).filter(
     (source) => source.status === "connected",
   );
@@ -188,7 +189,7 @@ export default function DashboardPage() {
               </div> : null;
             })()}
             {biggest ? <div className="rounded-md border border-accent/20 bg-accent-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Follow up with {biggest.customerName}</p><ArrowUpRight className="size-3.5 text-accent" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{biggest.company} has {lakh(Number(biggest.amount))} in play ({biggest.name}, {biggest.stage}). Next best action: send the approved WhatsApp follow-up.</p></div> : null}
-            {unanswered ? <div className="rounded-md border border-warning/30 bg-warning-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{unanswered.source === "phone_call" ? "Return the missed call" : "Send a first reply"}</p><AlertTriangle className="size-3.5 text-warning" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{unanswered.contactName} ({unanswered.company}) is a new {unanswered.source.replace("_", " ")} lead with no first response recorded yet.</p></div> : null}
+            {unanswered ? <div className="rounded-md border border-warning/30 bg-warning-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{unanswered.source === "phone_call" ? "Return the missed call" : "Send a first reply"}</p><AlertTriangle className="size-3.5 text-warning" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{unanswered.contactName}{unanswered.company ? ` (${unanswered.company})` : ""} is a new {unanswered.source.replace("_", " ")} lead with no first response recorded yet.</p></div> : null}
             <div className="rounded-md border border-border bg-surface-2 p-3"><p className="text-xs font-semibold">Pipeline focus</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{openDeals.length === 0 ? "There are no open deals yet. New enquiries will show up here as they become deals." : `${openDeals.length} open deal${openDeals.length === 1 ? "" : "s"} total ${lakh(openValue)}. Keep proposal follow-ups within two business days.`}</p></div>
           </div>
         </section>
