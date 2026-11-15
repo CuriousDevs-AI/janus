@@ -18,12 +18,14 @@ from janus_api.finance.models import (
     FinanceBill,
     FinanceBillPayment,
     FinanceCreditNote,
+    FinanceExpense,
     FinanceFundRequest,
     FinanceHistoryCustomer,
     FinanceHistoryMonth,
     FinanceInvoice,
     FinancePayment,
     FinancePayrollPosting,
+    FinancePettyCashTopUp,
 )
 
 
@@ -249,10 +251,35 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
             FinanceBillPayment.paid_on.between(start, end),
         )
     )
+    # Expenses outside vendor bills (travel, office, repairs) are entered before GST and are a cost
+    # at that amount; one paid from the bank leaves it with its GST (petty cash left the bank when
+    # it was topped up).
+    spent = (
+        await db.execute(
+            select(
+                FinanceExpense.amount_paise, FinanceExpense.gst_rate, FinanceExpense.paid_from
+            ).where(
+                FinanceExpense.tenant_id == tenant_id,
+                FinanceExpense.spent_on.between(start, end),
+            )
+        )
+    ).all()
+    expenses = sum(row.amount_paise for row in spent)
+    from_bank = sum(
+        round(row.amount_paise * (100 + row.gst_rate) / 100)
+        for row in spent
+        if row.paid_from == "bank"
+    )
+    topped = await db.scalar(
+        select(func.coalesce(func.sum(FinancePettyCashTopUp.amount_paise), 0)).where(
+            FinancePettyCashTopUp.tenant_id == tenant_id,
+            FinancePettyCashTopUp.topped_on.between(start, end),
+        )
+    )
     return Books(
         net_sales=int(taxable or 0) - int(notes.get("credit", 0)),
-        costs=int(bills or 0) + int(notes.get("write-off", 0)),
-        paid_out=int(paid or 0),
+        costs=int(bills or 0) + int(notes.get("write-off", 0)) + expenses,
+        paid_out=int(paid or 0) + from_bank + int(topped or 0),
     )
 
 
