@@ -67,7 +67,7 @@ export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2
   return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
 }
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
-export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string; gst?: number; itcBlocked?: boolean }
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string; gst?: number; itcBlocked?: boolean; tds?: number; tdsSection?: string }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;
@@ -403,7 +403,7 @@ export const useFinanceStore = create<FinanceState>()(
           if (!match.matched) return `Payment is held: ${bill.number} does not match its order yet (${match.status}).`;
         }
         const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
-        const due = Math.round((bill.amount - paid) * 100) / 100;
+        const due = Math.round((bill.amount - (bill.tds ?? 0) - paid) * 100) / 100;
         if (payment.amount <= 0) return "Enter an amount above zero.";
         if (payment.amount > due + 0.001) return `Payment is more than the ₹${due.toLocaleString("en-IN")} still owed on ${bill.number}.`;
         set((state) => ({

@@ -25,6 +25,8 @@ interface ServerBill {
   amount_paise: number;
   gst_paise?: number;
   itc_blocked?: boolean;
+  tds_paise?: number;
+  tds_section?: string | null;
   po_key: string | null;
   match: string;
   paid_paise: number;
@@ -45,6 +47,8 @@ const toBill = (row: ServerBill): Bill => ({
   amount: row.amount_paise / 100,
   gst: (row.gst_paise ?? 0) / 100,
   itcBlocked: row.itc_blocked ?? false,
+  tds: (row.tds_paise ?? 0) / 100,
+  tdsSection: row.tds_section ?? undefined,
   payments: row.payments.map((payment) => ({
     id: payment.id,
     amount: payment.amount_paise / 100,

@@ -208,7 +208,7 @@ function PayablesView({ me }: { me: string }) {
               {bills.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No bills yet.</td></tr> : null}
               {bills.map((bill) => {
                 const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
-                const owed = Math.round((bill.amount - paid) * 100) / 100;
+                const owed = Math.round((bill.amount - (bill.tds ?? 0) - paid) * 100) / 100;
                 const status = owed <= 0 ? "paid" : bill.dueDate < today ? "overdue" : paid > 0 ? "part paid" : "open";
                 const order = purchaseOrders.find((o) => o.id === bill.poId);
                 const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
@@ -217,7 +217,7 @@ function PayablesView({ me }: { me: string }) {
                   <tr key={bill.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{bill.number}<span className="block text-xs font-normal text-muted-foreground">{bill.vendor} · {bill.vendorBillNo}</span></td>
                     <td className="px-4 py-3">{bill.dueDate}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}{bill.gst ? <span className="block text-xs text-muted-foreground">GST {money(bill.gst)} · <button type="button" className="underline-offset-2 hover:underline" title="Section 17(5): GST on food, cars and personal use cannot be taken as input credit" onClick={() => void toggleBlocked(bill.id, !bill.itcBlocked)}>{bill.itcBlocked ? "credit blocked" : "credit taken"}</button></span> : null}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}{bill.gst ? <span className="block text-xs text-muted-foreground">GST {money(bill.gst)} · <button type="button" className="underline-offset-2 hover:underline" title="Section 17(5): GST on food, cars and personal use cannot be taken as input credit" onClick={() => void toggleBlocked(bill.id, !bill.itcBlocked)}>{bill.itcBlocked ? "credit blocked" : "credit taken"}</button></span> : null}{bill.tds ? <span className="block text-xs text-muted-foreground">TDS {money(bill.tds)}{bill.tdsSection ? ` · ${bill.tdsSection}` : ""}</span> : null}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(owed)}</td>
                     <td className="px-4 py-3"><Badge variant={status === "paid" ? "success" : status === "overdue" ? "danger" : "warning"}>{status}</Badge></td>
                     <td className="px-4 py-3 text-xs">{order ? <span className={match.matched ? "text-success" : "text-warning"}>{order.number}: {match.status}</span> : <span className="text-muted-foreground">no order</span>}</td>
@@ -494,7 +494,7 @@ function ReportsView() {
   const live = invoices.filter((i) => !i.cancelled);
   const receivable = live.reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const overdue = live.filter((i) => i.dueDate < todayIso()).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
-  const owedToVendors = bills.reduce((sum, b) => sum + (b.amount - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
+  const owedToVendors = bills.reduce((sum, b) => sum + Math.max(0, b.amount - (b.tds ?? 0) - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
   const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
   const closing = months.length > 0 ? months[months.length - 1].closing : openingCash;
   const buckets = ["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"];
@@ -765,7 +765,7 @@ function BalanceSheetCard() {
   const cash = flow.length > 0 ? flow[flow.length - 1].closing : openingCash;
   const receivables = invoices.filter((i) => !i.cancelled).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const stock = items.reduce((sum, item) => sum + stockOn(movements, item.id) * item.rate, 0);
-  const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
+  const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - (bill.tds ?? 0) - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
   // Schedule III, vertical form: equity is share capital plus reserves and surplus; reserves include the profit to date.
   const reserves = profitAndLoss(invoices, creditNotes, bills, expenses).profit;
   const equity = shareCapital + reserves;

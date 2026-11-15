@@ -37,7 +37,7 @@ export function monthEndChecks(input: CloseInput): CloseCheck[] {
   const unmatchedPayments = payments.filter((p) => !input.matchedKeys.has(p.key)).length;
 
   const billsDue = input.bills.filter((b) => inMonth(b.dueDate));
-  const billsOpen = billsDue.filter((b) => b.amount - b.payments.reduce((sum, p) => sum + p.amount, 0) > 0.001).length;
+  const billsOpen = billsDue.filter((b) => b.amount - (b.tds ?? 0) - b.payments.reduce((sum, p) => sum + p.amount, 0) > 0.001).length;
 
   const overdue = input.invoices.filter((i) => !i.cancelled && i.dueDate <= end && input.dueAmount(i, input.creditNotes) > 0.001).length;
 
