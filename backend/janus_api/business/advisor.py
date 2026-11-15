@@ -106,22 +106,22 @@ def findings(company: portfolio.CompanySummary) -> list[Finding]:  # noqa: C901
                 measure=Measure(label="months of cash", now=runway, target=3, better="higher"),
             )
         )
-    if money and books and _n(now.wonValue) > 0 and _n(books.netSales) == 0:
+    if money and company.wonNotInvoiced > 0:
+        count, value = company.wonNotInvoiced, _n(company.wonNotInvoicedValue)
         out.append(
             Finding(
                 id="won-not-invoiced",
                 area="money",
                 severity="high",
                 title="Won deals are not invoiced",
-                sees=f"Deals worth {inr(now.wonValue)} were won this period, but no invoice has been raised.",
-                matters="Until it is invoiced, won work is not a sale: nobody owes you for it, no GST is"
-                " accounted, and the clock to get paid has not started.",
-                action="Raise the invoices for this period's won deals in Finance & Accounting.",
-                href=_finance("invoices"),
+                sees=f"{_plural(count, 'deal')} won this period, worth {inr(value)}, {'has' if count == 1 else 'have'} no invoice raised against {'it' if count == 1 else 'them'}.",
+                matters="Until it is invoiced, won work is not a sale: nobody owes you for it, no GST is accounted, and the clock to get paid has not started.",
+                action="Open each won deal and choose Raise the invoice.",
+                href=_crm("/deals"),
                 plan="Invoice every won deal within a day of winning it.",
                 measure=Measure(
                     label="won but not invoiced",
-                    now=float(_n(now.wonValue)),
+                    now=float(value),
                     target=0,
                     better="lower",
                     money=True,

@@ -335,3 +335,17 @@ async def follow_ups(
             for row in earliest
         ],
     )
+
+
+async def won_deals(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> list[tuple[int, str, Decimal]]:
+    """Deals won between two days, both included: id, name and value."""
+    rows = await db.execute(
+        select(Deal.id, Deal.name, Deal.amount).where(
+            Deal.tenant_id == tenant_id,
+            Deal.stage == "won",
+            _ist_day(Deal.updated_at).between(start, end),
+        )
+    )
+    return [(int(row.id), str(row.name), Decimal(row.amount)) for row in rows]
