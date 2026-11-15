@@ -46,6 +46,8 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
   const cash = company.cash;
   // One or two closed deals make no win rate ("100%" from one deal); Analytics waits for RATE_MINIMUM too.
   const winRate = company.crm.wonDeals + company.crm.lostDeals >= RATE_MINIMUM ? Math.round((company.crm.wonDeals / (company.crm.wonDeals + company.crm.lostDeals)) * 100) : null;
+  // Follow-ups from CRM & Sales; servers before them leave the counts out.
+  const calls = company.crm as typeof company.crm & { followUpsToday?: number; followUpsOverdue?: number };
   const topSource = [...company.leadSources].sort((a, b) => b.current - a.current)[0];
 
   return <div className={`flex flex-col gap-6 transition-opacity ${stale ? "opacity-60" : ""}`}>
@@ -98,10 +100,11 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
 
     <div>
       <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sales and people</h3>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile label="Leads in" value={String(now.leads)} detail={`${change(now.leads, before.leads)}${topSource?.current ? ` · most from ${sourceWords[topSource.source] ?? topSource.source.replaceAll("_", " ")}` : ""}`} href={crm("/leads")} />
         <StatTile label="Deals won" value={String(now.wonDeals)} detail={`Worth ${inr(n(now.wonValue))}${winRate !== null ? ` · ${winRate}% of closed deals won` : ""}`} href={crm("/deals")} />
         <StatTile label="Open pipeline" value={inr(n(company.crm.pipelineValue))} detail={deals(company.crm.openDeals)} href={crm("/deals")} />
+        <StatTile label="Follow-ups due" value={String((calls.followUpsToday ?? 0) + (calls.followUpsOverdue ?? 0))} detail={calls.followUpsOverdue ? `${calls.followUpsOverdue} overdue` : "None overdue"} tone={calls.followUpsOverdue ? "warning" : undefined} href={crm("/leads")} />
         {company.people ? <StatTile label="People" value={String(company.people.headcount)} detail={company.people.onLeaveToday ? `${company.people.onLeaveToday} on leave today` : "Nobody on leave today"} href={hr("employees")} />
           : <StatTile label="Members" value={String(company.members)} detail="People who can sign in" href="/settings?tab=team" />}
       </div>
