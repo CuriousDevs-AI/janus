@@ -204,7 +204,7 @@ async def _invoice_out(db: Db, row: FinanceInvoice) -> InvoiceOut:
         )
     ).all()
     paid = sum(payment.amount_paise for payment in payments)
-    credited = _credited(list(notes), pending=True)
+    credited = _credited(list(notes), pending=False)
     return InvoiceOut(
         id=str(row.id),
         number=row.number,
@@ -282,7 +282,7 @@ async def _due(db: Db, row: FinanceInvoice) -> int:
             FinancePayment.invoice_id == row.id
         )
     )
-    credited = _credited(await _notes_of(db, row.id), pending=True)
+    credited = _credited(await _notes_of(db, row.id), pending=False)
     return row.total_paise - int(paid or 0) - credited
 
 

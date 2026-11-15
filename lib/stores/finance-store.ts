@@ -537,7 +537,7 @@ function allocate(lineId: string, amount: number) {
   useFinanceStore.setState((state) => ({ budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, allocated: item.allocated + amount } : item) }));
 }
 
-/** Credit notes reduce what the customer owes. Pending notes are counted only when `ignorePending` is false. */
+/** Credit notes reduce what the customer owes. Only approved notes count unless `includePending` is set. */
 /**
  * Profit and loss to date (plan §8.7 V2). Sales are ex-GST. An approved credit note reduces sales by its
  * taxable share of the invoice it refers to. Bills are costs as entered. Payroll and expense claims are
@@ -649,9 +649,9 @@ export function creditedAmount(invoiceId: string, notes: CreditNote[], includePe
   return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || (includePending && note.status === "pending"))).reduce((sum, note) => sum + note.amount, 0);
 }
 
-export function dueAmount(invoice: Invoice, notes: CreditNote[], options: { ignorePending?: boolean } = {}) {
+export function dueAmount(invoice: Invoice, notes: CreditNote[], options: { includePending?: boolean } = {}) {
   const paid = invoice.payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const credited = creditedAmount(invoice.id, notes, !options.ignorePending);
+  const credited = creditedAmount(invoice.id, notes, !!options.includePending);
   return Math.max(0, Math.round((invoiceTotals(invoice).total - paid - credited) * 100) / 100);
 }
 
