@@ -251,8 +251,9 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
             FinanceBillPayment.paid_on.between(start, end),
         )
     )
-    # Expenses outside vendor bills (travel, office, repairs) are a cost at their amount before GST;
-    # those paid from the bank are money out too (petty cash left the bank when it was topped up).
+    # Expenses outside vendor bills (travel, office, repairs) are entered before GST and are a cost
+    # at that amount; one paid from the bank leaves it with its GST (petty cash left the bank when
+    # it was topped up).
     spent = (
         await db.execute(
             select(
@@ -263,8 +264,12 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
             )
         )
     ).all()
-    expenses = sum(round(row.amount_paise * 100 / (100 + row.gst_rate)) for row in spent)
-    from_bank = sum(row.amount_paise for row in spent if row.paid_from == "bank")
+    expenses = sum(row.amount_paise for row in spent)
+    from_bank = sum(
+        round(row.amount_paise * (100 + row.gst_rate) / 100)
+        for row in spent
+        if row.paid_from == "bank"
+    )
     topped = await db.scalar(
         select(func.coalesce(func.sum(FinancePettyCashTopUp.amount_paise), 0)).where(
             FinancePettyCashTopUp.tenant_id == tenant_id,
