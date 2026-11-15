@@ -11,7 +11,7 @@ import hmac
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from janus_api.auth.models import User
@@ -185,6 +185,156 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
         announcements=space.announcements,
         canPost=not space.announcements or _announcer(actor),
     )
+
+
+async def _spaces_out(db: Db, actor: Actor, spaces: list[TeamSpace]) -> list[schemas.SpaceOut]:
+    """Batch version of _space_out: loads related data in a few queries, not per space."""
+    if not spaces:
+        return []
+    space_ids = [space.id for space in spaces]
+
+    # 1. Member lookup for actor: which spaces has this user joined?
+    members_rows = (
+        await db.scalars(
+            select(TeamSpaceMember).where(
+                TeamSpaceMember.space_id.in_(space_ids),
+                TeamSpaceMember.user_id == actor.user.id,
+            )
+        )
+    ).all()
+    members: dict[int, TeamSpaceMember] = {m.space_id: m for m in members_rows}
+
+    # 2. Member counts per space
+    mc_rows = (
+        await db.execute(
+            select(TeamSpaceMember.space_id, func.count())
+            .where(TeamSpaceMember.space_id.in_(space_ids))
+            .group_by(TeamSpaceMember.space_id)
+        )
+    ).all()
+    member_counts: dict[int, int] = {sid: cnt for sid, cnt in mc_rows}
+
+    # 3. Unread counts: for each joined space, count messages after last_read_id
+    unread_map: dict[int, int] = {}
+    joined_spaces = [(sid, m) for sid, m in members.items()]
+    if joined_spaces:
+        conditions = [
+            and_(
+                TeamMessage.space_id == sid,
+                TeamMessage.id > m.last_read_id,
+            )
+            for sid, m in joined_spaces
+        ]
+        unread_rows = (
+            await db.execute(
+                select(TeamMessage.space_id, func.count())
+                .where(
+                    or_(*conditions),
+                    TeamMessage.author_id != actor.user.id,
+                    TeamMessage.deleted_at.is_(None),
+                )
+                .group_by(TeamMessage.space_id)
+            )
+        ).all()
+        unread_map = {sid: cnt for sid, cnt in unread_rows}
+
+    # 4. Last message per space (top-level only)
+    last_msg_sub = (
+        select(
+            TeamMessage.space_id,
+            func.max(TeamMessage.id).label("max_id"),
+        )
+        .where(
+            TeamMessage.space_id.in_(space_ids),
+            TeamMessage.parent_id.is_(None),
+        )
+        .group_by(TeamMessage.space_id)
+        .subquery()
+    )
+    last_msgs_rows = (
+        await db.scalars(
+            select(TeamMessage).join(
+                last_msg_sub,
+                and_(
+                    TeamMessage.id == last_msg_sub.c.max_id,
+                    TeamMessage.space_id == last_msg_sub.c.space_id,
+                ),
+            )
+        )
+    ).all()
+    last_msgs: dict[int, TeamMessage] = {m.space_id: m for m in last_msgs_rows}
+
+    # 5. Others for DM/group spaces (batch load all members of non-channel spaces)
+    dm_group_ids = [s.id for s in spaces if s.kind in ("dm", "group")]
+    others_map: dict[int, list[schemas.PersonOut]] = {sid: [] for sid in dm_group_ids}
+    if dm_group_ids:
+        other_rows = (
+            await db.execute(
+                select(TeamSpaceMember.space_id, User.id, User.name)
+                .join(User, User.id == TeamSpaceMember.user_id)
+                .where(
+                    TeamSpaceMember.space_id.in_(dm_group_ids),
+                    TeamSpaceMember.user_id != actor.user.id,
+                )
+                .order_by(User.name)
+            )
+        ).all()
+        for sid, uid, uname in other_rows:
+            others_map[sid].append(schemas.PersonOut(id=uid, name=uname))
+
+    # 6. Call presence per space (batch)
+    call_rows = (
+        await db.execute(
+            select(TeamVoicePresence, User.name)
+            .join(User, User.id == TeamVoicePresence.user_id)
+            .where(
+                TeamVoicePresence.space_id.in_(space_ids),
+                TeamVoicePresence.seen_at > _now() - CALL_STALE,
+            )
+            .order_by(TeamVoicePresence.joined_at, TeamVoicePresence.id)
+        )
+    ).all()
+    call_map: dict[int, list[schemas.CallPersonOut]] = {sid: [] for sid in space_ids}
+    for row, name in call_rows:
+        call_map[row.space_id].append(
+            schemas.CallPersonOut(
+                id=row.user_id,
+                name=name,
+                muted=row.muted,
+                deafened=row.deafened,
+                sharing=row.sharing,
+            )
+        )
+
+    # Build outputs
+    out: list[schemas.SpaceOut] = []
+    for space in spaces:
+        member = members.get(space.id)
+        others = others_map.get(space.id, [])
+        peer = others[0] if space.kind == "dm" and others else None
+        last = last_msgs.get(space.id)
+        preview = None
+        if last is not None:
+            preview = "Message deleted" if last.deleted_at is not None else _preview(last)
+        out.append(
+            schemas.SpaceOut(
+                id=str(space.id),
+                kind=space.kind,
+                name=space.name,
+                title=_title(space, others),
+                topic=space.topic,
+                memberCount=member_counts.get(space.id, 0),
+                joined=member is not None,
+                unread=unread_map.get(space.id, 0),
+                peer=peer,
+                lastMessageAt=last.created_at if last else None,
+                lastMessagePreview=preview,
+                inCall=call_map.get(space.id, []),
+                announcements=space.announcements,
+                canPost=not space.announcements or _announcer(actor),
+            )
+        )
+    return out
 
 
 def _preview(row: TeamMessage) -> str:
@@ -387,7 +537,7 @@ async def list_channels(db: Db, actor: Actor) -> list[schemas.SpaceOut]:
             .order_by(TeamSpace.announcements.desc(), TeamSpace.kind, TeamSpace.name)
         )
     ).all()
-    return [await _space_out(db, actor, space) for space in spaces]
+    return await _spaces_out(db, actor, list(spaces))
 
 
 async def create_channel(db: Db, actor: Actor, data: schemas.ChannelIn) -> schemas.SpaceOut:
@@ -445,7 +595,7 @@ async def list_conversations(db: Db, actor: Actor) -> list[schemas.SpaceOut]:
             )
         )
     ).all()
-    outs = [await _space_out(db, actor, space) for space in spaces]
+    outs = await _spaces_out(db, actor, list(spaces))
     epoch = datetime.min.replace(tzinfo=UTC)
     return sorted(outs, key=lambda item: item.lastMessageAt or epoch, reverse=True)
 
@@ -509,7 +659,9 @@ async def list_messages(
     return await _messages_out(db, actor, list(rows))
 
 
-async def list_replies(db: Db, actor: Actor, message_id: int) -> list[schemas.MessageOut]:
+async def list_replies(
+    db: Db, actor: Actor, message_id: int, limit: int = 50
+) -> list[schemas.MessageOut]:
     parent = await _message(db, actor.session.tenant_id, message_id)
     space = await _space(db, actor.session.tenant_id, parent.space_id)
     await _readable(db, actor, space)
@@ -518,6 +670,7 @@ async def list_replies(db: Db, actor: Actor, message_id: int) -> list[schemas.Me
             select(TeamMessage)
             .where(TeamMessage.parent_id == parent.id)
             .order_by(TeamMessage.id.asc())
+            .limit(limit)
         )
     ).all()
     return await _messages_out(db, actor, list(rows))
