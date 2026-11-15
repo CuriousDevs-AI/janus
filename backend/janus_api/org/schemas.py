@@ -164,6 +164,14 @@ class RoleOut(BaseModel):
     permissions: list[str]
 
 
+class MemberDirectoryEntry(BaseModel):
+    """Lightweight member info for pickers (lead assignment, history labels)."""
+
+    user_id: str
+    name: str
+    status: str = "active"
+
+
 class TeamCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Name

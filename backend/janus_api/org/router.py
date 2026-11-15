@@ -4,11 +4,15 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
-from janus_api.core.deps import CurrentActor, Db, request_ip, require
+from janus_api.core.deps import CurrentActor, Db, request_ip, require, require_any
 from janus_api.org import access_log, schemas, service
 
 router = APIRouter(prefix="/v1", tags=["Organisation"])
 MemberManager = Annotated[Actor, Depends(require("members:manage"))]
+# Anyone who assigns leads, reads team leads, or manages members may list people.
+MemberReader = Annotated[
+    Actor, Depends(require_any("leads:assign", "leads:read_team", "members:manage"))
+]
 SettingsManager = Annotated[Actor, Depends(require("settings:manage"))]
 Limit = Annotated[int, Query(ge=1, le=100)]
 AfterId = Annotated[int, Query(ge=0, le=2**63 - 1)]
@@ -33,6 +37,18 @@ async def members(
     actor: MemberManager, db: Db, after_id: AfterId = 0, limit: Limit = 100
 ) -> list[schemas.MemberOut]:
     return await service.list_members(db, actor.session.tenant_id, after_id, limit)
+
+
+@router.get("/members/directory", response_model=list[schemas.MemberDirectoryEntry])
+async def members_directory(
+    actor: MemberReader, db: Db
+) -> list[schemas.MemberDirectoryEntry]:
+    """Lightweight list of active members for pickers (lead assignment, deal history)."""
+    people = await service.active_people(db, actor.session.tenant_id)
+    return [
+        schemas.MemberDirectoryEntry(user_id=str(user_id), name=name)
+        for user_id, name, _email in people
+    ]
 
 
 @router.patch("/members/{member_id}", response_model=schemas.MemberOut)

@@ -235,7 +235,7 @@ export default function LeadsPage() {
   const canAssign = session.permissions.includes("*") || can(session, "leads:assign");
   const assignees = demoMode && canAssign ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
   // Who a lead can be given to: the company's active members, for those who may assign.
-  const members = useApi<{ user_id: string | number; name: string; status: string }[]>(!demoMode && canAssign ? "/members" : null);
+  const members = useApi<{ user_id: string | number; name: string; status: string }[]>(!demoMode && canAssign ? "/members/directory" : null);
   const people = demoMode ? assignees.map((item) => ({ id: item.crmUserId, label: `${item.name} · ${item.title}` })) : (members.data ?? []).filter((item) => item.status === "active").map((item) => ({ id: String(item.user_id), label: item.name }));
   const [ownerFilter, setOwnerFilter] = useState<"all" | "mine" | "none">("all");
   const [assigning, setAssigning] = useState(false);
