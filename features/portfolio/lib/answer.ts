@@ -67,7 +67,8 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const overdue = scope.reduce((sum, item) => sum + (item.crm.followUpsOverdue ?? 0), 0);
     const rows = scope.flatMap((item) => (item.crm.followUpList ?? []).map((lead): [string, string] => [lead.name, `${lead.on < todayIst() ? `overdue since ${day(lead.on)}` : "due today"}${scope.length > 1 ? ` · ${item.name}` : ""}`]));
     if (!today && !overdue) return { text: `No follow-up is due${named ? ` at ${named.name}` : ""} today, and none is overdue.` };
-    return { text: `${today} follow-up${today === 1 ? " is" : "s are"} due today${overdue ? ` and ${overdue} ${overdue === 1 ? "is" : "are"} overdue` : ""}${rows.length < today + overdue ? `. The earliest ${rows.length}` : ""}. Log each call on the lead with the next date.`, rows };
+    const parts = [overdue ? `${overdue} follow-up${overdue === 1 ? " is" : "s are"} overdue` : "", today ? `${today} ${today === 1 ? "is" : "are"} due today` : ""].filter(Boolean);
+    return { text: `${parts.join(" and ")}${!today ? "; none is due today" : !overdue ? ", none overdue" : ""}${rows.length < today + overdue ? `. The earliest ${rows.length}` : ""}. Log each call on the lead with the next date.`, rows };
   }
   // What each department asks most: answered before the broader rules below can take the words.
   if (/\bleads?\b/.test(q) && /attention|need|follow|quiet|stale|chase|call|untouched|waiting|pending|stuck|ignored|forgot/.test(q)) {
