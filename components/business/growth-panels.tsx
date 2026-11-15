@@ -145,7 +145,9 @@ type Invoice = { number: string; customer: string; customer_company: string; inv
  * long customers take to pay in full, from invoices settled in the last six months.
  */
 export function ChaseList({ companyName }: { companyName: string }) {
-  const invoices = useApi<Invoice[]>("/finance/invoices");
+  const session = useSession();
+  const canReadInvoices = session.permissions.includes("*") || session.permissions.includes("billing:manage");
+  const invoices = useApi<Invoice[]>(canReadInvoices ? "/finance/invoices" : null);
   const [copied, setCopied] = React.useState<string | null>(null);
   const today = todayIst();
   const rows = invoices.data ?? [];
@@ -176,7 +178,8 @@ export function ChaseList({ companyName }: { companyName: string }) {
       </div>
       <Link href={workspaceHref("finance-accounting", "invoices", { status: "overdue" })} className="shrink-0 text-xs font-medium text-accent hover:underline">All overdue</Link>
     </div>
-    {invoices.loading ? <p className="mt-3 text-sm text-muted-foreground">Loading invoices…</p>
+    {!canReadInvoices ? <p className="mt-3 text-sm text-muted-foreground">Invoice details require Finance access.</p>
+      : invoices.loading ? <p className="mt-3 text-sm text-muted-foreground">Loading invoices…</p>
       : invoices.error ? <p className="mt-3 text-sm text-muted-foreground">Invoices could not be loaded: {invoices.error}</p>
       : debtors.length === 0 ? <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"><CircleCheck className="size-4 text-success" aria-hidden />No customer is past due.</p>
       : <ul className="mt-3 flex flex-col divide-y divide-border">{debtors.slice(0, 5).map((debtor) => {
