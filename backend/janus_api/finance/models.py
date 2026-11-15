@@ -324,7 +324,7 @@ class FinanceHistoryCustomer(Base):
 
 class FinanceExpense(Base):
     """Money spent outside a vendor bill: travel, office, repairs. Paid from the bank or from petty
-    cash; counted as a cost at its amount before GST."""
+    cash. The amount is entered before GST and is the cost; GST is gst_rate on top of it."""
 
     __tablename__ = "finance_expenses"
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
