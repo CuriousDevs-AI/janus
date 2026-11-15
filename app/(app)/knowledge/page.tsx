@@ -1,4 +1,6 @@
 "use client";
+import { LiveKnowledge } from "@/components/crm/live-pages";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import Link from "next/link";
@@ -29,7 +31,7 @@ const categoryOptions: { value: "all" | KnowledgeDocument["category"]; label: st
   { value: "support", label: knowledgeCategoryMeta.support },
 ];
 
-export default function KnowledgePage() {
+function DemoKnowledge() {
   const knowledgeDocuments = useAppStore((s) => s.knowledgeDocuments);
   const addKnowledgeDocument = useAppStore((s) => s.addKnowledgeDocument);
 
@@ -420,4 +422,9 @@ function UploadDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** A real business sees its own records; the demo keeps its preview. */
+export default function Page() {
+  return demoMode ? <DemoKnowledge /> : <LiveKnowledge />;
 }

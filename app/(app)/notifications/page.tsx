@@ -1,4 +1,6 @@
 "use client";
+import { LiveNotifications } from "@/components/crm/live-pages";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import { useCrmAccess } from "@/lib/use-crm-access";
@@ -35,7 +37,7 @@ const TABS: { key: "all" | NotificationCategory; label: string }[] = [
   { key: "system", label: "System" },
 ];
 
-export default function NotificationsPage() {
+function DemoNotifications() {
   const router = useRouter();
   const allNotifications = useAppStore((s) => s.notifications);
   const access = useCrmAccess();
@@ -127,4 +129,9 @@ export default function NotificationsPage() {
       </div>
     </div>
   );
+}
+
+/** A real business sees its own records; the demo keeps its preview. */
+export default function Page() {
+  return demoMode ? <DemoNotifications /> : <LiveNotifications />;
 }

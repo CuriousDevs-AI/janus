@@ -1,4 +1,6 @@
 "use client";
+import { LiveApprovals } from "@/components/crm/live-pages";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import { useCrmAccess } from "@/lib/use-crm-access";
@@ -29,7 +31,7 @@ const statusToneMap: Record<Approval["status"], "warning" | "success" | "danger"
   rejected: "danger",
 };
 
-export default function ApprovalsPage() {
+function DemoApprovals() {
   const allApprovals = useAppStore((s) => s.approvals);
   const access = useCrmAccess();
   const approvals = React.useMemo(() => access.approvals(allApprovals), [access, allApprovals]);
@@ -180,4 +182,9 @@ export default function ApprovalsPage() {
       )}
     </div>
   );
+}
+
+/** A real business sees its own records; the demo keeps its preview. */
+export default function Page() {
+  return demoMode ? <DemoApprovals /> : <LiveApprovals />;
 }
