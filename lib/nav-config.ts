@@ -102,6 +102,8 @@ export const businessNavSections: NavSection[] = [
     items: [
       { label: "People & Access", href: "/settings?tab=team", icon: Users, requiredPermission: "members:manage" },
       { label: "Workspaces", href: "/settings?tab=workspace&view=workspaces", icon: Building2, requiredPermission: "settings:manage" },
+      // Who changed what across the company: the same audit trail CRM & Sales shows.
+      { label: "Audit Logs", href: "/audit?workspace=business", icon: ScrollText, requiredPermission: "settings:manage" },
     ],
   },
   {
@@ -109,6 +111,7 @@ export const businessNavSections: NavSection[] = [
     items: [
       { label: "Business Reports", href: "/analytics", icon: BarChart3, requiredPermission: "settings:manage" },
       { label: "AI Agents", href: "/agents", icon: Bot, requiredPermission: "agents:manage" },
+      { label: "AI Usage & Cost", href: "/usage?workspace=business", icon: Gauge, requiredPermission: "ai:manage" },
     ],
   },
   {
