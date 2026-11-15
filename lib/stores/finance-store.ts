@@ -633,8 +633,13 @@ export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries:
 }
 
 /** Every book payment (customer receipts and bill payments) with the key a bank line matches it by. */
-export function bookPayments(invoices: Invoice[], bills: Bill[]) {
+/** Every movement of money the books know about, for matching to bank lines: receipts, bill
+ * payments, bank-paid expenses (with their GST), petty cash top-ups and bank movements. */
+export function bookPayments(invoices: Invoice[], bills: Bill[], expenses: Expense[] = [], topUps: PettyCashTopUp[] = [], movements: BankEntry[] = []) {
   return [
+    ...expenses.filter((e) => e.paidFrom === "bank").map((e) => ({ key: `exp:${e.id}:0`, date: e.date, amount: Math.round(e.amount * (100 + e.gstRate)) / 100, label: `Expense · ${e.payee}`, direction: -1 as const })),
+    ...topUps.map((t) => ({ key: `top:${t.id}:0`, date: t.date, amount: t.amount, label: "Petty cash top-up", direction: -1 as const })),
+    ...movements.map((m) => ({ key: `mov:${m.id}:0`, date: m.date, amount: Math.abs(m.amount), label: `Bank movement · ${m.description}`, direction: (m.amount > 0 ? 1 : -1) as 1 | -1 })),
     ...invoices.flatMap((invoice) => invoice.payments.map((p) => ({ key: `inv:${invoice.id}:${p.id}`, date: p.date, amount: p.amount, label: `Receipt ${invoice.number} · ${invoice.customer}`, direction: 1 as const }))),
     ...bills.flatMap((bill) => bill.payments.map((p) => ({ key: `bill:${bill.id}:${p.id}`, date: p.date, amount: p.amount, label: `Payment ${bill.number} · ${bill.vendor}`, direction: -1 as const }))),
   ];

@@ -464,6 +464,44 @@ async def match_line(
                     f"Amounts differ: the bank line is ₹{_rupees(-line.amount_paise):,.2f} and the payment is ₹{_rupees(paid):,.2f}.",
                     422,
                 )
+        elif kind in ("exp", "top", "mov"):
+            # A bank-paid expense leaves with its GST; a top-up and a movement as entered.
+            if kind == "exp":
+                expense = await db.scalar(
+                    select(FinanceExpense).where(
+                        FinanceExpense.tenant_id == tenant,
+                        FinanceExpense.id == int(record_id),
+                        FinanceExpense.paid_from == "bank",
+                    )
+                )
+                expected = (
+                    -round(expense.amount_paise * (100 + expense.gst_rate) / 100)
+                    if expense
+                    else None
+                )
+            elif kind == "top":
+                topped = await db.scalar(
+                    select(FinancePettyCashTopUp.amount_paise).where(
+                        FinancePettyCashTopUp.tenant_id == tenant,
+                        FinancePettyCashTopUp.id == int(record_id),
+                    )
+                )
+                expected = -topped if topped is not None else None
+            else:
+                expected = await db.scalar(
+                    select(FinanceBankMovement.amount_paise).where(
+                        FinanceBankMovement.tenant_id == tenant,
+                        FinanceBankMovement.id == int(record_id),
+                    )
+                )
+            if expected is None:
+                raise ApiError("not_found", "Payment not found.", 404)
+            if line.amount_paise != expected:
+                raise ApiError(
+                    "amount_differs",
+                    f"Amounts differ: the bank line is ₹{_rupees(line.amount_paise):,.2f} and the entry is ₹{_rupees(expected):,.2f}.",
+                    422,
+                )
         else:
             raise ApiError("invalid_match", "Choose a payment to match.", 422)
     line.matched_key = data.key

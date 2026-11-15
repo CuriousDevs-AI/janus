@@ -311,7 +311,10 @@ function MonthEndView({ me }: { me: string }) {
   const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
   const months = ["2026-08", "2026-09", "2026-10"];
   const [month, setMonth] = React.useState("2026-10");
-  const payments = bookPayments(invoices, bills);
+  const matchExpenses = useFinanceStore((state) => state.expenses);
+  const matchTopUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const matchMovements = useFinanceStore((state) => state.bankEntries);
+  const payments = bookPayments(invoices, bills, matchExpenses, matchTopUps, matchMovements);
   const matchedKeys = new Set<string | null>(bankLines.map((l) => l.matchedKey));
   const checks = monthEndChecks({ month, invoices, bills, bankLines, bookPayments: payments, matchedKeys, lockedThrough, reviews: closeReviews.filter((r) => r.startsWith(`${month}:`)).map((r) => r.slice(month.length + 1)), dueAmount, creditNotes });
   const ready = checks.every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
@@ -535,7 +538,10 @@ function ReconciliationView({ me }: { me: string }) {
   const matchBankLine = useFinanceStore((state) => state.matchBankLine);
   const [text, setText] = React.useState("");
   const [errors, setErrors] = React.useState<string[]>([]);
-  const payments = bookPayments(invoices, bills);
+  const matchExpenses = useFinanceStore((state) => state.expenses);
+  const matchTopUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const matchMovements = useFinanceStore((state) => state.bankEntries);
+  const payments = bookPayments(invoices, bills, matchExpenses, matchTopUps, matchMovements);
   const matchedKeys = new Set(bankLines.filter((l) => l.matchedKey).map((l) => l.matchedKey));
   const unmatchedPayments = payments.filter((p) => !matchedKeys.has(p.key));
   const unmatchedLines = bankLines.filter((l) => !l.matchedKey).length;
