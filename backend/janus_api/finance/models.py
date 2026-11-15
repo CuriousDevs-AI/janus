@@ -284,6 +284,8 @@ class FinanceBankLine(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger)
     balance_paise: Mapped[int | None] = mapped_column(BigInteger)
     fingerprint: Mapped[str] = mapped_column(String(64))
+    # The payment reconciliation matched this line to: "inv:<invoice>:<payment>" or "bill:…".
+    matched_key: Mapped[str | None] = mapped_column(String(120))
     imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -317,4 +319,80 @@ class FinanceHistoryCustomer(Base):
     sales_paise: Mapped[int] = mapped_column(BigInteger)
     source: Mapped[str] = mapped_column(String(20))
     imported_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceExpense(Base):
+    """Money spent outside a vendor bill: travel, office, repairs. Paid from the bank or from petty
+    cash; counted as a cost at its amount before GST."""
+
+    __tablename__ = "finance_expenses"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    spent_on: Mapped[date] = mapped_column(Date)
+    category: Mapped[str] = mapped_column(String(40))
+    payee: Mapped[str] = mapped_column(String(160))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    gst_rate: Mapped[int] = mapped_column(Integer)
+    paid_from: Mapped[str] = mapped_column(String(20))
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinancePettyCashTopUp(Base):
+    """Cash moved from the bank into the petty cash float."""
+
+    __tablename__ = "finance_petty_cash_top_ups"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    topped_on: Mapped[date] = mapped_column(Date)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceBankMovement(Base):
+    """A bank movement that is not in the books: bank charges, a loan, interest. Money in is
+    positive, money out negative."""
+
+    __tablename__ = "finance_bank_movements"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    moved_on: Mapped[date] = mapped_column(Date)
+    description: Mapped[str] = mapped_column(String(200))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceSettings(Base):
+    """The company's opening cash and share capital: one row per company."""
+
+    __tablename__ = "finance_settings"
+    __table_args__ = (UniqueConstraint("tenant_id"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    opening_cash_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    share_capital_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceCloseReview(Base):
+    """A month-end check a person signed off: overdue receivables reviewed, and the like."""
+
+    __tablename__ = "finance_close_reviews"
+    __table_args__ = (UniqueConstraint("tenant_id", "month", "item"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    month: Mapped[str] = mapped_column(String(7))
+    item: Mapped[str] = mapped_column(String(40))
+    reviewed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinanceBudgetPlan(Base):
+    """What a budget line may spend in one quarter of a financial year."""
+
+    __tablename__ = "finance_budget_plans"
+    __table_args__ = (UniqueConstraint("tenant_id", "line_key", "fiscal_year", "quarter"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    line_key: Mapped[str] = mapped_column(String(80))
+    fiscal_year: Mapped[str] = mapped_column(String(9))
+    quarter: Mapped[int] = mapped_column(Integer)
+    planned_paise: Mapped[int] = mapped_column(BigInteger)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
