@@ -26,8 +26,11 @@ function was(now: number | null, before: number | null, unit = "%") {
  * worked on. */
 export function KeyRatios({ company, financeHref, crmHref }: { company: PortfolioCompany; financeHref: string; crmHref: string }) {
   const kept = company.customerFigures, sales = company.sales;
-  if (!kept && !sales) return null;
+  // With money but no invoices in a finished month yet, say when the customer figures start.
+  const waiting = !kept && company.money != null;
+  if (!kept && !sales && !waiting) return null;
   return <div className="flex flex-col gap-4">
+    {waiting && <p className="text-xs text-muted-foreground">Churn, repeat buyers and revenue per customer appear here once a full month of invoices is on record. To see them sooner, import a customer-wise sales report from Tally or Zoho Books under <a href="/portfolio?view=analytics#an-kept" className="text-accent hover:underline">Customers kept</a>.</p>}
     {kept && <div>
       <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Customers · {twelveMonths(kept)}</h3>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
