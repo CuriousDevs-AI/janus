@@ -35,6 +35,8 @@ import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
 import { inr, usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 import { LiveAccessReview, LiveDataExport } from "@/components/business/company-settings";
+import { useSession } from "@/components/auth/session-provider";
+import { hasPermission } from "@/lib/demo-persona";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -123,7 +125,12 @@ function AdministrationPanel({ section }: { section: string | null }) {
 }
 
 function BusinessOverviewPanel() {
-  const live = apiUse<{ leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }>("/business/reports/summary");
+  const session = useSession();
+  const canReadReports = hasPermission(session.permissions, "reports:read");
+  // Users without reports:read see neither the summary nor the portfolio figures: show them a
+  // graceful message instead of 403 errors and dashes.
+  const canView = demoMode || canReadReports;
+  const live = apiUse<{ leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }>(canView ? "/business/reports/summary" : null);
   const data = demoMode ? demoOverview : live.data;
   const loading = demoMode ? false : live.loading;
   const error = demoMode ? undefined : live.error;
@@ -143,17 +150,24 @@ function BusinessOverviewPanel() {
   // The company's own figures, as the Portfolio reads them for it: money, people, filings and what
   // needs the Owner. Someone whose role cannot read the Portfolio keeps the CRM summary below.
   const [periodKey, setPeriodKey] = React.useState<PortfolioPeriodKey>("month");
-  const figures = usePortfolioApi<PortfolioSummary>(demoMode ? null : `/portfolio/summary?period=${periodKey}`, { keepPrevious: true });
+  const figures = usePortfolioApi<PortfolioSummary>(canView && !demoMode ? `/portfolio/summary?period=${periodKey}` : null, { keepPrevious: true });
   const shown = figures.data;
   const mine = shown?.companies.find((item) => item.current);
   const top = mine?.attention[0];
+  if (!canView) return (
+    <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
+        <p className="mt-3 text-sm text-muted-foreground">This view is for the Owner and users with Report access. Ask an Owner to grant you the Reports permission if you need it.</p>
+      </div>
+    </div>
+  );
   return (
     <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
-            <Badge variant="neutral">Owner view</Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
