@@ -596,7 +596,7 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
       return sum + note.amount * taxableShare;
     }, 0);
   const writeOffs = creditNotes.filter((note) => note.status === "approved" && note.kind === "write-off").reduce((sum, note) => sum + note.amount, 0);
-  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0) + expenses.reduce((sum, e) => sum + e.amount, 0) + writeOffs;
+  const costs = bills.reduce((sum, bill) => sum + bill.amount - (bill.gst ?? 0), 0) + expenses.reduce((sum, e) => sum + e.amount, 0) + writeOffs;
   const round = (value: number) => Math.round(value * 100) / 100;
   const netSales = round(sales - credits);
   const profit = round(netSales - costs);

@@ -221,23 +221,46 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
             FinanceInvoice.invoice_date.between(start, end),
         )
     )
-    notes: dict[str, int] = {
-        str(kind): int(amount)
-        for kind, amount in (
-            await db.execute(
-                select(
-                    FinanceCreditNote.kind,
-                    func.coalesce(func.sum(FinanceCreditNote.amount_paise), 0),
+    # Credit notes: the taxable share of each credit note is its amount times the invoice's
+    # taxable/total ratio, so a ₹10,000 CN on a ₹1,18,000 invoice (₹1,00,000 taxable) deducts
+    # ₹8,474.58 from net sales, not the full ₹10,000.  Write-offs use the raw amount (they are
+    # a cost, not a sales adjustment).
+    credit_taxable = int(
+        await db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        func.round(
+                            FinanceCreditNote.amount_paise
+                            * FinanceInvoice.taxable_paise.cast(Numeric)
+                            / func.nullif(FinanceInvoice.total_paise, 0)
+                        )
+                    ),
+                    0,
                 )
-                .where(
-                    FinanceCreditNote.tenant_id == tenant_id,
-                    FinanceCreditNote.status == "approved",
-                    FinanceCreditNote.noted_on.between(start, end),
-                )
-                .group_by(FinanceCreditNote.kind)
             )
-        ).all()
-    }
+            .join(FinanceInvoice, FinanceInvoice.id == FinanceCreditNote.invoice_id)
+            .where(
+                FinanceCreditNote.tenant_id == tenant_id,
+                FinanceCreditNote.status == "approved",
+                FinanceCreditNote.kind == "credit",
+                FinanceInvoice.opening.is_(False),
+                FinanceCreditNote.noted_on.between(start, end),
+            )
+        )
+        or 0
+    )
+    write_offs = int(
+        await db.scalar(
+            select(func.coalesce(func.sum(FinanceCreditNote.amount_paise), 0)).where(
+                FinanceCreditNote.tenant_id == tenant_id,
+                FinanceCreditNote.status == "approved",
+                FinanceCreditNote.kind == "write-off",
+                FinanceCreditNote.noted_on.between(start, end),
+            )
+        )
+        or 0
+    )
     bills = await db.scalar(
         select(func.coalesce(func.sum(FinanceBill.amount_paise - FinanceBill.gst_paise), 0)).where(
             FinanceBill.tenant_id == tenant_id,
@@ -277,8 +300,8 @@ async def books(db: AsyncSession, tenant_id: int, start: date, end: date) -> Boo
         )
     )
     return Books(
-        net_sales=int(taxable or 0) - int(notes.get("credit", 0)),
-        costs=int(bills or 0) + int(notes.get("write-off", 0)) + expenses,
+        net_sales=int(taxable or 0) - credit_taxable,
+        costs=int(bills or 0) + write_offs + expenses,
         paid_out=int(paid or 0) + from_bank + int(topped or 0),
     )
 
