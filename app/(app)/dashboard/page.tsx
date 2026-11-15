@@ -5,7 +5,6 @@ import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { TeamToday } from "@/components/crm/team-today";
 import { LostReasonsCard } from "@/components/crm/lost-reasons-card";
-import { demoMode } from "@/lib/demo-mode";
 import { demoConnectedSources, demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
 import { lakh, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
