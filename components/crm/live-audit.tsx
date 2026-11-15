@@ -37,7 +37,7 @@ export function LiveAuditLog() {
       {events.loading ? <p className="text-sm text-muted-foreground">Reading the audit trail…</p>
         : events.error ? <p role="alert" className="text-sm text-danger">{events.error}</p>
         : !rows.length ? <p className="rounded-lg border border-border bg-surface px-4 py-6 text-sm text-muted-foreground">Nothing recorded {area === "all" ? "yet" : "in this area yet"}.</p>
-        : <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full min-w-[640px] text-sm">
+        : <><div className="hidden rounded-lg border border-border sm:block"><table className="w-full text-sm">
           <thead><tr className="border-b border-border bg-surface-2 text-left text-[10px] uppercase tracking-wide text-muted-foreground"><th className="px-3 py-2.5">When</th><th className="px-3 py-2.5">Who</th><th className="px-3 py-2.5">What</th><th className="px-3 py-2.5">Area</th><th className="px-3 py-2.5">From</th></tr></thead>
           <tbody>{rows.map((row) => <tr key={row.id} className="border-b border-border last:border-0">
             <td className="whitespace-nowrap px-3 py-2.5 text-xs text-muted-foreground">{when(row.at)}</td>
@@ -46,7 +46,12 @@ export function LiveAuditLog() {
             <td className="px-3 py-2.5 text-xs text-muted-foreground">{areas.find((item) => item.value === row.area)?.label ?? "Other"}</td>
             <td className="px-3 py-2.5 text-xs text-muted-foreground">{row.ip ?? "—"}</td>
           </tr>)}</tbody>
-        </table></div>}
+        </table></div>
+        <div className="flex flex-col gap-2 sm:hidden">{rows.map((row) => <div key={row.id} className="rounded-lg border border-border bg-surface p-3 text-sm">
+          <div className="flex items-center justify-between gap-2"><span className="font-medium">{row.who ?? "Janus"}</span><span className="text-xs text-muted-foreground">{when(row.at)}</span></div>
+          <p className={`mt-1 ${row.action === "auth.login_failed" ? "text-warning" : "text-foreground"}`}>{row.what}</p>
+          <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground"><span>{areas.find((item) => item.value === row.area)?.label ?? "Other"}</span>{row.ip && <span>From {row.ip}</span>}</div>
+        </div>)}</div></>}
       <div className="flex gap-2">
         {before.length > 0 && <Button size="sm" variant="secondary" onClick={() => setBefore((list) => list.slice(0, -1))}>Newer</Button>}
         {rows.length === 50 && last && <Button size="sm" variant="secondary" onClick={() => setBefore((list) => [...list, last.id])}>Older</Button>}
