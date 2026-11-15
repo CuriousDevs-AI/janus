@@ -278,6 +278,22 @@ def findings(company: portfolio.CompanySummary) -> list[Finding]:  # noqa: C901
         )
 
     # Sales: follow-up, ownership, conversion, lead flow, a pipeline on one deal.
+    overdue = company.crm.followUpsOverdue
+    if overdue > 0:
+        out.append(
+            Finding(
+                id="follow-ups-overdue",
+                area="sales",
+                severity="high" if overdue >= 3 else "medium",
+                title="Follow-ups are overdue",
+                sees=f"{_plural(overdue, 'lead')} {'was' if overdue == 1 else 'were'} promised a follow-up on a day that has passed.",
+                matters='A buyer who was told "I\'ll call you Tuesday" and did not hear back starts talking to someone else.',
+                action="Call each overdue lead today and log what was said, with the next date.",
+                href=_crm("/leads"),
+                plan="Every follow-up happens on the day it was promised.",
+                measure=Measure(label="overdue follow-ups", now=overdue, target=0, better="lower"),
+            )
+        )
     quiet = company.crm.quietLeads
     if quiet > 0:
         out.append(
