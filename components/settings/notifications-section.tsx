@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
+import { useSession } from "@/components/auth/session-provider";
+import { PORTFOLIO_ROLES } from "@/lib/access";
 import { demoMode } from "@/lib/demo-mode";
 import { enablePush } from "@/lib/push";
 
@@ -29,8 +31,10 @@ function Row({ icon: Icon, title, text, children }: { icon: React.ComponentType<
  * company turns red, and notifications in this browser. Every switch is saved for you on the server.
  */
 export function NotificationsSection() {
-  const digest = useApi<Digest>(demoMode ? null : "/portfolio/digest");
-  const alerts = useApi<Alerts>(demoMode ? null : "/portfolio/alerts");
+  const session = useSession();
+  const hasPortfolio = !demoMode && session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
+  const digest = useApi<Digest>(demoMode ? null : hasPortfolio ? "/portfolio/digest" : null);
+  const alerts = useApi<Alerts>(demoMode ? null : hasPortfolio ? "/portfolio/alerts" : null);
   const [demo, setDemo] = React.useState({ digest: true, alerts: true });
   const [saving, setSaving] = React.useState<string | null>(null);
 
@@ -45,7 +49,7 @@ export function NotificationsSection() {
   }
 
   const digestOn = demoMode ? demo.digest : Boolean(digest.data?.enabled);
-  const eligible = demoMode || digest.data?.eligible !== false;
+  const eligible = demoMode || (hasPortfolio && digest.data?.eligible !== false);
   const alertsOn = demoMode ? demo.alerts : Boolean(alerts.data?.enabled);
 
   return <div className="flex flex-col gap-4">
@@ -55,7 +59,7 @@ export function NotificationsSection() {
           {saving === "digest" ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : <Switch aria-label="Monday summary email" checked={digestOn && eligible} disabled={!eligible || digest.error !== undefined} onCheckedChange={(value) => void save("digest", value)} />}
         </Row>
         <Row icon={Siren} title="When a company needs you" text="An email, and a notification in every browser you allowed below, the moment a company you see turns red: customer money long overdue, a loss, cash running short, supplier bills late or a filing missed. Once per problem, not every day.">
-          {saving === "alerts" ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : <Switch aria-label="Alert when a company needs you" checked={alertsOn} disabled={alerts.error !== undefined} onCheckedChange={(value) => void save("alerts", value)} />}
+          {saving === "alerts" ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : <Switch aria-label="Alert when a company needs you" checked={alertsOn} disabled={!hasPortfolio || alerts.error !== undefined} onCheckedChange={(value) => void save("alerts", value)} />}
         </Row>
         <Row icon={CalendarClock} title="Scheduled reports" text="Reports someone in your business set to email you daily, weekly or monthly. Change them where they are set up.">
           <Button size="sm" variant="outline" asChild><Link href="/analytics?workspace=business&tab=scheduled">Business Reports<ArrowRight className="size-3.5" /></Link></Button>

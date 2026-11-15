@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useApi } from "@/lib/api/use-api";
 import { useSession } from "@/components/auth/session-provider";
+import { PORTFOLIO_ROLES } from "@/lib/access";
 import {
   CompanyEditor,
   PeopleList,
@@ -37,7 +38,8 @@ function Detail({ label, value, secret, revealed }: { label: string; value: stri
  */
 export function LiveCompanyProfile({ locations }: { locations: React.ReactNode }) {
   const session = useSession();
-  const summary = usePortfolioApi<PortfolioSummary>("/portfolio/summary?period=month");
+  const hasPortfolio = session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
+  const summary = usePortfolioApi<PortfolioSummary>(hasPortfolio ? "/portfolio/summary?period=month" : null);
   const company = summary.data?.companies.find((item) => item.current) ?? summary.data?.companies.find((item) => item.id === String(session.tenant.id));
   // As in the Portfolio: the Owner renames the company; money roles change its registration.
   const role = (item: PortfolioCompany) => session.tenants.find((tenant) => tenant.id === item.id)?.role;
@@ -47,7 +49,8 @@ export function LiveCompanyProfile({ locations }: { locations: React.ReactNode }
   const [revealed, setRevealed] = React.useState(false);
 
   if (summary.loading) return <SectionCard><p className="text-sm text-muted-foreground">Loading your company&apos;s details…</p></SectionCard>;
-  if (summary.error || !company) return <SectionCard title="Company profile"><p className="text-sm text-muted-foreground">{summary.error ?? "Your role cannot read this company's details. Ask its Owner."}</p></SectionCard>;
+  if (summary.error) return <SectionCard title="Company profile"><p className="text-sm text-muted-foreground">{summary.error}</p></SectionCard>;
+  if (!company) return <SectionCard title="Company profile"><p className="text-sm text-muted-foreground">{hasPortfolio ? "Your role cannot read this company's details. Ask its Owner." : `This is ${session.tenant.name}. The company's full registration and legal details are managed by the Owner in the Portfolio.`}</p>{locations}</SectionCard>;
 
   const reg: Partial<PortfolioRegistration> = company.registration ?? {};
   const canEdit = handlesMoney(company);
