@@ -65,12 +65,20 @@ async def test_an_agent_can_add_a_lead_and_the_same_phone_is_not_taken_twice(
         json={"name": "Meera", "phone": "9000000001"},
     )
     assert first.status_code == 201, first.text
-    second = await client.post(
+    # The same phone triggers a duplicate warning when skipDuplicateCheck is not set.
+    warned = await client.post(
         "/v1/leads",
         headers={**owner.headers, **_key("owner-1")},
         json={"name": "Someone else", "phone": "9000000001"},
     )
-    # The same phone joins the existing contact as a new lead, as webhook captures do.
+    assert warned.status_code == 409, warned.text
+    assert warned.json()["error"]["code"] == "duplicate_contact_leads"
+    # With the flag, the same phone joins the existing contact as a new lead.
+    second = await client.post(
+        "/v1/leads",
+        headers={**owner.headers, **_key("owner-1b")},
+        json={"name": "Someone else", "phone": "9000000001", "skipDuplicateCheck": True},
+    )
     assert second.status_code == 201, second.text
     assert second.json()["customerId"] == first.json()["customerId"]
 

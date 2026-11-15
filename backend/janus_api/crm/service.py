@@ -562,6 +562,37 @@ async def manual_connection(db: AsyncSession, tenant_id: int) -> SourceConnectio
     return connection
 
 
+async def _existing_active_leads(
+    db: AsyncSession, tenant_id: int, phone: str | None, email: str | None
+) -> list[tuple[int, str, str]]:
+    """Active leads for a contact identified by phone or email: (lead_id, name, stage)."""
+    contact: Contact | None = None
+    if phone:
+        contact = await db.scalar(
+            select(Contact).where(Contact.tenant_id == tenant_id, Contact.phone_e164 == phone)
+        )
+    if contact is None and email:
+        contact = await db.scalar(
+            select(Contact).where(Contact.tenant_id == tenant_id, Contact.email == email)
+        )
+    if contact is None:
+        return []
+    rows = (
+        await db.execute(
+            select(Lead.id, Contact.name, Lead.stage)
+            .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+            .where(
+                Lead.tenant_id == tenant_id,
+                Lead.contact_id == contact.id,
+                Lead.stage.not_in(("won", "lost")),
+            )
+            .order_by(Lead.id.desc())
+            .limit(5)
+        )
+    ).all()
+    return [(int(row[0]), str(row[1] or "Unnamed"), str(row[2])) for row in rows]
+
+
 async def create_manual_lead(
     db: AsyncSession,
     tenant_id: int,
@@ -572,7 +603,8 @@ async def create_manual_lead(
 ) -> tuple[LeadOut, bool]:
     """Creates a lead for the person who typed it in, once per key. Returns (lead, created)."""
     connection = await manual_connection(db, tenant_id)
-    fields = data.model_dump(mode="json")
+    fields = data.model_dump(mode="json", exclude={"skipDuplicateCheck"})
+    # Idempotency: an exact retry with the same key returns the earlier lead, no duplicate check.
     existing = await db.scalar(
         select(IngestReceipt).where(
             IngestReceipt.tenant_id == tenant_id,
@@ -587,6 +619,24 @@ async def create_manual_lead(
         if replayed is None:
             raise ApiError("not_found", "Lead not found.", 404)
         return await get_lead(db, tenant_id, user_id, permissions, replayed), False
+    # Warn when a contact already has active leads, unless the user acknowledged it.
+    if not data.skipDuplicateCheck:
+        try:
+            phone = normalize_phone(data.phone)
+        except ProcessingError:
+            phone = None
+        email = str(data.email).casefold() if data.email else None
+        dupes = await _existing_active_leads(db, tenant_id, phone, email)
+        if dupes:
+            names = ", ".join(
+                f"{name} (stage: {stage})" for _, name, stage in dupes[:3]
+            )
+            raise ApiError(
+                "duplicate_contact_leads",
+                f"This contact already has active leads: {names}. "
+                "Add anyway if this is a separate enquiry.",
+                409,
+            )
     payload = json.dumps(fields, sort_keys=True).encode()
     receipt = IngestReceipt(
         tenant_id=tenant_id,

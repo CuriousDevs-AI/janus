@@ -33,6 +33,8 @@ class ManualLeadIn(BaseModel):
     email: EmailStr | None = None
     company: str = Field(default="", max_length=200)
     requirement: str = Field(default="", max_length=4000)
+    # Set to true after the user has seen and dismissed the duplicate warning.
+    skipDuplicateCheck: bool = False
 
     @field_validator("phone", "email", mode="before")
     @classmethod
