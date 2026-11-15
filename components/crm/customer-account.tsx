@@ -14,7 +14,8 @@ type Account = {
 
 const invoicesHref = "/workspace/finance-accounting?view=invoices";
 const day = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-const rupees = (value: string | null) => formatCurrencyINR(Number(value ?? 0));
+// Exact amounts: this is what the customer owes, not a headline figure.
+const rupees = (value: string | null) => formatCurrencyINR(Number(value ?? 0), false);
 
 /**
  * The customer's account with the business, from Finance: invoiced, paid and still owed, with the
