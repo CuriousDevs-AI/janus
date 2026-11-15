@@ -294,13 +294,109 @@ def _replayed(row_matches: bool) -> None:
 
 
 @router.get("/invoices", response_model=list[InvoiceOut])
-async def list_invoices(actor: Billing, db: Db) -> list[InvoiceOut]:
-    rows = await db.scalars(
+async def list_invoices(
+    actor: Billing,
+    db: Db,
+    limit: int = 200,
+    after_id: int = 0,
+) -> list[InvoiceOut]:
+    limit = min(max(limit, 1), 500)
+    tenant_id = actor.session.tenant_id
+    query = (
         select(FinanceInvoice)
-        .where(FinanceInvoice.tenant_id == actor.session.tenant_id)
+        .where(FinanceInvoice.tenant_id == tenant_id)
         .order_by(FinanceInvoice.id.desc())
+        .limit(limit)
     )
-    return [await _invoice_out(db, row) for row in rows.all()]
+    if after_id:
+        query = query.where(FinanceInvoice.id < after_id)
+    rows = list((await db.scalars(query)).all())
+    if not rows:
+        return []
+    ids = [row.id for row in rows]
+    # Batch-load lines, payments and credit notes for all invoices in one query each.
+    all_lines = (
+        await db.scalars(
+            select(FinanceInvoiceLine)
+            .where(FinanceInvoiceLine.invoice_id.in_(ids))
+            .order_by(FinanceInvoiceLine.invoice_id, FinanceInvoiceLine.position)
+        )
+    ).all()
+    all_payments = (
+        await db.scalars(
+            select(FinancePayment)
+            .where(FinancePayment.invoice_id.in_(ids))
+            .order_by(FinancePayment.id)
+        )
+    ).all()
+    all_notes = (
+        await db.scalars(
+            select(FinanceCreditNote)
+            .where(FinanceCreditNote.invoice_id.in_(ids))
+            .order_by(FinanceCreditNote.id)
+        )
+    ).all()
+    lines_by_inv: dict[int, list[FinanceInvoiceLine]] = {}
+    for line in all_lines:
+        lines_by_inv.setdefault(line.invoice_id, []).append(line)
+    payments_by_inv: dict[int, list[FinancePayment]] = {}
+    for payment in all_payments:
+        payments_by_inv.setdefault(payment.invoice_id, []).append(payment)
+    notes_by_inv: dict[int, list[FinanceCreditNote]] = {}
+    for note in all_notes:
+        notes_by_inv.setdefault(note.invoice_id, []).append(note)
+    result: list[InvoiceOut] = []
+    for row in rows:
+        inv_lines = lines_by_inv.get(row.id, [])
+        inv_payments = payments_by_inv.get(row.id, [])
+        inv_notes = notes_by_inv.get(row.id, [])
+        paid = sum(p.amount_paise for p in inv_payments)
+        credited = _credited(inv_notes, pending=False)
+        result.append(
+            InvoiceOut(
+                id=str(row.id),
+                number=row.number,
+                customer=row.customer,
+                customer_company=row.customer_company,
+                deal_ref=row.deal_ref,
+                invoice_date=row.invoice_date,
+                due_date=row.due_date,
+                same_state=row.same_state,
+                taxable_paise=row.taxable_paise,
+                opening=row.opening,
+                cgst_paise=row.cgst_paise,
+                sgst_paise=row.sgst_paise,
+                igst_paise=row.igst_paise,
+                total_paise=row.total_paise,
+                paid_paise=paid,
+                credited_paise=credited,
+                due_paise=max(0, row.total_paise - paid - credited),
+                created_by=row.created_by_name,
+                lines=[
+                    LineOut(
+                        item=line.item,
+                        hsn=line.hsn,
+                        qty=float(line.qty),
+                        rate_paise=line.rate_paise,
+                        gst_rate=line.gst_rate,
+                    )
+                    for line in inv_lines
+                ],
+                payments=[
+                    PaymentOut(
+                        id=str(p.id),
+                        amount_paise=p.amount_paise,
+                        method=p.method,
+                        reference=p.reference,
+                        paid_on=p.paid_on,
+                        recorded_by=p.recorded_by_name,
+                    )
+                    for p in inv_payments
+                ],
+                credit_notes=[_note_out(note) for note in inv_notes],
+            )
+        )
+    return result
 
 
 @router.post("/invoices", response_model=InvoiceOut, status_code=201)
