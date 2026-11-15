@@ -206,6 +206,7 @@ export interface DealEvent {
   id: string;
   action: string;
   userId: string | null;
+  userName: string | null;
   details: Record<string, string | number | boolean>;
   createdAt: string;
 }

@@ -219,6 +219,7 @@ class DealEvent(BaseModel):
     id: str
     action: str
     userId: str | None
+    userName: str | None = None
     details: dict[str, str | int | bool]
     createdAt: datetime
 

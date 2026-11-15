@@ -188,24 +188,29 @@ async def events(
     db: AsyncSession, actor: Actor, deal_id: int, before_id: int | None, limit: int
 ) -> list[schemas.DealEvent]:
     await get(db, actor, deal_id)
-    query = select(AuditLog).where(
-        AuditLog.tenant_id == actor.session.tenant_id,
-        AuditLog.action.in_(["deal.created", "deal.updated"]),
-        AuditLog.details["deal_id"].astext == str(deal_id),
+    query = (
+        select(AuditLog, User.name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(
+            AuditLog.tenant_id == actor.session.tenant_id,
+            AuditLog.action.in_(["deal.created", "deal.updated"]),
+            AuditLog.details["deal_id"].astext == str(deal_id),
+        )
     )
     if before_id:
         query = query.where(AuditLog.id < before_id)
-    rows = (await db.scalars(query.order_by(AuditLog.id.desc()).limit(limit))).all()
+    rows = (await db.execute(query.order_by(AuditLog.id.desc()).limit(limit))).all()
     return [
         schemas.DealEvent(
             id=str(row.id),
             action=row.action,
             userId=str(row.user_id) if row.user_id else None,
+            userName=user_name,
             details={
                 key: str(value) if key in {"deal_id", "lead_id"} else value
                 for key, value in row.details.items()
             },
             createdAt=row.created_at,
         )
-        for row in rows
+        for row, user_name in rows
     ]

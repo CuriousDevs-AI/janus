@@ -144,11 +144,8 @@ export default function DealPage({
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatDateTime(event.createdAt)} ·{" "}
-                      {event.userId === session.user.id
-                        ? session.user.name
-                        : event.userId
-                          ? `Member #${event.userId}`
-                          : "System"}
+                      {event.userName
+                        || (event.userId ? `Member #${event.userId}` : "System")}
                     </p>
                     {event.details.amount !== undefined && (
                       <p className="mt-1 text-xs">

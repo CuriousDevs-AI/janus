@@ -74,7 +74,7 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
         if (!target || !(account.crm === "all" || account.crm === "team") || !canSeeOwner(account, newOwner)) throw forbidden("assign leads to that person");
         patch.ownerId = target.crmUserId;
         patch.ownerName = target.name;
-        if (lead.dealId) store.putDeal(lead.dealId, { ownerId: target.crmUserId, ownerName: target.name }, { id: `${lead.dealId}-owner-${Date.now()}`, action: "owner_changed", userId: account.crmUserId, details: { to: target.name }, createdAt: new Date().toISOString() });
+        if (lead.dealId) store.putDeal(lead.dealId, { ownerId: target.crmUserId, ownerName: target.name }, { id: `${lead.dealId}-owner-${Date.now()}`, action: "owner_changed", userId: account.crmUserId, userName: account.name, details: { to: target.name }, createdAt: new Date().toISOString() });
       }
       store.patchLead(lead.id, patch);
       // The same person on other leads and deals, and their contact record, should read the same.
@@ -101,7 +101,7 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
       const amount = Number(data.amount);
       if (!Number.isFinite(amount) || amount < 0) throw invalid("Enter a valid amount.");
       const now = new Date().toISOString();
-      const event: DealEvent = { id: `${deal.id}-${now}`, action: stage !== deal.stage ? "stage_changed" : "updated", userId: account.crmUserId, details: stage !== deal.stage ? { from: deal.stage, to: stage } : { name: text(data.name) || deal.name }, createdAt: now };
+      const event: DealEvent = { id: `${deal.id}-${now}`, action: stage !== deal.stage ? "stage_changed" : "updated", userId: account.crmUserId, userName: account.name, details: stage !== deal.stage ? { from: deal.stage, to: stage } : { name: text(data.name) || deal.name }, createdAt: now };
       store.putDeal(deal.id, { name: text(data.name) || deal.name, amount: amount.toFixed(2), stage, expectedCloseAt: (data.expectedCloseAt as string | null) ?? deal.expectedCloseAt, lostReason: stage === "lost" ? lostReason : "" }, event);
       if (stage !== deal.stage) store.patchLead(deal.leadId, { stage, lastActivityAt: now });
       return useDemoCrmStore.getState().deals.find((item) => item.id === deal.id);
