@@ -25,6 +25,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
+/** Today in India, as YYYY-MM-DD, for comparing close dates. */
+const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
 export default function DealsPage() {
   const session = useSession();
   const canWrite = can(session, "leads:write");
@@ -37,7 +40,17 @@ export default function DealsPage() {
   const [editing, setEditing] = useState<Deal | null>(null);
   const [busy, setBusy] = useState(false);
   const deals = result.data ?? (usingDemo ? demoDealRows : []);
-  const filtered = deals.filter((deal) =>
+  // Where each open deal stands against its close date: due this month, slipped past it, or undated.
+  const [closeFilter, setCloseFilter] = useState<"all" | "closing" | "slipped" | "undated" | "mine">("all");
+  const today = todayIst();
+  const monthEnd = `${today.slice(0, 7)}-31`;
+  const open = deals.filter((deal) => !["won", "lost"].includes(deal.stage));
+  const closing = open.filter((deal) => deal.expectedCloseAt && deal.expectedCloseAt >= today && deal.expectedCloseAt <= monthEnd);
+  const slipped = open.filter((deal) => deal.expectedCloseAt && deal.expectedCloseAt < today);
+  const undated = open.filter((deal) => !deal.expectedCloseAt);
+  const sum = (list: Deal[]) => list.reduce((total, deal) => total + Number(deal.amount), 0);
+  const inView = closeFilter === "closing" ? closing : closeFilter === "slipped" ? slipped : closeFilter === "undated" ? undated : closeFilter === "mine" ? deals.filter((deal) => deal.ownerId === session.user.id) : deals;
+  const filtered = inView.filter((deal) =>
     `${deal.name} ${deal.customerName} ${deal.company}`
       .toLowerCase()
       .includes(query.toLowerCase()),
@@ -104,7 +117,17 @@ export default function DealsPage() {
           </>
         }
       />
+      <div className="grid gap-2 px-6 pb-3 sm:grid-cols-3" aria-label="Deals by close date">
+        {([["closing", "Closing this month", closing, "Open deals due to close by the month end"], ["slipped", "Past close date", slipped, "Still open after the date they were due to close"], ["undated", "No close date", undated, "Open deals nobody has dated: no forecast without one"]] as const).map(([key, title, list, hint]) => (
+          <button key={key} type="button" aria-pressed={closeFilter === key} onClick={() => setCloseFilter(closeFilter === key ? "all" : key)} className={`rounded-lg border p-3 text-left transition-colors ${closeFilter === key ? "border-accent bg-accent-muted" : "border-border bg-surface hover:bg-surface-2"}`}>
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+            <span className={`mt-1 block text-lg font-semibold tabular-nums ${key === "slipped" && list.length ? "text-warning" : ""}`}>{list.length} · {formatCurrencyINR(sum(list))}</span>
+            <span className="block text-[11px] text-muted-foreground">{hint}</span>
+          </button>
+        ))}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 pb-4">
+        <Button size="sm" variant={closeFilter === "mine" ? "default" : "secondary"} aria-pressed={closeFilter === "mine"} onClick={() => setCloseFilter(closeFilter === "mine" ? "all" : "mine")}>My deals</Button>
         <SearchInput
           value={query}
           onChange={setQuery}

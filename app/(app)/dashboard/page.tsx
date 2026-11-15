@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { can } from "@/lib/permissions";
+import { TeamToday } from "@/components/crm/team-today";
 import { demoConnectedSources, demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
 import { lakh, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
@@ -190,6 +191,7 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
+      {(session.permissions.includes("*") || can(session, "leads:assign")) && <TeamToday leads={leadRows} deals={dealRows} />}
     </div>
   );
 }
