@@ -136,7 +136,8 @@ function LocationsCard() {
   const [editingLocation, setEditingLocation] = React.useState<Location | null>(null);
   function openLocation(location?: Location) { setEditingLocation(location ?? null); setLocationOpen(true); }
   function saveLocation(value: Location) {
-    saveLocationToStore(value);
+    const error = saveLocationToStore(value);
+    if (error) { toast.error(error); return; }
     setLocationOpen(false);
     toast.success(editingLocation ? "Location updated" : "Location added");
   }
@@ -150,8 +151,10 @@ function LocationsCard() {
 
 function LocationDialog({ open, location, onClose, onSave }: { open: boolean; location: Location | null; onClose: () => void; onSave: (location: Location) => void }) {
   const [name, setName] = React.useState(""); const [kind, setKind] = React.useState("Office"); const [address, setAddress] = React.useState(""); const [gst, setGst] = React.useState("");
+  const existing = useLocationsStore((state) => state.locations);
+  const nameTaken = name.trim() !== "" && existing.some((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase() && item.id !== (location?.id ?? -1));
   // The dialog is intentionally reset when its selected location changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => { setName(location?.name ?? ""); setKind(location?.kind ?? "Office"); setAddress(location?.address ?? ""); setGst(location?.gst ?? ""); }, [location, open]);
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>{location ? "Edit location" : "Add location"}</DialogTitle><DialogDescription>People count here when their branch is part of the address. Operations keeps stock at each location.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Location name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Delhi office" /></FieldRow><FieldRow label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>Office</option><option>Warehouse</option><option>Branch</option></select></FieldRow><FieldRow label="Address"><Input value={address} onChange={(e) => setAddress(e.target.value)} /></FieldRow><FieldRow label="GSTIN note"><Input value={gst} onChange={(e) => setGst(e.target.value)} placeholder="Optional" /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!name.trim() || !address.trim()} onClick={() => onSave({ id: location?.id ?? Date.now(), name: name.trim(), kind, address: address.trim(), people: location?.people ?? 0, gst })}>Save location</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>{location ? "Edit location" : "Add location"}</DialogTitle><DialogDescription>People count here when their branch is part of the address. Operations keeps stock at each location.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Location name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Delhi office" />{nameTaken && <p className="mt-1 text-xs text-danger">A location with this name already exists.</p>}</FieldRow><FieldRow label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>Office</option><option>Warehouse</option><option>Branch</option></select></FieldRow><FieldRow label="Address"><Input value={address} onChange={(e) => setAddress(e.target.value)} /></FieldRow><FieldRow label="GSTIN note"><Input value={gst} onChange={(e) => setGst(e.target.value)} placeholder="Optional" /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!name.trim() || !address.trim() || nameTaken} onClick={() => onSave({ id: location?.id ?? Date.now(), name: name.trim(), kind, address: address.trim(), people: location?.people ?? 0, gst })}>Save location</Button></DialogFooter></DialogContent></Dialog>;
 }
