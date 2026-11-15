@@ -25,6 +25,7 @@ from janus_api.finance.models import (
     FinanceBankLine,
     FinanceBankMovement,
     FinanceBillPayment,
+    FinanceBudgetLine,
     FinanceBudgetPlan,
     FinanceCloseReview,
     FinanceExpense,
@@ -596,6 +597,13 @@ class PlanIn(BaseModel):
 @router.put("/budget-plans", response_model=PlanOut)
 async def save_plan(data: PlanIn, actor: Billing, db: Db, request: Request) -> PlanOut:
     tenant = actor.session.tenant_id
+    line = await db.scalar(
+        select(FinanceBudgetLine.id).where(
+            FinanceBudgetLine.tenant_id == tenant, FinanceBudgetLine.external_key == data.lineId
+        )
+    )
+    if line is None:
+        raise ApiError("not_found", "Budget line not found.", 404)
     row = await db.scalar(
         select(FinanceBudgetPlan)
         .where(
