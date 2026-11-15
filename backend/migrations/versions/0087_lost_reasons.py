@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0087"
-down_revision = "0085"
+down_revision = "0086"
 
 REASONS = "('price', 'competitor', 'no_budget', 'no_response', 'timing', 'not_a_fit', 'other')"
 
