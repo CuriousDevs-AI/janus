@@ -905,7 +905,7 @@ function InvoicesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right tabular-nums">{money(invoiceTotals(invoice).total)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(dueAmount(invoice, creditNotes))}</td>
                     <td className="px-4 py-3"><Badge variant={status === "overdue" ? "warning" : status === "paid" ? "success" : "neutral"}>{status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="secondary" disabled={status === "paid"} onClick={() => setPaying(invoice)}>Record payment</Button>{status === "overdue" ? <Button size="sm" variant="ghost" asChild><Link href={`/workspace/finance-accounting?view=credit-notes&workspace=finance-accounting&invoice=${invoice.id}&kind=write-off`}>Write off</Link></Button> : null}</div></td>
+                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{status !== "paid" && <Button size="sm" variant="secondary" onClick={() => setPaying(invoice)}>Record payment</Button>}{status === "overdue" ? <Button size="sm" variant="ghost" asChild><Link href={`/workspace/finance-accounting?view=credit-notes&workspace=finance-accounting&invoice=${invoice.id}&kind=write-off`}>Write off</Link></Button> : null}</div></td>
                   </tr>
                 );
               })}
