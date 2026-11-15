@@ -535,7 +535,7 @@ export function Composer({
           Send
         </Button>
       </div>
-      <p className="mt-1.5 text-[11px] text-muted-foreground">
+      <p className="mt-1.5 hidden text-[11px] text-muted-foreground sm:block">
         <kbd className="font-sans">Enter</kbd> to send, <kbd className="font-sans">Shift + Enter</kbd> for a new line
       </p>
     </div>
