@@ -340,6 +340,15 @@ async def company_summary(
         ),
         key=lambda item: (-max(item.current, item.previous), item.source),
     )
+    if money:
+        billed = await finance.invoiced_deals(db, tenant_id)
+        unbilled = [
+            deal
+            for deal in await crm.won_deals(db, tenant_id, *span_now)
+            if str(deal[0]) not in billed
+        ]
+        out.wonNotInvoiced = len(unbilled)
+        out.wonNotInvoicedValue = rupees(sum((deal[2] for deal in unbilled), Decimal(0)))
     funnel_now = await crm.funnel(db, tenant_id, *span_now)
     funnel_before = await crm.funnel(db, tenant_id, *span_before)
     if funnel_now.leads or funnel_before.leads:

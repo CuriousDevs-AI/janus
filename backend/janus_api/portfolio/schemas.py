@@ -473,6 +473,10 @@ class CompanySummary(BaseModel):
     customers: list[CustomerMove] = []
     intercompany: Intercompany | None = None
     leadSources: list[SourceMove] = []
+    # Deals won this period with no invoice raised against them: how many, and their value in
+    # rupees. Money roles only, and left at zero without them.
+    wonNotInvoiced: int = 0
+    wonNotInvoicedValue: str = "0.00"
     funnel: FunnelCompare | None = None
     reps: list[RepLine] = []
     registration: Registration | None = None

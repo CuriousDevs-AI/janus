@@ -810,3 +810,13 @@ async def customer_months(
         bucket = out.setdefault(str(customer), {})
         bucket[day] = bucket.get(day, 0) + int(paise)
     return out, used
+
+
+async def invoiced_deals(db: AsyncSession, tenant_id: int) -> set[str]:
+    """The CRM deals that have at least one invoice raised against them, by id."""
+    rows = await db.scalars(
+        select(FinanceInvoice.deal_ref).where(
+            FinanceInvoice.tenant_id == tenant_id, FinanceInvoice.deal_ref.is_not(None)
+        )
+    )
+    return {str(ref) for ref in rows if ref}
