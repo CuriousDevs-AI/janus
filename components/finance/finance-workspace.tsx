@@ -328,7 +328,7 @@ function MonthEndView({ me }: { me: string }) {
   const payments = bookPayments(invoices, bills, matchExpenses, matchTopUps, matchMovements);
   const matchedKeys = new Set<string | null>(bankLines.map((l) => l.matchedKey));
   const checks = monthEndChecks({ month, invoices, bills, bankLines, bookPayments: payments, matchedKeys, lockedThrough, reviews: closeReviews.filter((r) => r.startsWith(`${month}:`)).map((r) => r.slice(month.length + 1)), dueAmount, creditNotes });
-  const ready = checks.every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
+  const ready = checks.filter((c) => c.id !== "lock").every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
   const end = monthEnd(month);
 
   async function signOff(item: string) {
