@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
+import type { Deal as ApiDeal } from "@/lib/api/types";
+import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips, StatTile as Kpi, rowClick, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
@@ -849,10 +852,12 @@ function InvoicesView({ me }: { me: string }) {
   }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const [creating, setCreating] = React.useState(false);
+  const params = useSearchParams();
+  // "Raise the invoice" on a won deal opens this with the deal chosen.
+  const fromDeal = params.get("deal") ?? "";
+  const [creating, setCreating] = React.useState(Boolean(fromDeal));
   const [paying, setPaying] = React.useState<Invoice | null>(null);
   const [selected, setSelected] = React.useState<Invoice | null>(null);
-  const params = useSearchParams();
   type Show = "all" | "unpaid" | "overdue" | "paid";
   const [show, setShow] = React.useState<Show>(() => { const asked = params.get("status"); return asked === "unpaid" || asked === "overdue" || asked === "paid" ? asked : "all"; });
   const [aging, setAging] = React.useState(() => params.get("aging") ?? "");
@@ -909,14 +914,14 @@ function InvoicesView({ me }: { me: string }) {
           </table>
         </CardContent>
       </Card>
-      {creating ? <NewInvoiceDialog me={me} onClose={() => setCreating(false)} /> : null}
+      {creating ? <NewInvoiceDialog me={me} initialDeal={fromDeal} onClose={() => setCreating(false)} /> : null}
       {paying ? <PaymentDialog invoice={paying} onClose={() => setPaying(null)} /> : null}
       {selected ? <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} /> : null}
     </>
   );
 }
 
-function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) {
+function NewInvoiceDialog({ me, initialDeal = "", onClose }: { me: string; initialDeal?: string; onClose: () => void }) {
   const session = useSession();
   const canCreate = hasPermission(session.permissions, "billing:manage");
   const [customer, setCustomer] = React.useState("");
@@ -927,6 +932,19 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   const [dueDays, setDueDays] = React.useState("30");
   const [lines, setLines] = React.useState<InvoiceLine[]>([{ item: "", hsn: "", qty: 1, rate: 0, gstRate: 18 }]);
   const [error, setError] = React.useState("");
+  // The company's deals with their figures, won first: choosing one fills in who and what is invoiced.
+  const crmDeals = useApi<ApiDeal[]>(demoMode ? null : "/deals?limit=100&after_id=0");
+  const dealChoices = demoMode ? links.deals.map((d) => ({ id: d.id, label: d.label })) : [...(crmDeals.data ?? [])].sort((a, b) => Number(b.stage === "won") - Number(a.stage === "won")).map((d) => ({ id: d.id, label: `${d.name} · ${d.customerName}${d.stage === "won" ? " · won" : ` · ${d.stage}`}` }));
+  const chooseDeal = React.useCallback((id: string) => {
+    setDealId(id);
+    const deal = crmDeals.data?.find((item) => item.id === id);
+    if (!deal) return;
+    setCustomer(deal.customerName);
+    setCustomerCompany(deal.company ?? "");
+    setLines((current) => current.length === 1 && !current[0].item.trim() && !current[0].rate ? [{ ...current[0], item: deal.name, qty: 1, rate: Number(deal.amount) }] : current);
+  }, [crmDeals.data]);
+  const [chosenInitial, setChosenInitial] = React.useState(false);
+  if (initialDeal && !chosenInitial && crmDeals.data) { setChosenInitial(true); chooseDeal(initialDeal); }
   const today = todayIso();
   const due = new Date(Date.parse(today) + Number(dueDays || 0) * 86400000).toISOString().slice(0, 10);
   const preview = invoiceTotals({ sameState, lines, id: "", number: "", customer, customerCompany, date: today, dueDate: due, payments: [], createdBy: me });
@@ -952,7 +970,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-customer">Customer</Label><Input id="inv-customer" value={customer} onChange={(e) => setCustomer(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-company">Company</Label><Input id="inv-company" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} /></div>
-          <div className="flex flex-col gap-1.5"><Label htmlFor="inv-deal">CRM deal (optional)</Label><select id="inv-deal" className={selectClass} value={dealId} onChange={(e) => setDealId(e.target.value)}><option value="">None</option>{links.deals.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
+          <div className="flex flex-col gap-1.5"><Label htmlFor="inv-deal">CRM deal (optional)</Label><select id="inv-deal" className={selectClass} value={dealId} onChange={(e) => chooseDeal(e.target.value)}><option value="">None</option>{dealChoices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-supply">Place of supply</Label><select id="inv-supply" className={selectClass} value={sameState ? "same" : "other"} onChange={(e) => setSameState(e.target.value === "same")}><option value="same">Same state (CGST + SGST)</option><option value="other">Other state (IGST)</option></select></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-due">Payment due in (days)</Label><Input id="inv-due" type="number" min={0} value={dueDays} onChange={(e) => setDueDays(e.target.value)} /></div>
         </div>
