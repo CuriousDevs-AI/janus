@@ -58,6 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateTime } from "@/lib/utils";
 import { demoLeadRows } from "@/lib/api/demo-data";
+import { followUpWords, isDue } from "@/components/crm/follow-up";
 
 type Row = { lead: Lead };
 type EditForm = {
@@ -70,9 +71,10 @@ type EditForm = {
   ownerId: string;
 };
 
-type OptionalColumn = "email" | "company" | "source" | "owner" | "created";
+type OptionalColumn = "followUp" | "email" | "company" | "source" | "owner" | "created";
 
 const optionalColumns: { key: OptionalColumn; label: string }[] = [
+  { key: "followUp", label: "Next follow-up" },
   { key: "email", label: "Email" },
   { key: "company", label: "Company" },
   { key: "source", label: "Source" },
@@ -159,6 +161,8 @@ export default function LeadsPage() {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
+  // Leads whose follow-up falls today or has passed: the list a salesperson works through first.
+  const [dueOnly, setDueOnly] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
   const [editing, setEditing] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
@@ -170,6 +174,7 @@ export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deletingSelected, setDeletingSelected] = useState<Row[] | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Record<OptionalColumn, boolean>>({
+    followUp: true,
     email: false,
     company: false,
     source: false,
@@ -231,18 +236,19 @@ export default function LeadsPage() {
         return (
           (!normalizedQuery || searchable.includes(normalizedQuery)) &&
           (stageFilter === "all" || lead.stage === stageFilter) &&
-          (sourceFilter === "all" || lead.source === sourceFilter)
+          (sourceFilter === "all" || lead.source === sourceFilter) &&
+          (!dueOnly || isDue(lead.nextFollowUpOn))
         );
       }) || []
     );
-  }, [loaded, query, sourceFilter, stageFilter]);
+  }, [loaded, query, sourceFilter, stageFilter, dueOnly]);
   const allVisibleSelected = rows.length > 0 && rows.every(({ lead }) => selectedIds.includes(lead.id));
   const visibleColumnCount = 4 + optionalColumns.filter(({ key }) => visibleColumns[key]).length;
   const orderedOptionalColumns = columnOrder
     .map((key) => optionalColumns.find((column) => column.key === key))
     .filter((column): column is { key: OptionalColumn; label: string } => Boolean(column));
   const resetColumns = () => {
-    setVisibleColumns({ email: false, company: false, source: false, owner: false, created: false });
+    setVisibleColumns({ followUp: true, email: false, company: false, source: false, owner: false, created: false });
     setColumnOrder(optionalColumns.map(({ key }) => key));
   };
 
@@ -349,7 +355,8 @@ export default function LeadsPage() {
     }
   }
 
-  const filtersActive = query.trim() || stageFilter !== "all" || sourceFilter !== "all";
+  const filtersActive = query.trim() || stageFilter !== "all" || sourceFilter !== "all" || dueOnly;
+  const dueCount = (loaded?.rows ?? []).filter(({ lead }) => isDue(lead.nextFollowUpOn) && !["won", "lost"].includes(lead.stage)).length;
 
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col">
@@ -380,6 +387,7 @@ export default function LeadsPage() {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search name, mobile, email or company…" className="w-full sm:w-[25rem]" />
+        <Button size="sm" variant={dueOnly ? "default" : "secondary"} aria-pressed={dueOnly} onClick={() => setDueOnly((value) => !value)}>Follow-ups due{dueCount ? ` (${dueCount})` : ""}</Button>
         <Select value={stageFilter} onValueChange={setStageFilter}>
           <SelectTrigger className="w-36"><SlidersHorizontal className="size-3.5 text-muted-foreground" /><SelectValue placeholder="Stage" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All stages</SelectItem>{stages.map((stage) => <SelectItem key={stage} value={stage}>{label(stage)}</SelectItem>)}</SelectContent>
@@ -521,6 +529,7 @@ export default function LeadsPage() {
                     <td className="w-28 min-w-28 px-3 py-4">{canEditRows ? <EditableValue onClick={() => openEdit(row)}><Badge variant="neutral">{label(lead.stage)}</Badge></EditableValue> : <Badge variant="neutral">{label(lead.stage)}</Badge>}</td>
                     {orderedOptionalColumns.map(({ key }) => {
                       if (!visibleColumns[key]) return null;
+                      if (key === "followUp") return <td key={key} className={`whitespace-nowrap px-5 py-4 ${isDue(lead.nextFollowUpOn) ? "font-medium text-warning" : "text-muted-foreground"}`}>{lead.nextFollowUpOn ? followUpWords(lead.nextFollowUpOn) : "—"}</td>;
                       if (key === "email") return <td key={key} className="max-w-[220px] px-5 py-4 text-muted-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{lead.email || "—"}</EditableValue> : <span className="block truncate">{lead.email || "—"}</span>}</td>;
                       if (key === "company") return <td key={key} className="max-w-[180px] px-5 py-4 text-muted-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{lead.company || "—"}</EditableValue> : <span className="block truncate">{lead.company || "—"}</span>}</td>;
                       if (key === "source") return <td key={key} className="whitespace-nowrap px-5 py-4 text-muted-foreground">{label(lead.source)}</td>;

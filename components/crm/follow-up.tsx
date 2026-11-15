@@ -14,6 +14,9 @@ const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/
 const inDays = (days: number) => { const date = new Date(`${todayIst()}T12:00:00+05:30`); date.setDate(date.getDate() + days); return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); };
 const choices: [string, () => string | null][] = [["Tomorrow", () => inDays(1)], ["In 3 days", () => inDays(3)], ["Next week", () => inDays(7)], ["No date", () => null]];
 
+/** A follow-up date that is today or has passed. */
+export const isDue = (day: string | null | undefined) => Boolean(day && day <= todayIst());
+
 /** "26 Nov" for a follow-up date, with how far it is from today. */
 export function followUpWords(day: string) {
   const days = Math.round((new Date(`${day}T12:00:00+05:30`).getTime() - new Date(`${todayIst()}T12:00:00+05:30`).getTime()) / 86_400_000);
