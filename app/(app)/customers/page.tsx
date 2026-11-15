@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Building2, RefreshCw } from "lucide-react";
 import { useAllRows } from "@/lib/api/use-all-rows";
+import { useApi } from "@/lib/api/use-api";
 import type { Contact, Deal, Lead } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
@@ -25,14 +26,30 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "needs_attention", label: "Needs attention" },
 ];
 
-type CustomerRow = {
+/** Server-side customer row from /v1/customers. */
+interface CustomerRow {
+  contactId: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string;
+  leadCount: number;
+  dealValue: string;
+  stage: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  lastActivityAt: string | null;
+}
+
+// Demo-mode helpers (unchanged from old code).
+type DemoCustomerRow = {
   contact: Contact;
   leads: Lead[];
   deals: Deal[];
 };
 
-function displayName(contact: Contact) {
-  return contact.name || contact.phone || contact.email || `Customer #${contact.id}`;
+function displayName(row: CustomerRow) {
+  return row.name || row.phone || row.email || `Customer #${row.contactId}`;
 }
 
 function ownerLabel(ownerId: string | null, ownerName: string | null) {
@@ -43,18 +60,37 @@ const stageOrder = ["lost", "new", "contacted", "qualified", "demo", "proposal",
 
 export default function CustomersPage() {
   const router = useRouter();
-  const leads = useAllRows<Lead>("/leads");
-  const deals = useAllRows<Deal>("/deals");
-  // The sample customers belong to the demo only; a real company sees its own records or the error.
+  const [query, setQuery] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
+  const [filter, setFilter] = React.useState<Filter>("all");
+  const [afterId, setAfterId] = React.useState("0");
+
+  // Debounce search to avoid a request per keystroke.
+  React.useEffect(() => {
+    const timer = setTimeout(() => { setDebouncedQuery(query); setAfterId("0"); }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const changeFilter = React.useCallback((v: string) => {
+    setFilter(v as Filter);
+    setAfterId("0");
+  }, []);
+
+  // Server-paged customers for real companies.
+  const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : "";
+  const filterParam = filter !== "all" ? `&filter=${filter}` : "";
+  const customers = useApi<CustomerRow[]>(
+    !demoMode ? `/customers?limit=50&after_id=${afterId}${searchParam}${filterParam}` : null,
+  );
+
+  // Demo mode: keep the old client-side approach for the preview.
+  const leads = useAllRows<Lead>(demoMode ? "/leads" : null);
+  const deals = useAllRows<Deal>(demoMode ? "/deals" : null);
   const usingDemo = demoMode && Boolean(leads.error || deals.error);
-  const loadError = !demoMode ? leads.error || deals.error : undefined;
   const leadRows = React.useMemo(() => leads.data ?? (usingDemo ? demoLeadRows : []), [leads.data, usingDemo]);
   const dealRows = React.useMemo(() => deals.data ?? (usingDemo ? demoDealRows : []), [deals.data, usingDemo]);
-
-  const [query, setQuery] = React.useState("");
-  const [filter, setFilter] = React.useState<Filter>("all");
-
-  const rows = React.useMemo<CustomerRow[]>(() => {
+  const demoRows = React.useMemo<DemoCustomerRow[]>(() => {
+    if (!demoMode) return [];
     const leadsByContact = new Map<string, Lead[]>();
     for (const lead of leadRows) {
       const list = leadsByContact.get(lead.customerId) ?? [];
@@ -70,69 +106,64 @@ export default function CustomersPage() {
     const contacts = new Map<string, Contact>();
     for (const lead of leadRows) {
       contacts.set(lead.customerId, {
-        id: lead.customerId,
-        name: lead.contactName,
-        phone: lead.phone,
-        email: lead.email,
-        company: lead.company,
-        whatsappOptIn: lead.whatsappOptIn,
-        doNotContact: lead.doNotContact,
-        consentSource: lead.consentSource,
-        consentUpdatedAt: lead.consentUpdatedAt,
+        id: lead.customerId, name: lead.contactName, phone: lead.phone, email: lead.email,
+        company: lead.company, whatsappOptIn: lead.whatsappOptIn, doNotContact: lead.doNotContact,
+        consentSource: lead.consentSource, consentUpdatedAt: lead.consentUpdatedAt,
       });
     }
-    return [...contacts.values()].map((contact) => ({
-      contact,
-      leads: leadsByContact.get(contact.id) ?? [],
-      deals: dealsByContact.get(contact.id) ?? [],
-    }));
-  }, [dealRows, leadRows]);
-
-  const visibleRows = rows
-    .filter(({ leads: customerLeads, deals: customerDeals }) => {
-      if (filter === "all") return true;
-      if (filter === "active") return customerLeads.some((lead) => !["won", "lost"].includes(lead.stage));
-      if (filter === "won") return customerDeals.some((deal) => deal.stage === "won") || customerLeads.some((lead) => lead.stage === "won");
-      return customerLeads.some((lead) => {
-        const age = Date.now() - new Date(lead.lastActivityAt).getTime();
-        return age > 3 * 24 * 60 * 60 * 1000 && !["won", "lost"].includes(lead.stage);
+    return [...contacts.values()]
+      .map((contact) => ({
+        contact,
+        leads: leadsByContact.get(contact.id) ?? [],
+        deals: dealsByContact.get(contact.id) ?? [],
+      }))
+      .filter(({ leads: cls, deals: cds }) => {
+        if (filter === "all") return true;
+        if (filter === "active") return cls.some((l) => !["won", "lost"].includes(l.stage));
+        if (filter === "won") return cds.some((d) => d.stage === "won") || cls.some((l) => l.stage === "won");
+        return cls.some((l) => { const age = Date.now() - new Date(l.lastActivityAt).getTime(); return age > 3 * 24 * 60 * 60 * 1000 && !["won", "lost"].includes(l.stage); });
+      })
+      .filter(({ contact }) => {
+        if (!debouncedQuery) return true;
+        const n = debouncedQuery.toLowerCase();
+        return [contact.name, contact.phone, contact.email, contact.company].filter(Boolean).some((v) => v!.toLowerCase().includes(n));
+      })
+      .sort((a, b) => {
+        const aLast = Math.max(...a.leads.map((l) => new Date(l.lastActivityAt).getTime()), 0);
+        const bLast = Math.max(...b.leads.map((l) => new Date(l.lastActivityAt).getTime()), 0);
+        return bLast - aLast;
       });
-    })
-    .filter(({ contact }) => {
-      if (!query) return true;
-      const normalized = query.toLowerCase();
-      return [contact.name, contact.phone, contact.email, contact.company]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(normalized));
-    })
-    .sort((a, b) => {
-      const aLast = Math.max(...a.leads.map((lead) => new Date(lead.lastActivityAt).getTime()), 0);
-      const bLast = Math.max(...b.leads.map((lead) => new Date(lead.lastActivityAt).getTime()), 0);
-      return bLast - aLast;
-    });
+  }, [dealRows, leadRows, filter, debouncedQuery]);
 
-  const loading = leads.loading || deals.loading;
+  const serverRows = customers.data ?? [];
+  const loading = demoMode ? (leads.loading || deals.loading) : (!customers.data && !customers.error);
+  const loadError = demoMode ? undefined : customers.error;
+  const rowCount = demoMode ? demoRows.length : serverRows.length;
+
+  function refresh() {
+    if (demoMode) { leads.reload(); deals.reload(); }
+    else customers.reload();
+  }
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader
         title="Customers"
-        description={loading ? "Loading live CRM records…" : `${visibleRows.length} of ${rows.length} customer records`}
+        description={loading ? "Loading customer records..." : `${rowCount} customer records`}
         actions={
           <div className="flex items-center gap-2">
-            
-            <Button size="sm" variant="secondary" onClick={() => { leads.reload(); deals.reload(); }} disabled={loading}>
+            <Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
               <RefreshCw className="size-3.5" />
               Refresh
             </Button>
           </div>
         }
       />
-      {!demoMode && (leads.error || deals.error) && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {leads.error || deals.error}. Refresh to try again; nothing is lost.</p>}
+      {loadError && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {loadError}. Refresh to try again; nothing is lost.</p>}
 
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 pb-4">
-        <SearchInput value={query} onChange={setQuery} placeholder="Search customers or companies…" className="w-72" />
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+        <SearchInput value={query} onChange={setQuery} placeholder="Search customers or companies..." className="w-72" />
+        <Tabs value={filter} onValueChange={changeFilter}>
           <TabsList className="h-auto border-b-0">
             {FILTERS.map((f) => (
               <TabsTrigger key={f.key} value={f.key} className="h-7 px-2.5 text-[12px]">
@@ -142,12 +173,11 @@ export default function CustomersPage() {
           </TabsList>
         </Tabs>
       </div>
-      {loadError && <p role="alert" className="mx-6 mt-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {loadError}. Refresh to try again.</p>}
-      {loading && !usingDemo && <p role="status" className="px-6 py-6 text-sm text-muted-foreground">Loading live leads and deals…</p>}
+      {loading && <p role="status" className="px-6 py-6 text-sm text-muted-foreground">Loading customer records...</p>}
 
-      {!loading && !loadError && visibleRows.length === 0 ? (
+      {!loading && !loadError && rowCount === 0 ? (
         <div className="px-6 py-6">
-          <EmptyState icon={Building2} title="No live customer records match" description="Connect a lead source or try a different filter or search term." />
+          <EmptyState icon={Building2} title="No customer records match" description="Connect a lead source or try a different filter or search term." />
         </div>
       ) : !loading && !loadError && (
         <>
@@ -165,20 +195,15 @@ export default function CustomersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleRows.map(({ contact, leads: customerLeads, deals: customerDeals }) => {
+            {demoMode ? demoRows.map(({ contact, leads: customerLeads, deals: customerDeals }) => {
               const dealValue = customerDeals.filter((deal) => deal.stage !== "lost").reduce((sum, deal) => sum + Number(deal.amount), 0);
               const lastLead = [...customerLeads].sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1))[0];
-              // A customer is as far along as their most advanced enquiry, not just the newest one.
               const furthest = [...customerLeads].sort((a, b) => stageOrder.indexOf(b.stage) - stageOrder.indexOf(a.stage))[0];
               const currentStage = furthest?.stage ?? "new";
+              const dName = contact.name || contact.phone || contact.email || `Customer #${contact.id}`;
               return (
                 <TableRow key={contact.id} className={usingDemo ? "" : "cursor-pointer"} onClick={usingDemo ? undefined : () => router.push(`/customers/${contact.id}`)}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <CustomerAvatar name={displayName(contact)} color="#4169e1" size="sm" />
-                      <span className="font-medium text-foreground">{displayName(contact)}</span>
-                    </div>
-                  </TableCell>
+                  <TableCell><div className="flex items-center gap-2"><CustomerAvatar name={dName} color="#4169e1" size="sm" /><span className="font-medium text-foreground">{dName}</span></div></TableCell>
                   <TableCell className="text-muted-foreground">{contact.company || "—"}</TableCell>
                   <TableCell className="capitalize text-muted-foreground">{currentStage.replaceAll("_", " ")}</TableCell>
                   <TableCell className="text-mono text-foreground">{dealValue > 0 ? formatCurrencyINR(dealValue) : "—"}</TableCell>
@@ -187,9 +212,29 @@ export default function CustomersPage() {
                   <TableCell className="text-mono font-medium">{customerLeads.length}</TableCell>
                 </TableRow>
               );
+            }) : serverRows.map((row) => {
+              const dealValue = Number(row.dealValue);
+              const name = displayName(row);
+              return (
+                <TableRow key={row.contactId} className="cursor-pointer" onClick={() => router.push(`/customers/${row.contactId}`)}>
+                  <TableCell><div className="flex items-center gap-2"><CustomerAvatar name={name} color="#4169e1" size="sm" /><span className="font-medium text-foreground">{name}</span></div></TableCell>
+                  <TableCell className="text-muted-foreground">{row.company || "—"}</TableCell>
+                  <TableCell className="capitalize text-muted-foreground">{row.stage.replaceAll("_", " ")}</TableCell>
+                  <TableCell className="text-mono text-foreground">{dealValue > 0 ? formatCurrencyINR(dealValue) : "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{ownerLabel(row.ownerId, row.ownerName)}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.lastActivityAt ? formatRelativeTime(row.lastActivityAt) : "—"}</TableCell>
+                  <TableCell className="text-mono font-medium">{row.leadCount}</TableCell>
+                </TableRow>
+              );
             })}
           </TableBody>
         </Table>
+        {!demoMode && (
+          <div className="flex gap-2 p-6">
+            <Button size="sm" variant="ghost" onClick={() => { setAfterId("0"); customers.reload(); }}>First page</Button>
+            <Button size="sm" variant="secondary" disabled={serverRows.length !== 50} onClick={() => setAfterId(serverRows.at(-1)!.contactId)}>Next page</Button>
+          </div>
+        )}
         </>
       )}
     </div>

@@ -262,6 +262,22 @@ class LostReasonOut(BaseModel):
     value: str
 
 
+class CustomerListRow(BaseModel):
+    """A customer in the paged customer list: contact info plus lead/deal summaries."""
+
+    contactId: str
+    name: str
+    phone: str | None
+    email: str | None
+    company: str
+    leadCount: int
+    dealValue: str
+    stage: str
+    ownerId: str | None
+    ownerName: str | None
+    lastActivityAt: datetime | None
+
+
 class AccountInvoiceOut(BaseModel):
     id: str
     number: str

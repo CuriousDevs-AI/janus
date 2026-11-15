@@ -146,6 +146,21 @@ async def update_contact_consent(
     )
 
 
+@router.get("/customers", response_model=list[schemas.CustomerListRow])
+async def customers(
+    actor: Reader,
+    db: Db,
+    after_id: AfterId = 0,
+    limit: Limit = 50,
+    q: str | None = None,
+    filter: str = "all",
+) -> list[schemas.CustomerListRow]:
+    return await service.list_customers(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions,
+        after_id, limit, q, filter,
+    )
+
+
 @router.get("/deals", response_model=list[schemas.DealOut])
 async def deals_list(
     actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 100
