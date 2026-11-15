@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, Hash, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
@@ -47,7 +47,10 @@ function newKey() {
 export function TeamChat() {
   const session = useSession();
   const call = useVoiceCall();
-  const requested = useSearchParams().get("space");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requested = searchParams.get("space");
   const [selected, setSelected] = React.useState<string | null>(requested);
   const [threadId, setThreadId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -124,6 +127,19 @@ export function TeamChat() {
     setSelected(id);
     setThreadId(null);
   }
+
+  // Keep the URL in sync with the selected space so reload and deep links work.
+  React.useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const current = params.get("space");
+    if (selected && current !== selected) {
+      params.set("space", selected);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    } else if (!selected && current) {
+      params.delete("space");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [selected, searchParams, router, pathname]);
 
   // Escape closes an open thread, as in the desktop apps.
   React.useEffect(() => {
