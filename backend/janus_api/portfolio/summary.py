@@ -21,7 +21,7 @@ from janus_api.it import overview as it
 from janus_api.operations import overview as operations
 from janus_api.org import overview as org
 from janus_api.org import service as org_service
-from janus_api.portfolio import attention, documents, preferences, schemas
+from janus_api.portfolio import attention, customers, documents, preferences, schemas
 from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.compliance import plan as compliance_plan
 from janus_api.portfolio.compliance.plan import compliance_view
@@ -142,6 +142,19 @@ async def approvals(db: AsyncSession, tenant_id: int, staff: hr.People) -> list[
     ]
 
 
+def sales_ratios(item: crm.Closed) -> schemas.SalesRatios:
+    """Win rate, average won deal and days to win, from the deals closed in a period."""
+    closed = item.won + item.lost
+    return schemas.SalesRatios(
+        won=item.won,
+        lost=item.lost,
+        winRate=round(item.won / closed * 100) if closed else None,
+        wonValue=rupees(item.won_value),
+        avgDealSize=rupees(item.won_value / item.won) if item.won else None,
+        cycleDays=round(item.cycle_days) if item.cycle_days is not None else None,
+    )
+
+
 async def company_summary(
     db: AsyncSession,
     company: org.Company,
@@ -153,6 +166,7 @@ async def company_summary(
     detail: bool = True,
     trade: dict[int, Trade] | None = None,
     limits: schemas.Thresholds | None = None,
+    own: frozenset[str] = frozenset(),
 ) -> schemas.CompanySummary:
     """One company's headline numbers, and with `detail` its operating view.
 
@@ -359,6 +373,15 @@ async def company_summary(
         ]
         out.wonNotInvoiced = len(unbilled)
         out.wonNotInvoicedValue = rupees(sum((deal[2] for deal in unbilled), Decimal(0)))
+    closed_now = await crm.closed(db, tenant_id, *span_now)
+    closed_before = await crm.closed(db, tenant_id, *span_before)
+    if closed_now.won or closed_now.lost or closed_before.won or closed_before.lost:
+        out.sales = schemas.SalesRatiosCompare(
+            current=sales_ratios(closed_now), previous=sales_ratios(closed_before)
+        )
+    if money:
+        # Sales to the person's own companies are not customers.
+        out.customerFigures = await customers.figures(db, tenant_id, today, own)
     funnel_now = await crm.funnel(db, tenant_id, *span_now)
     funnel_before = await crm.funnel(db, tenant_id, *span_before)
     if funnel_now.leads or funnel_before.leads:
@@ -616,7 +639,15 @@ async def summary(
     await set_context(db, user_id=user_id, tenant_id=current_tenant)
     limits = (await preferences.read(db, user_id)).thresholds
     try:
-        for tenant_id in await readable_companies(db, user_id):
+        readable = await readable_companies(db, user_id)
+        names = set()
+        for tenant_id in readable:
+            await set_context(db, user_id=user_id, tenant_id=tenant_id)
+            found = await org.company(db, tenant_id)
+            if found:
+                names.add(found.name.strip().casefold())
+        own = frozenset(names)
+        for tenant_id in readable:
             await set_context(db, user_id=user_id, tenant_id=tenant_id)
             # Re-check the role under this company's context before reading anything.
             _, role = await org_service.membership(db, user_id, tenant_id)
@@ -634,6 +665,7 @@ async def summary(
                     detail=detail,
                     trade=trade,
                     limits=limits,
+                    own=own,
                 )
             )
             record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)

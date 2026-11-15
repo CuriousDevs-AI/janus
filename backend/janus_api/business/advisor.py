@@ -395,6 +395,79 @@ def findings(company: portfolio.CompanySummary) -> list[Finding]:  # noqa: C901
                 ),
             )
         )
+    kept = company.customerFigures
+    if kept and kept.churnRate is not None and kept.before >= 5 and kept.churnRate >= 30:
+        out.append(
+            Finding(
+                id="customer-churn",
+                area="sales",
+                severity="high" if kept.churnRate >= 50 else "medium",
+                title="Customers are not coming back",
+                sees=f"{kept.before - kept.kept} of the {kept.before} customers who bought in the"
+                f" twelve months before have not bought in the last twelve: {kept.churnRate}%"
+                " churn.",
+                matters="Keeping a customer costs far less than finding a new one, and a customer"
+                " who stopped buying usually went to someone else for a reason you can fix.",
+                action="Call the largest customers who stopped buying, ask why, and offer what"
+                " brings them back. They are listed under Customers kept in Portfolio analytics.",
+                href="/portfolio?view=analytics#an-kept",
+                plan="Bring churn under 25% of last year's customers.",
+                measure=Measure(
+                    label="% of customers lost", now=kept.churnRate, target=25, better="lower"
+                ),
+            )
+        )
+    if kept and kept.topShare is not None and kept.customers >= 3 and kept.topShare >= 40:
+        out.append(
+            Finding(
+                id="customer-concentration",
+                area="sales",
+                severity="high" if kept.topShare >= 60 else "medium",
+                title="One customer is a large part of your sales",
+                sees=f"{kept.topCustomer} bought {kept.topShare}% of your sales in the last twelve"
+                f" months; your five largest customers {kept.top5Share}%.",
+                matters="If that one customer delays payment, cuts orders or leaves, a large part"
+                " of your income goes with them.",
+                action="Win more customers of the same kind, agree a written contract or notice"
+                " period with this one, and keep what they owe you short.",
+                href="/portfolio?view=analytics#an-kept",
+                plan="Bring the largest customer under 30% of sales.",
+                measure=Measure(
+                    label="% of sales from the largest customer",
+                    now=kept.topShare,
+                    target=30,
+                    better="lower",
+                ),
+            )
+        )
+    closed = company.sales
+    if (
+        closed
+        and closed.current.winRate is not None
+        and closed.previous.winRate is not None
+        and closed.current.won + closed.current.lost >= 5
+        and closed.current.winRate <= closed.previous.winRate - 15
+    ):
+        out.append(
+            Finding(
+                id="win-rate-drop",
+                area="sales",
+                severity="medium",
+                title="Fewer closed deals are won",
+                sees=f"{closed.current.winRate}% of the deals closed this period were won, against"
+                f" {closed.previous.winRate}% in the same days before.",
+                matters="The same effort is turning into fewer sales.",
+                action="Read why deals were lost on the CRM overview and fix the most common reason.",
+                href=_crm("/dashboard"),
+                plan=f"Get the win rate back to {closed.previous.winRate}%.",
+                measure=Measure(
+                    label="% of closed deals won",
+                    now=closed.current.winRate,
+                    target=closed.previous.winRate,
+                    better="higher",
+                ),
+            )
+        )
     if before.leads >= 5 and now.leads < before.leads * 0.7:
         out.append(
             Finding(

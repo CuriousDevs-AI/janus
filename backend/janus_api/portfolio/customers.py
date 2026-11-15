@@ -127,6 +127,64 @@ def similar_customers(
     ]
 
 
+def figures_for(
+    months: dict[str, dict[date, int]],
+    before: tuple[date, date],
+    recent: tuple[date, date],
+    own: frozenset[str] = frozenset(),
+    aliases: dict[str, str] | None = None,
+) -> schemas.CustomerFigures | None:
+    """Customers, repeat buyers, revenue per customer, dependence on the largest customers, and
+    retention and churn, from sales by customer and month. None with no sales in either span."""
+    merged = _grouped(months, own, aliases or {})
+    recent_sales: dict[str, int] = {}
+    repeat = 0
+    for key, (_, by_month) in merged.items():
+        in_span = {day: paise for day, paise in by_month.items() if recent[0] <= day <= recent[1]}
+        total = sum(paise for paise in in_span.values() if paise > 0)
+        if total > 0:
+            recent_sales[key] = total
+            repeat += len({(day.year, day.month) for day, p in in_span.items() if p > 0}) >= 2
+    earlier, kept, new, _ = retention_for(months, before, recent, own, aliases)
+    if not recent_sales and not earlier:
+        return None
+    sales = sum(recent_sales.values())
+    ranked = sorted(recent_sales.items(), key=lambda item: -item[1])
+    count = len(recent_sales)
+
+    def share(part: int) -> int | None:
+        return round(part / sales * 100) if sales else None
+
+    return schemas.CustomerFigures(
+        recentStart=recent[0].isoformat(),
+        recentEnd=recent[1].isoformat(),
+        customers=count,
+        repeatCustomers=repeat,
+        repeatRate=round(repeat / count * 100) if count else None,
+        sales=rupees(sales, paise=True),
+        revenuePerCustomer=rupees(sales // count, paise=True) if count else None,
+        topCustomer=merged[ranked[0][0]][0] if ranked else None,
+        topShare=share(ranked[0][1]) if ranked else None,
+        top5Share=share(sum(paise for _, paise in ranked[:5])) if ranked else None,
+        before=earlier,
+        kept=kept,
+        new=new,
+        retentionRate=round(kept / earlier * 100) if earlier else None,
+        churnRate=round((earlier - kept) / earlier * 100) if earlier else None,
+    )
+
+
+async def figures(
+    db: AsyncSession, tenant_id: int, today: date, own: frozenset[str]
+) -> schemas.CustomerFigures | None:
+    """This company's customer figures; the caller has set its context."""
+    before_start, before_end, recent_start, recent_end = spans(today)
+    months, _ = await finance.customer_months(db, tenant_id, before_start, recent_end)
+    merges = (await db.scalars(select(CustomerMerge))).all()
+    aliases = {row.alias_key: row.customer for row in merges}
+    return figures_for(months, (before_start, before_end), (recent_start, recent_end), own, aliases)
+
+
 async def retention(
     db: AsyncSession, user_id: int, current_tenant: int | None
 ) -> schemas.CustomerRetentionList:
