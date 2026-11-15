@@ -257,3 +257,29 @@ class LostReasonOut(BaseModel):
     label: str
     count: int
     value: str
+
+
+class AccountInvoiceOut(BaseModel):
+    id: str
+    number: str
+    invoiceDate: date
+    dueDate: date
+    total: str
+    due: str
+
+
+class CustomerAccountOut(BaseModel):
+    """A customer's invoices, payments and dues. Amounts only where `full` (a role with money);
+    otherwise how many invoices there are and how many are overdue."""
+
+    full: bool
+    invoices: int
+    overdueInvoices: int = 0
+    oldestOverdueDays: int = 0
+    invoiced: str | None = None
+    paid: str | None = None
+    credited: str | None = None
+    due: str | None = None
+    overdue: str | None = None
+    lastInvoiceOn: date | None = None
+    latest: list[AccountInvoiceOut] = []

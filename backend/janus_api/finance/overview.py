@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Numeric, func, select
+from sqlalchemy import Numeric, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.core.names import document_key, party_key
@@ -847,3 +847,125 @@ async def invoiced_deals(db: AsyncSession, tenant_id: int) -> set[str]:
         )
     )
     return {str(ref) for ref in rows if ref}
+
+
+@dataclass(frozen=True)
+class AccountInvoice:
+    id: int
+    number: str
+    invoice_date: date
+    due_date: date
+    total: int
+    due: int
+
+
+@dataclass(frozen=True)
+class CustomerAccount:
+    """What one customer was invoiced, paid and still owes, in paise, and their latest invoices."""
+
+    invoices: int
+    invoiced: int
+    paid: int
+    credited: int
+    due: int
+    overdue: int
+    overdue_invoices: int
+    oldest_overdue_days: int
+    last_invoice_on: date | None
+    latest: list[AccountInvoice]
+
+
+ACCOUNT_LATEST = 10
+
+
+async def customer_account(
+    db: AsyncSession, tenant_id: int, deal_refs: set[str], names: list[str], today: date
+) -> CustomerAccount | None:
+    """One CRM customer's invoices: those raised from one of their deals, and those to their
+    company or name (as `party_key` matches names). None when nothing matches. Opening balances
+    from before Janus count, since the customer owes them too."""
+    wanted = {party_key(name) for name in names if name.strip()}
+    party = func.coalesce(func.nullif(FinanceInvoice.customer_company, ""), FinanceInvoice.customer)
+    parties = [
+        str(name)
+        for name in (
+            await db.scalars(select(party).where(FinanceInvoice.tenant_id == tenant_id).distinct())
+        ).all()
+        if wanted and party_key(str(name)) in wanted
+    ]
+    matches = []
+    if parties:
+        matches.append(party.in_(parties))
+    if deal_refs:
+        matches.append(FinanceInvoice.deal_ref.in_(sorted(deal_refs)))
+    if not matches:
+        return None
+    paid = (
+        select(FinancePayment.invoice_id, func.sum(FinancePayment.amount_paise).label("paise"))
+        .where(FinancePayment.tenant_id == tenant_id)
+        .group_by(FinancePayment.invoice_id)
+        .subquery()
+    )
+    credited = (
+        select(
+            FinanceCreditNote.invoice_id, func.sum(FinanceCreditNote.amount_paise).label("paise")
+        )
+        .where(FinanceCreditNote.tenant_id == tenant_id, FinanceCreditNote.status == "approved")
+        .group_by(FinanceCreditNote.invoice_id)
+        .subquery()
+    )
+    rows = (
+        await db.execute(
+            select(
+                FinanceInvoice.id,
+                FinanceInvoice.number,
+                FinanceInvoice.invoice_date,
+                FinanceInvoice.due_date,
+                FinanceInvoice.total_paise,
+                func.coalesce(paid.c.paise, 0),
+                func.coalesce(credited.c.paise, 0),
+            )
+            .outerjoin(paid, paid.c.invoice_id == FinanceInvoice.id)
+            .outerjoin(credited, credited.c.invoice_id == FinanceInvoice.id)
+            .where(FinanceInvoice.tenant_id == tenant_id, or_(*matches))
+            .order_by(FinanceInvoice.invoice_date.desc(), FinanceInvoice.id.desc())
+        )
+    ).all()
+    if not rows:
+        return None
+    invoiced = paid_total = credited_total = due_total = overdue = overdue_count = oldest = 0
+    latest: list[AccountInvoice] = []
+    for row_id, number, raised, due_on, total, paid_paise, credited_paise in rows:
+        balance = max(0, int(total) - int(paid_paise) - int(credited_paise))
+        invoiced += int(total)
+        paid_total += int(paid_paise)
+        credited_total += int(credited_paise)
+        due_total += balance
+        late = (today - due_on).days
+        if balance > 0 and late > 0:
+            overdue += balance
+            overdue_count += 1
+            oldest = max(oldest, late)
+        if len(latest) < ACCOUNT_LATEST:
+            latest.append(
+                AccountInvoice(
+                    id=int(row_id),
+                    number=str(number),
+                    invoice_date=raised,
+                    due_date=due_on,
+                    total=int(total),
+                    due=balance,
+                )
+            )
+    return CustomerAccount(
+        invoices=len(rows),
+        invoiced=invoiced,
+        paid=paid_total,
+        credited=credited_total,
+        due=due_total,
+        overdue=overdue,
+        overdue_invoices=overdue_count,
+        oldest_overdue_days=oldest,
+        last_invoice_on=rows[0][2],
+        latest=latest,
+    )
