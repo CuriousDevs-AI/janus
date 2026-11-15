@@ -45,9 +45,11 @@ export default function CustomersPage() {
   const router = useRouter();
   const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
   const deals = useApi<Deal[]>("/deals?limit=100&after_id=0");
-  const usingDemo = demoMode;
-  const leadRows = React.useMemo(() => leads.data ?? (demoMode ? demoLeadRows : []), [leads.data]);
-  const dealRows = React.useMemo(() => deals.data ?? (demoMode ? demoDealRows : []), [deals.data]);
+  // The sample customers belong to the demo only; a real company sees its own records or the error.
+  const usingDemo = demoMode && Boolean(leads.error || deals.error);
+  const loadError = !demoMode ? leads.error || deals.error : undefined;
+  const leadRows = React.useMemo(() => leads.data ?? (usingDemo ? demoLeadRows : []), [leads.data, usingDemo]);
+  const dealRows = React.useMemo(() => deals.data ?? (usingDemo ? demoDealRows : []), [deals.data, usingDemo]);
 
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
@@ -140,13 +142,14 @@ export default function CustomersPage() {
           </TabsList>
         </Tabs>
       </div>
+      {loadError && <p role="alert" className="mx-6 mt-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {loadError}. Refresh to try again.</p>}
       {loading && !usingDemo && <p role="status" className="px-6 py-6 text-sm text-muted-foreground">Loading live leads and deals…</p>}
 
-      {!loading && visibleRows.length === 0 ? (
+      {!loading && !loadError && visibleRows.length === 0 ? (
         <div className="px-6 py-6">
           <EmptyState icon={Building2} title="No live customer records match" description="Connect a lead source or try a different filter or search term." />
         </div>
-      ) : !loading && (
+      ) : !loading && !loadError && (
         <>
         <p className="px-6 pt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
         <Table>

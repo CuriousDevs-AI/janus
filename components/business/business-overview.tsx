@@ -11,7 +11,7 @@ import { useApi } from "@/lib/api/use-api";
 import { ChaseList, GrowthTrend, MonthTargets, WinBack, useMonths } from "@/components/business/growth-panels";
 import { Badge } from "@/components/ui/badge";
 import { FilterChips, StatTile, workspaceHref } from "@/components/shared/stat-tile";
-import { change, day, healthTone, inr, RATE_MINIMUM, todayIst, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
+import { change, day, healthTone, inr, KeyRatios, RATE_MINIMUM, todayIst, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const card = "rounded-xl border border-[#e4e4df] bg-white p-5";
@@ -109,6 +109,8 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
           : <StatTile label="Members" value={String(company.members)} detail="People who can sign in" href="/settings?tab=team" />}
       </div>
     </div>
+
+    <KeyRatios company={company} financeHref={finance("receivables")} crmHref={crm("/deals")} />
 
     <div className="grid gap-4 xl:grid-cols-2">
       <section className={card} aria-label="Waiting for a decision">
