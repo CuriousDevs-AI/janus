@@ -331,6 +331,17 @@ async def test_api_key_ingest_scope_expiry_and_revocation(
         connection["ingestUrl"], headers=headers, json={"phone": "9876543210"}
     )
     assert duplicate.status_code == 202 and duplicate.json()["duplicate"]
+    # A paused source tells the key holder it is paused, not that the key is wrong.
+    async with admin_engine.begin() as db:
+        await db.execute(text("UPDATE source_connections SET status='available'"))
+    paused = await client.post(
+        connection["ingestUrl"],
+        headers={**headers, "Idempotency-Key": "erp-2"},
+        json={"phone": "9876543210"},
+    )
+    assert paused.status_code == 409 and paused.json()["error"]["code"] == "source_paused"
+    async with admin_engine.begin() as db:
+        await db.execute(text("UPDATE source_connections SET status='connected'"))
     assert await run_once(worker_factory)
     assert (await client.get("/v1/leads", headers=owner.headers)).json()[0]["source"] == "api"
     assert (await client.get("/v1/me", headers=headers)).status_code == 401
