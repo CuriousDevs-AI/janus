@@ -80,7 +80,7 @@ export default function DealPage({
                 <Link href={`/leads/${deal.leadId}`}>Open lead</Link>
               </Button>
               {deal.phone && <WhatsAppButton contactId={deal.customerId} />}
-              {deal.stage === "won" && financeOn && (
+              {deal.stage === "won" && financeOn && can(session, "billing:manage") && (
                 <Button size="sm" asChild>
                   <Link href={`/workspace/finance-accounting?view=invoices&workspace=finance-accounting&deal=${deal.id}`}>Raise the invoice</Link>
                 </Button>
