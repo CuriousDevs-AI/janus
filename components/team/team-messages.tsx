@@ -62,6 +62,7 @@ export function MessageList({
   onChanged,
   activeThreadId,
   showAuthors = true,
+  canInteract = true,
 }: {
   messages: TeamMessage[];
   emptyText: string;
@@ -70,6 +71,8 @@ export function MessageList({
   activeThreadId?: string | null;
   /** Names and avatars beside other people's messages; a DM has only one other person, so no. */
   showAuthors?: boolean;
+  /** Whether the user can react, reply in thread, etc. False for read-only views. */
+  canInteract?: boolean;
 }) {
   const ordered = [...messages].reverse();
   if (ordered.length === 0) {
@@ -104,6 +107,7 @@ export function MessageList({
         active={activeThreadId === item.id}
         onOpenThread={onOpenThread}
         onChanged={onChanged}
+        canInteract={canInteract}
       />,
     );
   }
@@ -117,6 +121,7 @@ function MessageRow({
   active,
   onOpenThread,
   onChanged,
+  canInteract,
 }: {
   item: TeamMessage;
   grouped: boolean;
@@ -124,6 +129,7 @@ function MessageRow({
   active: boolean;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
+  canInteract: boolean;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(item.body ?? "");
@@ -292,29 +298,33 @@ function MessageRow({
         ) : null}
       </div>
 
-      {!item.deleted && !editing ? (
+      {!item.deleted && !editing && (canInteract || item.mine) ? (
         <div className="absolute right-4 -top-3 flex items-center gap-0.5 rounded-md border border-border bg-surface p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {TEAM_EMOJI.slice(0, 3).map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              aria-label={`React with ${emoji}`}
-              onClick={() => void react(emoji, item.reactions.some((r) => r.emoji === emoji && r.mine))}
-              className="rounded px-1.5 py-1 text-sm hover:bg-surface-2"
-            >
-              {emoji}
-            </button>
-          ))}
-          <EmojiPicker onPick={(emoji) => void react(emoji, item.reactions.some((r) => r.emoji === emoji && r.mine))} />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label="Reply in thread"
-            onClick={() => onOpenThread(item.id)}
-          >
-            <MessageSquare className="size-3.5" />
-          </Button>
+          {canInteract ? (
+            <>
+              {TEAM_EMOJI.slice(0, 3).map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`React with ${emoji}`}
+                  onClick={() => void react(emoji, item.reactions.some((r) => r.emoji === emoji && r.mine))}
+                  className="rounded px-1.5 py-1 text-sm hover:bg-surface-2"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <EmojiPicker onPick={(emoji) => void react(emoji, item.reactions.some((r) => r.emoji === emoji && r.mine))} />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                aria-label="Reply in thread"
+                onClick={() => onOpenThread(item.id)}
+              >
+                <MessageSquare className="size-3.5" />
+              </Button>
+            </>
+          ) : null}
           {item.mine ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

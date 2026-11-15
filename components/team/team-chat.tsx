@@ -366,6 +366,7 @@ export function TeamChat() {
                     onChanged={() => { reloadMessages(); reloadReplies(); }}
                     activeThreadId={threadId}
                     showAuthors={space?.kind !== "dm"}
+                    canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
                   />
                 )}
               </div>
@@ -415,12 +416,13 @@ export function TeamChat() {
                     emptyText="No replies yet. Start the thread."
                     onOpenThread={setThreadId}
                     onChanged={() => { reloadReplies(); reloadMessages(); }}
+                    canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
                   />
                 </div>
                 <Composer
                   placeholder="Reply to the thread"
                   autoFocusKey={threadId}
-                  disabled={!space || (isChannel(space.kind) && !space.joined)}
+                  disabled={!space || !space.canPost || (isChannel(space.kind) && !space.joined)}
                   allowFiles={false}
                   onSend={(body) => send(body, threadId)}
                 />
