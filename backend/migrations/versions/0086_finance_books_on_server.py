@@ -31,6 +31,8 @@ def _secure(name: str) -> None:
         "WITH CHECK (tenant_id = app_tenant())"
     )
     op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {name} TO janus_app")
+    # The weekly email and red alerts are built by the worker from the same figures.
+    op.execute(f"GRANT SELECT ON {name} TO janus_worker")
 
 
 def _base(name: str, *columns: sa.Column, constraints: tuple[sa.Constraint, ...] = ()) -> None:
