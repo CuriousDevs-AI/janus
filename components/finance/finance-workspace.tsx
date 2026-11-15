@@ -459,7 +459,7 @@ function ExpensesView({ me }: { me: string }) {
   );
 }
 
-/** GST summary for one month: output tax on sales by rate, input tax on expenses, and the net to check. */
+/** GST summary for one month: output tax on sales by rate, input tax on purchases and expenses, and the net to check. */
 function GstView() {
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
@@ -467,7 +467,7 @@ function GstView() {
   const bills = useFinanceStore((state) => state.bills);
   const months = dataMonths(invoices, bills, expenses);
   const [month, setMonth] = React.useState(() => todayIso().slice(0, 7));
-  const summary = gstSummary(month, invoices, creditNotes, expenses);
+  const summary = gstSummary(month, invoices, creditNotes, expenses, bills);
 
   return (
     <>
@@ -488,7 +488,7 @@ function GstView() {
           <div className="grid gap-1 text-sm tabular-nums">
             <div className="flex justify-between"><span>Output tax on sales</span><span>{money(summary.outputTax)}</span></div>
             <div className="flex justify-between text-xs text-muted-foreground"><span>Less tax on approved credit notes this month</span><span>{money(summary.creditTax)}</span></div>
-            <div className="flex justify-between"><span>Input tax on expenses</span><span>{money(summary.inputTax)}</span></div>
+            <div className="flex justify-between"><span>Input tax on purchases and expenses</span><span>{money(summary.inputTax)}</span></div>
             <div className="flex justify-between font-semibold"><span>Net to check before filing</span><span>{summary.netPayable < 0 ? `-${money(Math.abs(summary.netPayable))}` : money(summary.netPayable)}</span></div>
           </div>
         </CardContent>

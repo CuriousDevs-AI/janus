@@ -547,10 +547,11 @@ export interface GstRow { rate: number; taxable: number; cgst: number; sgst: num
 
 /**
  * GST summary for one month (plan §8.7 V2). Output tax is from the sales invoices, by GST rate; approved credit
- * notes reduce it by their tax share. Input tax is the GST on expenses. This is a summary to check, not a return:
- * it is confirmed with the company's accountant before filing.
+ * notes reduce it by their tax share. Input tax is the GST on expenses plus claimable ITC from bills (where
+ * itcBlocked is not true). This is a summary to check, not a return: it is confirmed with the company's
+ * accountant before filing.
  */
-export function gstSummary(month: string, invoices: Invoice[], creditNotes: CreditNote[], expenses: Expense[]) {
+export function gstSummary(month: string, invoices: Invoice[], creditNotes: CreditNote[], expenses: Expense[], bills: Bill[] = []) {
   const byRate = new Map<number, GstRow>();
   const round = (value: number) => Math.round(value * 100) / 100;
   for (const invoice of invoices.filter((i) => !i.cancelled && i.date.startsWith(month))) {
@@ -573,7 +574,9 @@ export function gstSummary(month: string, invoices: Invoice[], creditNotes: Cred
   }
   const outputTax = round(rows.reduce((sum, r) => sum + r.cgst + r.sgst + r.igst, 0) - creditTax);
   const inputExpenses = expenses.filter((e) => e.date.startsWith(month));
-  const inputTax = round(inputExpenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0));
+  const expenseItc = inputExpenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0);
+  const billItc = bills.filter((b) => b.date.startsWith(month) && !b.itcBlocked).reduce((sum, b) => sum + (b.gst ?? 0), 0);
+  const inputTax = round(expenseItc + billItc);
   return { rows, creditTax: round(creditTax), outputTax, inputTax, netPayable: round(outputTax - inputTax) };
 }
 
