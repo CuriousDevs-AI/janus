@@ -61,6 +61,7 @@ export function SourceTools({
       {source.connectionKind !== "csv" && (
         <SecretValue title="Ingestion URL" value={source.ingestUrl} />
       )}
+      {source.connectionKind === "webhook" && source.preset === "custom" && <CustomWebhookRecipe url={source.ingestUrl} />}
       {source.connectionKind === "webhook" && (
         <>
           <p className="text-xs text-muted-foreground">
@@ -393,5 +394,30 @@ export function EventList({ events }: { events: IngestEvent[] }) {
         </p>
       )}
     </div>
+  );
+}
+
+
+/** Exactly how to send a lead to a custom webhook, for whoever wires up the form, app or tool. */
+function CustomWebhookRecipe({ url }: { url: string }) {
+  const example = `BODY='{"name":"Asha Traders","phone":"+91 98765 43210","email":"asha@example.com","requirement":"200 cartons"}'
+TS=$(date +%s); KEY=lead-$TS-$RANDOM
+SIG="sha256=$(printf '%s.%s.%s' "$TS" "$KEY" "$BODY" | openssl dgst -sha256 -hmac "$JANUS_SECRET" | sed 's/^.* //')"
+curl -X POST '${url}' \\
+  -H 'Content-Type: application/json' \\
+  -H "X-Janus-Timestamp: $TS" -H "Idempotency-Key: $KEY" -H "X-Janus-Signature: $SIG" \\
+  -d "$BODY"`;
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer font-medium">How to send a lead</summary>
+      <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
+        <li>POST the lead as JSON to the ingestion URL. The fields are those in the field mapping below; a phone or an email is needed.</li>
+        <li>Send <code>X-Janus-Timestamp</code>: the time in Unix seconds. Requests more than five minutes old are refused.</li>
+        <li>Send <code>Idempotency-Key</code>: one value per lead (letters, digits, <code>. _ : -</code>). Sending the same key again is counted once, so retries are safe.</li>
+        <li>Send <code>X-Janus-Signature</code>: <code>sha256=</code> and the hex HMAC-SHA256 of <code>timestamp.key.body</code>, signed with the signing secret shown when the source was created.</li>
+        <li>Janus answers 202 when the lead is received; it shows under Ingestion events within a few seconds.</li>
+      </ol>
+      <pre className="mt-2 overflow-x-auto rounded-md bg-surface-2 p-3 text-[11px] leading-5">{example}</pre>
+    </details>
   );
 }

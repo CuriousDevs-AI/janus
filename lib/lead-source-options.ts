@@ -15,3 +15,22 @@ export const comingSoonSources: readonly (readonly [name: string, description: s
   ["Meta Lead Ads", "Facebook and Instagram Instant Forms in one connection.", Users],
   ["IndiaMART", "Pull enquiries using the seller's CRM API key.", Building2],
 ];
+
+const PROVIDERS: Record<string, string> = {
+  exotel: "Exotel calls",
+  knowlarity: "Knowlarity calls",
+  myoperator: "MyOperator calls",
+  tata_tele: "Tata Tele calls",
+  google_ads_lead_form: "Google Ads lead form",
+  zapier: "Zapier",
+  make: "Make",
+};
+
+/** What a connected source is, in words: "Website form", "Exotel calls", "Custom webhook". */
+export function sourceKindLabel(source: { connectionKind: string; preset: string }): string {
+  if (source.connectionKind === "oauth") return "WhatsApp Cloud API";
+  if (source.connectionKind === "embed") return "Website form";
+  if (source.connectionKind === "api_key") return "REST API";
+  if (source.connectionKind === "csv") return "CSV import";
+  return PROVIDERS[source.preset] ?? "Custom webhook";
+}

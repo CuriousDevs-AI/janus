@@ -33,7 +33,7 @@ function Setup() {
       <Link href="/lead-sources" className="text-xs text-muted-foreground">← Lead Sources</Link>
       <h1 className="text-xl font-semibold">{created ? "Connection created" : selectedKind ? "Set up a lead source" : "Add a new lead source"}</h1>
       {!allowed ? (
-        <p className="text-sm">A verified owner or admin can configure sources.</p>
+        <p className="text-sm">{can(session, "sources:manage") ? <>Verify your email address first: a source receives customers&apos; details, so it needs a confirmed owner. Use the link in the email Janus sent you, or send it again from the banner at the top of the page.</> : "Ask an owner or admin to set up lead sources."}</p>
       ) : !selectedKind ? (
         <>
           <StepIndicator step={1} />
