@@ -4,6 +4,7 @@ Portfolio owns no business records. It asks each module for its figures through 
 `overview` functions and puts them side by side; it never reads another module's tables.
 """
 
+import asyncio
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import NamedTuple
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.business import overview as business
+from janus_api.core.db import session_factory
 from janus_api.core.names import party_key
 from janus_api.core.tenancy import set_context
 from janus_api.crm import overview as crm
@@ -612,6 +614,42 @@ def intercompany(companies: list[schemas.CompanySummary], trade: dict[int, Trade
         )
 
 
+async def _read_company(
+    user_id: int,
+    tenant_id: int,
+    company: org.Company,
+    is_current: bool,
+    as_of: date,
+    period: schemas.Period,
+    *,
+    money: bool,
+    detail: bool,
+    limits: schemas.Thresholds | None,
+    own: frozenset[str],
+) -> tuple[schemas.CompanySummary, int, Trade | None]:
+    """Read one company on its own connection so companies run in parallel.
+
+    Audit records are NOT written here: the caller writes them after all reads finish,
+    so the parallel sessions stay read-only and cannot deadlock via FK-check ShareLock waits.
+    """
+    local_trade: dict[int, Trade] = {}
+    async with session_factory()() as conn:
+        await set_context(conn, user_id=user_id, tenant_id=tenant_id)
+        result = await company_summary(
+            conn,
+            company,
+            is_current,
+            as_of,
+            period,
+            money=money,
+            detail=detail,
+            trade=local_trade,
+            limits=limits,
+            own=own,
+        )
+    return result, tenant_id, local_trade.get(tenant_id)
+
+
 async def summary(
     db: AsyncSession,
     user_id: int,
@@ -625,52 +663,63 @@ async def summary(
 ) -> schemas.PortfolioSummary:
     """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
-    Each is read on its own, under its own context, never across companies. Money is included only
-    where the person's role there holds portfolio:finance.
+    Each is read on its own connection, in parallel, never across companies. Money is included
+    only where the person's role there holds portfolio:finance.
     """
-    companies = []
     trade: dict[int, Trade] = {}
     # The period ends on `today` (the digest's week ends on Sunday); what is owed, late or due is
     # as of `as_of`, the day it is read, so the email and the page say the same.
     today = today or today_ist()
     period = period_for(period_key, today)
     as_of = as_of or today_ist()
-    # When a company turns red is this person's own setting.
-    await set_context(db, user_id=user_id, tenant_id=current_tenant)
-    limits = (await preferences.read(db, user_id)).thresholds
-    try:
-        readable = await readable_companies(db, user_id)
-        names = set()
+    # Collect each company's name and the person's role there on a separate session that is
+    # closed before the parallel reads, so it cannot hold a transaction lock they wait on.
+    resolved: list[tuple[int, org.Company, list[str]]] = []  # (tenant_id, company, permissions)
+    names: set[str] = set()
+    async with session_factory()() as setup:
+        await set_context(setup, user_id=user_id, tenant_id=current_tenant)
+        limits = (await preferences.read(setup, user_id)).thresholds
+        readable = await readable_companies(setup, user_id)
         for tenant_id in readable:
-            await set_context(db, user_id=user_id, tenant_id=tenant_id)
-            found = await org.company(db, tenant_id)
-            if found:
-                names.add(found.name.strip().casefold())
-        own = frozenset(names)
-        for tenant_id in readable:
-            await set_context(db, user_id=user_id, tenant_id=tenant_id)
-            # Re-check the role under this company's context before reading anything.
-            _, role = await org_service.membership(db, user_id, tenant_id)
-            company = await org.company(db, tenant_id)
-            if "portfolio:read" not in role.permissions or company is None:
+            await set_context(setup, user_id=user_id, tenant_id=tenant_id)
+            _, role = await org_service.membership(setup, user_id, tenant_id)
+            company = await org.company(setup, tenant_id)
+            if company is None or "portfolio:read" not in role.permissions:
                 continue
-            companies.append(
-                await company_summary(
-                    db,
-                    company,
-                    tenant_id == current_tenant,
-                    as_of,
-                    period,
-                    money="portfolio:finance" in role.permissions,
-                    detail=detail,
-                    trade=trade,
-                    limits=limits,
-                    own=own,
-                )
+            names.add(company.name.strip().casefold())
+            resolved.append((tenant_id, company, list(role.permissions)))
+    own = frozenset(names)
+    # Read every company's figures in parallel, each on its own DB connection.
+    # The parallel sessions are read-only: audit records are written afterwards on a single
+    # session to avoid FK-check ShareLock waits that would deadlock against other connections.
+    results = await asyncio.gather(
+        *(
+            _read_company(
+                user_id,
+                tenant_id,
+                company,
+                tenant_id == current_tenant,
+                as_of,
+                period,
+                money="portfolio:finance" in perms,
+                detail=detail,
+                limits=limits,
+                own=own,
             )
-            record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)
-    finally:
-        # Flushes the audit rows under the last company, then returns to the session's own company.
+            for tenant_id, company, perms in resolved
+        )
+    )
+    companies = []
+    for item, tid, trade_item in results:
+        companies.append(item)
+        if trade_item is not None:
+            trade[tid] = trade_item
+    # Write audit rows on the handler's own session (shared with authenticate()) so the
+    # INSERT's FK check on users.id doesn't need a ShareLock on a separate transaction.
+    if db is not None and resolved:
+        for tid, _, _ in resolved:
+            await set_context(db, user_id=user_id, tenant_id=tid)
+            record(db, "portfolio.company_read", user_id=user_id, tenant_id=tid, ip=ip)
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     intercompany(companies, trade)
     return schemas.PortfolioSummary(period=period, companies=companies)
