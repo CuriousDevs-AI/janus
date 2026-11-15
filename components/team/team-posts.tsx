@@ -181,7 +181,7 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
           </ul>
           <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Face name={item.author.name} />
-            {item.mine ? "You" : item.author.name} · {poll.total} {poll.total === 1 ? "vote" : "votes"}
+            {item.mine ? "Posted by you" : item.author.name} · {poll.total} {poll.total === 1 ? "vote" : "votes"}
             {poll.closesAt ? ` · ${poll.closed ? "closed" : "closes"} ${when(poll.closesAt)}` : ""}
           </p>
         </div>
