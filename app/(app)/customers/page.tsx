@@ -10,7 +10,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Building2, RefreshCw } from "lucide-react";
-import { useApi } from "@/lib/api/use-api";
+import { useAllRows } from "@/lib/api/use-all-rows";
 import type { Contact, Deal, Lead } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
@@ -43,8 +43,8 @@ const stageOrder = ["lost", "new", "contacted", "qualified", "demo", "proposal",
 
 export default function CustomersPage() {
   const router = useRouter();
-  const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
-  const deals = useApi<Deal[]>("/deals?limit=100&after_id=0");
+  const leads = useAllRows<Lead>("/leads");
+  const deals = useAllRows<Deal>("/deals");
   // The sample customers belong to the demo only; a real company sees its own records or the error.
   const usingDemo = demoMode && Boolean(leads.error || deals.error);
   const loadError = !demoMode ? leads.error || deals.error : undefined;
