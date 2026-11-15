@@ -499,7 +499,7 @@ async def match_line(
             if line.amount_paise != expected:
                 raise ApiError(
                     "amount_differs",
-                    f"Amounts differ: the bank line is ₹{_rupees(line.amount_paise):,.2f} and the entry is ₹{_rupees(expected):,.2f}.",
+                    f"Amounts differ: the bank line is ₹{_rupees(abs(line.amount_paise)):,.2f} and the entry is ₹{_rupees(abs(expected)):,.2f}.",
                     422,
                 )
         else:
