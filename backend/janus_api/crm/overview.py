@@ -349,3 +349,58 @@ async def won_deals(
         )
     )
     return [(int(row.id), str(row.name), Decimal(row.amount)) for row in rows]
+
+
+LOST_LABELS = {
+    "price": "Price too high",
+    "competitor": "Went with a competitor",
+    "no_budget": "No budget",
+    "no_response": "Stopped responding",
+    "timing": "Not the right time",
+    "not_a_fit": "Not a fit",
+    "other": "Other",
+}
+
+
+@dataclass(frozen=True)
+class LostReason:
+    """Leads lost between two days for one reason, and the value of the deals lost with them."""
+
+    category: str
+    label: str
+    count: int
+    value: Decimal
+
+
+async def lost_reasons(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> list[LostReason]:
+    """Why leads were lost between two days, both included, the most common reason first."""
+    rows = (
+        await db.execute(
+            select(
+                Lead.lost_category,
+                func.count(Lead.id),
+                func.coalesce(func.sum(Deal.amount), 0),
+            )
+            .select_from(Lead)
+            .outerjoin(Deal, (Deal.tenant_id == Lead.tenant_id) & (Deal.lead_id == Lead.id))
+            .where(
+                Lead.tenant_id == tenant_id,
+                Lead.stage == "lost",
+                _ist_day(func.coalesce(Lead.lost_at, Lead.last_activity_at)).between(start, end),
+            )
+            .group_by(Lead.lost_category)
+        )
+    ).all()
+    # Leads lost before reasons were kept have none; they count as "other".
+    counts: dict[str, tuple[int, Decimal]] = {}
+    for category, count, value in rows:
+        key = str(category) if category in LOST_LABELS else "other"
+        before = counts.get(key, (0, Decimal(0)))
+        counts[key] = (before[0] + int(count), before[1] + Decimal(value))
+    reasons = [
+        LostReason(category=key, label=LOST_LABELS[key], count=count, value=value)
+        for key, (count, value) in counts.items()
+    ]
+    return sorted(reasons, key=lambda reason: (-reason.count, -reason.value, reason.category))
