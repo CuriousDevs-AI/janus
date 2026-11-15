@@ -74,8 +74,12 @@ export function FinanceWorkspace() {
     syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
     if (!demoMode) books.syncBooks().catch((error: unknown) => toast.warning(`Expenses, bank lines and cash not loaded from the server: ${message(error)}`));
     // The bill form matches a bill to a purchase order, so the orders load here too.
-    syncOperations().catch((error: unknown) => toast.warning(`Purchase orders not loaded from the server: ${message(error)}`));
-  }, []);
+    // Only load operations data when the user has the stock:adjust permission; accountants
+    // without it would get a 403 toast on every page load.
+    if (hasPermission(session.permissions, "stock:adjust")) {
+      syncOperations().catch(() => {/* PO data is optional for Finance */});
+    }
+  }, [session.permissions]);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", receivables: "Payments & receivables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
