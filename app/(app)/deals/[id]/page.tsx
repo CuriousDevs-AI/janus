@@ -81,7 +81,7 @@ export default function DealPage({
               {deal.phone && <WhatsAppButton contactId={deal.customerId} />}
               {deal.stage === "won" && financeOn && (
                 <Button size="sm" asChild>
-                  <Link href="/workspace/finance-accounting?view=invoices&workspace=finance-accounting">Raise the invoice</Link>
+                  <Link href={`/workspace/finance-accounting?view=invoices&workspace=finance-accounting&deal=${deal.id}`}>Raise the invoice</Link>
                 </Button>
               )}
             </div>
