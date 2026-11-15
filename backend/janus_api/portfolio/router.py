@@ -1,9 +1,10 @@
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 
 from janus_api.ai import service as ai
+from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db, request_ip
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
@@ -28,11 +29,30 @@ from janus_api.portfolio import (
     targets,
     trends,
 )
-from janus_api.portfolio.access import enter_company
+from janus_api.portfolio.access import enter_company, readable_companies
 from janus_api.portfolio.compliance import plan as compliance
 from janus_api.portfolio.periods import today_ist
 
-router = APIRouter(prefix="/v1/portfolio", tags=["Portfolio"])
+
+async def _portfolio_guard(actor: CurrentActor) -> None:
+    """Reject callers who lack portfolio:read on every tenant they belong to.
+
+    Uses its own short-lived session so the handler's Db transaction is not held open
+    while parallel company reads run inside the summary endpoint.
+    """
+    async with session_factory()() as db:
+        await set_context(db, user_id=actor.user.id, tenant_id=actor.session.tenant_id)
+        allowed = await readable_companies(db, actor.user.id)
+        await db.rollback()
+    if not allowed:
+        raise ApiError("forbidden", "You do not have access to the Portfolio.", 403)
+
+
+router = APIRouter(
+    prefix="/v1/portfolio",
+    tags=["Portfolio"],
+    dependencies=[Depends(_portfolio_guard)],
+)
 
 
 @router.get("/summary", response_model=schemas.PortfolioSummary)
