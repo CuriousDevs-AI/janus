@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { useState } from "react";
-import { FileSpreadsheet, Globe, Key, MessageCircle, Phone, Plus, Settings2, Webhook } from "lucide-react";
+import { FileSpreadsheet, Globe, Key, Lock, MessageCircle, Phone, Plus, Settings2, Webhook } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
@@ -45,8 +45,8 @@ export default function LeadSourcesPage() {
                 </Link>
               </Button>
             ) : (
-              <Button disabled>
-                <Plus />
+              <Button variant="secondary" disabled>
+                <Lock className="size-3.5" />
                 Add a new lead source
               </Button>
             )}
@@ -144,12 +144,20 @@ export default function LeadSourcesPage() {
           </div>
           {!demoMode ? (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {sourceOptions.map(([name, description, Icon, href]) => (
-                <Link key={name} href={allowed ? href : "#"} aria-disabled={!allowed} className={`group flex min-h-[120px] gap-3 border border-border bg-surface p-5 shadow-sm transition ${allowed ? "hover:border-accent" : "pointer-events-none opacity-60"}`}>
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2"><Icon className="size-5 text-muted-foreground group-hover:text-accent" /></span>
-                  <span className="flex flex-col gap-1"><span className="text-sm font-medium">{name}</span><span className="text-xs leading-relaxed text-muted-foreground">{description}</span></span>
-                </Link>
-              ))}
+              {sourceOptions.map(([name, description, Icon, href]) =>
+                allowed ? (
+                  <Link key={name} href={href} className="group flex min-h-[120px] gap-3 border border-border bg-surface p-5 shadow-sm transition hover:border-accent">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2"><Icon className="size-5 text-muted-foreground group-hover:text-accent" /></span>
+                    <span className="flex flex-col gap-1"><span className="text-sm font-medium">{name}</span><span className="text-xs leading-relaxed text-muted-foreground">{description}</span></span>
+                  </Link>
+                ) : (
+                  <div key={name} className="relative flex min-h-[120px] gap-3 border border-border bg-surface p-5 opacity-50" aria-disabled="true">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2"><Icon className="size-5 text-muted-foreground" /></span>
+                    <span className="flex flex-col gap-1"><span className="text-sm font-medium text-muted-foreground">{name}</span><span className="text-xs leading-relaxed text-muted-foreground">{description}</span></span>
+                    <Lock className="absolute right-3 top-3 size-4 text-muted-foreground" />
+                  </div>
+                ),
+              )}
             </div>
           ) : availableSources.length === 0 ? (
             <p className="text-sm text-muted-foreground">All currently supported sources are connected.</p>
