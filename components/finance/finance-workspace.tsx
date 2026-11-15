@@ -45,6 +45,17 @@ import { todayIso } from "@/lib/today";
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { minimumFractionDigits: Number.isInteger(Math.round(value * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
+/** Months that have at least one record, plus the current calendar month, sorted ascending. */
+function dataMonths(invoices: { date: string }[], bills: { date: string }[], expenses: { date: string }[]): string[] {
+  const today = todayIso();
+  const set = new Set<string>();
+  set.add(today.slice(0, 7));
+  for (const i of invoices) set.add(i.date.slice(0, 7));
+  for (const b of bills) set.add(b.date.slice(0, 7));
+  for (const e of expenses) set.add(e.date.slice(0, 7));
+  return [...set].sort();
+}
+
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
 };
@@ -309,9 +320,9 @@ function MonthEndView({ me }: { me: string }) {
   const closeReviews = useFinanceStore((state) => state.closeReviews);
   const markCloseReviewed = useFinanceStore((state) => state.markCloseReviewed);
   const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
-  const months = ["2026-08", "2026-09", "2026-10"];
-  const [month, setMonth] = React.useState("2026-10");
   const matchExpenses = useFinanceStore((state) => state.expenses);
+  const months = dataMonths(invoices, bills, matchExpenses);
+  const [month, setMonth] = React.useState(() => todayIso().slice(0, 7));
   const matchTopUps = useFinanceStore((state) => state.pettyCashTopUps);
   const matchMovements = useFinanceStore((state) => state.bankEntries);
   const payments = bookPayments(invoices, bills, matchExpenses, matchTopUps, matchMovements);
@@ -449,8 +460,9 @@ function GstView() {
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const expenses = useFinanceStore((state) => state.expenses);
-  const months = ["2026-08", "2026-09", "2026-10"];
-  const [month, setMonth] = React.useState("2026-10");
+  const bills = useFinanceStore((state) => state.bills);
+  const months = dataMonths(invoices, bills, expenses);
+  const [month, setMonth] = React.useState(() => todayIso().slice(0, 7));
   const summary = gstSummary(month, invoices, creditNotes, expenses);
 
   return (
