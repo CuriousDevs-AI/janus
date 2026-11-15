@@ -308,6 +308,8 @@ async def update_lead(
     contact.company = data.company.strip()
     lead.requirement = data.requirement.strip()
     lead.stage = data.stage
+    if data.stage in ("won", "lost"):
+        lead.next_follow_up_on = None
     lead.last_activity_at = now()
     await db.flush()
     record(

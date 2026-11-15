@@ -140,6 +140,9 @@ async def update(
     deal.version += 1
     deal.updated_at = lead.last_activity_at = now()
     lead.stage = deal.stage
+    # A won or lost deal has nothing left to follow up.
+    if deal.stage in ("won", "lost"):
+        lead.next_follow_up_on = None
     record(
         db,
         "deal.updated",
