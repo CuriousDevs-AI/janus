@@ -596,11 +596,13 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
       return sum + note.amount * taxableShare;
     }, 0);
   const writeOffs = creditNotes.filter((note) => note.status === "approved" && note.kind === "write-off").reduce((sum, note) => sum + note.amount, 0);
-  const costs = bills.reduce((sum, bill) => sum + bill.amount - (bill.gst ?? 0), 0) + expenses.reduce((sum, e) => sum + e.amount, 0) + writeOffs;
+  const billCosts = bills.reduce((sum, bill) => sum + bill.amount - (bill.gst ?? 0), 0);
+  const expenseCosts = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const costs = billCosts + expenseCosts + writeOffs;
   const round = (value: number) => Math.round(value * 100) / 100;
   const netSales = round(sales - credits);
   const profit = round(netSales - costs);
-  return { sales: round(sales), credits: round(credits), netSales, writeOffs: round(writeOffs), costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
+  return { sales: round(sales), credits: round(credits), netSales, writeOffs: round(writeOffs), billCosts: round(billCosts), expenseCosts: round(expenseCosts), costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
 }
 
 export interface CashFlowMonth { month: string; receipts: number; payments: number; other: number; net: number; closing: number }

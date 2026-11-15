@@ -722,9 +722,10 @@ function ProfitLossView() {
     ["Sales (ex-GST)", pnl.sales, false],
     ["Less approved credit notes (ex-GST)", -pnl.credits || 0, false],
     ["Net sales", pnl.netSales, true],
-    ["Less bills recorded", -(pnl.costs - pnl.writeOffs) || 0, false],
+    ["Less bills recorded (ex-GST)", -pnl.billCosts || 0, false],
+    ["Less expenses", -pnl.expenseCosts || 0, false],
     ["Less bad debt written off", -pnl.writeOffs || 0, false],
-    ["Profit before payroll and expenses", pnl.profit, true],
+    ["Profit before payroll", pnl.profit, true],
   ];
   return (
     <>
@@ -737,7 +738,7 @@ function ProfitLossView() {
             {from || to ? <Button size="sm" variant="ghost" onClick={() => { setFrom(""); setTo(""); }}>Clear period</Button> : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs as they were entered. Payroll and expense claims are not in this figure yet.
+            Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs at their amount before GST. Expenses are costs at their entered amount. Payroll is not in this figure yet.
           </p>
           <table className="w-full text-sm tabular-nums">
             <tbody>
