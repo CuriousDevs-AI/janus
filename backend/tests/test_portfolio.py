@@ -146,7 +146,7 @@ async def test_only_an_owner_adds_a_company(client: httpx.AsyncClient, mailbox: 
         "/v1/portfolio/companies", headers=agent, json={"name": "Side shop"}
     )
     assert refused.status_code == 403
-    assert (await client.get("/v1/portfolio/summary", headers=agent)).json()["companies"] == []
+    assert (await client.get("/v1/portfolio/summary", headers=agent)).status_code == 403
     short = await client.post(
         "/v1/portfolio/companies", headers=owner.headers, json={"name": " a "}
     )
@@ -462,9 +462,8 @@ async def test_the_digest_setting_and_what_it_says(
 ) -> None:
     owner = await signup(client, mailbox)
     agent = await accept_new(client, await invite(client, mailbox, owner, "agent@example.com"))
-    assert (await client.get("/v1/portfolio/digest", headers=agent)).json()["eligible"] is False
-    refused = await client.put("/v1/portfolio/digest", headers=agent, json={"enabled": True})
-    assert refused.status_code == 403
+    assert (await client.get("/v1/portfolio/digest", headers=agent)).status_code == 403
+    assert (await client.put("/v1/portfolio/digest", headers=agent, json={"enabled": True})).status_code == 403
 
     off = (await client.get("/v1/portfolio/digest", headers=owner.headers)).json()
     assert off == {"enabled": False, "eligible": True, "nextDueAt": None, "lastSentAt": None}
@@ -492,7 +491,7 @@ async def test_the_digest_setting_and_what_it_says(
     analyst = await _join(client, mailbox, "analyst@example.com")
     body = (await client.get("/v1/portfolio/digest/preview", headers=analyst)).json()["body"]
     assert "Leads in: 1" in body and "Customers owe" not in body
-    assert (await client.get("/v1/portfolio/digest/preview", headers=agent)).status_code == 404
+    assert (await client.get("/v1/portfolio/digest/preview", headers=agent)).status_code == 403
 
 
 async def test_the_worker_sends_a_due_digest_once(
@@ -1586,8 +1585,8 @@ async def test_owners_get_the_weekly_email_and_red_alerts_unless_they_turn_them_
     assert await settings(owner.headers) == (True, True)
     # The other owner turned the email off before, so it stays off; alerts were never chosen.
     assert await settings(second.headers) == (False, True)
-    # Not an owner: nothing is turned on for them.
-    assert (await client.get("/v1/portfolio/alerts", headers=agent)).json() == {"enabled": False}
+    # Not an owner: blocked at the router guard.
+    assert (await client.get("/v1/portfolio/alerts", headers=agent)).status_code == 403
 
 
 async def test_a_red_alert_also_reaches_the_owners_browser(
