@@ -571,7 +571,8 @@ function ReconciliationView({ me }: { me: string }) {
         <CardContent className="grid gap-2 text-sm">
           {bankLines.length === 0 ? <p className="text-muted-foreground">No statement lines yet.</p> : null}
           {bankLines.map((line) => {
-            const options = payments.filter((p) => (p.direction === 1) === (line.amount > 0) && (!matchedKeys.has(p.key) || p.key === line.matchedKey));
+            // Exact amounts first, then the nearest: the right match is usually at the top.
+            const options = payments.filter((p) => (p.direction === 1) === (line.amount > 0) && (!matchedKeys.has(p.key) || p.key === line.matchedKey)).sort((a, b) => Math.abs(a.amount - Math.abs(line.amount)) - Math.abs(b.amount - Math.abs(line.amount)));
             return (
               <div key={line.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
                 <span>
