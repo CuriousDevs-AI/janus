@@ -10,6 +10,8 @@ from janus_api.crm import deals, schemas, service
 router = APIRouter(prefix="/v1", tags=["CRM"])
 Reader = Annotated[Actor, Depends(require("leads:read_own"))]
 Writer = Annotated[Actor, Depends(require("leads:write"))]
+# Owners and managers hand leads to their team.
+Assigner = Annotated[Actor, Depends(require("leads:assign"))]
 Limit = Annotated[int, Query(ge=1, le=100)]
 AfterId = Annotated[int, Query(ge=0, le=2**63 - 1)]
 
@@ -82,6 +84,11 @@ async def add_lead_note(
     return await service.add_note(
         db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id, data
     )
+
+
+@router.post("/leads/assign", response_model=schemas.AssignOut)
+async def assign_leads(data: schemas.AssignIn, actor: Assigner, db: Db) -> schemas.AssignOut:
+    return await service.assign_leads(db, actor.session.tenant_id, actor.user.id, data)
 
 
 @router.delete("/leads/{lead_id}", status_code=204)

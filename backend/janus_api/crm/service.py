@@ -672,3 +672,43 @@ async def add_note(
         nextFollowUpOn=note.next_follow_up_on,
         createdAt=note.created_at or now(),
     )
+
+
+async def assign_leads(
+    db: AsyncSession, tenant_id: int, user_id: int, data: schemas.AssignIn
+) -> schemas.AssignOut:
+    """Gives leads to an active member of the company, or takes them from their owner. The caller
+    holds leads:assign, so may hand any lead in the company to anyone in it."""
+    from janus_api.org import overview as org
+
+    ids = [int(item) for item in data.leadIds if item.isdigit()]
+    if len(ids) != len(data.leadIds):
+        raise ApiError("invalid_lead", "Choose the leads to assign.", 422)
+    owner: User | None = None
+    if data.ownerId is not None:
+        if (
+            not data.ownerId.isdigit()
+            or await org.active_role(db, tenant_id, int(data.ownerId)) is None
+        ):
+            raise ApiError(
+                "invalid_owner", "Choose someone who is an active member of this company.", 422
+            )
+        owner = await db.get(User, int(data.ownerId))
+    leads = (
+        await db.scalars(
+            select(Lead).where(Lead.tenant_id == tenant_id, Lead.id.in_(ids)).with_for_update()
+        )
+    ).all()
+    if len(leads) != len(ids):
+        raise ApiError("not_found", "One of these leads no longer exists.", 404)
+    for lead in leads:
+        lead.owner_id = owner.id if owner else None
+    await db.flush()
+    record(
+        db,
+        "lead.assigned",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"leads": len(leads), "owner_id": owner.id if owner else ""},
+    )
+    return schemas.AssignOut(assigned=len(leads), ownerName=owner.name if owner else None)

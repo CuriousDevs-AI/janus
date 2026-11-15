@@ -201,3 +201,17 @@ class NoteOut(BaseModel):
     author: str | None
     nextFollowUpOn: date | None
     createdAt: datetime
+
+
+class AssignIn(BaseModel):
+    """Hands leads to one person, or to nobody with ownerId null. Up to 100 at a time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    leadIds: list[str] = Field(min_length=1, max_length=100)
+    ownerId: str | None = None
+
+
+class AssignOut(BaseModel):
+    assigned: int
+    ownerName: str | None
