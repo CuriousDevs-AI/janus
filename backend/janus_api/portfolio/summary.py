@@ -162,6 +162,7 @@ async def company_summary(
     sales = await crm.pipeline(db, tenant_id)
     quiet_count, quiet_list = await crm.quiet_leads(db, tenant_id, today)
     due_today, overdue, due_list = await crm.follow_ups(db, tenant_id, today)
+    lost = await crm.lost_reasons(db, tenant_id, today - timedelta(days=89), today)
     out = schemas.CompanySummary(
         id=str(tenant_id),
         name=company.name,
@@ -195,6 +196,15 @@ async def company_summary(
             followUpList=[
                 schemas.DueFollowUp(id=str(item.id), name=item.name, on=item.on.isoformat())
                 for item in due_list
+            ],
+            lostReasons=[
+                schemas.LostReasonCount(
+                    category=item.category,
+                    label=item.label,
+                    count=item.count,
+                    value=str(item.value),
+                )
+                for item in lost
             ],
         ),
         money=await money_summary(db, tenant_id, today) if money else None,

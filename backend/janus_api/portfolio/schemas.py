@@ -39,6 +39,13 @@ class DueFollowUp(BaseModel):
     on: str
 
 
+class LostReasonCount(BaseModel):
+    category: str
+    label: str
+    count: int
+    value: str
+
+
 class CrmSummary(BaseModel):
     leads: int
     openDeals: int
@@ -53,6 +60,8 @@ class CrmSummary(BaseModel):
     followUpsToday: int = 0
     followUpsOverdue: int = 0
     followUpList: list[DueFollowUp] = []
+    # Why leads were lost in the last 90 days, the most common reason first.
+    lostReasons: list[LostReasonCount] = []
 
 
 class Ageing(BaseModel):

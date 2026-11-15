@@ -1,12 +1,15 @@
+from datetime import datetime, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, require
-from janus_api.crm import deals, schemas, service
+from janus_api.crm import deals, overview, schemas, service
 
+IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/v1", tags=["CRM"])
 Reader = Annotated[Actor, Depends(require("leads:read_own"))]
 Writer = Annotated[Actor, Depends(require("leads:write"))]
@@ -168,3 +171,20 @@ async def deal_events(
     limit: Limit = 50,
 ) -> list[schemas.DealEvent]:
     return await deals.events(db, actor, deal_id, before_id, limit)
+
+
+@router.get("/lost-reasons", response_model=list[schemas.LostReasonOut])
+async def lost_reasons(
+    actor: Assigner, db: Db, days: Annotated[int, Query(ge=1, le=366)] = 90
+) -> list[schemas.LostReasonOut]:
+    """Why the company's leads were lost in the last few days, for whoever runs the team."""
+    today = datetime.now(IST).date()
+    reasons = await overview.lost_reasons(
+        db, actor.session.tenant_id, today - timedelta(days=days - 1), today
+    )
+    return [
+        schemas.LostReasonOut(
+            category=item.category, label=item.label, count=item.count, value=str(item.value)
+        )
+        for item in reasons
+    ]

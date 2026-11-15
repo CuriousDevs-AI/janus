@@ -1,6 +1,7 @@
 import hashlib
 import json
 import secrets
+from datetime import datetime
 from typing import cast
 
 import phonenumbers
@@ -170,7 +171,22 @@ def lead_out(lead: Lead, contact: Contact | None = None, owner: User | None = No
         createdAt=lead.created_at,
         lastActivityAt=lead.last_activity_at,
         nextFollowUpOn=lead.next_follow_up_on,
+        lostCategory=lead.lost_category,
+        lostReason=lead.lost_reason,
+        lostAt=lead.lost_at,
     )
+
+
+def set_lost(
+    item: Lead | Deal, stage: str, category: str | None, note: str, when: datetime
+) -> None:
+    """Records why a lead or deal was lost and when; it keeps the first day it was lost."""
+    if stage != "lost":
+        item.lost_category, item.lost_reason, item.lost_at = None, "", None
+        return
+    item.lost_category, item.lost_reason = category, note
+    if item.lost_at is None:
+        item.lost_at = when
 
 
 async def visible_owners(
@@ -311,13 +327,18 @@ async def update_lead(
     if data.stage in ("won", "lost"):
         lead.next_follow_up_on = None
     lead.last_activity_at = now()
+    set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
     await db.flush()
     record(
         db,
         "lead.updated",
         user_id=user_id,
         tenant_id=tenant_id,
-        details={"lead_id": lead.id, "stage": lead.stage},
+        details={
+            "lead_id": lead.id,
+            "stage": lead.stage,
+            **({"lost_category": lead.lost_category} if lead.lost_category else {}),
+        },
     )
     owner = await db.get(User, lead.owner_id) if lead.owner_id else None
     return lead_out(lead, contact, owner)

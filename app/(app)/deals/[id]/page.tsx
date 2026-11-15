@@ -1,4 +1,5 @@
 "use client";
+import { lostWords } from "@/lib/lost-reasons";
 import { ContactConversation } from "@/components/chat/contact-conversation";
 import { CustomerCalls } from "@/components/calls/customer-call";
 import { use, useState } from "react";
@@ -107,10 +108,10 @@ export default function DealPage({
                     <dt>Expected close</dt>
                     <dd>{deal.expectedCloseAt || "Not set"}</dd>
                   </div>
-                  {deal.lostReason && (
+                  {deal.stage === "lost" && (deal.lostCategory || deal.lostReason) && (
                     <div>
-                      <dt>Loss reason</dt>
-                      <dd>{deal.lostReason}</dd>
+                      <dt>Why it was lost</dt>
+                      <dd>{lostWords(deal.lostCategory, deal.lostReason)}</dd>
                     </div>
                   )}
                 </dl>
@@ -155,9 +156,9 @@ export default function DealPage({
                         {formatCurrencyINR(Number(event.details.amount), false)}
                       </p>
                     )}
-                    {event.details.lost_reason && (
+                    {(event.details.lost_category || event.details.lost_reason) && (
                       <p className="mt-1 whitespace-pre-wrap text-xs">
-                        Reason: {String(event.details.lost_reason)}
+                        Reason: {lostWords(String(event.details.lost_category || ""), String(event.details.lost_reason || ""))}
                       </p>
                     )}
                   </li>

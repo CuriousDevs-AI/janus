@@ -16,6 +16,22 @@ from pydantic import BaseModel
 from janus_api.portfolio import schemas as portfolio
 from janus_api.portfolio.periods import inr
 
+# What usually fixes each reason a lead is lost, said the way an adviser would.
+LOST_FIXES: dict[str, str] = {
+    "price": "Show value before price: send the proposal with what the customer gets, offer a"
+    " smaller first order, and decide in advance the most discount anyone may give.",
+    "competitor": "Ask the next few lost customers whom they chose and why, then answer that"
+    " point in your pitch before the customer raises it.",
+    "no_budget": "Qualify budget on the first call, and offer a smaller package or payment in"
+    " instalments to those who want it but cannot pay at once.",
+    "no_response": "Call within an hour of a new lead and set a follow-up date on every call;"
+    " the Leads list shows who is due today.",
+    "timing": "Set a follow-up date months ahead instead of closing these as lost, and reach"
+    " them again when they said they would be ready.",
+    "not_a_fit": "Tighten who your ads and listings reach, so fewer leads arrive that you"
+    " cannot serve.",
+}
+
 Area = Literal["sales", "money", "compliance", "team", "operations"]
 Severity = Literal["high", "medium", "low"]
 AREA_NAMES: dict[str, str] = {
@@ -344,6 +360,39 @@ def findings(company: portfolio.CompanySummary) -> list[Finding]:  # noqa: C901
                 href=_crm("/deals"),
                 plan="Raise conversion to 20% of leads.",
                 measure=Measure(label="% of leads won", now=rate, target=20, better="higher"),
+            )
+        )
+    reasons = company.crm.lostReasons if company.crm else []
+    lost_total = sum(item.count for item in reasons)
+    lost_top = reasons[0] if reasons else None
+    if (
+        lost_top
+        and lost_top.category != "other"
+        and lost_total >= 4
+        and lost_top.count / lost_total >= 0.4
+    ):
+        share = round(lost_top.count / lost_total * 100)
+        fix = LOST_FIXES.get(lost_top.category, "Find out what lies behind it and fix it.")
+        out.append(
+            Finding(
+                id="lost-reason-pattern",
+                area="sales",
+                severity="medium",
+                title=f"Most lost leads give one reason: {lost_top.label.lower()}",
+                sees=f"{lost_top.count} of the {lost_total} leads lost in the last 90 days ({share}%)"
+                f" were lost because: {lost_top.label.lower()}"
+                + (f", worth {inr(_n(lost_top.value))} in deals." if _n(lost_top.value) else "."),
+                matters="When one reason keeps coming back it is not bad luck: fixing it wins back"
+                " the leads you already paid to get.",
+                action=fix,
+                href=_crm("/leads"),
+                plan=f"Cut losses to '{lost_top.label.lower()}' to under a quarter of all losses.",
+                measure=Measure(
+                    label=f"% of losses to {lost_top.label.lower()}",
+                    now=share,
+                    target=25,
+                    better="lower",
+                ),
             )
         )
     if before.leads >= 5 and now.leads < before.leads * 0.7:

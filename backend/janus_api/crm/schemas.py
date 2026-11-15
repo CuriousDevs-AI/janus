@@ -107,6 +107,9 @@ class LeadOut(BaseModel):
     createdAt: datetime
     lastActivityAt: datetime
     nextFollowUpOn: date | None = None
+    lostCategory: str | None = None
+    lostReason: str = ""
+    lostAt: datetime | None = None
 
 
 LeadStage = Literal[
@@ -122,6 +125,27 @@ LeadStage = Literal[
 ]
 
 
+LostCategory = Literal[
+    "price", "competitor", "no_budget", "no_response", "timing", "not_a_fit", "other"
+]
+LostNote = Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)]
+
+
+def check_lost(
+    stage: str, category: "LostCategory | None", note: str
+) -> tuple["LostCategory | None", str]:
+    """A lost lead or deal needs a reason; "other" needs a note. Anything else carries neither."""
+    if stage != "lost":
+        return None, ""
+    if category is None and note:
+        category = "other"  # A reason typed without choosing one, as older clients send.
+    if category is None:
+        raise ValueError("Choose why it was lost.")
+    if category == "other" and not note:
+        raise ValueError("Say why it was lost.")
+    return category, note
+
+
 class LeadUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -131,6 +155,15 @@ class LeadUpdate(BaseModel):
     company: str = Field(default="", max_length=200)
     requirement: str = Field(default="", max_length=4000)
     stage: LeadStage = "new"
+    lostCategory: LostCategory | None = None
+    lostReason: LostNote = ""
+
+    @model_validator(mode="after")
+    def loss_reason(self) -> "LeadUpdate":
+        self.lostCategory, self.lostReason = check_lost(
+            self.stage, self.lostCategory, self.lostReason
+        )
+        return self
 
 
 DealStage = Literal[
@@ -144,14 +177,14 @@ class DealValues(BaseModel):
     amount: Decimal = Field(ge=0, max_digits=14, decimal_places=2, allow_inf_nan=False)
     stage: DealStage = "new"
     expectedCloseAt: date | None = None
-    lostReason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] = ""
+    lostCategory: LostCategory | None = None
+    lostReason: LostNote = ""
 
     @model_validator(mode="after")
     def loss_reason(self) -> "DealValues":
-        if self.stage == "lost" and not self.lostReason:
-            raise ValueError("Enter a reason for the lost deal.")
-        if self.stage != "lost":
-            self.lostReason = ""
+        self.lostCategory, self.lostReason = check_lost(
+            self.stage, self.lostCategory, self.lostReason
+        )
         return self
 
 
@@ -172,7 +205,9 @@ class DealOut(BaseModel):
     amount: str
     stage: DealStage
     expectedCloseAt: date | None
+    lostCategory: LostCategory | None = None
     lostReason: str
+    lostAt: datetime | None = None
     version: int
     createdAt: datetime
     updatedAt: datetime
@@ -215,3 +250,10 @@ class AssignIn(BaseModel):
 class AssignOut(BaseModel):
     assigned: int
     ownerName: str | None
+
+
+class LostReasonOut(BaseModel):
+    category: str
+    label: str
+    count: int
+    value: str
