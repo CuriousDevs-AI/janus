@@ -3,6 +3,7 @@ import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { Building2, CalendarClock, ChevronRight, CircleDollarSign, Mail, Pencil, Phone, RefreshCw, UserRound } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
+import { useAllRows } from "@/lib/api/use-all-rows";
 import { api, message } from "@/lib/api/client";
 import type { Contact, Deal, Lead, WhatsAppConversation } from "@/lib/api/types";
 import { PageHeader } from "@/components/shared/page-header";
@@ -32,8 +33,8 @@ type TimelineEvent = {
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const contact = useApi<Contact>(`/contacts/${encodeURIComponent(id)}`);
-  const leads = useApi<Lead[]>(contact.data ? "/leads?limit=100&after_id=0" : null);
-  const deals = useApi<Deal[]>(contact.data ? "/deals?limit=100&after_id=0" : null);
+  const leads = useAllRows<Lead>(contact.data ? "/leads" : null);
+  const deals = useAllRows<Deal>(contact.data ? "/deals" : null);
   const conversations = useApi<WhatsAppConversation[]>(
     contact.data ? "/whatsapp/conversations?limit=100&before_id=0" : null,
   );
