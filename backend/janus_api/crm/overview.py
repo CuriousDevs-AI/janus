@@ -289,3 +289,49 @@ async def reps(db: AsyncSession, tenant_id: int, start: date, end: date) -> list
         for owner in owners
     ]
     return sorted(out, key=lambda rep: (rep.owner_id is None, -rep.won_value, -rep.leads, rep.name))
+
+
+@dataclass
+class DueFollowUp:
+    id: int
+    name: str
+    on: date
+
+
+async def follow_ups(
+    db: AsyncSession, tenant_id: int, today: date, limit: int = 5
+) -> tuple[int, int, list[DueFollowUp]]:
+    """Open leads whose follow-up is today, and those whose day has passed: counts, and the
+    earliest few."""
+    from janus_api.crm.models import Contact
+
+    due = (
+        Lead.tenant_id == tenant_id,
+        Lead.stage.not_in(("won", "lost")),
+        Lead.next_follow_up_on.is_not(None),
+        Lead.next_follow_up_on <= today,
+    )
+    rows = (
+        await db.execute(
+            select(Lead.next_follow_up_on, func.count(Lead.id))
+            .where(*due)
+            .group_by(Lead.next_follow_up_on)
+        )
+    ).all()
+    today_count = sum(int(count) for day, count in rows if day == today)
+    overdue = sum(int(count) for day, count in rows if day < today)
+    earliest = await db.execute(
+        select(Lead.id, Contact.name, Lead.next_follow_up_on)
+        .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+        .where(*due)
+        .order_by(Lead.next_follow_up_on, Lead.id)
+        .limit(limit)
+    )
+    return (
+        today_count,
+        overdue,
+        [
+            DueFollowUp(id=row.id, name=row.name or "Unnamed lead", on=row.next_follow_up_on)
+            for row in earliest
+        ],
+    )

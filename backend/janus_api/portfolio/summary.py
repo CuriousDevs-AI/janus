@@ -161,6 +161,7 @@ async def company_summary(
     tenant_id = company.id
     sales = await crm.pipeline(db, tenant_id)
     quiet_count, quiet_list = await crm.quiet_leads(db, tenant_id, today)
+    due_today, overdue, due_list = await crm.follow_ups(db, tenant_id, today)
     out = schemas.CompanySummary(
         id=str(tenant_id),
         name=company.name,
@@ -188,6 +189,12 @@ async def company_summary(
                     days=item.days,
                 )
                 for item in quiet_list
+            ],
+            followUpsToday=due_today,
+            followUpsOverdue=overdue,
+            followUpList=[
+                schemas.DueFollowUp(id=str(item.id), name=item.name, on=item.on.isoformat())
+                for item in due_list
             ],
         ),
         money=await money_summary(db, tenant_id, today) if money else None,
@@ -295,6 +302,22 @@ async def company_summary(
             "Compliance not set up: no filings are tracked"
             + (f" for {staff.headcount} people on the payroll" if staff.headcount else ""),
             "/portfolio?view=compliance",
+        )
+    # Sales work slipping: follow-ups past their day, and open leads nobody has touched.
+    leads_page = "/leads?workspace=crm-sales"
+    if overdue:
+        out.attention = attention.with_line(
+            out.attention,
+            "high" if overdue >= 3 else "medium",
+            f"{overdue} lead follow-up{'s are' if overdue != 1 else ' is'} overdue",
+            leads_page,
+        )
+    if quiet_count >= 3:
+        out.attention = attention.with_line(
+            out.attention,
+            "medium",
+            f"{quiet_count} open leads have had no call or message for 3 days or more",
+            leads_page,
         )
     out.documents = await documents.for_company(db, tenant_id, today)
     for severity, text in documents.attention_lines(out.documents):

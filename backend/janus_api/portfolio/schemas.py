@@ -33,6 +33,12 @@ class QuietLead(BaseModel):
     days: int
 
 
+class DueFollowUp(BaseModel):
+    id: str
+    name: str
+    on: str
+
+
 class CrmSummary(BaseModel):
     leads: int
     openDeals: int
@@ -43,6 +49,10 @@ class CrmSummary(BaseModel):
     # Open leads with no activity for 3 days or more, and the longest-waiting few.
     quietLeads: int = 0
     quietList: list[QuietLead] = []
+    # Open leads whose follow-up is today, and whose day has passed; the earliest few.
+    followUpsToday: int = 0
+    followUpsOverdue: int = 0
+    followUpList: list[DueFollowUp] = []
 
 
 class Ageing(BaseModel):
