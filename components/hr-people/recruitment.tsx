@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { blankCandidateDetail, lifecycleEvent, useHrLifecycleStore, type HrCandidateDetail } from "@/lib/stores/hr-lifecycle-store";
-import { canManageHr, salaryVisible } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr, salaryVisible } from "@/lib/hr-people-access";
 import { HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrCandidate, HrDemoRole } from "@/lib/types";
 
@@ -24,7 +24,7 @@ export function HrRecruitmentView({ role, actorId }: { role: HrDemoRole; actorId
   const [adding, setAdding] = React.useState(false);
   const [showRejected, setShowRejected] = React.useState(false);
   const manager = canManageHr(role);
-  const actorName = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actorName = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const open = candidates.filter((item) => !["accepted", "rejected"].includes(item.stage));
   const selected = candidates.find((item) => item.id === selectedId);
   const rejected = candidates.filter((item) => item.stage === "rejected");

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { lifecycleEvent, useHrLifecycleStore } from "@/lib/stores/hr-lifecycle-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrEmployee, HrOnboardingTask } from "@/lib/types";
 
@@ -40,7 +40,7 @@ export function HrOnboardingView({ role, actorId, personal = false }: { role: Hr
   const notesByEmployee = useHrLifecycleStore((state) => state.onboardingNotes);
   const addNote = useHrLifecycleStore((state) => state.addOnboardingNote);
   const manager = canManageHr(role);
-  const actorName = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actorName = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const caseIds = [...new Set([...onboardingTasks.map((task) => task.employeeId), ...employees.filter((item) => item.status === "onboarding").map((item) => item.id)])];
   const cases = employees.filter((item) => caseIds.includes(item.id) && (personal ? item.id === actorId : manager || role === "payroll_admin" || item.managerId === actorId));
   const [selectedId, setSelectedId] = React.useState<string | null>(null);

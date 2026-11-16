@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { buildPayslip, downloadHrFile, payslipText, type HrPayslip } from "@/lib/hr-payroll";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { HrEmpty, HrModal, HrPanel, HrStats, HrStatus, HrTable, downloadHrCsv, hrCell, hrMoney } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrEmployee, HrPayrollIssue, HrPayrollRun } from "@/lib/types";
 
@@ -46,7 +46,7 @@ function PayrollRuns({ role, actorId }: { role: HrDemoRole; actorId: string }) {
   const [reason, setReason] = React.useState<{ title: string; confirm: string; onSubmit: (reason: string) => void } | null>(null);
   const run = payrollRuns.find((item) => item.id === runId) ?? payrollRuns[0];
   const manager = canManageHr(role);
-  const actor = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actor = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const key = run ? runKey(run) : "";
   const lines = React.useMemo(() => run ? register(employees, key) : [], [employees, key, run]);
   const latest = run?.id === payrollRuns[0]?.id;

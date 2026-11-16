@@ -51,10 +51,22 @@ export function salaryVisible(role: HrDemoRole) {
 
 /** Demo identity each preview role acts as, so documents and signatures resolve to one employee record. */
 let signedInEmployee = "";
+/** The session user's display name, set once when the HR workspace mounts. */
+let signedInName = "";
 
 /** The HR record of the person signed in, set by the HR workspace before its views render. */
 export function setSignedInEmployee(id: string) {
   signedInEmployee = id;
+}
+
+/** Store the session user name so HR components can attribute actions without importing useSession. */
+export function setSignedInName(name: string) {
+  signedInName = name;
+}
+
+/** The name to attribute actions to: the employee record name if linked, else the session account name. */
+export function actorDisplayName(employeeName: string | undefined): string {
+  return employeeName ?? (signedInName || "HR");
 }
 
 export function demoActorId(role: HrDemoRole) {

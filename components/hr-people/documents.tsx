@@ -1,5 +1,6 @@
 "use client";
 
+import { actorDisplayName } from "@/lib/hr-people-access";
 import { useCan } from "@/lib/hr-org-hooks";
 import * as React from "react";
 import { ArrowLeft, CheckCheck, Download, FileSignature, FileText, Folder, History, LockKeyhole, Search, ShieldCheck, Upload } from "lucide-react";
@@ -137,7 +138,7 @@ function PolicyLibrary({ policies, query, actorId, manager, onOpen, onEdit }: { 
   const people = employees.filter((item) => item.status !== "archived");
   const archivedCount = policies.filter((item) => item.status === "archived").length;
   const list = policies.filter((item) => (showArchived || item.status !== "archived") && `${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase()));
-  const actorName = actor?.name ?? "HR";
+  const actorName = actorDisplayName(actor?.name);
   const archivedToggle = manager && archivedCount > 0 ? <label className="flex items-center justify-end gap-2 px-4 pt-3 text-xs text-muted-foreground"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived ({archivedCount})</label> : null;
   if (!list.length) return <>{archivedToggle}<div className="p-10 text-center"><FileText className="mx-auto mb-3 size-7 text-muted-foreground" /><h2 className="text-sm font-medium">{query ? "No policy matches your search" : "No company policies yet"}</h2><p className="mt-1 text-xs text-muted-foreground">{manager ? "Use Write a policy to publish one." : "HR publishes policies here."}</p></div></>;
   return <>{archivedToggle}<ul className="grid gap-3 p-4 md:grid-cols-2">{list.map((policy) => {
@@ -190,7 +191,7 @@ function UploadDialog({ role, actorId, personal, initialEmployeeId, document, co
     setBusy(true);
     try {
       await saveHrFile(key, file);
-      const actor = employees.find((item) => item.id === actorId)?.name ?? "HR";
+      const actor = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
       const entry: HrDocument = { id, employeeId: company ? "company" : employee!.id, employeeName: company ? "Company library" : employee!.name, name: name.trim(), category, visibility: manager ? visibility : "employee", version, status: "current", signatureStatus: "draft", issuedAt: issuedAt || null, expiresAt: expiresAt || null, ownerName: actor, acknowledgedAt: null };
       const previous = document && document.status !== "missing" ? [{ version: document.version, fileName: extras[id]?.fileName, mime: extras[id]?.mime, size: extras[id]?.size, fileKey: extras[id]?.fileKey, body: extras[id]?.body ?? sampleMarkup(document, employees.find((item) => item.id === document.employeeId)), savedAt: new Date().toISOString(), savedBy: document.ownerName, signatureStatus: document.signatureStatus }, ...(extras[id]?.versions ?? [])] : extras[id]?.versions ?? [];
       patch(id, { fileName: file.name, mime: file.type, size: file.size, fileKey: key, body: undefined, versions: previous, selectedRoles: visibility === "selected_roles" ? selectedRoles : [], signers: [] });
@@ -207,7 +208,7 @@ function TemplateDialog({ actorId, initialEmployeeId, onClose, onCreated }: { ac
   const [employeeId, setEmployeeId] = React.useState(initialEmployeeId || employees[0]?.id || ""); const [template, setTemplate] = React.useState(templates[0]); const [body, setBody] = React.useState("");
   const employee = employees.find((item) => item.id === employeeId);
   const preview = body || sampleMarkup({ id: "template-preview", employeeId, employeeName: employee?.name ?? "", name: template, category: template, visibility: "employee", version: 1, status: "current", signatureStatus: "draft", issuedAt: nowDate(), expiresAt: null, ownerName: "HR", acknowledgedAt: null }, employee, { draft: true });
-  function create(event: React.FormEvent) { event.preventDefault(); if (!employee) return; const actor = employees.find((item) => item.id === actorId)?.name ?? "HR"; const id = `doc-${crypto.randomUUID()}`; const document: HrDocument = { id, employeeId, employeeName: employee.name, name: `${template} — ${employee.name}`, category: template, visibility: /warning/i.test(template) ? "hr" : "employee", version: 1, status: "current", signatureStatus: "draft", issuedAt: nowDate(), expiresAt: null, ownerName: actor, acknowledgedAt: null }; addDocument(document); patch(id, { body: preview }); record(id, { actor, event: "Draft created from template", version: 1 }); onCreated(id); }
+  function create(event: React.FormEvent) { event.preventDefault(); if (!employee) return; const actor = actorDisplayName(employees.find((item) => item.id === actorId)?.name); const id = `doc-${crypto.randomUUID()}`; const document: HrDocument = { id, employeeId, employeeName: employee.name, name: `${template} — ${employee.name}`, category: template, visibility: /warning/i.test(template) ? "hr" : "employee", version: 1, status: "current", signatureStatus: "draft", issuedAt: nowDate(), expiresAt: null, ownerName: actor, acknowledgedAt: null }; addDocument(document); patch(id, { body: preview }); record(id, { actor, event: "Draft created from template", version: 1 }); onCreated(id); }
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto rounded-none"><DialogHeader><DialogTitle>Prepare an employee document</DialogTitle><DialogDescription>Choose a template, check merged details and edit the draft before requesting signatures.</DialogDescription></DialogHeader><form onSubmit={create} className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><Field label="Employee"><select className={inputClass} value={employeeId} onChange={(event) => { setEmployeeId(event.target.value); setBody(""); }}>{employees.filter((item) => item.status !== "archived").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select></Field><Field label="Template"><select className={inputClass} value={template} onChange={(event) => { setTemplate(event.target.value); setBody(""); }}>{templates.map((item) => <option key={item}>{item}</option>)}</select></Field></div><Field label="Review and edit document text"><Textarea className="min-h-72 font-mono text-xs" value={preview} onChange={(event) => setBody(event.target.value)} /></Field><p className="text-xs text-muted-foreground">Formatting: <code># title</code>, <code>## heading</code>, <code>- bullet</code>, <code>1. numbered</code>, <code>**bold**</code>. The employee sees it as a formatted document.</p><DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!employee || !preview.trim()}>Create draft</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
@@ -220,7 +221,7 @@ function DocumentDialog({ document, role, actorId, personal, company = false, in
   const extra = extras[live.id];
   const manager = canManage(role) && !personal;
   const actor = employees.find((item) => item.id === actorId);
-  const actorName = actor?.name ?? "HR";
+  const actorName = actorDisplayName(actor?.name);
   const state = signatureState(live);
   // Seed documents can be awaiting signature without recorded signers; the employee is then the pending signer.
   const signers: DocumentSigner[] = extra?.signers?.length ? extra.signers : ["sent", "viewed", "partially_signed"].includes(state) && live.employeeId !== "company" ? [{ employeeId: live.employeeId, name: live.employeeName, status: "pending" }] : [];

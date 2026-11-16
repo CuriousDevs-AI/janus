@@ -56,7 +56,7 @@ import { HrPayrollView } from "@/components/hr-people/payroll";
 import { HrRecruitmentView } from "@/components/hr-people/recruitment";
 import { HrOffboardingView } from "@/components/hr-people/offboarding";
 import { HrDocumentsView, HrSignaturesView } from "@/components/hr-people/documents";
-import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, setSignedInEmployee, visibleEmployees } from "@/lib/hr-people-access";
+import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, setSignedInEmployee, setSignedInName, visibleEmployees } from "@/lib/hr-people-access";
 import { useSession } from "@/components/auth/session-provider";
 import { hasPermission } from "@/lib/demo-persona";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
@@ -98,6 +98,7 @@ export function HrPeopleWorkspace() {
   const employees = useHrPeopleStore((state) => state.employees);
   // The person signed in acts as the employee record with their email; a real account's owner adds that record first.
   setSignedInEmployee(employees.find((item) => item.email.toLowerCase() === (session.user.email ?? "").toLowerCase())?.id ?? "");
+  setSignedInName(session.user.name ?? "");
   const employeeRows = visibleEmployees(role, employees);
   // An employee lands on Home, not the HR dashboard.
   const landing = role === "employee" ? "my-home" : role === "payroll_admin" ? "payroll" : null;

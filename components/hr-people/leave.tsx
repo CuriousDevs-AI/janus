@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { useCompanyHolidayDates } from "@/lib/hr-holidays";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import { resolveRoute } from "@/lib/hr-org";
@@ -35,7 +35,7 @@ export function HrLeaveView({ role, actorId, personal = false }: { role: HrDemoR
   const [history, setHistory] = React.useState<HrLeaveRequest | null>(null);
   const today = hrToday();
   const actor = employees.find((item) => item.id === actorId);
-  const actorName = actor?.name ?? "HR";
+  const actorName = actorDisplayName(actor?.name);
   const wide = !personal && (canManageHr(role) || role === "payroll_admin");
   const scopeIds = new Set(employees.filter((item) => personal ? item.id === actorId : wide || isTeamOf(item, actorId)).map((item) => item.id));
   const requests = leaveRequests.filter((item) => scopeIds.has(item.employeeId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
