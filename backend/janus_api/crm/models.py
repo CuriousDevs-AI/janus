@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     Numeric,
     String,
@@ -111,6 +112,7 @@ class Deal(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "lead_id"),
         ForeignKeyConstraint(["tenant_id", "lead_id"], ["leads.tenant_id", "leads.id"]),
+        Index("ix_deals_tenant_id_id", "tenant_id", "id"),
         CheckConstraint("amount >= 0", name="deal_amount_nonnegative"),
         CheckConstraint("version > 0", name="deal_version_positive"),
         CheckConstraint(
