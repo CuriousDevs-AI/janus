@@ -15,7 +15,7 @@ from janus_api.business.service import enqueue_event
 from janus_api.core.errors import ApiError, ProcessingError
 from janus_api.core.security import now
 from janus_api.crm import schemas
-from janus_api.crm.models import Contact, Deal, Lead, LeadNote
+from janus_api.crm.models import Contact, CustomerNote, Deal, Lead, LeadNote
 from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut, LeadSource, ManualLeadIn
 from janus_api.org.service import active_member, teammate_user_ids
 from janus_api.sources.models import IngestReceipt, SourceConnection
@@ -208,6 +208,7 @@ async def list_leads(
     after_id: int,
     limit: int,
     lead_id: int | None = None,
+    search: str | None = None,
 ) -> list[LeadOut]:
     owners = await visible_owners(db, tenant_id, user_id, permissions)
     query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id > after_id)
@@ -215,6 +216,26 @@ async def list_leads(
         query = query.where(Lead.owner_id.in_(owners))
     if lead_id is not None:
         query = query.where(Lead.id == lead_id)
+    if search:
+        pattern = f"%{search}%"
+        # Match contact fields or any follow-up note body for this lead.
+        note_match = (
+            select(LeadNote.id)
+            .where(
+                LeadNote.tenant_id == Lead.tenant_id,
+                LeadNote.lead_id == Lead.id,
+                LeadNote.body.ilike(pattern),
+            )
+            .exists()
+        )
+        query = query.where(
+            Contact.name.ilike(pattern)
+            | Contact.phone_e164.ilike(pattern)
+            | Contact.email.ilike(pattern)
+            | Contact.company.ilike(pattern)
+            | Lead.requirement.ilike(pattern)
+            | note_match
+        )
     rows = (
         await db.execute(
             query.join(
@@ -628,9 +649,7 @@ async def create_manual_lead(
         email = str(data.email).casefold() if data.email else None
         dupes = await _existing_active_leads(db, tenant_id, phone, email)
         if dupes:
-            names = ", ".join(
-                f"{name} (stage: {stage})" for _, name, stage in dupes[:3]
-            )
+            names = ", ".join(f"{name} (stage: {stage})" for _, name, stage in dupes[:3])
             raise ApiError(
                 "duplicate_contact_leads",
                 f"This contact already has active leads: {names}. "
@@ -716,9 +735,7 @@ async def list_customers(
         .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
         .outerjoin(
             Deal,
-            (Deal.lead_id == Lead.id)
-            & (Deal.tenant_id == Lead.tenant_id)
-            & (Deal.stage != "lost"),
+            (Deal.lead_id == Lead.id) & (Deal.tenant_id == Lead.tenant_id) & (Deal.stage != "lost"),
         )
         .where(Lead.tenant_id == tenant_id)
     )
@@ -747,9 +764,7 @@ async def list_customers(
 
         cutoff = datetime.now(UTC) - timedelta(days=3)
         base = base.having(
-            func.bool_or(
-                (Lead.last_activity_at <= cutoff) & Lead.stage.not_in(("won", "lost"))
-            )
+            func.bool_or((Lead.last_activity_at <= cutoff) & Lead.stage.not_in(("won", "lost")))
         )
 
     sub = base.subquery()
@@ -921,3 +936,86 @@ async def assign_leads(
         details={"leads": len(leads), "owner_id": owner.id if owner else ""},
     )
     return schemas.AssignOut(assigned=len(leads), ownerName=owner.name if owner else None)
+
+
+# ---------------------------------------------------------------------------
+# Customer notes
+# ---------------------------------------------------------------------------
+
+
+async def _visible_contact(
+    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], contact_id: int
+) -> Contact:
+    """The contact, if this person may see at least one of its leads."""
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    visible = select(Lead.id).where(Lead.contact_id == Contact.id, Lead.tenant_id == tenant_id)
+    if owners is not None:
+        visible = visible.where(Lead.owner_id.in_(owners))
+    contact = await db.scalar(
+        select(Contact).where(
+            Contact.id == contact_id, Contact.tenant_id == tenant_id, visible.exists()
+        )
+    )
+    if contact is None:
+        raise ApiError("not_found", "Contact not found.", 404)
+    return contact
+
+
+async def list_customer_notes(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+) -> list[schemas.CustomerNoteOut]:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    rows = (
+        await db.execute(
+            select(CustomerNote, User.name)
+            .outerjoin(User, User.id == CustomerNote.author_id)
+            .where(CustomerNote.tenant_id == tenant_id, CustomerNote.contact_id == contact.id)
+            .order_by(CustomerNote.created_at.desc(), CustomerNote.id.desc())
+        )
+    ).all()
+    return [
+        schemas.CustomerNoteOut(
+            id=str(note.id),
+            body=note.body,
+            author=name,
+            createdAt=note.created_at,
+        )
+        for note, name in rows
+    ]
+
+
+async def add_customer_note(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+    data: schemas.CustomerNoteIn,
+) -> schemas.CustomerNoteOut:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    note = CustomerNote(
+        tenant_id=tenant_id,
+        contact_id=contact.id,
+        author_id=user_id,
+        body=data.body.strip(),
+    )
+    db.add(note)
+    await db.flush()
+    record(
+        db,
+        "contact.note_added",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"contact_id": contact.id, "note_id": note.id},
+    )
+    author = await db.get(User, user_id)
+    return schemas.CustomerNoteOut(
+        id=str(note.id),
+        body=note.body,
+        author=author.name if author else None,
+        createdAt=note.created_at or now(),
+    )

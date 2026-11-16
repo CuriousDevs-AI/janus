@@ -241,6 +241,21 @@ class NoteOut(BaseModel):
     createdAt: datetime
 
 
+class CustomerNoteIn(BaseModel):
+    """A note on a customer record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=2, max_length=4000)
+
+
+class CustomerNoteOut(BaseModel):
+    id: str
+    body: str
+    author: str | None
+    createdAt: datetime
+
+
 class AssignIn(BaseModel):
     """Hands leads to one person, or to nobody with ownerId null. Up to 100 at a time."""
 

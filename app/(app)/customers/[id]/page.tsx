@@ -1,7 +1,7 @@
 "use client";
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, CalendarClock, ChevronRight, CircleDollarSign, Mail, Pencil, Phone, RefreshCw, UserRound } from "lucide-react";
+import { Building2, CalendarClock, ChevronRight, CircleDollarSign, Mail, MessageSquareText, Pencil, Phone, RefreshCw, UserRound } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
 import { CustomerAccount } from "@/components/crm/customer-account";
 import { demoMode } from "@/lib/demo-mode";
@@ -14,7 +14,15 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
+
+interface CustomerNote {
+  id: string;
+  body: string;
+  author: string | null;
+  createdAt: string;
+}
 
 function label(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -46,6 +54,10 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const [saveError, setSaveError] = useState("");
   const [consentSaving, setConsentSaving] = useState(false);
   const [consentError, setConsentError] = useState("");
+  const notes = useApi<CustomerNote[]>(contact.data ? `/contacts/${encodeURIComponent(id)}/notes` : null);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState("");
   const customerLeads = (leads.data ?? []).filter((lead) => lead.customerId === id);
   const customerDeals = (deals.data ?? []).filter((deal) => deal.customerId === id);
   const customerConversations = (conversations.data ?? []).filter(
@@ -105,7 +117,26 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
     leads.reload();
     deals.reload();
     conversations.reload();
+    notes.reload();
   };
+
+  async function saveNote() {
+    if (!contact.data || noteText.trim().length < 2) return;
+    setNoteSaving(true);
+    setNoteError("");
+    try {
+      await api<CustomerNote>(`/contacts/${encodeURIComponent(contact.data.id)}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body: noteText.trim() }),
+      });
+      setNoteText("");
+      notes.reload();
+    } catch (error) {
+      setNoteError(message(error));
+    } finally {
+      setNoteSaving(false);
+    }
+  }
 
   function openEdit() {
     if (!contact.data) return;
@@ -169,6 +200,82 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             <main className="flex min-w-0 flex-col gap-5">
               {!demoMode && <CustomerAccount contactId={contact.data.id} />}
+
+              <section className="rounded-lg border border-border bg-surface p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold">Notes</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Internal notes about this customer visible to the team.
+                    </p>
+                  </div>
+                  <MessageSquareText className="size-4 text-accent" />
+                </div>
+                <form
+                  className="mt-4 flex flex-col gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveNote();
+                  }}
+                >
+                  <Textarea
+                    placeholder="Write a note about this customer..."
+                    value={noteText}
+                    onChange={(event) => setNoteText(event.target.value)}
+                    rows={2}
+                    className="resize-none"
+                  />
+                  {noteError && (
+                    <p role="alert" className="text-xs text-danger">
+                      {noteError}
+                    </p>
+                  )}
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={noteSaving || noteText.trim().length < 2}
+                    >
+                      {noteSaving ? "Saving..." : "Add note"}
+                    </Button>
+                  </div>
+                </form>
+                {notes.loading && (
+                  <p role="status" className="mt-4 text-sm text-muted-foreground">
+                    Loading notes...
+                  </p>
+                )}
+                {notes.error && (
+                  <p role="alert" className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+                    Notes could not be loaded. Refresh to try again.
+                  </p>
+                )}
+                {!notes.loading && !notes.error && (notes.data ?? []).length === 0 && (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    No notes yet. Add one above to keep track of conversations, agreements, or preferences.
+                  </p>
+                )}
+                {(notes.data ?? []).length > 0 && (
+                  <div className="mt-4 divide-y divide-border">
+                    {(notes.data ?? []).map((note) => (
+                      <div key={note.id} className="py-3 first:pt-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-xs font-medium text-foreground">
+                            {note.author ?? "Unknown"}
+                          </p>
+                          <time className="text-[11px] text-muted-foreground">
+                            {formatDateTime(note.createdAt)}
+                          </time>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                          {note.body}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               <section className="rounded-lg border border-border bg-surface p-5">
                 <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Customer timeline</h2><p className="mt-1 text-xs text-muted-foreground">Lead and deal events linked to this contact.</p></div><CalendarClock className="size-4 text-accent" /></div>
                 {(leads.loading || deals.loading || conversations.loading) && <p role="status" className="mt-5 text-sm text-muted-foreground">Loading related CRM activity…</p>}

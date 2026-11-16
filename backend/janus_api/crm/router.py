@@ -21,10 +21,16 @@ AfterId = Annotated[int, Query(ge=0, le=2**63 - 1)]
 
 @router.get("/leads", response_model=list[schemas.LeadOut])
 async def leads(
-    actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 100
+    actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 100, q: str | None = None
 ) -> list[schemas.LeadOut]:
     return await service.list_leads(
-        db, actor.session.tenant_id, actor.user.id, actor.permissions, after_id, limit
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        after_id,
+        limit,
+        search=q,
     )
 
 
@@ -132,6 +138,26 @@ async def update_contact(
     )
 
 
+@router.get("/contacts/{contact_id}/notes", response_model=list[schemas.CustomerNoteOut])
+async def contact_notes(
+    contact_id: Identifier, actor: Reader, db: Db
+) -> list[schemas.CustomerNoteOut]:
+    return await service.list_customer_notes(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
+    )
+
+
+@router.post(
+    "/contacts/{contact_id}/notes", response_model=schemas.CustomerNoteOut, status_code=201
+)
+async def add_contact_note(
+    contact_id: Identifier, data: schemas.CustomerNoteIn, actor: Writer, db: Db
+) -> schemas.CustomerNoteOut:
+    return await service.add_customer_note(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id, data
+    )
+
+
 @router.patch("/contacts/{contact_id}/consent", response_model=schemas.ContactOut)
 async def update_contact_consent(
     contact_id: Identifier, data: schemas.ContactConsentUpdate, actor: Writer, db: Db
@@ -156,8 +182,14 @@ async def customers(
     filter: str = "all",
 ) -> list[schemas.CustomerListRow]:
     return await service.list_customers(
-        db, actor.session.tenant_id, actor.user.id, actor.permissions,
-        after_id, limit, q, filter,
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        after_id,
+        limit,
+        q,
+        filter,
     )
 
 

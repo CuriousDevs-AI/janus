@@ -62,7 +62,7 @@ async def test_rls_denies_cross_tenant_reads_and_writes(
         ).all()
         # One identity id per model table; the finance books kept on the server (expenses, petty
         # cash, bank movements, settings, month-end sign-offs, budget plans) are the newest.
-        assert len(identities) == 115
+        assert len(identities) == 116
     async with session_factory()() as db:
         await set_context(db, tenant_id=first.tenant_id, user_id=first.user_id)
         for table in ["memberships", "invitations", "audit_log"]:

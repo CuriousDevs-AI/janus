@@ -88,6 +88,24 @@ class LeadNote(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CustomerNote(Base):
+    """A free-text note on a customer (contact) record, written by a team member."""
+
+    __tablename__ = "customer_notes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "contact_id"],
+            ["contacts.tenant_id", "contacts.id"],
+            ondelete="CASCADE",
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    contact_id: Mapped[int] = mapped_column(BigInteger)
+    author_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Deal(Base):
     __tablename__ = "deals"
     __table_args__ = (

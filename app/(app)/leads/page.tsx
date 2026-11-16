@@ -203,16 +203,27 @@ export default function LeadsPage() {
   });
   const [columnOrder, setColumnOrder] = useState<OptionalColumn[]>(optionalColumns.map(({ key }) => key));
   const [draggingColumn, setDraggingColumn] = useState<OptionalColumn | null>(null);
+  const [serverQuery, setServerQuery] = useState("");
   const [result, setResult] = useState<{
     after: string;
     rows: Row[];
     error?: string;
   } | null>(null);
 
+  // Debounce server search so the API is only called after the user pauses typing.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setServerQuery(query.trim());
+      setAfter("0");
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
   useEffect(() => {
     const controller = new AbortController();
     const load = async () => {
-      const leads = await api<Lead[]>(`/leads?limit=50&after_id=${after}`, {
+      const searchParam = serverQuery ? `&q=${encodeURIComponent(serverQuery)}` : "";
+      const leads = await api<Lead[]>(`/leads?limit=50&after_id=${after}${searchParam}`, {
         signal: controller.signal,
       });
       if (!controller.signal.aborted)
@@ -226,7 +237,7 @@ export default function LeadsPage() {
         setResult({ after, rows: demoMode ? demoLeadRows.map((lead) => ({ lead })) : [], error: message(error) });
     });
     return () => controller.abort();
-  }, [after, version]);
+  }, [after, version, serverQuery]);
 
   const loaded = result?.after === after ? result : null;
   const usingDemo = demoMode && Boolean(loaded?.error);
@@ -245,23 +256,9 @@ export default function LeadsPage() {
     [loaded],
   );
   const rows = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
     return (
       loaded?.rows.filter(({ lead }) => {
-        const searchable = [
-          lead.contactName,
-          lead.email,
-          lead.phone,
-          lead.company,
-          lead.requirement,
-          lead.source,
-          lead.stage,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
         return (
-          (!normalizedQuery || searchable.includes(normalizedQuery)) &&
           (stageFilter === "all" || lead.stage === stageFilter) &&
           (sourceFilter === "all" || lead.source === sourceFilter) &&
           (!dueOnly || isDue(lead.nextFollowUpOn)) &&
@@ -269,7 +266,7 @@ export default function LeadsPage() {
         );
       }) || []
     );
-  }, [loaded, query, sourceFilter, stageFilter, dueOnly, ownerFilter, session.user.id]);
+  }, [loaded, sourceFilter, stageFilter, dueOnly, ownerFilter, session.user.id]);
   const allVisibleSelected = rows.length > 0 && rows.every(({ lead }) => selectedIds.includes(lead.id));
   const visibleColumnCount = 4 + optionalColumns.filter(({ key }) => visibleColumns[key]).length;
   const orderedOptionalColumns = columnOrder
@@ -430,7 +427,7 @@ export default function LeadsPage() {
       {!demoMode && loaded?.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your leads could not be read: {loaded.error}. Refresh to try again; nothing is lost.</p>}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">
-        <SearchInput value={query} onChange={setQuery} placeholder="Search name, mobile, email or company…" className="w-full sm:w-[25rem]" />
+        <SearchInput value={query} onChange={setQuery} placeholder="Search name, mobile, email, company or notes..." className="w-full sm:w-[25rem]" />
         <Select value={ownerFilter} onValueChange={(value) => setOwnerFilter(value as "all" | "mine" | "none")}><SelectTrigger className="h-9 w-[150px]" aria-label="Whose leads"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Everyone&apos;s leads</SelectItem><SelectItem value="mine">My leads</SelectItem><SelectItem value="none">Unassigned</SelectItem></SelectContent></Select>
         <Button size="sm" variant={dueOnly ? "default" : "secondary"} aria-pressed={dueOnly} onClick={() => setDueOnly((value) => !value)}>Follow-ups due{dueCount ? ` (${dueCount})` : ""}</Button>
         <Select value={stageFilter} onValueChange={setStageFilter}>
