@@ -304,6 +304,32 @@ class CustomerMove(BaseModel):
     previous: str
 
 
+class FunnelStep(BaseModel):
+    """Leads that came in during a period, by how far they have got since."""
+
+    leads: int
+    qualified: int
+    proposal: int
+    won: int
+    lost: int
+
+
+class FunnelCompare(BaseModel):
+    current: FunnelStep
+    previous: FunnelStep
+
+
+class RepLine(BaseModel):
+    """One lead owner in the period: new leads, deals won and their value; open leads now."""
+
+    name: str
+    assigned: bool
+    leads: int
+    won: int
+    wonValue: str
+    openLeads: int
+
+
 class SourceMove(BaseModel):
     """Leads from one channel in the period and in the same days before."""
 
@@ -424,6 +450,8 @@ class CompanySummary(BaseModel):
     customers: list[CustomerMove] = []
     intercompany: Intercompany | None = None
     leadSources: list[SourceMove] = []
+    funnel: FunnelCompare | None = None
+    reps: list[RepLine] = []
     registration: Registration | None = None
     complianceGaps: list[ComplianceGap] = []
     # False until at least one kind of filing is switched on for the company.
