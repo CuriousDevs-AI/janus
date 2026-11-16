@@ -142,3 +142,27 @@ async def test_managers_work_tickets_in_their_support_workspace(
     listed = await client.get("/v1/support/tickets", headers=manager)
     assert listed.status_code == 200
     assert [item["external_key"] for item in listed.json()] == ["tck-mgr"]
+
+
+async def test_description_is_persisted_and_returned(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    created = await client.post(
+        "/v1/support/tickets",
+        headers=owner.headers,
+        json={**TICKET, "description": "  50m of last lot had colour variation  "},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["description"] == "50m of last lot had colour variation"
+    listed = (await client.get("/v1/support/tickets", headers=owner.headers)).json()
+    assert listed[0]["description"] == "50m of last lot had colour variation"
+
+    # Without a description, the field is null.
+    no_desc = await client.post(
+        "/v1/support/tickets",
+        headers=owner.headers,
+        json={**TICKET, "external_key": "tck-no-desc"},
+    )
+    assert no_desc.status_code == 201
+    assert no_desc.json()["description"] is None

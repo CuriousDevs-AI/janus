@@ -17,6 +17,7 @@ interface ServerTicket {
   external_key: string;
   number: string;
   subject: string;
+  description: string | null;
   priority: TicketPriority;
   status: TicketStatus;
   assignee: string | null;
@@ -29,12 +30,12 @@ type NewTicket = { customerId: string; subject: string; description: string; pri
 const pathFor = (id: string, step?: string) =>
   step ? `/support/tickets/${encodeURIComponent(id)}/${step}` : "/support/tickets";
 
-/** Copies the server's status, assignee and resolution onto the screen's ticket with the same key. */
+/** Copies the server's status, assignee, description and resolution onto the screen's ticket with the same key. */
 function applyServerState(row: ServerTicket) {
   useAppStore.setState((state) => ({
     tickets: state.tickets.map((ticket) =>
       ticket.id === row.external_key
-        ? { ...ticket, status: row.status, assigneeId: row.assignee ?? undefined, closedReason: row.resolution ?? undefined }
+        ? { ...ticket, status: row.status, assigneeId: row.assignee ?? undefined, description: row.description ?? ticket.description, closedReason: row.resolution ?? undefined }
         : ticket,
     ),
   }));
@@ -47,6 +48,7 @@ function bookTicket(ticket: Ticket): Promise<ServerTicket> {
       external_key: ticket.id,
       number: ticket.number,
       subject: ticket.subject,
+      description: ticket.description || null,
       priority: ticket.priority,
       status: ticket.status,
     }),
