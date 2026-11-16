@@ -519,7 +519,7 @@ export default function LeadsPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {filtersActive && <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setStageFilter("all"); setSourceFilter("all"); }}><X className="size-3.5" />Clear filters</Button>}
+        {filtersActive && <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setStageFilter("all"); setSourceFilter("all"); setDueOnly(false); setOwnerFilter("all"); }}><X className="size-3.5" />Clear filters</Button>}
         {loaded && !loaded.error && <span className="ml-auto text-xs text-muted-foreground">Showing {rows.length} of {loaded.rows.length} loaded leads</span>}
         
       </div>
