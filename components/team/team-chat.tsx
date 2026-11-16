@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, Clock, Hash, Lock, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, UserPlus, Users, X } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, Clock, Forward, Hash, Lock, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -59,6 +59,8 @@ export function TeamChat() {
   const [pinnedOpen, setPinnedOpen] = React.useState(false);
   const [addingMember, setAddingMember] = React.useState(false);
   const [callHistoryOpen, setCallHistoryOpen] = React.useState(false);
+  const [savedOpen, setSavedOpen] = React.useState(false);
+  const [forwardingId, setForwardingId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [term, setTerm] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -82,6 +84,9 @@ export function TeamChat() {
   );
   const callHistory = useApi<Array<{ id: string; userId: number; userName: string; action: string; createdAt: string }>>(
     demoMode || !callHistoryOpen || !selected ? null : `/team/voice/${selected}/history?limit=50`,
+  );
+  const saved = useApi<TeamMessage[]>(
+    demoMode || !savedOpen ? null : "/team/saved?limit=50",
   );
 
   const reloadChannels = channels.reload;
@@ -346,6 +351,9 @@ export function TeamChat() {
               <UserPlus className="size-4" />
             </Button>
           ) : null}
+          <Button variant="ghost" size="icon" aria-label="Saved messages" aria-pressed={savedOpen} onClick={() => setSavedOpen((open) => !open)}>
+            <Bookmark className="size-4" />
+          </Button>
           <Button variant="ghost" size="icon" aria-label="Search team messages" aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>
             <Search className="size-4" />
           </Button>
@@ -406,6 +414,7 @@ export function TeamChat() {
                     emptyText={isChannel(space?.kind) ? `No messages in #${space.name} yet. Say hello.` : "No messages yet. Say hello."}
                     onOpenThread={setThreadId}
                     onChanged={() => { reloadMessages(); reloadReplies(); }}
+                    onForward={(id) => setForwardingId(id)}
                     activeThreadId={threadId}
                     showAuthors={space?.kind !== "dm"}
                     canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
@@ -461,13 +470,19 @@ export function TeamChat() {
                     canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
                   />
                 </div>
-                <Composer
-                  placeholder="Reply to the thread"
-                  autoFocusKey={threadId}
-                  disabled={!space || !space.canPost || (isChannel(space.kind) && !space.joined)}
-                  allowFiles={false}
-                  onSend={(body) => send(body, threadId)}
-                />
+                {space?.canPost && (space.joined || !isChannel(space.kind)) ? (
+                  <Composer
+                    placeholder="Reply to the thread"
+                    autoFocusKey={threadId}
+                    disabled={!space}
+                    allowFiles={false}
+                    onSend={(body) => send(body, threadId)}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center gap-2 border-t border-border bg-surface px-4 py-3 text-sm text-muted-foreground" role="note">
+                    Only admins can reply to announcements here.
+                  </div>
+                )}
               </aside>
             ) : null}
           </div>
@@ -498,6 +513,25 @@ export function TeamChat() {
           events={callHistory.data ?? []}
           loading={callHistory.loading && !callHistory.data}
           onClose={() => setCallHistoryOpen(false)}
+        />
+      ) : null}
+
+      {savedOpen ? (
+        <SavedPanel
+          messages={saved.data ?? []}
+          loading={saved.loading && !saved.data}
+          onClose={() => setSavedOpen(false)}
+          onChanged={() => { saved.reload(); reloadMessages(); }}
+          onOpen={(spaceId) => { choose(spaceId); setSavedOpen(false); }}
+        />
+      ) : null}
+
+      {forwardingId ? (
+        <ForwardDialog
+          messageId={forwardingId}
+          spaces={all}
+          onClose={() => setForwardingId(null)}
+          onForwarded={() => { setForwardingId(null); reloadMessages(); }}
         />
       ) : null}
 
@@ -894,6 +928,139 @@ function AddMemberDialog({
         </ul>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SavedPanel({
+  messages,
+  loading,
+  onClose,
+  onChanged,
+  onOpen,
+}: {
+  messages: TeamMessage[];
+  loading: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+  onOpen: (spaceId: string) => void;
+}) {
+  async function unsaveMessage(id: string) {
+    try {
+      await api(`/team/messages/${id}/unsave`, { method: "POST" });
+      onChanged();
+      toast.success("Removed from saved");
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[80dvh] overflow-hidden sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Bookmark className="size-4" /> Saved messages</DialogTitle>
+          <DialogDescription>Messages you bookmarked for later.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-96 overflow-y-auto">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No saved messages yet. Bookmark messages from the message menu.</p>
+          ) : (
+            <ul className="space-y-2">
+              {messages.map((msg) => (
+                <li key={msg.id} className="rounded-md border border-border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onOpen(msg.spaceId)}>
+                      <p className="text-xs font-medium text-foreground">{msg.author.name}</p>
+                      <p className="mt-0.5 line-clamp-3 text-sm text-foreground">{msg.body}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </button>
+                    <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => void unsaveMessage(msg.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ForwardDialog({
+  messageId,
+  spaces,
+  onClose,
+  onForwarded,
+}: {
+  messageId: string;
+  spaces: TeamSpace[];
+  onClose: () => void;
+  onForwarded: () => void;
+}) {
+  const [query, setQuery] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const term = query.trim().toLowerCase();
+  const filtered = spaces.filter((s) =>
+    `${s.title} ${s.name ?? ""}`.toLowerCase().includes(term),
+  );
+
+  async function forward(toSpaceId: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api(`/team/messages/${messageId}/forward`, {
+        method: "POST",
+        body: JSON.stringify({ to_space_id: Number(toSpaceId) }),
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      });
+      toast.success("Message forwarded");
+      onForwarded();
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Forward className="size-4" /> Forward message</DialogTitle>
+          <DialogDescription>Choose where to forward this message.</DialogDescription>
+        </DialogHeader>
+        <Input autoFocus placeholder="Search channels and conversations" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <ul className="max-h-72 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <li className="py-4 text-center text-sm text-muted-foreground">No matches</li>
+          ) : filtered.slice(0, 20).map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void forward(s.id)}
+                className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2"
+              >
+                <ChatAvatar item={s} label={isChannel(s.kind) ? s.name ?? "" : s.title} />
+                <span className="min-w-0 flex-1 truncate">
+                  {isChannel(s.kind) ? `${s.private ? "🔒" : "#"}${s.name}` : s.title}
+                </span>
+                <Forward className="size-3.5 shrink-0 text-muted-foreground" />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

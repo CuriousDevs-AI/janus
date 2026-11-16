@@ -52,6 +52,7 @@ export interface TeamMessage {
     total: number;
     closesAt: string | null;
     closed: boolean;
+    anonymous: boolean;
   } | null;
   event: { startsAt: string; place: string; going: number; maybe: number; declined: number; mine: string | null } | null;
   meeting: {
@@ -66,6 +67,7 @@ export interface TeamMessage {
   } | null;
   pinned: boolean;
   pinnedBy: TeamPerson | null;
+  saved: boolean;
 }
 
 export type TeamPostKind = "announcement" | "kudos" | "poll" | "event" | "meeting";

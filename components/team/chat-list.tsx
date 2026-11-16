@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Hash, Headphones, Lock, Megaphone, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, Hash, Headphones, Lock, Megaphone, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -186,19 +186,76 @@ export function ChatList({
           );
         })}
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Chats">
-        {loading ? <li className="px-4 py-3 text-sm text-muted-foreground">Loading chats…</li> : null}
-        {!loading && shown.length === 0 ? (
-          <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-            {all.length === 0 ? "No chats yet. Start a message or create a channel." : filter === "official" ? "No official announcements yet." : "No chats match."}
-          </li>
-        ) : null}
-        {shown.map((item) => (
-          <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
-        ))}
-      </ul>
+      <SectionedList
+        items={shown}
+        allEmpty={all.length === 0}
+        filter={filter}
+        selected={selected}
+        onPick={onPick}
+        loading={loading}
+      />
       <CallBar />
     </div>
+  );
+}
+
+function SectionedList({
+  items,
+  allEmpty,
+  filter,
+  selected,
+  onPick,
+  loading,
+}: {
+  items: TeamSpace[];
+  allEmpty: boolean;
+  filter: ChatFilter;
+  selected: string | null;
+  onPick: (item: TeamSpace) => void;
+  loading: boolean;
+}) {
+  const [otherOpen, setOtherOpen] = React.useState(false);
+  const sectioned = filter === "all" && !allEmpty && items.length > 0;
+  const yours = sectioned ? items.filter((item) => item.joined || !isChannel(item.kind)) : items;
+  const other = sectioned ? items.filter((item) => !item.joined && isChannel(item.kind)) : [];
+
+  return (
+    <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Chats">
+      {loading ? <li className="px-4 py-3 text-sm text-muted-foreground">Loading chats…</li> : null}
+      {!loading && items.length === 0 ? (
+        <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+          {allEmpty ? "No chats yet. Start a message or create a channel." : filter === "official" ? "No official announcements yet." : "No chats match."}
+        </li>
+      ) : null}
+      {sectioned && yours.length > 0 ? (
+        <li className="flex items-center gap-1.5 px-4 pb-1 pt-3">
+          <ChevronDown className="size-3 text-muted-foreground" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Your chats</span>
+          <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{yours.length}</span>
+        </li>
+      ) : null}
+      {yours.map((item) => (
+        <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
+      ))}
+      {sectioned && other.length > 0 ? (
+        <>
+          <li>
+            <button
+              type="button"
+              onClick={() => setOtherOpen((open) => !open)}
+              className="flex w-full items-center gap-1.5 px-4 pb-1 pt-3 text-left"
+            >
+              {otherOpen ? <ChevronDown className="size-3 text-muted-foreground" /> : <ChevronRight className="size-3 text-muted-foreground" />}
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Other channels</span>
+              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{other.length}</span>
+            </button>
+          </li>
+          {otherOpen ? other.map((item) => (
+            <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
+          )) : null}
+        </>
+      ) : null}
+    </ul>
   );
 }
 

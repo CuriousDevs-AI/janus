@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, FileText, MessageSquare, MoreHorizontal, Paperclip, Pencil, Pin, PinOff, SmilePlus, Trash2, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Download, FileText, Forward, MessageSquare, MoreHorizontal, Paperclip, Pencil, Pin, PinOff, SmilePlus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { cn, initials } from "@/lib/utils";
@@ -60,6 +60,7 @@ export function MessageList({
   emptyText,
   onOpenThread,
   onChanged,
+  onForward,
   activeThreadId,
   showAuthors = true,
   canInteract = true,
@@ -68,6 +69,7 @@ export function MessageList({
   emptyText: string;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
+  onForward?: (id: string) => void;
   activeThreadId?: string | null;
   /** Names and avatars beside other people's messages; a DM has only one other person, so no. */
   showAuthors?: boolean;
@@ -107,6 +109,7 @@ export function MessageList({
         active={activeThreadId === item.id}
         onOpenThread={onOpenThread}
         onChanged={onChanged}
+        onForward={onForward}
         canInteract={canInteract}
       />,
     );
@@ -121,6 +124,7 @@ function MessageRow({
   active,
   onOpenThread,
   onChanged,
+  onForward,
   canInteract,
 }: {
   item: TeamMessage;
@@ -129,6 +133,7 @@ function MessageRow({
   active: boolean;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
+  onForward?: (id: string) => void;
   canInteract: boolean;
 }) {
   const [editing, setEditing] = React.useState(false);
@@ -180,6 +185,16 @@ function MessageRow({
     try {
       await api(`/team/messages/${item.id}/${item.pinned ? "unpin" : "pin"}`, { method: "POST" });
       onChanged();
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
+  async function toggleSave() {
+    try {
+      await api(`/team/messages/${item.id}/${item.saved ? "unsave" : "save"}`, { method: "POST" });
+      onChanged();
+      toast.success(item.saved ? "Removed from saved" : "Saved");
     } catch (error) {
       toast.error(errorText(error));
     }
@@ -346,6 +361,26 @@ function MessageRow({
               >
                 {item.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                aria-label={item.saved ? "Remove from saved" : "Save message"}
+                onClick={() => void toggleSave()}
+              >
+                {item.saved ? <BookmarkCheck className="size-3.5 text-accent" /> : <Bookmark className="size-3.5" />}
+              </Button>
+              {onForward ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label="Forward message"
+                  onClick={() => onForward(item.id)}
+                >
+                  <Forward className="size-3.5" />
+                </Button>
+              ) : null}
             </>
           ) : null}
           {item.mine ? (

@@ -139,7 +139,7 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
       <article aria-label="Poll" className="w-full max-w-lg overflow-hidden rounded-2xl border border-info/25 bg-surface shadow-md">
         <header className="flex items-center gap-2 border-b border-border bg-info-muted px-5 py-2.5">
           <BarChart3 className="size-4 text-info" />
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-info">Poll</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-info">{poll.anonymous ? "Anonymous poll" : "Poll"}</span>
           <span className={cn("ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold", poll.closed ? "bg-surface-2 text-muted-foreground" : "bg-success-muted text-success")}>
             {poll.closed ? "Closed" : "Open"}
           </span>
@@ -367,6 +367,7 @@ export function PostDialog({
   const [value, setValue] = React.useState(KUDOS_VALUES[0]);
   const [options, setOptions] = React.useState(["", ""]);
   const [closesAt, setClosesAt] = React.useState("");
+  const [anonymous, setAnonymous] = React.useState(false);
   const [startsAt, setStartsAt] = React.useState("");
   const [place, setPlace] = React.useState("");
   const [agenda, setAgenda] = React.useState("");
@@ -386,7 +387,7 @@ export function PostDialog({
     if (kind === "poll") {
       const filled = options.map((option) => option.trim()).filter(Boolean);
       if (filled.length < 2) return setError("Add at least two options.");
-      Object.assign(payload, { options: filled, closes_at: closesAt ? new Date(closesAt).toISOString() : null });
+      Object.assign(payload, { options: filled, closes_at: closesAt ? new Date(closesAt).toISOString() : null, anonymous });
     }
     if (kind === "event") {
       if (!startsAt) return setError("Pick when it starts.");
@@ -483,6 +484,10 @@ export function PostDialog({
                 <Label htmlFor="poll-closes">Closes (optional)</Label>
                 <Input id="poll-closes" type="datetime-local" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} className="max-w-60" />
               </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={anonymous} onChange={(event) => setAnonymous(event.target.checked)} className="size-4 rounded border-border" />
+                Anonymous — votes are not attributed to anyone
+              </label>
             </div>
           ) : null}
           {kind === "event" ? (

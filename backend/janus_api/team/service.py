@@ -25,8 +25,10 @@ from janus_api.team.models import (
     TeamAttachment,
     TeamCallEvent,
     TeamMessage,
+    TeamMessageSeen,
     TeamReaction,
     TeamResponse,
+    TeamSavedMessage,
     TeamSignal,
     TeamSpace,
     TeamSpaceMember,
@@ -384,6 +386,7 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
             )
         elif row.kind == "poll":
             closes = datetime.fromisoformat(meta["closes_at"]) if meta.get("closes_at") else None
+            anon = bool(meta.get("anonymous"))
             extra["poll"] = schemas.PollOut(
                 options=[
                     schemas.PollOptionOut(
@@ -397,6 +400,7 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
                 total=len(given),
                 closesAt=closes,
                 closed=bool(closes and closes <= _now()),
+                anonymous=anon,
             )
         elif row.kind == "event":
             extra["event"] = schemas.EventOut(
@@ -479,6 +483,16 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
     posts = await _posts_out(db, actor, rows)
     pinner_ids = {row.pinned_by for row in rows if row.pinned_by is not None}
     pinners = await _people(db, pinner_ids) if pinner_ids else {}
+    saved_ids: set[int] = set(
+        (
+            await db.scalars(
+                select(TeamSavedMessage.message_id).where(
+                    TeamSavedMessage.user_id == actor.user.id,
+                    TeamSavedMessage.message_id.in_(ids),
+                )
+            )
+        ).all()
+    )
     out = []
     for row in rows:
         author = people[row.author_id]
@@ -501,6 +515,7 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
                 kind=row.kind,
                 pinned=row.pinned_at is not None,
                 pinnedBy=schemas.PersonOut(id=pinner.id, name=pinner.name) if pinner else None,
+                saved=row.id in saved_ids,
                 **posts.get(row.id, {}),
             )
         )
@@ -1313,6 +1328,7 @@ async def create_post(
         meta |= {
             "options": [{"id": str(index + 1), "text": text} for index, text in enumerate(options)],
             "closes_at": data.closes_at.isoformat() if data.closes_at else None,
+            "anonymous": data.anonymous,
         }
     elif data.kind == "event":
         if data.starts_at is None:
@@ -1410,6 +1426,60 @@ async def latest_announcements(
     ]
 
 
+async def mark_seen(db: Db, actor: Actor, message_id: int) -> dict[str, object]:
+    """Mark a message (typically an announcement) as seen by the current user."""
+    row = await _message(db, actor.session.tenant_id, message_id)
+    space = await _space(db, actor.session.tenant_id, row.space_id)
+    await _readable(db, actor, space)
+    existing = await db.scalar(
+        select(TeamMessageSeen).where(
+            TeamMessageSeen.message_id == row.id,
+            TeamMessageSeen.user_id == actor.user.id,
+        )
+    )
+    if existing is None:
+        db.add(
+            TeamMessageSeen(
+                tenant_id=actor.session.tenant_id,
+                message_id=row.id,
+                user_id=actor.user.id,
+            )
+        )
+        await db.flush()
+    total = await db.scalar(
+        select(func.count())
+        .select_from(TeamSpaceMember)
+        .where(TeamSpaceMember.space_id == row.space_id)
+    )
+    seen = await db.scalar(
+        select(func.count())
+        .select_from(TeamMessageSeen)
+        .where(TeamMessageSeen.message_id == row.id)
+    )
+    return {"seen": seen or 0, "total": total or 0}
+
+
+async def seen_by(db: Db, actor: Actor, message_id: int) -> list[dict[str, object]]:
+    """List who has seen a message (for admin/HR use)."""
+    row = await _message(db, actor.session.tenant_id, message_id)
+    results = (
+        await db.execute(
+            select(TeamMessageSeen.user_id, TeamMessageSeen.seen_at)
+            .where(TeamMessageSeen.message_id == row.id)
+            .order_by(TeamMessageSeen.seen_at)
+        )
+    ).all()
+    people = await _people(db, {r.user_id for r in results})
+    return [
+        {
+            "userId": r.user_id,
+            "name": people[r.user_id].name if r.user_id in people else "Unknown",
+            "seenAt": r.seen_at.isoformat(),
+        }
+        for r in results
+    ]
+
+
 MAX_PINS = 50
 
 
@@ -1460,6 +1530,123 @@ async def pinned_messages(db: Db, actor: Actor, space_id: int) -> list[schemas.M
         )
     ).all()
     return await _messages_out(db, actor, list(rows))
+
+
+async def save_message(db: Db, actor: Actor, message_id: int) -> schemas.MessageOut:
+    row = await _message(db, actor.session.tenant_id, message_id)
+    space = await _space(db, actor.session.tenant_id, row.space_id)
+    await _readable(db, actor, space)
+    existing = await db.scalar(
+        select(TeamSavedMessage).where(
+            TeamSavedMessage.user_id == actor.user.id,
+            TeamSavedMessage.message_id == row.id,
+        )
+    )
+    if existing is None:
+        db.add(
+            TeamSavedMessage(
+                tenant_id=actor.session.tenant_id,
+                user_id=actor.user.id,
+                message_id=row.id,
+            )
+        )
+        await db.flush()
+    return (await _messages_out(db, actor, [row]))[0]
+
+
+async def unsave_message(db: Db, actor: Actor, message_id: int) -> schemas.MessageOut:
+    row = await _message(db, actor.session.tenant_id, message_id)
+    saved = await db.scalar(
+        select(TeamSavedMessage).where(
+            TeamSavedMessage.user_id == actor.user.id,
+            TeamSavedMessage.message_id == row.id,
+        )
+    )
+    if saved is not None:
+        await db.delete(saved)
+        await db.flush()
+    return (await _messages_out(db, actor, [row]))[0]
+
+
+async def saved_messages(db: Db, actor: Actor, limit: int = 50) -> list[schemas.MessageOut]:
+    saved_ids = (
+        await db.scalars(
+            select(TeamSavedMessage.message_id)
+            .where(TeamSavedMessage.user_id == actor.user.id)
+            .order_by(TeamSavedMessage.saved_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    if not saved_ids:
+        return []
+    rows = (await db.scalars(select(TeamMessage).where(TeamMessage.id.in_(saved_ids)))).all()
+    order = {mid: idx for idx, mid in enumerate(saved_ids)}
+    rows = sorted(rows, key=lambda r: order.get(r.id, 0))
+    return await _messages_out(db, actor, list(rows))
+
+
+async def forward_message(
+    db: Db,
+    actor: Actor,
+    message_id: int,
+    to_space_id: int,
+    idempotency_key: str,
+) -> schemas.MessageOut:
+    original = await _message(db, actor.session.tenant_id, message_id)
+    orig_space = await _space(db, actor.session.tenant_id, original.space_id)
+    await _readable(db, actor, orig_space)
+    target = await _space(db, actor.session.tenant_id, to_space_id)
+    sender = await _postable(db, actor, target)
+    label = f"#{orig_space.name}" if orig_space.name else "a conversation"
+    body = f"[Forwarded from {label}]\n{original.body}"
+    row = TeamMessage(
+        tenant_id=actor.session.tenant_id,
+        space_id=target.id,
+        author_id=actor.user.id,
+        body=body[:MAX_BODY_CHARS],
+        kind="text",
+        idempotency_key=idempotency_key,
+    )
+    db.add(row)
+    await db.flush()
+    sender.last_read_id = max(sender.last_read_id, row.id)
+    await db.flush()
+    return (await _messages_out(db, actor, [row]))[0]
+
+
+async def my_threads(db: Db, actor: Actor, limit: int = 30) -> list[schemas.MessageOut]:
+    """Thread roots the user has replied in, ordered by latest activity."""
+    tenant_id = actor.session.tenant_id
+    reply_alias = TeamMessage.__table__.alias("reply")
+    parent_ids_q = (
+        select(TeamMessage.parent_id)
+        .where(
+            TeamMessage.tenant_id == tenant_id,
+            TeamMessage.author_id == actor.user.id,
+            TeamMessage.parent_id.isnot(None),
+        )
+        .distinct()
+        .subquery()
+    )
+    latest = (
+        select(
+            reply_alias.c.parent_id,
+            func.max(reply_alias.c.created_at).label("last_activity"),
+        )
+        .where(reply_alias.c.parent_id.in_(select(parent_ids_q)))
+        .group_by(reply_alias.c.parent_id)
+        .subquery()
+    )
+    roots = (
+        await db.scalars(
+            select(TeamMessage)
+            .join(latest, TeamMessage.id == latest.c.parent_id)
+            .where(TeamMessage.tenant_id == tenant_id)
+            .order_by(latest.c.last_activity.desc())
+            .limit(limit)
+        )
+    ).all()
+    return await _messages_out(db, actor, list(roots))
 
 
 async def add_member(db: Db, actor: Actor, space_id: int, user_id: int) -> schemas.SpaceOut:

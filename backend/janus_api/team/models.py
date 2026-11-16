@@ -169,6 +169,32 @@ class TeamCallEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TeamMessageSeen(Base):
+    """Tracks which users have seen a specific message (used for announcements)."""
+
+    __tablename__ = "team_message_seen"
+    __table_args__ = (UniqueConstraint("message_id", "user_id", name="uq_team_message_seen"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    message_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("team_messages.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamSavedMessage(Base):
+    """A message a user bookmarked for quick access later."""
+
+    __tablename__ = "team_saved_messages"
+    __table_args__ = (UniqueConstraint("user_id", "message_id", name="uq_team_saved_messages"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    message_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("team_messages.id", ondelete="CASCADE"), index=True
+    )
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class TeamSignal(Base):
     """A WebRTC message from one person in a call to another: an offer, an answer or a candidate."""
 

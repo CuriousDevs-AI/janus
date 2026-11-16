@@ -44,6 +44,7 @@ class PostIn(BaseModel):
     kudos_to: int | None = Field(default=None, gt=0)
     kudos_value: str = Field(default="", max_length=40)
     options: list[Option] = Field(default_factory=list, max_length=6)
+    anonymous: bool = False
     closes_at: datetime | None = None
     starts_at: datetime | None = None
     place: str = Field(default="", max_length=120)
@@ -182,6 +183,7 @@ class MessageOut(BaseModel):
     meeting: "MeetingOut | None" = None
     pinned: bool = False
     pinnedBy: "PersonOut | None" = None
+    saved: bool = False
 
 
 class KudosOut(BaseModel):
@@ -201,6 +203,7 @@ class PollOut(BaseModel):
     total: int
     closesAt: datetime | None
     closed: bool
+    anonymous: bool = False
 
 
 class EventOut(BaseModel):
@@ -246,6 +249,11 @@ class CallEventOut(BaseModel):
     userName: str
     action: str
     createdAt: datetime
+
+
+class ForwardIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    to_space_id: int = Field(gt=0)
 
 
 class IceServerOut(BaseModel):

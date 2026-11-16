@@ -257,6 +257,57 @@ async def remove_member(
     return await service.remove_member(db, actor, space_id, user_id)
 
 
+@router.post("/messages/{message_id}/save", response_model=schemas.MessageOut)
+async def save_msg(message_id: int, actor: CurrentActor, db: Db) -> schemas.MessageOut:
+    return await service.save_message(db, actor, message_id)
+
+
+@router.post("/messages/{message_id}/unsave", response_model=schemas.MessageOut)
+async def unsave_msg(message_id: int, actor: CurrentActor, db: Db) -> schemas.MessageOut:
+    return await service.unsave_message(db, actor, message_id)
+
+
+@router.get("/saved", response_model=list[schemas.MessageOut])
+async def saved(actor: CurrentActor, db: Db, limit: Limit = 50) -> list[schemas.MessageOut]:
+    return await service.saved_messages(db, actor, limit)
+
+
+@router.get("/threads", response_model=list[schemas.MessageOut])
+async def threads(actor: CurrentActor, db: Db, limit: Limit = 30) -> list[schemas.MessageOut]:
+    return await service.my_threads(db, actor, limit)
+
+
+@router.post("/messages/{message_id}/seen")
+async def mark_seen(message_id: int, actor: CurrentActor, db: Db) -> dict[str, object]:
+    return await service.mark_seen(db, actor, message_id)
+
+
+@router.get("/messages/{message_id}/seen")
+async def seen_by(message_id: int, actor: CurrentActor, db: Db) -> list[dict[str, object]]:
+    return await service.seen_by(db, actor, message_id)
+
+
+@router.post(
+    "/messages/{message_id}/forward",
+    response_model=schemas.MessageOut,
+    status_code=201,
+)
+async def forward(
+    message_id: int,
+    data: schemas.ForwardIn,
+    actor: CurrentActor,
+    db: Db,
+    idempotency_key: IdempotencyKey,
+) -> schemas.MessageOut:
+    return await service.forward_message(
+        db,
+        actor,
+        message_id,
+        data.to_space_id,
+        idempotency_key,
+    )
+
+
 @router.get("/voice/{space_id}/history", response_model=list[schemas.CallEventOut])
 async def voice_history(
     space_id: int, actor: CurrentActor, db: Db, limit: Limit = 50
