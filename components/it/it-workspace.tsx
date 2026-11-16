@@ -244,12 +244,18 @@ function ChangesView() {
   }, []);
   const [title, setTitle] = React.useState("");
   const [risk, setRisk] = React.useState<ITChange["risk"]>("low");
+  const [saving, setSaving] = React.useState(false);
 
   async function request() {
-    const problem = await requestITChange({ title, risk }, me);
-    if (problem) return toast.error(problem);
-    toast.success("Change requested");
-    setTitle("");
+    setSaving(true);
+    try {
+      const problem = await requestITChange({ title, risk }, me);
+      if (problem) return toast.error(problem);
+      toast.success("Change requested");
+      setTitle("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -261,7 +267,7 @@ function ChangesView() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Input aria-label="Change title" placeholder="What will change?" value={title} onChange={(e) => setTitle(e.target.value)} />
             <select aria-label="Change risk" className={selectClass} value={risk} onChange={(e) => setRisk(e.target.value as ITChange["risk"])}><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select>
-            <Button disabled={title.trim().length < 5} onClick={request}>Request change</Button>
+            <Button disabled={saving || title.trim().length < 5} onClick={request}>{saving ? "Saving…" : "Request change"}</Button>
           </div>
         </CardContent>
       </Card>
