@@ -399,7 +399,7 @@ export const useFinanceStore = create<FinanceState>()(
         if (!bill) return "Bill not found.";
         if (bill.poId) {
           const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === bill.poId);
-          const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
+          const match = threeWayMatch(bill.amount - (bill.gst ?? 0), order, workflowRules().matchTolerancePercent);
           if (!match.matched) return `Payment is held: ${bill.number} does not match its order yet (${match.status}).`;
         }
         const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);

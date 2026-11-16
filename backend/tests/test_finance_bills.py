@@ -230,3 +230,44 @@ async def test_a_bill_records_its_gst_and_portfolio_costs_leave_it_out(
     assert too_much.status_code == 422
     summary = (await client.get("/v1/portfolio/summary", headers=owner.headers)).json()
     assert summary["companies"][0]["books"]["current"]["costs"] == "1000.00"
+
+
+async def test_three_way_match_uses_net_amount_excluding_gst(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    """A bill whose GST-inclusive total exceeds the PO received value must still
+    match when its base (amount - GST) equals the received value."""
+    owner = await _setup(client, mailbox)
+    # PO-1 received 40 items at 4500 paise each = 180000 paise received.
+    # Bill for 212400 (180000 base + 32400 GST at 18%).
+    bill_with_gst = {
+        **BILL,
+        "amount_paise": 212400,
+        "gst_paise": 32400,
+        "vendor_bill_no": "GST-1",
+    }
+    created = await client.post(
+        "/v1/finance/bills",
+        headers={**owner.headers, **_key("gst-match")},
+        json=bill_with_gst,
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["match"] == "matched"
+
+    # Payment should be allowed on a matched bill with GST.
+    pay_url = f"/v1/finance/bills/{created.json()['id']}/payments"
+    paid = await client.post(
+        pay_url,
+        headers={**owner.headers, **_key("gst-pay")},
+        json={**PAYMENT, "amount_paise": 100000},
+    )
+    assert paid.status_code == 201, paid.text
+
+    # A bill where even the net exceeds received should not match.
+    over = await client.post(
+        "/v1/finance/bills",
+        headers={**owner.headers, **_key("gst-over")},
+        json={**BILL, "amount_paise": 300000, "gst_paise": 40000, "vendor_bill_no": "GST-2"},
+    )
+    assert over.status_code == 201
+    assert over.json()["match"] == "bill above goods received"

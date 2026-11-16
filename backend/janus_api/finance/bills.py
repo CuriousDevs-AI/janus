@@ -123,8 +123,9 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
     if row.po_key is not None:
         order = await operations.received_order(db, row.tenant_id, row.po_key)
         rules = await rules_for(db, row.tenant_id)
+        net = row.amount_paise - row.gst_paise
         match = (
-            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
+            _match(net, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )
@@ -219,8 +220,9 @@ async def list_bills(
         match = "no order"
         if row.po_key is not None:
             order = orders.get(row.po_key)
+            net = row.amount_paise - row.gst_paise
             match = (
-                _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
+                _match(net, order.received_paise, rules.match_tolerance_percent)
                 if order and rules
                 else "no order"
             )
@@ -284,7 +286,8 @@ async def record_bill(
         order = await operations.received_order(db, tenant_id, data.po_key)
         if order is None:
             raise ApiError("po_not_found", "The purchase order was not found.", 422)
-        if _match(data.amount_paise, order.received_paise, Decimal(0)) == "goods not received":
+        net = data.amount_paise - data.gst_paise
+        if _match(net, order.received_paise, Decimal(0)) == "goods not received":
             raise ApiError(
                 "goods_not_received",
                 f"No goods have been received against {order.number} yet.",
@@ -383,8 +386,9 @@ async def pay_bill(
     if row.po_key is not None:
         order = await operations.received_order(db, tenant_id, row.po_key)
         rules = await rules_for(db, tenant_id)
+        net = row.amount_paise - row.gst_paise
         match = (
-            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
+            _match(net, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )
