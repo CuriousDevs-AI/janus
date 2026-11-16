@@ -511,6 +511,8 @@ function PurchaseOrdersView({ me }: { me: string }) {
 
 /** The vendor master: the names purchase orders and bills pick from, with GSTIN and payment terms. */
 function VendorsView() {
+  const session = useSession();
+  const canBilling = hasPermission(session.permissions, "billing:manage");
   const vendors = useVendorsStore((state) => state.vendors);
   const addVendor = useVendorsStore((state) => state.addVendor);
   const [name, setName] = React.useState("");
@@ -549,7 +551,7 @@ function VendorsView() {
           ))}
         </CardContent>
       </Card>
-      <VendorBankSection vendors={vendors.map((v) => ({ id: v.id, name: v.name }))} />
+      {canBilling ? <VendorBankSection vendors={vendors.map((v) => ({ id: v.id, name: v.name }))} /> : null}
     </>
   );
 }
