@@ -384,8 +384,9 @@ function RequisitionsView({ me }: { me: string }) {
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={r.status === "approved" || r.status === "ordered" ? "success" : r.status === "rejected" ? "danger" : "warning"}>{r.status}</Badge>
-                  {r.status === "pending" ? (
-                    <>
+                  {r.status === "pending" ? (r.requester === me
+                    ? <span className="text-xs text-muted-foreground">Waiting for someone else to approve</span>
+                    : <>
                       <Button size="sm" variant="secondary" onClick={() => approve(r.id, r.budgetLineId)}>Approve</Button>
                       <Button size="sm" variant="ghost" onClick={() => { void rejectRequisition(r.id, "Rejected from requisitions", me).then((p) => { if (p) toast.error(p); }); }}>Reject</Button>
                     </>
