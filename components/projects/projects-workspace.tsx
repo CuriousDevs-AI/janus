@@ -66,7 +66,7 @@ export function ProjectsWorkspace() {
       .catch((error: unknown) => toast.warning(`Some projects are not on the server yet: ${message(error)}`))
       .finally(() => setChecked(true));
   }, []);
-  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", calendar: "Project calendar", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
+  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", calendar: "Project calendar", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery", timeline: "Project Timeline" };
 
   if (view in comingSoon) {
     return (
@@ -94,8 +94,8 @@ export function ProjectsWorkspace() {
             {view === "calendar" && <CalendarView />}
             {view === "client-delivery" && <ClientView />}
             {view === "timeline" && <TimelineView />}
-            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <OverviewView />}
-            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <ProjectsTrail />}
+            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar", "timeline"].includes(view) && <OverviewView />}
+            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar", "timeline"].includes(view) && <ProjectsTrail />}
           </>
         ) : null}
       </div>
