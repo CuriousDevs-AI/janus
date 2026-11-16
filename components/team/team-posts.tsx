@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Bell, CalendarDays, Check, MapPin, Megaphone, PartyPopper, Plus } from "lucide-react";
+import { BarChart3, Bell, CalendarDays, Check, Clock, MapPin, Megaphone, PartyPopper, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { enablePush } from "@/lib/push";
@@ -234,6 +234,62 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
     );
   }
 
+  if (item.kind === "meeting" && item.meeting) {
+    const meeting = item.meeting;
+    const start = new Date(meeting.startsAt);
+    const answers: Array<[string, string, number, string]> = [
+      ["going", "Going", meeting.going, "bg-success text-white border-success"],
+      ["maybe", "Maybe", meeting.maybe, "bg-warning text-white border-warning"],
+      ["no", "Can't go", meeting.declined, "bg-surface-3 text-foreground border-border"],
+    ];
+    return (
+      <article aria-label="Meeting" className="flex w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-md">
+        <div className="flex w-20 shrink-0 flex-col items-center justify-center bg-gradient-to-b from-info to-accent py-4 text-white">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-white/85">{new Intl.DateTimeFormat("en-IN", { month: "short" }).format(start)}</span>
+          <span className="text-3xl font-bold leading-none">{start.getDate()}</span>
+          <span className="mt-1 text-[10px] text-white/80">{new Intl.DateTimeFormat("en-IN", { weekday: "short" }).format(start)}</span>
+        </div>
+        <div className="min-w-0 flex-1 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-info">Meeting</p>
+          <h3 className="mt-0.5 text-base font-semibold">{item.title || "Meeting"}</h3>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarDays className="size-3.5" /> {when(meeting.startsAt)}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Clock className="size-3.5" /> {meeting.durationMinutes} min</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground/90">{item.body}</p>
+          {meeting.agenda ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-medium text-accent">View agenda</summary>
+              <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-surface-2 p-3 text-xs text-foreground/80">{meeting.agenda}</p>
+            </details>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Are you going">
+              {answers.map(([val, label, count, picked]) => (
+                <button
+                  key={val}
+                  type="button"
+                  role="radio"
+                  aria-checked={meeting.mine === val}
+                  disabled={busy}
+                  onClick={() => void answer(val)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                    meeting.mine === val ? picked : "border-border text-muted-foreground hover:bg-surface-2",
+                  )}
+                >
+                  {label} · {count}
+                </button>
+              ))}
+            </div>
+            <a href={meeting.joinUrl} className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-accent/90">
+              <Video className="size-3.5" /> Join
+            </a>
+          </div>
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground"><Face name={item.author.name} /> Scheduled by {item.mine ? "you" : item.author.name}</p>
+        </div>
+      </article>
+    );
+  }
+
   return null;
 }
 
@@ -242,6 +298,7 @@ const POST_LABELS: Record<TeamPostKind, string> = {
   kudos: "Kudos",
   poll: "Poll",
   event: "Event",
+  meeting: "Meeting",
 };
 
 /** The "+" beside the message box: give kudos, start a poll, plan an event, or announce. */
@@ -261,7 +318,7 @@ export function PostMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon" aria-label="New post" title="Kudos, poll, event or announcement">
+          <Button type="button" variant="ghost" size="icon" aria-label="New post" title="Kudos, poll, event, meeting or announcement">
             <Plus className="size-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -269,6 +326,7 @@ export function PostMenu({
           <DropdownMenuItem onSelect={() => setKind("kudos")}><PartyPopper className="size-3.5" /> Give kudos</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setKind("poll")}><BarChart3 className="size-3.5" /> Start a poll</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setKind("event")}><CalendarDays className="size-3.5" /> Plan an event</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setKind("meeting")}><Video className="size-3.5" /> Schedule a meeting</DropdownMenuItem>
           {canAnnounce ? (
             <DropdownMenuItem onSelect={() => setKind("announcement")}><Megaphone className="size-3.5" /> Make an announcement</DropdownMenuItem>
           ) : null}
@@ -311,6 +369,8 @@ export function PostDialog({
   const [closesAt, setClosesAt] = React.useState("");
   const [startsAt, setStartsAt] = React.useState("");
   const [place, setPlace] = React.useState("");
+  const [agenda, setAgenda] = React.useState("");
+  const [duration, setDuration] = React.useState("30");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const key = React.useMemo(() => crypto.randomUUID(), []);
@@ -332,6 +392,14 @@ export function PostDialog({
       if (!startsAt) return setError("Pick when it starts.");
       Object.assign(payload, { starts_at: new Date(startsAt).toISOString(), place: place.trim() });
     }
+    if (kind === "meeting") {
+      if (!startsAt) return setError("Pick when the meeting starts.");
+      Object.assign(payload, {
+        starts_at: new Date(startsAt).toISOString(),
+        duration_minutes: Number(duration),
+        agenda: agenda.trim(),
+      });
+    }
     if (!payload.body) return setError(kind === "poll" ? "Write the question." : "Write a message.");
     setBusy(true);
     setError("");
@@ -352,7 +420,7 @@ export function PostDialog({
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
             <DialogTitle>
-              {kind === "kudos" ? "Give kudos" : kind === "poll" ? "Start a poll" : kind === "event" ? "Plan an event" : "Make an announcement"}
+              {kind === "kudos" ? "Give kudos" : kind === "poll" ? "Start a poll" : kind === "event" ? "Plan an event" : kind === "meeting" ? "Schedule a meeting" : "Make an announcement"}
             </DialogTitle>
             <DialogDescription>
               {kind === "announcement"
@@ -361,7 +429,9 @@ export function PostDialog({
                   ? "Thank a teammate in front of everyone here. They also get an email."
                   : kind === "poll"
                     ? "One vote each; people can change their vote until it closes."
-                    : "People here can answer going, maybe or can't go."}
+                    : kind === "meeting"
+                      ? "Set the time, agenda, and invite everyone. They get an email."
+                      : "People here can answer going, maybe or can't go."}
             </DialogDescription>
           </DialogHeader>
           {kind === "kudos" ? (
@@ -381,10 +451,10 @@ export function PostDialog({
               </div>
             </div>
           ) : null}
-          {kind === "announcement" || kind === "event" ? (
+          {kind === "announcement" || kind === "event" || kind === "meeting" ? (
             <div className="space-y-1.5">
-              <Label htmlFor="post-title">{kind === "event" ? "Event name" : "Headline"}</Label>
-              <Input id="post-title" maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} placeholder={kind === "event" ? "Diwali celebration" : "Office closed on Friday"} />
+              <Label htmlFor="post-title">{kind === "event" ? "Event name" : kind === "meeting" ? "Meeting title" : "Headline"}</Label>
+              <Input id="post-title" maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} placeholder={kind === "event" ? "Diwali celebration" : kind === "meeting" ? "Weekly sync" : "Office closed on Friday"} />
             </div>
           ) : null}
           <div className="space-y-1.5">
@@ -427,10 +497,35 @@ export function PostDialog({
               </div>
             </div>
           ) : null}
+          {kind === "meeting" ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="meeting-starts">Date &amp; time</Label>
+                  <Input id="meeting-starts" type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="meeting-duration">Duration</Label>
+                  <select id="meeting-duration" value={duration} onChange={(event) => setDuration(event.target.value)} className="h-9 w-full rounded-md border border-border bg-surface px-2 text-sm">
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="meeting-agenda">Agenda (optional)</Label>
+                <Textarea id="meeting-agenda" rows={3} maxLength={2000} value={agenda} onChange={(event) => setAgenda(event.target.value)} placeholder="1. Status updates&#10;2. Open items&#10;3. Next steps" />
+              </div>
+            </>
+          ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy}>{busy ? "Posting…" : kind === "announcement" ? "Announce" : "Post"}</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Posting…" : kind === "announcement" ? "Announce" : kind === "meeting" ? "Schedule" : "Post"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

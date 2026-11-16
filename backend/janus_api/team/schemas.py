@@ -14,6 +14,7 @@ class ChannelIn(BaseModel):
     name: str = Field(pattern=CHANNEL_NAME)
     topic: str = Field(default="", max_length=200)
     voice: bool = False
+    private: bool = False
 
 
 class DirectIn(BaseModel):
@@ -34,10 +35,10 @@ Option = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, m
 
 
 class PostIn(BaseModel):
-    """A post in a conversation: an announcement, kudos for someone, a poll or an event."""
+    """A post: announcement, kudos, poll, event or meeting."""
 
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["announcement", "kudos", "poll", "event"]
+    kind: Literal["announcement", "kudos", "poll", "event", "meeting"]
     body: Body
     title: str = Field(default="", max_length=120)
     kudos_to: int | None = Field(default=None, gt=0)
@@ -46,6 +47,8 @@ class PostIn(BaseModel):
     closes_at: datetime | None = None
     starts_at: datetime | None = None
     place: str = Field(default="", max_length=120)
+    agenda: str = Field(default="", max_length=2000)
+    duration_minutes: int = Field(default=30, ge=5, le=480)
 
 
 class RespondIn(BaseModel):
@@ -134,6 +137,7 @@ class SpaceOut(BaseModel):
     # The company's announcements channel: everyone reads it, only announcers post.
     announcements: bool = False
     canPost: bool = True
+    private: bool = False
 
 
 class ReactionOut(BaseModel):
@@ -175,6 +179,9 @@ class MessageOut(BaseModel):
     kudos: "KudosOut | None" = None
     poll: "PollOut | None" = None
     event: "EventOut | None" = None
+    meeting: "MeetingOut | None" = None
+    pinned: bool = False
+    pinnedBy: "PersonOut | None" = None
 
 
 class KudosOut(BaseModel):
@@ -205,6 +212,17 @@ class EventOut(BaseModel):
     mine: str | None
 
 
+class MeetingOut(BaseModel):
+    startsAt: datetime
+    durationMinutes: int
+    agenda: str
+    going: int
+    maybe: int
+    declined: int
+    mine: str | None
+    joinUrl: str
+
+
 class AnnouncementOut(BaseModel):
     id: str
     spaceId: str
@@ -215,6 +233,19 @@ class AnnouncementOut(BaseModel):
 
 
 SearchHit.model_rebuild()
+
+
+class AddMemberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: int = Field(gt=0)
+
+
+class CallEventOut(BaseModel):
+    id: str
+    userId: int
+    userName: str
+    action: str
+    createdAt: datetime
 
 
 class IceServerOut(BaseModel):

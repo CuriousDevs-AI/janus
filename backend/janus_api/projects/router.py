@@ -8,16 +8,19 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 
 from janus_api.audit import service as audit
 from janus_api.auth.service import Actor
+from janus_api.core.db import session_factory
 from janus_api.core.deps import Db, request_ip, require
 from janus_api.core.errors import ApiError
+from janus_api.core.tenancy import set_context
 from janus_api.org import service as org_service
 from janus_api.projects.models import Project
+from janus_api.team import hooks as team_hooks
 from janus_api.timeline.service import record_event
 
 router = APIRouter(prefix="/v1/project-records", tags=["Project records"])
@@ -79,9 +82,17 @@ async def list_projects(actor: Manage, db: Db) -> list[ProjectOut]:
     return [_out(row) for row in rows.all()]
 
 
+async def _sync_project_channel(
+    tenant_id: int, user_id: int, project_key: str, project_name: str
+) -> None:
+    async with session_factory()() as db:
+        await set_context(db, tenant_id=tenant_id, user_id=user_id)
+        await team_hooks.sync_project_channel(db, tenant_id, user_id, project_key, project_name)
+
+
 @router.post("", response_model=ProjectOut, status_code=201)
 async def create_project(
-    data: ProjectCreate, actor: Manage, db: Db, request: Request
+    data: ProjectCreate, actor: Manage, db: Db, request: Request, background: BackgroundTasks
 ) -> ProjectOut:
     tenant_id = actor.session.tenant_id
     if await db.scalar(
@@ -121,6 +132,9 @@ async def create_project(
         tenant_id=tenant_id,
         ip=request_ip(request),
         details={"external_key": data.external_key},
+    )
+    background.add_task(
+        _sync_project_channel, tenant_id, actor.user.id, data.external_key, data.name.strip()
     )
     return _out(row)
 

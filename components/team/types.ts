@@ -21,6 +21,7 @@ export interface TeamSpace {
   /** The company's announcements channel: everyone reads it, only announcers post. */
   announcements: boolean;
   canPost: boolean;
+  private: boolean;
 }
 
 export interface TeamReaction {
@@ -53,9 +54,21 @@ export interface TeamMessage {
     closed: boolean;
   } | null;
   event: { startsAt: string; place: string; going: number; maybe: number; declined: number; mine: string | null } | null;
+  meeting: {
+    startsAt: string;
+    durationMinutes: number;
+    agenda: string;
+    going: number;
+    maybe: number;
+    declined: number;
+    mine: string | null;
+    joinUrl: string;
+  } | null;
+  pinned: boolean;
+  pinnedBy: TeamPerson | null;
 }
 
-export type TeamPostKind = "announcement" | "kudos" | "poll" | "event";
+export type TeamPostKind = "announcement" | "kudos" | "poll" | "event" | "meeting";
 
 export interface TeamAnnouncement {
   id: string;
@@ -79,6 +92,14 @@ export interface TeamSearchHit {
   spaceId: string;
   spaceLabel: string;
   spaceKind: "channel" | "dm" | "group" | "voice";
+}
+
+export interface TeamCallEvent {
+  id: string;
+  userId: number;
+  userName: string;
+  action: "join" | "leave" | "share_on" | "share_off";
+  createdAt: string;
 }
 
 /** The largest file the team chat accepts, the same as the server. */

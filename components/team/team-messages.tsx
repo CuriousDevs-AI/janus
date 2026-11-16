@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, FileText, MessageSquare, MoreHorizontal, Paperclip, Pencil, SmilePlus, Trash2, X } from "lucide-react";
+import { Download, FileText, MessageSquare, MoreHorizontal, Paperclip, Pencil, Pin, PinOff, SmilePlus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { cn, initials } from "@/lib/utils";
@@ -176,6 +176,15 @@ function MessageRow({
     }
   }
 
+  async function togglePin() {
+    try {
+      await api(`/team/messages/${item.id}/${item.pinned ? "unpin" : "pin"}`, { method: "POST" });
+      onChanged();
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
   // Announcements, kudos, polls and events stand apart from the chat: centred, full cards.
   const post = item.kind !== "text" && !item.deleted && !editing;
   return (
@@ -206,6 +215,11 @@ function MessageRow({
       </div>
       )}
       <div className={cn("flex min-w-0 flex-col", post ? "w-full max-w-2xl items-center" : cn("max-w-[80%]", item.mine ? "items-end" : "items-start"))}>
+        {item.pinned && !item.deleted ? (
+          <span className="mb-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+            <Pin className="size-3" /> Pinned{item.pinnedBy ? ` by ${item.pinnedBy.name}` : ""}
+          </span>
+        ) : null}
         {item.deleted ? (
           <p className="rounded-lg bg-surface px-3 py-1.5 text-sm italic text-muted-foreground shadow-sm">
             This message was deleted.
@@ -322,6 +336,15 @@ function MessageRow({
                 onClick={() => onOpenThread(item.id)}
               >
                 <MessageSquare className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                aria-label={item.pinned ? "Unpin message" : "Pin message"}
+                onClick={() => void togglePin()}
+              >
+                {item.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
               </Button>
             </>
           ) : null}

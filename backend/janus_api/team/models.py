@@ -42,6 +42,9 @@ class TeamSpace(Base):
     topic: Mapped[str] = mapped_column(String(200), server_default="")
     # The company's announcements channel: everyone is in it, only announcers post.
     announcements: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    private: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    source_kind: Mapped[str | None] = mapped_column(String(20))
+    source_id: Mapped[str | None] = mapped_column(String(80))
     created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -68,7 +71,7 @@ class TeamMessage(Base):
         ),
         CheckConstraint("char_length(body) BETWEEN 1 AND 4000", name="ck_team_messages_body"),
         CheckConstraint(
-            "kind IN ('text', 'announcement', 'kudos', 'poll', 'event')",
+            "kind IN ('text', 'announcement', 'kudos', 'poll', 'event', 'meeting')",
             name="ck_team_messages_kind",
         ),
     )
@@ -87,6 +90,8 @@ class TeamMessage(Base):
     )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pinned_by: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class TeamResponse(Base):
@@ -145,6 +150,23 @@ class TeamVoicePresence(Base):
     sharing: Mapped[bool] = mapped_column(Boolean, server_default="false")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamCallEvent(Base):
+    """A join, leave or screen-share event in a voice call, for call history."""
+
+    __tablename__ = "team_call_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('join', 'leave', 'share_on', 'share_off')",
+            name="ck_team_call_events_action",
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class TeamSignal(Base):

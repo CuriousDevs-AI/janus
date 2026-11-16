@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Hash, Headphones, Megaphone, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
+import { Hash, Headphones, Lock, Megaphone, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -213,7 +213,7 @@ export function ChatAvatar({ item, label }: { item: TeamSpace; label: string }) 
   if (isChannel(item.kind)) {
     return (
       <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">
-        <Hash className="size-5" />
+        {item.private ? <Lock className="size-5" /> : <Hash className="size-5" />}
       </span>
     );
   }
@@ -259,7 +259,7 @@ function ChatRow({ item, active, onPick }: { item: TeamSpace; active: boolean; o
         <span className="min-w-0 flex-1 border-b border-border/60 py-1.5">
           <span className="flex items-baseline justify-between gap-2">
             <span className={cn("truncate text-[15px] text-foreground", item.unread > 0 && "font-semibold")}>
-              {isChannel(item.kind) ? `# ${label}` : label}
+              {isChannel(item.kind) ? (item.private ? `🔒 ${label}` : `# ${label}`) : label}
             </span>
             <span className={cn("shrink-0 text-[11px]", item.unread > 0 ? "font-medium text-success" : "text-muted-foreground")}>
               {shortTime(item.lastMessageAt)}

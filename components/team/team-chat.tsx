@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, Hash, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Plus, Search, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Clock, Hash, Lock, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -56,6 +56,9 @@ export function TeamChat() {
   const [creating, setCreating] = React.useState(false);
   const [picking, setPicking] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [pinnedOpen, setPinnedOpen] = React.useState(false);
+  const [addingMember, setAddingMember] = React.useState(false);
+  const [callHistoryOpen, setCallHistoryOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [term, setTerm] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -73,6 +76,12 @@ export function TeamChat() {
   );
   const replies = useApi<TeamMessage[]>(
     demoMode || !threadId ? null : `/team/messages/${threadId}/replies`,
+  );
+  const pinned = useApi<TeamMessage[]>(
+    demoMode || !pinnedOpen || !selected ? null : `/team/spaces/${selected}/pinned`,
+  );
+  const callHistory = useApi<Array<{ id: string; userId: number; userName: string; action: string; createdAt: string }>>(
+    demoMode || !callHistoryOpen || !selected ? null : `/team/voice/${selected}/history?limit=50`,
   );
 
   const reloadChannels = channels.reload;
@@ -126,6 +135,8 @@ export function TeamChat() {
   function choose(id: string) {
     setSelected(id);
     setThreadId(null);
+    setPinnedOpen(false);
+    setCallHistoryOpen(false);
   }
 
   // Keep the URL in sync with the selected space so reload and deep links work.
@@ -206,15 +217,15 @@ export function TeamChat() {
     }
   }
 
-  async function createChannel(name: string, topic: string) {
+  async function createChannel(name: string, topic: string, isPrivate: boolean) {
     const created = await api<TeamSpace>("/team/channels", {
       method: "POST",
-      body: JSON.stringify({ name, topic }),
+      body: JSON.stringify({ name, topic, private: isPrivate }),
     });
     reloadChannels();
     choose(created.id);
     setCreating(false);
-    toast.success(`Created #${created.name}`);
+    toast.success(`Created ${isPrivate ? "🔒" : "#"}${created.name}`);
   }
 
   function pick(item: TeamSpace) {
@@ -265,7 +276,7 @@ export function TeamChat() {
   }
 
   const threadRoot = threadId ? messages.data?.find((item) => item.id === threadId) ?? null : null;
-  const title = space ? (isChannel(space.kind) ? `#${space.name}` : space.title) : "Team chat";
+  const title = space ? (isChannel(space.kind) ? `${space.private ? "🔒" : "#"}${space.name}` : space.title) : "Team chat";
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 bg-background">
@@ -325,6 +336,16 @@ export function TeamChat() {
               </Button>
             )
           ) : null}
+          {space && isChannel(space.kind) && space.joined ? (
+            <Button variant="ghost" size="icon" aria-label="Pinned messages" aria-pressed={pinnedOpen} onClick={() => setPinnedOpen((open) => !open)}>
+              <Pin className="size-4" />
+            </Button>
+          ) : null}
+          {space && isChannel(space.kind) && space.joined ? (
+            <Button variant="ghost" size="icon" aria-label="Add people" onClick={() => setAddingMember(true)}>
+              <UserPlus className="size-4" />
+            </Button>
+          ) : null}
           <Button variant="ghost" size="icon" aria-label="Search team messages" aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>
             <Search className="size-4" />
           </Button>
@@ -336,6 +357,11 @@ export function TeamChat() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {space?.kind === "voice" || space?.inCall?.length ? (
+                  <DropdownMenuItem onSelect={() => setCallHistoryOpen(true)}>
+                    <Clock className="size-3.5" /> Call history
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem onSelect={() => void changeMembership("leave")}>
                   <LogOut className="size-3.5" /> Leave channel
                 </DropdownMenuItem>
@@ -448,6 +474,33 @@ export function TeamChat() {
         )}
       </section>
 
+      {pinnedOpen && selected ? (
+        <PinnedPanel
+          messages={pinned.data ?? []}
+          loading={pinned.loading && !pinned.data}
+          onClose={() => setPinnedOpen(false)}
+          onChanged={() => { pinned.reload(); reloadMessages(); }}
+        />
+      ) : null}
+
+      {addingMember && space && isChannel(space.kind) ? (
+        <AddMemberDialog
+          open={addingMember}
+          onOpenChange={setAddingMember}
+          spaceId={space.id}
+          people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
+          onAdded={() => { reloadChannels(); setAddingMember(false); }}
+        />
+      ) : null}
+
+      {callHistoryOpen && selected ? (
+        <CallHistoryDialog
+          events={callHistory.data ?? []}
+          loading={callHistory.loading && !callHistory.data}
+          onClose={() => setCallHistoryOpen(false)}
+        />
+      ) : null}
+
       <CreateChannelDialog open={creating} onOpenChange={setCreating} onCreate={createChannel} />
       <PeopleDialog
         open={picking}
@@ -485,10 +538,11 @@ function CreateChannelDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (name: string, topic: string) => Promise<void>;
+  onCreate: (name: string, topic: string, isPrivate: boolean) => Promise<void>;
 }) {
   const [name, setName] = React.useState("");
   const [topic, setTopic] = React.useState("");
+  const [isPrivate, setIsPrivate] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const normalized = name.trim().toLowerCase().replace(/\s+/g, "-");
@@ -500,9 +554,10 @@ function CreateChannelDialog({
     setBusy(true);
     setError("");
     try {
-      await onCreate(normalized, topic.trim());
+      await onCreate(normalized, topic.trim(), isPrivate);
       setName("");
       setTopic("");
+      setIsPrivate(false);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -517,7 +572,7 @@ function CreateChannelDialog({
           <DialogHeader>
             <DialogTitle>Create a channel</DialogTitle>
             <DialogDescription>
-              Everyone in the company can read a channel, chat in it after joining, and start a call with screen sharing. Lowercase letters, numbers and dashes.
+              A public channel is visible to everyone. A private channel is only visible to its members. Lowercase letters, numbers and dashes.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -532,6 +587,15 @@ function CreateChannelDialog({
             <Label htmlFor="channel-topic">Topic (optional)</Label>
             <Textarea id="channel-topic" rows={2} maxLength={200} placeholder="What is this channel for?" value={topic} onChange={(event) => setTopic(event.target.value)} />
           </div>
+          <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2.5">
+            <input type="checkbox" checked={isPrivate} onChange={(event) => setIsPrivate(event.target.checked)} className="size-4 accent-accent" />
+            <div className="flex-1">
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Lock className="size-3.5" /> Private channel
+              </span>
+              <span className="text-xs text-muted-foreground">Only invited members can see and find it</span>
+            </div>
+          </label>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -704,5 +768,178 @@ function SearchPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function PinnedPanel({
+  messages,
+  loading,
+  onClose,
+  onChanged,
+}: {
+  messages: TeamMessage[];
+  loading: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  async function unpinMessage(id: string) {
+    try {
+      await api(`/team/messages/${id}/unpin`, { method: "POST" });
+      onChanged();
+      toast.success("Message unpinned");
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[80dvh] overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pin className="size-4" /> Pinned messages</DialogTitle>
+          <DialogDescription>Messages pinned to this channel.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-96 overflow-y-auto">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No pinned messages yet. Pin important messages from the message menu.</p>
+          ) : (
+            <ul className="space-y-2">
+              {messages.map((msg) => (
+                <li key={msg.id} className="rounded-md border border-border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-foreground">{msg.author.name}</p>
+                      <p className="mt-0.5 text-sm text-foreground">{msg.body}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        {msg.pinnedBy ? ` · Pinned by ${msg.pinnedBy.name}` : null}
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => void unpinMessage(msg.id)}>
+                      Unpin
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddMemberDialog({
+  open,
+  onOpenChange,
+  spaceId,
+  people,
+  onAdded,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  spaceId: string;
+  people: TeamPerson[];
+  onAdded: () => void;
+}) {
+  const [query, setQuery] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const shown = people.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
+
+  async function addPerson(userId: number) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api(`/team/channels/${spaceId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId }),
+      });
+      toast.success("Person added to channel");
+      onAdded();
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><UserPlus className="size-4" /> Add people</DialogTitle>
+          <DialogDescription>Add a teammate to this channel.</DialogDescription>
+        </DialogHeader>
+        <Input autoFocus placeholder="Search people" aria-label="Search people" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <ul className="max-h-72 space-y-0.5 overflow-y-auto">
+          {shown.length === 0 ? <li className="px-2 py-3 text-sm text-muted-foreground">No one matches.</li> : null}
+          {shown.map((person) => (
+            <li key={person.id}>
+              <button
+                type="button"
+                onClick={() => void addPerson(person.id)}
+                disabled={busy}
+                className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2"
+              >
+                <Avatar className="size-7">
+                  <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                <UserPlus className="size-3.5 text-muted-foreground" />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const CALL_ACTIONS: Record<string, string> = { join: "Joined", leave: "Left", share_on: "Started sharing", share_off: "Stopped sharing" };
+
+function CallHistoryDialog({
+  events,
+  loading,
+  onClose,
+}: {
+  events: Array<{ id: string; userId: number; userName: string; action: string; createdAt: string }>;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[80dvh] overflow-hidden">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Clock className="size-4" /> Call history</DialogTitle>
+          <DialogDescription>Who joined, left and shared in this channel.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-96 overflow-y-auto">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : events.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No call activity yet.</p>
+          ) : (
+            <ul className="space-y-1">
+              {events.map((evt) => (
+                <li key={evt.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-medium">{evt.userName}</span>{" "}
+                    <span className="text-muted-foreground">{CALL_ACTIONS[evt.action] ?? evt.action}</span>
+                  </span>
+                  <time className="shrink-0 text-xs text-muted-foreground" dateTime={evt.createdAt}>
+                    {new Date(evt.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

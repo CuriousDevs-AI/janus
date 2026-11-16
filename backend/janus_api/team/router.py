@@ -142,6 +142,19 @@ async def _mail_after(
                 "tag": f"kudos-{message.id}",
             },
         )
+    elif message.kind == "meeting":
+        background.add_task(
+            push.send_to_people,
+            actor.session.tenant_id,
+            None,
+            actor.user.id,
+            {
+                "title": message.title or "New meeting scheduled",
+                "body": f"{actor.user.name}: {(message.body or '')[:180]}",
+                "url": url,
+                "tag": f"meeting-{message.id}",
+            },
+        )
 
 
 @router.post("/spaces/{space_id}/posts", response_model=schemas.MessageOut, status_code=201)
@@ -213,6 +226,42 @@ async def remove_reaction(
     message_id: int, data: schemas.ReactionIn, actor: CurrentActor, db: Db
 ) -> schemas.MessageOut:
     return await service.unreact(db, actor, message_id, data.emoji)
+
+
+@router.post("/messages/{message_id}/pin", response_model=schemas.MessageOut)
+async def pin(message_id: int, actor: CurrentActor, db: Db) -> schemas.MessageOut:
+    return await service.pin_message(db, actor, message_id)
+
+
+@router.post("/messages/{message_id}/unpin", response_model=schemas.MessageOut)
+async def unpin(message_id: int, actor: CurrentActor, db: Db) -> schemas.MessageOut:
+    return await service.unpin_message(db, actor, message_id)
+
+
+@router.get("/spaces/{space_id}/pinned", response_model=list[schemas.MessageOut])
+async def pinned(space_id: int, actor: CurrentActor, db: Db) -> list[schemas.MessageOut]:
+    return await service.pinned_messages(db, actor, space_id)
+
+
+@router.post("/channels/{space_id}/members", response_model=schemas.SpaceOut, status_code=201)
+async def add_member(
+    space_id: int, data: schemas.AddMemberIn, actor: CurrentActor, db: Db
+) -> schemas.SpaceOut:
+    return await service.add_member(db, actor, space_id, data.user_id)
+
+
+@router.delete("/channels/{space_id}/members/{user_id}", response_model=schemas.SpaceOut)
+async def remove_member(
+    space_id: int, user_id: int, actor: CurrentActor, db: Db
+) -> schemas.SpaceOut:
+    return await service.remove_member(db, actor, space_id, user_id)
+
+
+@router.get("/voice/{space_id}/history", response_model=list[schemas.CallEventOut])
+async def voice_history(
+    space_id: int, actor: CurrentActor, db: Db, limit: Limit = 50
+) -> list[schemas.CallEventOut]:
+    return await service.call_history(db, actor, space_id, limit)
 
 
 @router.get("/people", response_model=list[schemas.PersonOut])

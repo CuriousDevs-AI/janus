@@ -23,6 +23,7 @@ from janus_api.org import service as org_service
 from janus_api.team import schemas
 from janus_api.team.models import (
     TeamAttachment,
+    TeamCallEvent,
     TeamMessage,
     TeamReaction,
     TeamResponse,
@@ -184,6 +185,7 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
         inCall=await call_people(db, space.id),
         announcements=space.announcements,
         canPost=not space.announcements or _announcer(actor),
+        private=space.private,
     )
 
 
@@ -332,6 +334,7 @@ async def _spaces_out(db: Db, actor: Actor, spaces: list[TeamSpace]) -> list[sch
                 inCall=call_map.get(space.id, []),
                 announcements=space.announcements,
                 canPost=not space.announcements or _announcer(actor),
+                private=space.private,
             )
         )
     return out
@@ -339,7 +342,13 @@ async def _spaces_out(db: Db, actor: Actor, spaces: list[TeamSpace]) -> list[sch
 
 def _preview(row: TeamMessage) -> str:
     meta = row.meta or {}
-    labels = {"announcement": "📣 ", "kudos": "🎉 Kudos: ", "poll": "📊 Poll: ", "event": "📅 "}
+    labels = {
+        "announcement": "📣 ",
+        "kudos": "🎉 Kudos: ",
+        "poll": "📊 Poll: ",
+        "event": "📅 ",
+        "meeting": "📅 Meeting: ",
+    }
     text = meta.get("title") or row.body
     return (labels.get(row.kind, "") + text)[:PREVIEW_CHARS]
 
@@ -350,7 +359,7 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
     if not posts:
         return {}
     answers: dict[int, list[tuple[int, str]]] = {}
-    asked = [row.id for row in posts if row.kind in ("poll", "event")]
+    asked = [row.id for row in posts if row.kind in ("poll", "event", "meeting")]
     if asked:
         found = await db.execute(
             select(TeamResponse.message_id, TeamResponse.user_id, TeamResponse.value).where(
@@ -397,6 +406,18 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
                 maybe=sum(1 for _, value in given if value == "maybe"),
                 declined=sum(1 for _, value in given if value == "no"),
                 mine=mine,
+            )
+        elif row.kind == "meeting":
+            join_url = f"/team?space={row.space_id}&meeting={row.id}&workspace=team-chat"
+            extra["meeting"] = schemas.MeetingOut(
+                startsAt=datetime.fromisoformat(meta["starts_at"]),
+                durationMinutes=meta.get("duration_minutes", 30),
+                agenda=meta.get("agenda", ""),
+                going=sum(1 for _, value in given if value == "going"),
+                maybe=sum(1 for _, value in given if value == "maybe"),
+                declined=sum(1 for _, value in given if value == "no"),
+                mine=mine,
+                joinUrl=join_url,
             )
         out[row.id] = extra
     return out
@@ -456,10 +477,13 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
             )
         )
     posts = await _posts_out(db, actor, rows)
+    pinner_ids = {row.pinned_by for row in rows if row.pinned_by is not None}
+    pinners = await _people(db, pinner_ids) if pinner_ids else {}
     out = []
     for row in rows:
         author = people[row.author_id]
         deleted = row.deleted_at is not None
+        pinner = pinners.get(row.pinned_by) if row.pinned_by else None
         out.append(
             schemas.MessageOut(
                 id=str(row.id),
@@ -475,6 +499,8 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
                 reactions=[] if deleted else reactions.get(row.id, []),
                 attachments=[] if deleted else attachments.get(row.id, []),
                 kind=row.kind,
+                pinned=row.pinned_at is not None,
+                pinnedBy=schemas.PersonOut(id=pinner.id, name=pinner.name) if pinner else None,
                 **posts.get(row.id, {}),
             )
         )
@@ -527,12 +553,14 @@ async def _announcements_space(db: Db, actor: Actor) -> TeamSpace:
 
 async def list_channels(db: Db, actor: Actor) -> list[schemas.SpaceOut]:
     await _announcements_space(db, actor)
+    my_spaces = select(TeamSpaceMember.space_id).where(TeamSpaceMember.user_id == actor.user.id)
     spaces = (
         await db.scalars(
             select(TeamSpace)
             .where(
                 TeamSpace.tenant_id == actor.session.tenant_id,
                 TeamSpace.kind.in_(["channel", "voice"]),
+                or_(TeamSpace.private.is_(False), TeamSpace.id.in_(my_spaces)),
             )
             .order_by(TeamSpace.announcements.desc(), TeamSpace.kind, TeamSpace.name)
         )
@@ -552,6 +580,7 @@ async def create_channel(db: Db, actor: Actor, data: schemas.ChannelIn) -> schem
         kind="voice" if data.voice else "channel",
         name=data.name,
         topic=data.topic.strip(),
+        private=data.private,
         created_by=actor.user.id,
     )
     db.add(space)
@@ -565,6 +594,8 @@ async def join_channel(db: Db, actor: Actor, space_id: int) -> schemas.SpaceOut:
     space = await _space(db, actor.session.tenant_id, space_id)
     if space.kind not in ("channel", "voice"):
         raise ApiError("not_a_channel", "Only a channel can be joined.", 422)
+    if space.private and await _member(db, space.id, actor.user.id) is None:
+        raise ApiError("private_channel", "This channel is private. Ask a member to add you.", 403)
     if await _member(db, space.id, actor.user.id) is None:
         db.add(TeamSpaceMember(tenant_id=space.tenant_id, space_id=space.id, user_id=actor.user.id))
         await db.flush()
@@ -934,7 +965,10 @@ async def search(db: Db, actor: Actor, term: str, limit: int) -> list[schemas.Se
                 TeamMessage.tenant_id == tenant_id,
                 TeamMessage.deleted_at.is_(None),
                 TeamMessage.body.ilike(_like_pattern(term), escape="\\"),
-                or_(TeamSpace.kind == "channel", TeamSpace.id.in_(my_spaces)),
+                or_(
+                    and_(TeamSpace.kind == "channel", TeamSpace.private.is_(False)),
+                    TeamSpace.id.in_(my_spaces),
+                ),
             )
             .order_by(TeamMessage.id.desc())
             .limit(limit)
@@ -1045,6 +1079,14 @@ async def join_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
         # Messages from an earlier call here describe connections that no longer exist; a new
         # stream would replay them and break the new connection.
         await _clear_signals(db, space.id, actor.user.id)
+        db.add(
+            TeamCallEvent(
+                tenant_id=tenant_id,
+                space_id=space.id,
+                user_id=actor.user.id,
+                action="join",
+            )
+        )
     await db.flush()
     return schemas.CallOut(spaceId=str(space.id), participants=await call_people(db, space.id))
 
@@ -1056,9 +1098,20 @@ async def leave_call(db: Db, actor: Actor, space_id: int) -> schemas.CallOut:
             TeamVoicePresence.space_id == space.id, TeamVoicePresence.user_id == actor.user.id
         )
     )
+    was_present = False
     for row in rows.all():
+        was_present = True
         await db.delete(row)
     await _clear_signals(db, space.id, actor.user.id)
+    if was_present:
+        db.add(
+            TeamCallEvent(
+                tenant_id=actor.session.tenant_id,
+                space_id=space.id,
+                user_id=actor.user.id,
+                action="leave",
+            )
+        )
     await db.flush()
     return schemas.CallOut(spaceId=str(space.id), participants=await call_people(db, space.id))
 
@@ -1082,8 +1135,18 @@ async def set_call_state(
     row = await _presence(db, space.id, actor.user.id)
     if row is None:
         raise ApiError("not_in_call", "Join the call first.", 409)
+    was_sharing = row.sharing
     row.muted, row.deafened, row.sharing = data.muted, data.deafened, data.sharing
     row.seen_at = _now()
+    if data.sharing != was_sharing:
+        db.add(
+            TeamCallEvent(
+                tenant_id=actor.session.tenant_id,
+                space_id=space.id,
+                user_id=actor.user.id,
+                action="share_on" if data.sharing else "share_off",
+            )
+        )
     await db.flush()
     return schemas.CallOut(spaceId=str(space.id), participants=await call_people(db, space.id))
 
@@ -1255,6 +1318,14 @@ async def create_post(
         if data.starts_at is None:
             raise ApiError("event_time", "Pick when the event starts.", 422)
         meta |= {"starts_at": data.starts_at.isoformat(), "place": data.place.strip()}
+    elif data.kind == "meeting":
+        if data.starts_at is None:
+            raise ApiError("meeting_time", "Pick when the meeting starts.", 422)
+        meta |= {
+            "starts_at": data.starts_at.isoformat(),
+            "duration_minutes": data.duration_minutes,
+            "agenda": data.agenda.strip(),
+        }
     row = TeamMessage(
         tenant_id=tenant_id,
         space_id=space.id,
@@ -1278,15 +1349,15 @@ async def respond(
     space = await _space(db, actor.session.tenant_id, row.space_id)
     await _readable(db, actor, space)
     meta = row.meta or {}
-    if row.deleted_at is not None or row.kind not in ("poll", "event"):
-        raise ApiError("not_answerable", "Only polls and events take answers.", 422)
+    if row.deleted_at is not None or row.kind not in ("poll", "event", "meeting"):
+        raise ApiError("not_answerable", "Only polls, events and meetings take answers.", 422)
     if row.kind == "poll":
         closes = meta.get("closes_at")
         if closes and datetime.fromisoformat(str(closes)) <= _now():
             raise ApiError("poll_closed", "This poll has closed.", 409)
         if data.value not in {option["id"] for option in meta.get("options", [])}:
             raise ApiError("poll_option", "That option is not in the poll.", 422)
-    elif data.value not in EVENT_ANSWERS:
+    elif row.kind in ("event", "meeting") and data.value not in EVENT_ANSWERS:
         raise ApiError("event_answer", "Answer going, maybe or no.", 422)
     answer = await db.scalar(
         select(TeamResponse)
@@ -1339,6 +1410,186 @@ async def latest_announcements(
     ]
 
 
+MAX_PINS = 50
+
+
+async def pin_message(db: Db, actor: Actor, message_id: int) -> schemas.MessageOut:
+    row = await _message(db, actor.session.tenant_id, message_id)
+    space = await _space(db, actor.session.tenant_id, row.space_id)
+    await _postable(db, actor, space)
+    if row.deleted_at is not None:
+        raise ApiError("message_deleted", "A deleted message cannot be pinned.", 409)
+    if row.pinned_at is not None:
+        return (await _messages_out(db, actor, [row]))[0]
+    count = await db.scalar(
+        select(func.count())
+        .select_from(TeamMessage)
+        .where(TeamMessage.space_id == space.id, TeamMessage.pinned_at.isnot(None))
+    )
+    if (count or 0) >= MAX_PINS:
+        raise ApiError(
+            "too_many_pins",
+            f"A channel can have at most {MAX_PINS} pinned messages.",
+            422,
+        )
+    row.pinned_at = _now()
+    row.pinned_by = actor.user.id
+    await db.flush()
+    return (await _messages_out(db, actor, [row]))[0]
+
+
+async def unpin_message(db: Db, actor: Actor, message_id: int) -> schemas.MessageOut:
+    row = await _message(db, actor.session.tenant_id, message_id)
+    space = await _space(db, actor.session.tenant_id, row.space_id)
+    await _postable(db, actor, space)
+    row.pinned_at = None
+    row.pinned_by = None
+    await db.flush()
+    return (await _messages_out(db, actor, [row]))[0]
+
+
+async def pinned_messages(db: Db, actor: Actor, space_id: int) -> list[schemas.MessageOut]:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    rows = (
+        await db.scalars(
+            select(TeamMessage)
+            .where(TeamMessage.space_id == space.id, TeamMessage.pinned_at.isnot(None))
+            .order_by(TeamMessage.pinned_at.desc())
+            .limit(MAX_PINS)
+        )
+    ).all()
+    return await _messages_out(db, actor, list(rows))
+
+
+async def add_member(db: Db, actor: Actor, space_id: int, user_id: int) -> schemas.SpaceOut:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    if space.kind not in ("channel", "voice"):
+        raise ApiError("not_a_channel", "Members can only be added to channels.", 422)
+    if await _member(db, space.id, actor.user.id) is None:
+        raise ApiError("not_joined", "Join this channel first.", 403)
+    if not await _active_member(db, actor.session.tenant_id, user_id):
+        raise ApiError("person_not_found", "That person is not a member of this company.", 404)
+    existing = await _member(db, space.id, user_id)
+    if existing is None:
+        db.add(TeamSpaceMember(tenant_id=space.tenant_id, space_id=space.id, user_id=user_id))
+        await db.flush()
+    return await _space_out(db, actor, space)
+
+
+async def remove_member(db: Db, actor: Actor, space_id: int, user_id: int) -> schemas.SpaceOut:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    if space.kind not in ("channel", "voice"):
+        raise ApiError("not_a_channel", "Members can only be removed from channels.", 422)
+    if space.announcements:
+        raise ApiError("announcements_stay", "Everyone stays in announcements.", 422)
+    if space.created_by != actor.user.id:
+        raise ApiError("not_creator", "Only the channel creator can remove members.", 403)
+    member = await _member(db, space.id, user_id)
+    if member is not None:
+        await db.delete(member)
+        await db.flush()
+    return await _space_out(db, actor, space)
+
+
+async def call_history(
+    db: Db, actor: Actor, space_id: int, limit: int = 50
+) -> list[schemas.CallEventOut]:
+    space = await _call_space(db, actor, space_id)
+    rows = (
+        await db.execute(
+            select(TeamCallEvent, User.name)
+            .join(User, User.id == TeamCallEvent.user_id)
+            .where(TeamCallEvent.space_id == space.id)
+            .order_by(TeamCallEvent.id.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        schemas.CallEventOut(
+            id=str(event.id),
+            userId=event.user_id,
+            userName=name,
+            action=event.action,
+            createdAt=event.created_at,
+        )
+        for event, name in rows
+    ]
+
+
+async def ensure_source_channel(
+    db: Db, tenant_id: int, user_id: int, source_kind: str, source_id: str, name: str
+) -> TeamSpace:
+    """Find or create the channel linked to a department or project."""
+    space = await db.scalar(
+        select(TeamSpace).where(
+            TeamSpace.tenant_id == tenant_id,
+            TeamSpace.source_kind == source_kind,
+            TeamSpace.source_id == source_id,
+        )
+    )
+    if space is not None:
+        return space
+    channel_name = name.lower().replace(" ", "-")[:40]
+    channel_name = "".join(c for c in channel_name if c.isalnum() or c == "-").strip("-") or "group"
+    existing = await db.scalar(
+        select(TeamSpace.id).where(TeamSpace.tenant_id == tenant_id, TeamSpace.name == channel_name)
+    )
+    if existing is not None:
+        channel_name = f"{channel_name}-{source_id}"[:40]
+    space = TeamSpace(
+        tenant_id=tenant_id,
+        kind="channel",
+        name=channel_name,
+        topic=f"Auto-created for {source_kind}: {name}",
+        source_kind=source_kind,
+        source_id=source_id,
+        created_by=user_id,
+    )
+    db.add(space)
+    await db.flush()
+    db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=user_id))
+    await db.flush()
+    return space
+
+
+async def sync_source_members(
+    db: Db, tenant_id: int, source_kind: str, source_id: str, user_ids: set[int]
+) -> None:
+    """Ensure exactly these users are members of the source-linked channel."""
+    space = await db.scalar(
+        select(TeamSpace).where(
+            TeamSpace.tenant_id == tenant_id,
+            TeamSpace.source_kind == source_kind,
+            TeamSpace.source_id == source_id,
+        )
+    )
+    if space is None:
+        return
+    current = set(
+        (
+            await db.scalars(
+                select(TeamSpaceMember.user_id).where(TeamSpaceMember.space_id == space.id)
+            )
+        ).all()
+    )
+    to_add = user_ids - current
+    to_remove = current - user_ids - {space.created_by}
+    for uid in to_add:
+        db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=uid))
+    if to_remove:
+        remove_rows = await db.scalars(
+            select(TeamSpaceMember).where(
+                TeamSpaceMember.space_id == space.id,
+                TeamSpaceMember.user_id.in_(to_remove),
+            )
+        )
+        for row in remove_rows.all():
+            await db.delete(row)
+    if to_add or to_remove:
+        await db.flush()
+
+
 async def mail_for(db: Db, actor: Actor, message: schemas.MessageOut) -> list[tuple[str, str, str]]:
     """The emails a new post sends, as (to, subject, body).
 
@@ -1368,4 +1619,23 @@ async def mail_for(db: Db, actor: Actor, message: schemas.MessageOut) -> list[tu
         value = f" for {message.kudos.value}" if message.kudos.value else ""
         text = f"{actor.user.name} gave you kudos{value}:\n\n{message.body}\n\nSee it: {link}\n"
         return [(email, f"{actor.user.name} gave you kudos", text)] if email else []
+    if message.kind == "meeting" and message.meeting:
+        members = (
+            await db.execute(
+                select(User.email)
+                .join(TeamSpaceMember, TeamSpaceMember.user_id == User.id)
+                .where(
+                    TeamSpaceMember.space_id == int(message.spaceId),
+                    User.id != actor.user.id,
+                )
+            )
+        ).all()
+        agenda = f"\n\nAgenda:\n{message.meeting.agenda}" if message.meeting.agenda else ""
+        meeting_subject = f"Meeting: {message.title or (message.body or '')[:60]}"
+        text = (
+            f"{actor.user.name} scheduled a meeting.\n\n"
+            + (f"{message.title}\n\n" if message.title else "")
+            + f"{message.body}{agenda}\n\nRSVP and join: {link}\n"
+        )
+        return [(addr, meeting_subject, text) for (addr,) in members if addr]
     return []
