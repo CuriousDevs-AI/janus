@@ -338,6 +338,7 @@ function ProjectsView({ me }: { me: string }) {
   const closeProject = useProjectsStore((state) => state.closeProject);
   const lines = useFinanceStore((state) => state.budgetLines);
   const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, ownerId: "", start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  const [saving, setSaving] = React.useState(false);
   // The server's copy of each project's core fields is loaded when the screen opens (real mode only).
   React.useEffect(() => {
     if (demoMode) return;
@@ -377,23 +378,29 @@ function ProjectsView({ me }: { me: string }) {
   const pickedProject = projects.find((p) => p.id === picked);
 
   async function save() {
-    const ownerChosen = form.ownerId || undefined;
-    const problem = await addProject({ name: form.name, client: form.client.trim() || "Internal", customerId: form.customerId || undefined, type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
-    if (problem) return toast.error(problem);
-    toast.success("Project created; its budget is drawn from the fund line");
-    setForm({ ...form, name: "", client: "", customerId: "", budget: "" });
-    // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
-    const created = useProjectsStore.getState().projects.at(-1);
-    if (created) {
-      mirrorNewProject(created, created.owner, ownerChosen)
-        .then((links) => { if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(created.id, links); })
-        .catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
-      syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
-        .then((result) => {
-          if (result) useProjectsStore.getState().linkPeople(created.id, result.links);
-          if (result && result.unmatched.length > 0) toast.warning(`Timeline created. Could not match: ${describeUnmatched(result.unmatched)}. Fix the names, then sync the team.`);
-        })
-        .catch((error: unknown) => toast.error(`Timeline not created: ${message(error)}`));
+    if (saving) return;
+    setSaving(true);
+    try {
+      const ownerChosen = form.ownerId || undefined;
+      const problem = await addProject({ name: form.name, client: form.client.trim() || "Internal", customerId: form.customerId || undefined, type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
+      if (problem) return toast.error(problem);
+      toast.success("Project created; its budget is drawn from the fund line");
+      setForm({ ...form, name: "", client: "", customerId: "", budget: "" });
+      // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
+      const created = useProjectsStore.getState().projects.at(-1);
+      if (created) {
+        mirrorNewProject(created, created.owner, ownerChosen)
+          .then((links) => { if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(created.id, links); })
+          .catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
+        syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
+          .then((result) => {
+            if (result) useProjectsStore.getState().linkPeople(created.id, result.links);
+            if (result && result.unmatched.length > 0) toast.warning(`Timeline created. Could not match: ${describeUnmatched(result.unmatched)}. Fix the names, then sync the team.`);
+          })
+          .catch((error: unknown) => toast.error(`Timeline not created: ${message(error)}`));
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -414,7 +421,7 @@ function ProjectsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-budget">Budget (₹)</Label><Input id="pj-budget" type="number" min={0} value={form.budget} onChange={(e) => set({ budget: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="pj-line">Budget line</Label><select id="pj-line" className={selectClass} value={form.budgetLineId} onChange={(e) => set({ budgetLineId: e.target.value })}><option value="">Choose…</option>{lines.map((l) => <option key={l.id} value={l.id}>{l.name} · {money(l.allocated - l.drawn)} left</option>)}</select></div>
           </div>
-          <Button className="w-fit" onClick={save}>Create project</Button>
+          <Button className="w-fit" disabled={saving} onClick={save}>{saving ? "Creating…" : "Create project"}</Button>
         </CardContent>
       </Card>
       {projects.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-2">
