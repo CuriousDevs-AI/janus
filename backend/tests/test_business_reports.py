@@ -190,7 +190,12 @@ async def test_the_funnel_and_rep_reports_count_leads_by_how_far_they_got_and_wh
     dropped = await client.patch(
         f"/v1/leads/{lost}",
         headers=owner.headers,
-        json={"name": "Ravi Stores", "phone": "9876543201", "stage": "lost"},
+        json={
+            "name": "Ravi Stores",
+            "phone": "9876543201",
+            "stage": "lost",
+            "lostCategory": "price",
+        },
     )
     assert dropped.status_code == 200, dropped.text
     async with admin_engine.begin() as connection:

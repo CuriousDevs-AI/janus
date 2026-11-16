@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, cast, func, select, text
+from sqlalchemy import Date, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.crm.models import Deal, Lead
@@ -165,6 +165,8 @@ async def quiet_leads(
         Lead.tenant_id == tenant_id,
         Lead.stage.not_in(("won", "lost")),
         Lead.last_activity_at <= cutoff,
+        # Someone agreed to follow up on a later day: not quiet until that day has passed.
+        or_(Lead.next_follow_up_on.is_(None), Lead.next_follow_up_on < today),
     )
     count = await db.scalar(select(func.count(Lead.id)).where(*quiet))
     rows = await db.execute(
@@ -287,3 +289,162 @@ async def reps(db: AsyncSession, tenant_id: int, start: date, end: date) -> list
         for owner in owners
     ]
     return sorted(out, key=lambda rep: (rep.owner_id is None, -rep.won_value, -rep.leads, rep.name))
+
+
+@dataclass
+class DueFollowUp:
+    id: int
+    name: str
+    on: date
+
+
+async def follow_ups(
+    db: AsyncSession, tenant_id: int, today: date, limit: int = 5
+) -> tuple[int, int, list[DueFollowUp]]:
+    """Open leads whose follow-up is today, and those whose day has passed: counts, and the
+    earliest few."""
+    from janus_api.crm.models import Contact
+
+    due = (
+        Lead.tenant_id == tenant_id,
+        Lead.stage.not_in(("won", "lost")),
+        Lead.next_follow_up_on.is_not(None),
+        Lead.next_follow_up_on <= today,
+    )
+    rows = (
+        await db.execute(
+            select(Lead.next_follow_up_on, func.count(Lead.id))
+            .where(*due)
+            .group_by(Lead.next_follow_up_on)
+        )
+    ).all()
+    today_count = sum(int(count) for day, count in rows if day == today)
+    overdue = sum(int(count) for day, count in rows if day < today)
+    earliest = await db.execute(
+        select(Lead.id, Contact.name, Lead.next_follow_up_on)
+        .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+        .where(*due)
+        .order_by(Lead.next_follow_up_on, Lead.id)
+        .limit(limit)
+    )
+    return (
+        today_count,
+        overdue,
+        [
+            DueFollowUp(id=row.id, name=row.name or "Unnamed lead", on=row.next_follow_up_on)
+            for row in earliest
+        ],
+    )
+
+
+async def won_deals(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> list[tuple[int, str, Decimal]]:
+    """Deals won between two days, both included: id, name and value."""
+    rows = await db.execute(
+        select(Deal.id, Deal.name, Deal.amount).where(
+            Deal.tenant_id == tenant_id,
+            Deal.stage == "won",
+            _ist_day(Deal.updated_at).between(start, end),
+        )
+    )
+    return [(int(row.id), str(row.name), Decimal(row.amount)) for row in rows]
+
+
+LOST_LABELS = {
+    "price": "Price too high",
+    "competitor": "Went with a competitor",
+    "no_budget": "No budget",
+    "no_response": "Stopped responding",
+    "timing": "Not the right time",
+    "not_a_fit": "Not a fit",
+    "other": "Other",
+}
+
+
+@dataclass(frozen=True)
+class LostReason:
+    """Leads lost between two days for one reason, and the value of the deals lost with them."""
+
+    category: str
+    label: str
+    count: int
+    value: Decimal
+
+
+async def lost_reasons(
+    db: AsyncSession, tenant_id: int, start: date, end: date
+) -> list[LostReason]:
+    """Why leads were lost between two days, both included, the most common reason first."""
+    rows = (
+        await db.execute(
+            select(
+                Lead.lost_category,
+                func.count(Lead.id),
+                func.coalesce(func.sum(Deal.amount), 0),
+            )
+            .select_from(Lead)
+            .outerjoin(Deal, (Deal.tenant_id == Lead.tenant_id) & (Deal.lead_id == Lead.id))
+            .where(
+                Lead.tenant_id == tenant_id,
+                Lead.stage == "lost",
+                _ist_day(func.coalesce(Lead.lost_at, Lead.last_activity_at)).between(start, end),
+            )
+            .group_by(Lead.lost_category)
+        )
+    ).all()
+    # Leads lost before reasons were kept have none; they count as "other".
+    counts: dict[str, tuple[int, Decimal]] = {}
+    for category, count, value in rows:
+        key = str(category) if category in LOST_LABELS else "other"
+        before = counts.get(key, (0, Decimal(0)))
+        counts[key] = (before[0] + int(count), before[1] + Decimal(value))
+    reasons = [
+        LostReason(category=key, label=LOST_LABELS[key], count=count, value=value)
+        for key, (count, value) in counts.items()
+    ]
+    return sorted(reasons, key=lambda reason: (-reason.count, -reason.value, reason.category))
+
+
+@dataclass(frozen=True)
+class Closed:
+    """Deals closed between two days: won and lost, the value won, and the average days a won
+    deal took from the enquiry coming in."""
+
+    won: int
+    lost: int
+    won_value: Decimal
+    cycle_days: float | None
+
+
+async def closed(db: AsyncSession, tenant_id: int, start: date, end: date) -> Closed:
+    """Deals won, by the day they were won, and lost, by the day lost, between two days."""
+    won_row = (
+        await db.execute(
+            select(
+                func.count(Deal.id),
+                func.coalesce(func.sum(Deal.amount), 0),
+                func.avg(func.extract("epoch", Deal.updated_at - Lead.created_at) / 86400),
+            )
+            .select_from(Deal)
+            .join(Lead, (Lead.tenant_id == Deal.tenant_id) & (Lead.id == Deal.lead_id))
+            .where(
+                Deal.tenant_id == tenant_id,
+                Deal.stage == "won",
+                _ist_day(Deal.updated_at).between(start, end),
+            )
+        )
+    ).one()
+    lost = await db.scalar(
+        select(func.count(Deal.id)).where(
+            Deal.tenant_id == tenant_id,
+            Deal.stage == "lost",
+            _ist_day(func.coalesce(Deal.lost_at, Deal.updated_at)).between(start, end),
+        )
+    )
+    return Closed(
+        won=int(won_row[0]),
+        lost=int(lost or 0),
+        won_value=Decimal(won_row[1]),
+        cycle_days=float(won_row[2]) if won_row[2] is not None else None,
+    )

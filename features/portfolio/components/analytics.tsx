@@ -8,6 +8,7 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { Kpi, palette } from "@/features/portfolio/components/figures";
 import { CustomersKept } from "@/features/portfolio/components/customers-kept";
+import { KeyRatiosTable } from "@/features/portfolio/components/key-ratios";
 import { LastYear } from "@/features/portfolio/components/last-year";
 import { Section, SectionNav } from "@/features/portfolio/components/section-nav";
 import { Delta, GroupLine, SalesHeatmap } from "@/features/portfolio/components/market";
@@ -45,7 +46,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
   const collected = total(list, "current", (figures) => figures.collected);
   const collectedBefore = total(list, "previous", (figures) => figures.collected);
   return <>
-    <SectionNav sections={[{ id: "an-headline", label: "Headline" }, { id: "an-sales", label: money ? "Group sales" : "Value won" }, { id: "an-last-year", label: "Against last year" }, { id: "an-kept", label: "Customers kept" }, { id: "an-months", label: "Month by month" }, { id: "an-share", label: "Share and conversion" }, { id: "an-channels", label: "Where leads come from" }, { id: "an-details", label: "Details" }]} />
+    <SectionNav sections={[{ id: "an-headline", label: "Headline" }, { id: "an-sales", label: money ? "Group sales" : "Value won" }, { id: "an-ratios", label: "Key ratios" }, { id: "an-last-year", label: "Against last year" }, { id: "an-kept", label: "Customers kept" }, { id: "an-months", label: "Month by month" }, { id: "an-share", label: "Share and conversion" }, { id: "an-channels", label: "Where leads come from" }, { id: "an-details", label: "Details" }]} />
     <Section id="an-headline">
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
       {money && <Kpi label="Sales" value={inr(salesNow)} detail={`${change(salesNow, salesBefore)} · group, before GST`} delta={<Delta now={salesNow} before={salesBefore} compact />} />}
@@ -64,6 +65,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
       <SalesHeatmap money={money} color={color} />
     </div></Section>
 
+    <Section id="an-ratios"><KeyRatiosTable list={list} /></Section>
     {money && <Section id="an-last-year"><LastYear list={list} /></Section>}
     {money && <Section id="an-kept"><CustomersKept list={list} /></Section>}
 
