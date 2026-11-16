@@ -90,6 +90,14 @@ async def test_customer_notes_crud_and_visibility(
     )
     assert resp.status_code == 422
 
+    # Validation: whitespace-only body is rejected after stripping.
+    resp = await client.post(
+        f"/v1/contacts/{contact_id}/notes",
+        headers=owner.headers,
+        json={"body": "   "},
+    )
+    assert resp.status_code == 422
+
 
 async def test_lead_search_matches_follow_up_note_text(
     client: httpx.AsyncClient, mailbox: Mailbox

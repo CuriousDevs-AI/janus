@@ -229,7 +229,7 @@ class NoteIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    body: str = Field(min_length=2, max_length=2000)
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=2000)]
     nextFollowUpOn: date | None = None
 
 
@@ -246,7 +246,7 @@ class CustomerNoteIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    body: str = Field(min_length=2, max_length=4000)
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=4000)]
 
 
 class CustomerNoteOut(BaseModel):
