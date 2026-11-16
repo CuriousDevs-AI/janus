@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
-import { answerLive, type Answer } from "@/features/portfolio/lib/answer";
+import { answerFromKnowledge, answerLive, type Answer } from "@/features/portfolio/lib/answer";
+import { isAdviceQuestion, type AdvisorOut } from "@/features/portfolio/lib/advisor";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
 import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
-import type { PortfolioAsked, PortfolioCompany, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
+import type { PortfolioAsked, PortfolioCompany, PortfolioKnowledgeItem, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
 
 const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["Which company needs immediate attention?", TriangleAlert],
@@ -25,10 +26,10 @@ const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
 /** The first questions for one business on its own: what an owner asks most days. */
 const ownSuggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["What needs my attention?", TriangleAlert],
-  ["Why did sales change?", TrendingDown],
+  ["How can I improve the business?", Sparkles],
+  ["How is my sales team doing?", Building2],
+  ["What is our conversion this month?", TrendingDown],
   ["How much profit did we make?", Scale],
-  ["What are the biggest financial risks?", Landmark],
-  ["Who is my biggest customer?", Building2],
   ["Any GST or TDS due?", FileCheck2],
 ];
 /** Questions about one company that Janus rules can answer when the company is named. */
@@ -63,6 +64,8 @@ export function Intelligence({ list: all, period, company, department }: { list:
   const models = usePortfolioApi<PortfolioModels>(preview ? null : "/portfolio/intelligence/models");
   const history = usePortfolioApi<PortfolioAsked[]>(preview ? null : "/portfolio/intelligence/history");
   const available = models.data ?? rulesOnly;
+  // Janus rules answer from the records first, then from the facts and documents the owner approved.
+  const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>(preview ? null : "/portfolio/knowledge");
   const [chosen, setChosen] = React.useState(RULES);
   const model = available.options.find((option) => option.id === chosen) ?? available.options[0];
   // Each department keeps its own conversation, apart from Janus Intelligence's.
@@ -92,7 +95,27 @@ export function Intelligence({ list: all, period, company, department }: { list:
     setQ("");
     if (box.current) box.current.style.height = "auto";
     box.current?.focus({ preventScroll: true });
-    if (model.id === RULES) { setTurns((current) => [...current, { q: clean, rules: answerLive(clean, list, period) }]); return; }
+    if (model.id === RULES && company && isAdviceQuestion(clean)) {
+      // One company open: the Advisor's findings, the same the Advisor page and the morning brief show.
+      setTurns((current) => [...current, { q: clean, pending: true }]);
+      try {
+        const advice = await api<AdvisorOut>("/business/advisor");
+        const top = advice.findings.slice(0, 3);
+        const rules: Answer = top.length
+          ? { text: `${top.length === 1 ? "One thing" : `${top.length} things`} would help ${advice.company} most now, most serious first. Open Advisor to add them to your plan; I check each against your figures.`, rows: top.map((item): [string, string] => [item.title, `${item.sees} This week: ${item.action}`]) }
+          : { text: `Nothing in ${advice.company}'s figures needs fixing right now. Keep the records current and I will say when something does.` };
+        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, rules } : turn));
+      } catch (error) {
+        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, error: message(error) } : turn));
+      }
+      return;
+    }
+    if (model.id === RULES) {
+      const fromRecords = answerLive(clean, list, period);
+      const mine = (knowledge.data ?? []).filter((item) => list.some((entry) => entry.id === item.companyId));
+      setTurns((current) => [...current, { q: clean, rules: fromRecords.matched === false ? answerFromKnowledge(clean, mine, fromRecords) : fromRecords }]);
+      return;
+    }
     setTurns((current) => [...current, { q: clean, pending: true }]);
     const settle = (done: Turn) => setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? done : turn));
     try {
@@ -166,7 +189,8 @@ export function Intelligence({ list: all, period, company, department }: { list:
             {list.map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(focus === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${focus === item.id ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}
           </div>
         </div>}
-        {(shown.length > 0 || focused) && <div className="rounded-xl border border-border bg-surface p-4">
+        {/* Once a conversation starts the opening suggestions are gone, so they move here. */}
+        {(shown.length > 0 || (focused && !company)) && <div className="rounded-xl border border-border bg-surface p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{focused && !company ? `Try asking about ${focused.name}` : "Try asking"}</p>
           <ul className="flex flex-col gap-1">{tries.map((text) => <li key={text}><button type="button" disabled={busy} onClick={() => void ask(text)} className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50">{text}</button></li>)}</ul>
         </div>}
@@ -219,7 +243,7 @@ function RulesAnswer({ answer }: { answer: Answer }) {
   return <>
     <p className="leading-relaxed">{answer.text}</p>
     {answer.rows && answer.rows.length > 0 && <Rows rows={answer.rows} />}
-    <p className="mt-2.5 text-[11px] text-muted-foreground">Janus rules · free · from the figures on the Portfolio</p>
+    <p className="mt-2.5 text-[11px] text-muted-foreground">Janus rules · free · {answer.knowledge ? "quoted from what you told Janus" : "from your records"}</p>
   </>;
 }
 

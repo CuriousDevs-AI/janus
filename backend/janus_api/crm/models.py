@@ -63,6 +63,29 @@ class Lead(Base):
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # When someone agreed to follow up next; a lead waiting for that day has not gone quiet.
+    next_follow_up_on: Mapped[date | None] = mapped_column(Date)
+    # Why it was lost, from a short list a manager can count, a note, and when.
+    lost_category: Mapped[str | None] = mapped_column(String(30))
+    lost_reason: Mapped[str] = mapped_column(String(1000), default="", server_default="")
+    lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LeadNote(Base):
+    """What happened on a call or meeting with a lead, who wrote it, and the next follow-up set."""
+
+    __tablename__ = "lead_notes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "lead_id"], ["leads.tenant_id", "leads.id"], ondelete="CASCADE"
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    lead_id: Mapped[int] = mapped_column(BigInteger)
+    author_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(String(2000))
+    next_follow_up_on: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Deal(Base):
@@ -78,7 +101,8 @@ class Deal(Base):
             name="deal_stage",
         ),
         CheckConstraint(
-            "stage != 'lost' OR length(trim(lost_reason)) > 0", name="deal_lost_reason"
+            "stage != 'lost' OR (lost_category IS NOT NULL AND lost_at IS NOT NULL)",
+            name="deal_lost_has_reason",
         ),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
@@ -88,6 +112,8 @@ class Deal(Base):
     stage: Mapped[str] = mapped_column(String(30), default="new")
     expected_close_at: Mapped[date | None] = mapped_column(Date)
     lost_reason: Mapped[str] = mapped_column(String(1000), default="")
+    lost_category: Mapped[str | None] = mapped_column(String(30))
+    lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

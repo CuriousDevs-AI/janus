@@ -33,6 +33,19 @@ class QuietLead(BaseModel):
     days: int
 
 
+class DueFollowUp(BaseModel):
+    id: str
+    name: str
+    on: str
+
+
+class LostReasonCount(BaseModel):
+    category: str
+    label: str
+    count: int
+    value: str
+
+
 class CrmSummary(BaseModel):
     leads: int
     openDeals: int
@@ -43,6 +56,12 @@ class CrmSummary(BaseModel):
     # Open leads with no activity for 3 days or more, and the longest-waiting few.
     quietLeads: int = 0
     quietList: list[QuietLead] = []
+    # Open leads whose follow-up is today, and whose day has passed; the earliest few.
+    followUpsToday: int = 0
+    followUpsOverdue: int = 0
+    followUpList: list[DueFollowUp] = []
+    # Why leads were lost in the last 90 days, the most common reason first.
+    lostReasons: list[LostReasonCount] = []
 
 
 class Ageing(BaseModel):
@@ -309,12 +328,82 @@ class BooksCompare(BaseModel):
     previous: Books
 
 
+class CustomerFigures(BaseModel):
+    """Who buys and how much, over the last twelve finished months against the twelve before.
+
+    A customer is a matched name on the company's invoices (and imported customer-wise months).
+    Rupees as decimal strings; percentages whole numbers, None where there is nothing to divide by.
+    """
+
+    recentStart: str
+    recentEnd: str
+    customers: int
+    # Bought in two or more different months of the last twelve.
+    repeatCustomers: int
+    repeatRate: int | None
+    sales: str
+    revenuePerCustomer: str | None
+    topCustomer: str | None
+    # The largest customer's share of the twelve months' sales, and the five largest together.
+    topShare: int | None
+    top5Share: int | None
+    # Of the customers who bought in the twelve months before: kept, and the share that stopped.
+    before: int
+    kept: int
+    new: int
+    retentionRate: int | None
+    churnRate: int | None
+
+
+class SalesRatios(BaseModel):
+    """Deals closed in a period: won and lost, the win rate, the average won deal, and how many
+    days a won deal took from the enquiry."""
+
+    won: int
+    lost: int
+    winRate: int | None
+    wonValue: str
+    avgDealSize: str | None
+    cycleDays: int | None
+
+
+class SalesRatiosCompare(BaseModel):
+    current: SalesRatios
+    previous: SalesRatios
+
+
 class CustomerMove(BaseModel):
     """One customer's sales before GST in the period and in the same days before, in rupees."""
 
     name: str
     current: str
     previous: str
+
+
+class FunnelStep(BaseModel):
+    """Leads that came in during a period, by how far they have got since."""
+
+    leads: int
+    qualified: int
+    proposal: int
+    won: int
+    lost: int
+
+
+class FunnelCompare(BaseModel):
+    current: FunnelStep
+    previous: FunnelStep
+
+
+class RepLine(BaseModel):
+    """One lead owner in the period: new leads, deals won and their value; open leads now."""
+
+    name: str
+    assigned: bool
+    leads: int
+    won: int
+    wonValue: str
+    openLeads: int
 
 
 class SourceMove(BaseModel):
@@ -437,6 +526,16 @@ class CompanySummary(BaseModel):
     customers: list[CustomerMove] = []
     intercompany: Intercompany | None = None
     leadSources: list[SourceMove] = []
+    # Deals won this period with no invoice raised against them: how many, and their value in
+    # rupees. Money roles only, and left at zero without them.
+    wonNotInvoiced: int = 0
+    wonNotInvoicedValue: str = "0.00"
+    funnel: FunnelCompare | None = None
+    # Closed deals in the period against the same days before.
+    sales: SalesRatiosCompare | None = None
+    # Who buys and how much, for a role with money; None without invoices or without money.
+    customerFigures: CustomerFigures | None = None
+    reps: list[RepLine] = []
     registration: Registration | None = None
     complianceGaps: list[ComplianceGap] = []
     # False until at least one kind of filing is switched on for the company.

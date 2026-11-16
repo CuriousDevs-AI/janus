@@ -10,10 +10,11 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Building2, RefreshCw } from "lucide-react";
-import { useApi } from "@/lib/api/use-api";
+import { useAllRows } from "@/lib/api/use-all-rows";
 import type { Contact, Deal, Lead } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
+import { demoMode } from "@/lib/demo-mode";
 
 type Filter = "all" | "active" | "won" | "needs_attention";
 
@@ -42,11 +43,13 @@ const stageOrder = ["lost", "new", "contacted", "qualified", "demo", "proposal",
 
 export default function CustomersPage() {
   const router = useRouter();
-  const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
-  const deals = useApi<Deal[]>("/deals?limit=100&after_id=0");
-  const usingDemo = Boolean(leads.error || deals.error);
-  const leadRows = React.useMemo(() => leads.data ?? (leads.error ? demoLeadRows : []), [leads.data, leads.error]);
-  const dealRows = React.useMemo(() => deals.data ?? (deals.error ? demoDealRows : []), [deals.data, deals.error]);
+  const leads = useAllRows<Lead>("/leads");
+  const deals = useAllRows<Deal>("/deals");
+  // The sample customers belong to the demo only; a real company sees its own records or the error.
+  const usingDemo = demoMode && Boolean(leads.error || deals.error);
+  const loadError = !demoMode ? leads.error || deals.error : undefined;
+  const leadRows = React.useMemo(() => leads.data ?? (usingDemo ? demoLeadRows : []), [leads.data, usingDemo]);
+  const dealRows = React.useMemo(() => deals.data ?? (usingDemo ? demoDealRows : []), [deals.data, usingDemo]);
 
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
@@ -138,13 +141,14 @@ export default function CustomersPage() {
           </TabsList>
         </Tabs>
       </div>
+      {loadError && <p role="alert" className="mx-6 mt-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {loadError}. Refresh to try again.</p>}
       {loading && !usingDemo && <p role="status" className="px-6 py-6 text-sm text-muted-foreground">Loading live leads and deals…</p>}
 
-      {!loading && visibleRows.length === 0 ? (
+      {!loading && !loadError && visibleRows.length === 0 ? (
         <div className="px-6 py-6">
           <EmptyState icon={Building2} title="No live customer records match" description="Connect a lead source or try a different filter or search term." />
         </div>
-      ) : !loading && (
+      ) : !loading && !loadError && (
         <>
         <p className="px-6 pt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
         <Table>

@@ -16,7 +16,7 @@ export interface PortfolioCompany {
   members: number;
   openTickets: number;
   /** quietLeads: open leads with no activity for 3+ days; quietList: the longest-waiting few. Older servers leave them out. */
-  crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string; quietLeads?: number; quietList?: { id: string; name: string; company: string | null; stage: string; days: number }[] };
+  crm: { leads: number; openDeals: number; wonDeals: number; lostDeals: number; pipelineValue: string; wonValue: string; quietLeads?: number; quietList?: { id: string; name: string; company: string | null; stage: string; days: number }[]; followUpsToday?: number; followUpsOverdue?: number; followUpList?: { id: string; name: string; on: string }[] };
   /** From the company's invoices, payments, approved credit notes and bills. Null where the person's role there does not include money (Group analyst). */
   money: null | {
     receivable: string;
@@ -59,6 +59,14 @@ export interface PortfolioCompany {
   intercompany: { sales: string; purchases: string; salesBefore: string; purchasesBefore: string; partners: string[] } | null;
   /** Leads by channel, this period and the same days before. */
   leadSources: { source: string; current: number; previous: number }[];
+  /** The period's leads by how far each has got, beside the same days before. Older servers leave it out. */
+  funnel?: null | { current: FunnelStep; previous: FunnelStep };
+  /** Deals closed in the period, beside the same days before. Older servers leave it out. */
+  sales?: null | { current: SalesRatios; previous: SalesRatios };
+  /** Who buys and how much over the last twelve finished months; null without money. */
+  customerFigures?: CustomerFigures | null;
+  /** Each lead owner in the period; "assigned: false" is the leads nobody owns. Older servers leave it out. */
+  reps?: { name: string; assigned: boolean; leads: number; won: number; wonValue: string; openLeads: number }[];
   /** Registration details, or null where none are recorded. */
   registration: PortfolioRegistration | null;
   /** Missing registration details, and filings the company's own records suggest. */
@@ -247,3 +255,17 @@ export interface BillingPreview {
 }
 /** POST /billing/checkout: what Razorpay Checkout needs. Amount in paise, GST included. */
 export interface BillingCheckout { keyId: string; orderId: string; amount: number; currency: "INR"; plan: string; description: string; name: string; email: string }
+
+export type FunnelStep = { leads: number; qualified: number; proposal: number; won: number; lost: number };
+
+/** Deals closed in a period: the win rate, the average won deal and days from enquiry to won. */
+export type SalesRatios = { won: number; lost: number; winRate: number | null; wonValue: string; avgDealSize: string | null; cycleDays: number | null };
+
+/** Customers over the last twelve finished months against the twelve before; money in rupees. */
+export type CustomerFigures = {
+  recentStart: string; recentEnd: string;
+  customers: number; repeatCustomers: number; repeatRate: number | null;
+  sales: string; revenuePerCustomer: string | null;
+  topCustomer: string | null; topShare: number | null; top5Share: number | null;
+  before: number; kept: number; new: number; retentionRate: number | null; churnRate: number | null;
+};
