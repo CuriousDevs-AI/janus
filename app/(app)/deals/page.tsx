@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, GripVertical, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useApi } from "@/lib/api/use-api";
+import { useAllRows } from "@/lib/api/use-all-rows";
 import { api, message } from "@/lib/api/client";
 import type { Deal } from "@/lib/api/types";
 import type { DealStage } from "@/lib/types";
@@ -44,12 +45,14 @@ export default function DealsPage() {
   const [closeFilter, setCloseFilter] = useState<"all" | "closing" | "slipped" | "undated" | "mine">("all");
   const today = todayIst();
   const monthEnd = `${today.slice(0, 7)}-31`;
-  const open = deals.filter((deal) => !["won", "lost"].includes(deal.stage));
+  // The close-date cards count every open deal, not only this page of the board.
+  const everyDeal = useAllRows<Deal>(usingDemo ? null : "/deals");
+  const open = (everyDeal.data ?? deals).filter((deal) => !["won", "lost"].includes(deal.stage));
   const closing = open.filter((deal) => deal.expectedCloseAt && deal.expectedCloseAt >= today && deal.expectedCloseAt <= monthEnd);
   const slipped = open.filter((deal) => deal.expectedCloseAt && deal.expectedCloseAt < today);
   const undated = open.filter((deal) => !deal.expectedCloseAt);
   const sum = (list: Deal[]) => list.reduce((total, deal) => total + Number(deal.amount), 0);
-  const inView = closeFilter === "closing" ? closing : closeFilter === "slipped" ? slipped : closeFilter === "undated" ? undated : closeFilter === "mine" ? deals.filter((deal) => deal.ownerId === session.user.id) : deals;
+  const inView = closeFilter === "closing" ? closing : closeFilter === "slipped" ? slipped : closeFilter === "undated" ? undated : closeFilter === "mine" ? (everyDeal.data ?? deals).filter((deal) => deal.ownerId === session.user.id) : deals;
   const filtered = inView.filter((deal) =>
     `${deal.name} ${deal.customerName} ${deal.company}`
       .toLowerCase()
@@ -78,10 +81,10 @@ export default function DealsPage() {
         }),
       });
       toast.success(`Moved to ${dealStageMeta[stage].label}`);
-      result.reload();
+      result.reload(); everyDeal.reload();
     } catch (error) {
       toast.error(message(error));
-      result.reload();
+      result.reload(); everyDeal.reload();
     } finally {
       setBusy(false);
     }
@@ -101,7 +104,7 @@ export default function DealsPage() {
             <Button
               size="sm"
               variant="secondary"
-              onClick={result.reload}
+              onClick={() => { result.reload(); everyDeal.reload(); }}
               aria-label="Refresh deals"
             >
               <RefreshCw className="size-3.5" />
@@ -300,7 +303,7 @@ export default function DealsPage() {
               deal={editing}
               onSaved={() => {
                 setEditing(null);
-                result.reload();
+                result.reload(); everyDeal.reload();
                 toast.success("Deal saved");
               }}
             />

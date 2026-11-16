@@ -404,3 +404,47 @@ async def lost_reasons(
         for key, (count, value) in counts.items()
     ]
     return sorted(reasons, key=lambda reason: (-reason.count, -reason.value, reason.category))
+
+
+@dataclass(frozen=True)
+class Closed:
+    """Deals closed between two days: won and lost, the value won, and the average days a won
+    deal took from the enquiry coming in."""
+
+    won: int
+    lost: int
+    won_value: Decimal
+    cycle_days: float | None
+
+
+async def closed(db: AsyncSession, tenant_id: int, start: date, end: date) -> Closed:
+    """Deals won, by the day they were won, and lost, by the day lost, between two days."""
+    won_row = (
+        await db.execute(
+            select(
+                func.count(Deal.id),
+                func.coalesce(func.sum(Deal.amount), 0),
+                func.avg(func.extract("epoch", Deal.updated_at - Lead.created_at) / 86400),
+            )
+            .select_from(Deal)
+            .join(Lead, (Lead.tenant_id == Deal.tenant_id) & (Lead.id == Deal.lead_id))
+            .where(
+                Deal.tenant_id == tenant_id,
+                Deal.stage == "won",
+                _ist_day(Deal.updated_at).between(start, end),
+            )
+        )
+    ).one()
+    lost = await db.scalar(
+        select(func.count(Deal.id)).where(
+            Deal.tenant_id == tenant_id,
+            Deal.stage == "lost",
+            _ist_day(func.coalesce(Deal.lost_at, Deal.updated_at)).between(start, end),
+        )
+    )
+    return Closed(
+        won=int(won_row[0]),
+        lost=int(lost or 0),
+        won_value=Decimal(won_row[1]),
+        cycle_days=float(won_row[2]) if won_row[2] is not None else None,
+    )

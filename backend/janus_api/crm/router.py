@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, require
-from janus_api.crm import deals, overview, schemas, service
+from janus_api.crm import account, deals, overview, schemas, service
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/v1", tags=["CRM"])
@@ -98,6 +98,16 @@ async def assign_leads(data: schemas.AssignIn, actor: Assigner, db: Db) -> schem
 async def delete_lead(lead_id: Identifier, actor: Writer, db: Db) -> None:
     await service.delete_lead(
         db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id
+    )
+
+
+@router.get("/contacts/{contact_id}/account", response_model=schemas.CustomerAccountOut)
+async def contact_account(
+    contact_id: Identifier, actor: Reader, db: Db
+) -> schemas.CustomerAccountOut:
+    """What this customer was invoiced, paid and owes; amounts only for a role with money."""
+    return await account.account(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
     )
 
 
