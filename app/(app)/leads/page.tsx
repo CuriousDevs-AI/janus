@@ -60,6 +60,8 @@ import { cn, formatDateTime } from "@/lib/utils";
 import { demoLeadRows } from "@/lib/api/demo-data";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
 import { useApi } from "@/lib/api/use-api";
+import { LostReasonFields } from "@/components/crm/lost-reason-fields";
+import type { LostCategory } from "@/lib/lost-reasons";
 
 type Row = { lead: Lead };
 type EditForm = {
@@ -70,6 +72,8 @@ type EditForm = {
   requirement: string;
   stage: string;
   ownerId: string;
+  lostCategory: LostCategory | "";
+  lostReason: string;
 };
 
 type OptionalColumn = "followUp" | "email" | "company" | "source" | "owner" | "created";
@@ -128,6 +132,21 @@ function blankEditForm(row: Row): EditForm {
     requirement: row.lead.requirement,
     stage: row.lead.stage,
     ownerId: row.lead.ownerId ?? "",
+    lostCategory: row.lead.lostCategory ?? (row.lead.stage === "lost" ? "other" : ""),
+    lostReason: row.lead.lostReason ?? "",
+  };
+}
+
+/** What the server takes for a lead edit: no owner (assigned apart), and a reason only when lost. */
+function leadBody(form: EditForm) {
+  const { ownerId: _owner, lostCategory, lostReason, ...rest } = form;
+  void _owner;
+  return {
+    ...rest,
+    phone: form.phone.trim() || null,
+    email: form.email.trim() || null,
+    lostCategory: form.stage === "lost" ? lostCategory || null : null,
+    lostReason: form.stage === "lost" ? lostReason : "",
   };
 }
 
@@ -287,11 +306,7 @@ export default function LeadsPage() {
     try {
       await api<Lead>(`/leads/${editing.lead.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          ...(demoMode ? editForm : { ...editForm, ownerId: undefined }),
-          phone: editForm.phone.trim() || null,
-          email: editForm.email.trim() || null,
-        }),
+        body: JSON.stringify(demoMode ? { ...editForm, phone: editForm.phone.trim() || null, email: editForm.email.trim() || null } : leadBody(editForm)),
       });
       const owner = editForm.ownerId && editForm.ownerId !== "none" ? editForm.ownerId : null;
       if (!demoMode && canAssign && owner !== (editing.lead.ownerId ?? null)) {
@@ -347,7 +362,7 @@ export default function LeadsPage() {
         selected.map((row) =>
           api<Lead>(`/leads/${row.lead.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ ...blankEditForm(row), stage }),
+            body: JSON.stringify(leadBody({ ...blankEditForm(row), stage })),
           }),
         ),
       );
@@ -598,6 +613,7 @@ export default function LeadsPage() {
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-name">Name</Label><Input id="lead-edit-name" value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-phone">Mobile</Label><Input id="lead-edit-phone" placeholder="+91 99999 99999" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} /></div></div>
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-email">Email</Label><Input id="lead-edit-email" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-company">Company</Label><Input id="lead-edit-company" value={editForm.company} onChange={(event) => setEditForm({ ...editForm, company: event.target.value })} /></div></div>
             <div className="flex flex-col gap-1.5"><Label>Stage</Label><Select value={editForm.stage} onValueChange={(stage) => setEditForm({ ...editForm, stage })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{stages.map((stage) => <SelectItem key={stage} value={stage}>{label(stage)}</SelectItem>)}</SelectContent></Select></div>
+            {editForm.stage === "lost" && <LostReasonFields id="lead-lost" category={editForm.lostCategory} note={editForm.lostReason} onChange={(lostCategory, lostReason) => setEditForm({ ...editForm, lostCategory, lostReason })} />}
             {canAssign && people.length > 0 && <div className="flex flex-col gap-1.5"><Label>Owner</Label><Select value={editForm.ownerId || "none"} onValueChange={(ownerId) => setEditForm({ ...editForm, ownerId })}><SelectTrigger aria-label="Owner"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nobody yet</SelectItem>{people.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>}
             <div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-requirement">Requirement</Label><Textarea id="lead-edit-requirement" value={editForm.requirement} onChange={(event) => setEditForm({ ...editForm, requirement: event.target.value })} /></div>
             {actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}

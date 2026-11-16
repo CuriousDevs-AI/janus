@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { TeamToday } from "@/components/crm/team-today";
+import { LostReasonsCard } from "@/components/crm/lost-reasons-card";
+import { demoMode } from "@/lib/demo-mode";
 import { demoConnectedSources, demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
 import { lakh, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
@@ -12,6 +14,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api/use-api";
+import { useAllRows } from "@/lib/api/use-all-rows";
 import type { Deal, Lead, Source } from "@/lib/api/types";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
 import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
@@ -25,8 +28,9 @@ const demoGrowthTrend = monthlyLeads.map((item) => ({ month: item.label, leads: 
 
 export default function DashboardPage() {
   const session = useSession();
-  const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
-  const deals = useApi<Deal[]>("/deals?limit=100&after_id=0");
+  // Every lead and deal, not the first page: Team today and the counts are for the whole company.
+  const leads = useAllRows<Lead>("/leads");
+  const deals = useAllRows<Deal>("/deals");
   const canViewSources =
     can(session, "sources:manage") &&
     Boolean(session.user.email_verified_at);
@@ -191,7 +195,10 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
-      {(session.permissions.includes("*") || can(session, "leads:assign")) && <TeamToday leads={leadRows} deals={dealRows} />}
+      {(session.permissions.includes("*") || can(session, "leads:assign")) && <>
+        <TeamToday leads={leadRows} deals={dealRows} />
+        {!demoMode && <LostReasonsCard />}
+      </>}
     </div>
   );
 }
