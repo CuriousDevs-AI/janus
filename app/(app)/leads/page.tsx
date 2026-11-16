@@ -59,6 +59,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn, formatDateTime } from "@/lib/utils";
 import { demoLeadRows } from "@/lib/api/demo-data";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
+import { useApi } from "@/lib/api/use-api";
+import { LostReasonFields } from "@/components/crm/lost-reason-fields";
+import type { LostCategory } from "@/lib/lost-reasons";
 
 type Row = { lead: Lead };
 type EditForm = {
@@ -69,6 +72,8 @@ type EditForm = {
   requirement: string;
   stage: string;
   ownerId: string;
+  lostCategory: LostCategory | "";
+  lostReason: string;
 };
 
 type OptionalColumn = "followUp" | "email" | "company" | "source" | "owner" | "created";
@@ -127,6 +132,21 @@ function blankEditForm(row: Row): EditForm {
     requirement: row.lead.requirement,
     stage: row.lead.stage,
     ownerId: row.lead.ownerId ?? "",
+    lostCategory: row.lead.lostCategory ?? (row.lead.stage === "lost" ? "other" : ""),
+    lostReason: row.lead.lostReason ?? "",
+  };
+}
+
+/** What the server takes for a lead edit: no owner (assigned apart), and a reason only when lost. */
+function leadBody(form: EditForm) {
+  const { ownerId: _owner, lostCategory, lostReason, ...rest } = form;
+  void _owner;
+  return {
+    ...rest,
+    phone: form.phone.trim() || null,
+    email: form.email.trim() || null,
+    lostCategory: form.stage === "lost" ? lostCategory || null : null,
+    lostReason: form.stage === "lost" ? lostReason : "",
   };
 }
 
@@ -178,7 +198,7 @@ export default function LeadsPage() {
     email: false,
     company: false,
     source: false,
-    owner: false,
+    owner: true,
     created: false,
   });
   const [columnOrder, setColumnOrder] = useState<OptionalColumn[]>(optionalColumns.map(({ key }) => key));
@@ -212,7 +232,14 @@ export default function LeadsPage() {
   const usingDemo = Boolean(loaded?.error);
   const canEditRows = canWrite && !usingDemo;
   // Owners and managers can hand a lead to someone they manage.
-  const assignees = demoMode && (session.permissions.includes("*") || can(session, "leads:assign")) ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
+  const canAssign = session.permissions.includes("*") || can(session, "leads:assign");
+  const assignees = demoMode && canAssign ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
+  // Who a lead can be given to: the company's active members, for those who may assign.
+  const members = useApi<{ user_id: string | number; name: string; status: string }[]>(!demoMode && canAssign ? "/members" : null);
+  const people = demoMode ? assignees.map((item) => ({ id: item.crmUserId, label: `${item.name} · ${item.title}` })) : (members.data ?? []).filter((item) => item.status === "active").map((item) => ({ id: String(item.user_id), label: item.name }));
+  const [ownerFilter, setOwnerFilter] = useState<"all" | "mine" | "none">("all");
+  const [assigning, setAssigning] = useState(false);
+  const [assignTo, setAssignTo] = useState("none");
   const sources = useMemo(
     () => [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])],
     [loaded],
@@ -237,11 +264,12 @@ export default function LeadsPage() {
           (!normalizedQuery || searchable.includes(normalizedQuery)) &&
           (stageFilter === "all" || lead.stage === stageFilter) &&
           (sourceFilter === "all" || lead.source === sourceFilter) &&
-          (!dueOnly || isDue(lead.nextFollowUpOn))
+          (!dueOnly || isDue(lead.nextFollowUpOn)) &&
+          (ownerFilter === "all" || (ownerFilter === "mine" ? lead.ownerId === session.user.id : !lead.ownerId))
         );
       }) || []
     );
-  }, [loaded, query, sourceFilter, stageFilter, dueOnly]);
+  }, [loaded, query, sourceFilter, stageFilter, dueOnly, ownerFilter, session.user.id]);
   const allVisibleSelected = rows.length > 0 && rows.every(({ lead }) => selectedIds.includes(lead.id));
   const visibleColumnCount = 4 + optionalColumns.filter(({ key }) => visibleColumns[key]).length;
   const orderedOptionalColumns = columnOrder
@@ -278,12 +306,12 @@ export default function LeadsPage() {
     try {
       await api<Lead>(`/leads/${editing.lead.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          ...(demoMode ? editForm : { ...editForm, ownerId: undefined }),
-          phone: editForm.phone.trim() || null,
-          email: editForm.email.trim() || null,
-        }),
+        body: JSON.stringify(demoMode ? { ...editForm, phone: editForm.phone.trim() || null, email: editForm.email.trim() || null } : leadBody(editForm)),
       });
+      const owner = editForm.ownerId && editForm.ownerId !== "none" ? editForm.ownerId : null;
+      if (!demoMode && canAssign && owner !== (editing.lead.ownerId ?? null)) {
+        await api("/leads/assign", { method: "POST", body: JSON.stringify({ leadIds: [editing.lead.id], ownerId: owner }) });
+      }
       setEditing(null);
       setEditForm(null);
       setVersion((value) => value + 1);
@@ -309,6 +337,22 @@ export default function LeadsPage() {
     }
   }
 
+  async function assignSelected() {
+    if (!selectedIds.length) return;
+    setBulkUpdating(true);
+    try {
+      const done = await api<{ assigned: number; ownerName: string | null }>("/leads/assign", { method: "POST", body: JSON.stringify({ leadIds: selectedIds, ownerId: assignTo === "none" ? null : assignTo }) });
+      toast.success(done.ownerName ? `${done.assigned} lead${done.assigned === 1 ? "" : "s"} assigned to ${done.ownerName}` : `${done.assigned} lead${done.assigned === 1 ? "" : "s"} left without an owner`);
+      setAssigning(false);
+      setSelectedIds([]);
+      setVersion((value) => value + 1);
+    } catch (error) {
+      toast.error(message(error));
+    } finally {
+      setBulkUpdating(false);
+    }
+  }
+
   async function bulkUpdateStage(stage: string) {
     const selected = loaded?.rows.filter(({ lead }) => selectedIds.includes(lead.id)) || [];
     if (!selected.length) return;
@@ -318,7 +362,7 @@ export default function LeadsPage() {
         selected.map((row) =>
           api<Lead>(`/leads/${row.lead.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ ...blankEditForm(row), stage }),
+            body: JSON.stringify(leadBody({ ...blankEditForm(row), stage })),
           }),
         ),
       );
@@ -355,7 +399,7 @@ export default function LeadsPage() {
     }
   }
 
-  const filtersActive = query.trim() || stageFilter !== "all" || sourceFilter !== "all" || dueOnly;
+  const filtersActive = query.trim() || stageFilter !== "all" || sourceFilter !== "all" || dueOnly || ownerFilter !== "all";
   const dueCount = (loaded?.rows ?? []).filter(({ lead }) => isDue(lead.nextFollowUpOn) && !["won", "lost"].includes(lead.stage)).length;
 
   return (
@@ -386,6 +430,7 @@ export default function LeadsPage() {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search name, mobile, email or company…" className="w-full sm:w-[25rem]" />
+        <Select value={ownerFilter} onValueChange={(value) => setOwnerFilter(value as "all" | "mine" | "none")}><SelectTrigger className="h-9 w-[150px]" aria-label="Whose leads"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Everyone&apos;s leads</SelectItem><SelectItem value="mine">My leads</SelectItem><SelectItem value="none">Unassigned</SelectItem></SelectContent></Select>
         <Button size="sm" variant={dueOnly ? "default" : "secondary"} aria-pressed={dueOnly} onClick={() => setDueOnly((value) => !value)}>Follow-ups due{dueCount ? ` (${dueCount})` : ""}</Button>
         <Select value={stageFilter} onValueChange={setStageFilter}>
           <SelectTrigger className="w-36"><SlidersHorizontal className="size-3.5 text-muted-foreground" /><SelectValue placeholder="Stage" /></SelectTrigger>
@@ -456,6 +501,9 @@ export default function LeadsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
+              {canAssign && !demoMode && <DropdownMenuItem disabled={bulkUpdating || !selectedIds.length} onSelect={() => setAssigning(true)}>
+                Assign selected to…
+              </DropdownMenuItem>}
               <DropdownMenuItem disabled={bulkUpdating} onSelect={() => void bulkUpdateStage("qualified")}>
                 Mark selected as Qualified
               </DropdownMenuItem>
@@ -565,7 +613,8 @@ export default function LeadsPage() {
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-name">Name</Label><Input id="lead-edit-name" value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-phone">Mobile</Label><Input id="lead-edit-phone" placeholder="+91 99999 99999" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} /></div></div>
             <div className="grid grid-cols-2 gap-3"><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-email">Email</Label><Input id="lead-edit-email" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} /></div><div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-company">Company</Label><Input id="lead-edit-company" value={editForm.company} onChange={(event) => setEditForm({ ...editForm, company: event.target.value })} /></div></div>
             <div className="flex flex-col gap-1.5"><Label>Stage</Label><Select value={editForm.stage} onValueChange={(stage) => setEditForm({ ...editForm, stage })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{stages.map((stage) => <SelectItem key={stage} value={stage}>{label(stage)}</SelectItem>)}</SelectContent></Select></div>
-            {assignees.length > 1 && <div className="flex flex-col gap-1.5"><Label>Owner</Label><Select value={editForm.ownerId} onValueChange={(ownerId) => setEditForm({ ...editForm, ownerId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{assignees.map((item) => <SelectItem key={item.crmUserId} value={item.crmUserId}>{item.name} · {item.title}</SelectItem>)}</SelectContent></Select></div>}
+            {editForm.stage === "lost" && <LostReasonFields id="lead-lost" category={editForm.lostCategory} note={editForm.lostReason} onChange={(lostCategory, lostReason) => setEditForm({ ...editForm, lostCategory, lostReason })} />}
+            {canAssign && people.length > 0 && <div className="flex flex-col gap-1.5"><Label>Owner</Label><Select value={editForm.ownerId || "none"} onValueChange={(ownerId) => setEditForm({ ...editForm, ownerId })}><SelectTrigger aria-label="Owner"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nobody yet</SelectItem>{people.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div>}
             <div className="flex flex-col gap-1.5"><Label htmlFor="lead-edit-requirement">Requirement</Label><Textarea id="lead-edit-requirement" value={editForm.requirement} onChange={(event) => setEditForm({ ...editForm, requirement: event.target.value })} /></div>
             {actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}
             <DialogFooter><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button></DialogFooter>
@@ -577,6 +626,12 @@ export default function LeadsPage() {
         <DialogContent><DialogHeader><DialogTitle>Delete this lead?</DialogTitle><DialogDescription>This removes the lead from the pipeline. The contact record stays available for future enquiries.</DialogDescription></DialogHeader>{actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}<DialogFooter><Button variant="secondary" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" onClick={() => void deleteLead()} disabled={deletingLead}>{deletingLead ? "Deleting…" : "Delete lead"}</Button></DialogFooter></DialogContent>
       </Dialog>
 
+      <Dialog open={assigning} onOpenChange={(open) => !open && setAssigning(false)}>
+        <DialogContent><DialogHeader><DialogTitle>Assign {selectedIds.length} lead{selectedIds.length === 1 ? "" : "s"}</DialogTitle><DialogDescription>The person you choose owns these leads: they see them in My leads and are answerable for following them up.</DialogDescription></DialogHeader>
+          <Select value={assignTo} onValueChange={setAssignTo}><SelectTrigger aria-label="Assign to"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nobody yet</SelectItem>{people.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select>
+          <DialogFooter><Button type="button" variant="secondary" onClick={() => setAssigning(false)}>Cancel</Button><Button type="button" disabled={bulkUpdating} onClick={() => void assignSelected()}>{bulkUpdating ? "Assigning…" : "Assign"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(deletingSelected)} onOpenChange={(open) => !open && setDeletingSelected(null)}>
         <DialogContent><DialogHeader><DialogTitle>Delete selected leads?</DialogTitle><DialogDescription>{deletingSelected?.length || 0} selected leads will be removed from the pipeline. Their contact records stay available.</DialogDescription></DialogHeader>{actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}<DialogFooter><Button variant="secondary" onClick={() => setDeletingSelected(null)}>Cancel</Button><Button variant="destructive" onClick={() => void deleteSelectedLeads()} disabled={deletingLead}>{deletingLead ? "Deleting…" : "Delete selected"}</Button></DialogFooter></DialogContent>
       </Dialog>

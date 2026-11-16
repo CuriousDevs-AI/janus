@@ -27,6 +27,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { LeadDeal } from "@/components/deals/deal-form";
 import { WhatsAppButton } from "@/components/inbox/whatsapp-button";
 import { Badge } from "@/components/ui/badge";
+import { lostWords } from "@/lib/lost-reasons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateTime } from "@/lib/utils";
@@ -348,6 +349,11 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               </div>
               <Badge variant={stageVariant(leadData.stage)}>{label(leadData.stage)}</Badge>
             </div>
+            {leadData.stage === "lost" && (leadData.lostCategory || leadData.lostReason) && (
+              <p className="mt-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
+                <span className="font-medium">Lost: </span>{lostWords(leadData.lostCategory, leadData.lostReason)}
+              </p>
+            )}
             <div className="mt-5 flex gap-1">
               {stages.map((stage, index) => {
                 const complete = leadData.stage !== "lost" && currentStage >= index;

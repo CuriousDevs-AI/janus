@@ -20,6 +20,7 @@ from janus_api.core.db import check_database_role
 from janus_api.core.errors import install_errors
 from janus_api.crm.router import router as crm_router
 from janus_api.finance.bills import router as finance_bills_router
+from janus_api.finance.books import router as finance_books_router
 from janus_api.finance.funds import router as finance_funds_router
 from janus_api.finance.records import router as finance_records_router
 from janus_api.finance.router import router as finance_router
@@ -80,6 +81,7 @@ app.include_router(effort_router)
 app.include_router(finance_router)
 app.include_router(finance_records_router)
 app.include_router(finance_bills_router)
+app.include_router(finance_books_router)
 app.include_router(finance_funds_router)
 app.include_router(rules_router)
 app.include_router(it_router)

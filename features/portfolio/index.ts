@@ -16,3 +16,4 @@ export { Intelligence, type DepartmentChat } from "@/features/portfolio/componen
 export { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
 export { WorkInbox } from "@/features/portfolio/components/work-inbox";
 export { Advisor } from "@/features/portfolio/components/advisor";
+export { KeyRatios } from "@/features/portfolio/components/key-ratios";
