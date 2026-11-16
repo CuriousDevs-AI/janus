@@ -794,10 +794,10 @@ function ProductsView() {
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] text-sm">
-            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Item</th><th className="px-4 py-2">SKU</th><th className="px-4 py-2">HSN</th><th className="px-4 py-2 text-right">Rate</th><th className="px-4 py-2 text-right">GST</th><th className="px-4 py-2 text-right">Stock</th><th className="px-4 py-2">Batches</th></tr></thead>
+            <thead><tr className="border-b border-border bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2">Item</th><th className="px-4 py-2">SKU</th><th className="px-4 py-2">HSN</th><th className="px-4 py-2 text-right">Rate</th><th className="px-4 py-2 text-right">GST</th><th className="px-4 py-2 text-right">Stock</th><th className="px-4 py-2 text-right">Reorder level</th><th className="px-4 py-2">Batches</th></tr></thead>
             <tbody>
-              {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No items yet.</td></tr> : null}
-              {items.length > 0 && shown.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No item matches. <button type="button" className="text-accent hover:underline" onClick={() => { setShow("all"); setFind(""); }}>Show all</button></td></tr> : null}
+              {items.length === 0 ? <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">No items yet.</td></tr> : null}
+              {items.length > 0 && shown.length === 0 ? <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">No item matches. <button type="button" className="text-accent hover:underline" onClick={() => { setShow("all"); setFind(""); }}>Show all</button></td></tr> : null}
               {shown.map((item) => (
                 <tr key={item.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 font-medium">{item.name}</td>
@@ -805,7 +805,8 @@ function ProductsView() {
                   <td className="px-4 py-3">{item.hsn}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{money(item.rate)}</td>
                   <td className="px-4 py-3 text-right">{item.gstRate}%</td>
-                  <td className="px-4 py-3 text-right tabular-nums"><span className={onHand(item) <= 0 ? "font-medium text-danger" : onHand(item) <= item.reorderLevel ? "font-medium text-amber-700 dark:text-amber-400" : ""}>{onHand(item)} {item.unit}</span>{item.reorderLevel > 0 ? <span className="mt-1 ml-auto block h-1 w-20 overflow-hidden rounded-full bg-surface-2" title={`Reorder at ${item.reorderLevel} ${item.unit}`}><span className={`block h-full rounded-full ${onHand(item) <= item.reorderLevel ? "bg-amber-500" : "bg-accent"}`} style={{ width: `${Math.min(100, (onHand(item) / (item.reorderLevel * 3)) * 100)}%` }} /></span> : null}</td>
+                  <td className="px-4 py-3 text-right tabular-nums"><span className={onHand(item) <= 0 ? "font-medium text-danger" : onHand(item) <= item.reorderLevel ? "font-medium text-amber-700 dark:text-amber-400" : ""}>{onHand(item)} {item.unit}</span>{item.reorderLevel > 0 ? <span className="mt-1 ml-auto block h-1 w-20 overflow-hidden rounded-full bg-surface-2"><span className={`block h-full rounded-full ${onHand(item) <= item.reorderLevel ? "bg-amber-500" : "bg-accent"}`} style={{ width: `${Math.min(100, (onHand(item) / (item.reorderLevel * 3)) * 100)}%` }} /></span> : null}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{item.reorderLevel > 0 ? `${item.reorderLevel} ${item.unit}` : "—"}</td>
                   <td className="px-4 py-3">{item.trackBatch ? <Badge variant="neutral">tracked</Badge> : "—"}</td>
                 </tr>
               ))}
