@@ -16,6 +16,22 @@ from pydantic import BaseModel
 from janus_api.portfolio import schemas as portfolio
 from janus_api.portfolio.periods import inr
 
+# What usually fixes each reason a lead is lost, said the way an adviser would.
+LOST_FIXES: dict[str, str] = {
+    "price": "Show value before price: send the proposal with what the customer gets, offer a"
+    " smaller first order, and decide in advance the most discount anyone may give.",
+    "competitor": "Ask the next few lost customers whom they chose and why, then answer that"
+    " point in your pitch before the customer raises it.",
+    "no_budget": "Qualify budget on the first call, and offer a smaller package or payment in"
+    " instalments to those who want it but cannot pay at once.",
+    "no_response": "Call within an hour of a new lead and set a follow-up date on every call;"
+    " the Leads list shows who is due today.",
+    "timing": "Set a follow-up date months ahead instead of closing these as lost, and reach"
+    " them again when they said they would be ready.",
+    "not_a_fit": "Tighten who your ads and listings reach, so fewer leads arrive that you"
+    " cannot serve.",
+}
+
 Area = Literal["sales", "money", "compliance", "team", "operations"]
 Severity = Literal["high", "medium", "low"]
 AREA_NAMES: dict[str, str] = {
@@ -344,6 +360,112 @@ def findings(company: portfolio.CompanySummary) -> list[Finding]:  # noqa: C901
                 href=_crm("/deals"),
                 plan="Raise conversion to 20% of leads.",
                 measure=Measure(label="% of leads won", now=rate, target=20, better="higher"),
+            )
+        )
+    reasons = company.crm.lostReasons if company.crm else []
+    lost_total = sum(item.count for item in reasons)
+    lost_top = reasons[0] if reasons else None
+    if (
+        lost_top
+        and lost_top.category != "other"
+        and lost_total >= 4
+        and lost_top.count / lost_total >= 0.4
+    ):
+        share = round(lost_top.count / lost_total * 100)
+        fix = LOST_FIXES.get(lost_top.category, "Find out what lies behind it and fix it.")
+        out.append(
+            Finding(
+                id="lost-reason-pattern",
+                area="sales",
+                severity="medium",
+                title=f"Most lost leads give one reason: {lost_top.label.lower()}",
+                sees=f"{lost_top.count} of the {lost_total} leads lost in the last 90 days ({share}%)"
+                f" were lost because: {lost_top.label.lower()}"
+                + (f", worth {inr(_n(lost_top.value))} in deals." if _n(lost_top.value) else "."),
+                matters="When one reason keeps coming back it is not bad luck: fixing it wins back"
+                " the leads you already paid to get.",
+                action=fix,
+                href=_crm("/leads"),
+                plan=f"Cut losses to '{lost_top.label.lower()}' to under a quarter of all losses.",
+                measure=Measure(
+                    label=f"% of losses to {lost_top.label.lower()}",
+                    now=share,
+                    target=25,
+                    better="lower",
+                ),
+            )
+        )
+    kept = company.customerFigures
+    if kept and kept.churnRate is not None and kept.before >= 5 and kept.churnRate >= 30:
+        out.append(
+            Finding(
+                id="customer-churn",
+                area="sales",
+                severity="high" if kept.churnRate >= 50 else "medium",
+                title="Customers are not coming back",
+                sees=f"{kept.before - kept.kept} of the {kept.before} customers who bought in the"
+                f" twelve months before have not bought in the last twelve: {kept.churnRate}%"
+                " churn.",
+                matters="Keeping a customer costs far less than finding a new one, and a customer"
+                " who stopped buying usually went to someone else for a reason you can fix.",
+                action="Call the largest customers who stopped buying, ask why, and offer what"
+                " brings them back. They are listed under Customers kept in Portfolio analytics.",
+                href="/portfolio?view=analytics#an-kept",
+                plan="Bring churn under 25% of last year's customers.",
+                measure=Measure(
+                    label="% of customers lost", now=kept.churnRate, target=25, better="lower"
+                ),
+            )
+        )
+    if kept and kept.topShare is not None and kept.customers >= 3 and kept.topShare >= 40:
+        out.append(
+            Finding(
+                id="customer-concentration",
+                area="sales",
+                severity="high" if kept.topShare >= 60 else "medium",
+                title="One customer is a large part of your sales",
+                sees=f"{kept.topCustomer} bought {kept.topShare}% of your sales in the last twelve"
+                f" months; your five largest customers {kept.top5Share}%.",
+                matters="If that one customer delays payment, cuts orders or leaves, a large part"
+                " of your income goes with them.",
+                action="Win more customers of the same kind, agree a written contract or notice"
+                " period with this one, and keep what they owe you short.",
+                href="/portfolio?view=analytics#an-kept",
+                plan="Bring the largest customer under 30% of sales.",
+                measure=Measure(
+                    label="% of sales from the largest customer",
+                    now=kept.topShare,
+                    target=30,
+                    better="lower",
+                ),
+            )
+        )
+    closed = company.sales
+    if (
+        closed
+        and closed.current.winRate is not None
+        and closed.previous.winRate is not None
+        and closed.current.won + closed.current.lost >= 5
+        and closed.current.winRate <= closed.previous.winRate - 15
+    ):
+        out.append(
+            Finding(
+                id="win-rate-drop",
+                area="sales",
+                severity="medium",
+                title="Fewer closed deals are won",
+                sees=f"{closed.current.winRate}% of the deals closed this period were won, against"
+                f" {closed.previous.winRate}% in the same days before.",
+                matters="The same effort is turning into fewer sales.",
+                action="Read why deals were lost on the CRM overview and fix the most common reason.",
+                href=_crm("/dashboard"),
+                plan=f"Get the win rate back to {closed.previous.winRate}%.",
+                measure=Measure(
+                    label="% of closed deals won",
+                    now=closed.current.winRate,
+                    target=closed.previous.winRate,
+                    better="higher",
+                ),
             )
         )
     if before.leads >= 5 and now.leads < before.leads * 0.7:

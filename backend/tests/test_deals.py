@@ -125,3 +125,74 @@ async def test_saved_pipeline(
             {"user": int(agent_id)},
         )
     assert (await client.put(url, headers=agent, json=changes)).status_code == 403
+
+
+async def test_lost_reasons_are_counted(client: httpx.AsyncClient, mailbox: Mailbox) -> None:
+    owner = await signup(client, mailbox)
+
+    phones = {"lost-1": "9876500001", "lost-2": "9876500002", "lost-3": "9876500003"}
+
+    async def lead(key: str) -> str:
+        created = await client.post(
+            "/v1/leads",
+            headers={**owner.headers, "Idempotency-Key": key},
+            json={"name": f"Buyer {key}", "phone": phones[key]},
+        )
+        assert created.status_code == 201, created.text
+        return str(created.json()["id"])
+
+    first, second, third = await lead("lost-1"), await lead("lost-2"), await lead("lost-3")
+    url = f"/v1/leads/{first}"
+    base = {"name": "Buyer lost-1", "phone": phones["lost-1"], "stage": "lost"}
+    # A lost lead needs a reason; "other" needs a note.
+    assert (await client.patch(url, headers=owner.headers, json=base)).status_code == 422
+    other = {**base, "lostCategory": "other"}
+    assert (await client.patch(url, headers=owner.headers, json=other)).status_code == 422
+    marked = await client.patch(url, headers=owner.headers, json={**base, "lostCategory": "price"})
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["lostCategory"] == "price" and marked.json()["lostAt"]
+    # A deal lost for a reason passes it to its lead, with the deal's value.
+    deal = await client.post(
+        f"/v1/leads/{second}/deal",
+        headers=owner.headers,
+        json={"name": "Order", "amount": "5000.00", "stage": "proposal"},
+    )
+    lost = await client.put(
+        f"/v1/deals/{deal.json()['id']}",
+        headers=owner.headers,
+        json={
+            "name": "Order",
+            "amount": "5000.00",
+            "stage": "lost",
+            "lostCategory": "price",
+            "lostReason": "Wanted 20% off",
+            "version": 1,
+        },
+    )
+    assert lost.status_code == 200, lost.text
+    assert lost.json()["lostCategory"] == "price"
+    lead_two = (await client.get(f"/v1/leads/{second}", headers=owner.headers)).json()
+    assert lead_two["stage"] == "lost" and lead_two["lostReason"] == "Wanted 20% off"
+    # An older client's free-text reason counts as "other".
+    third_lost = await client.patch(
+        f"/v1/leads/{third}",
+        headers=owner.headers,
+        json={
+            "name": "Buyer lost-3",
+            "phone": phones["lost-3"],
+            "stage": "lost",
+            "lostReason": "Moved city",
+        },
+    )
+    assert third_lost.json()["lostCategory"] == "other"
+    reasons = (await client.get("/v1/lost-reasons", headers=owner.headers)).json()
+    assert reasons[0] == {
+        "category": "price",
+        "label": "Price too high",
+        "count": 2,
+        "value": "5000.00",
+    }
+    assert reasons[1]["category"] == "other" and reasons[1]["count"] == 1
+    # Reopening a lead clears why it was lost.
+    reopened = await client.patch(url, headers=owner.headers, json={**base, "stage": "qualified"})
+    assert reopened.json()["lostCategory"] is None and reopened.json()["lostAt"] is None
