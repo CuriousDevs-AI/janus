@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips } from "@/components/shared/stat-tile";
 import { useApi } from "@/lib/api/use-api";
 
-type Area = "sign-in" | "sales" | "money" | "people" | "workflows" | "settings" | "other";
+type Area = "sign-in" | "sales" | "money" | "people" | "workflows" | "settings" | "support" | "other";
 type AuditEvent = { id: string; at: string; area: Area; what: string; action: string; who: string | null; ip: string | null };
 
 const areas: { value: Area | "all"; label: string }[] = [
@@ -16,6 +16,7 @@ const areas: { value: Area | "all"; label: string }[] = [
   { value: "money", label: "Money" },
   { value: "people", label: "People & access" },
   { value: "workflows", label: "Workflows" },
+  { value: "support", label: "Support" },
   { value: "settings", label: "Settings" },
 ];
 const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });

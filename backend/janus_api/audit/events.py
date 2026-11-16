@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.models import AuditLog
 
-Area = Literal["sign-in", "sales", "money", "people", "workflows", "settings", "other"]
+Area = Literal["sign-in", "sales", "money", "people", "workflows", "settings", "support", "other"]
 # Reads and token refreshes: recorded for security, not shown as changes.
 QUIET = ("portfolio.company_read", "auth.refresh")
 WORDS = {
@@ -53,6 +53,7 @@ AREAS: dict[str, Area] = {
     "portfolio": "settings",
     "org": "settings",
     "ai": "settings",
+    "support": "support",
 }
 
 
