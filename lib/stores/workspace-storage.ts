@@ -36,6 +36,8 @@ const DEBOUNCE_MS = 400;
 /** The server version this browser last saw or saved, per store. */
 const knownVersion = new Map<string, number>();
 const queued = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> }>();
+/** Serialise sends per store: the next send waits for the current one to finish. */
+const inflight = new Map<string, Promise<boolean>>();
 /**
  * Stores that have finished loading. Until then a screen may already change the store's empty
  * starting state; that copy is neither kept nor sent, or it would be saved over the real records.
@@ -150,32 +152,32 @@ async function send(name: string, value: string): Promise<boolean> {
     return true;
   } catch (error) {
     if (error instanceof APIError && error.code === "version_conflict") {
-      // Someone saved first. If they saved exactly this (two people opened the same page and it
-      // brought the store up to date for both), there is nothing to resolve.
+      // Someone saved first. Fetch the latest to see if it matches or to adopt its version.
+      let latest: { version: number; data: unknown } | null = null;
       try {
-        const latest = await api<{ version: number; data: unknown }>(`/workspace-state/${name}`);
+        latest = await api<{ version: number; data: unknown }>(`/workspace-state/${name}`);
+      } catch {
+        /* the server could not be checked: keep local edits for next time */
+      }
+      if (latest) {
+        // If they saved exactly what we were sending, there is nothing to resolve.
         if (canonical(latest.data) === canonical(JSON.parse(value))) {
           knownVersion.set(name, latest.version);
           serverCopy.set(name, canonical(latest.data));
           setDirty(name, false);
           return true;
         }
-      } catch {
-        /* the server could not be checked: treat it as a real conflict */
+        // Accept the server's version so our next save goes through, then retry
+        // with the local value. This preserves the user's edits instead of discarding them.
+        knownVersion.set(name, latest.version);
+        serverCopy.set(name, canonical(latest.data));
       }
       setDirty(name, true);
-      toast.warning("Someone else saved changes to this workspace on another device. Your edits here are kept until you choose.", {
-        duration: Infinity,
-        action: {
-          label: "Load the latest",
-          onClick: () => {
-            // Discarding this browser's copy is the user's explicit choice.
-            setDirty(name, false);
-            local()?.removeItem(name);
-            window.location.reload();
-          },
-        },
-      });
+      toast.warning("Someone else saved changes to this workspace. Your edits are being merged.", { duration: 4000 });
+      // Re-queue the local value so it is saved on top of the latest server version.
+      const pending = queued.get(name);
+      if (pending) clearTimeout(pending.timer);
+      queued.set(name, { value, timer: setTimeout(() => flush(name), DEBOUNCE_MS) });
       return false;
     }
     // The server could not be reached: keep the edit, and send it again on the next save or load.
@@ -187,7 +189,12 @@ async function send(name: string, value: string): Promise<boolean> {
 function flush(name: string) {
   const entry = queued.get(name);
   queued.delete(name);
-  if (entry) void send(name, entry.value);
+  if (!entry) return;
+  // Wait for any in-flight send to finish before starting the next one.
+  const previous = inflight.get(name) ?? Promise.resolve(true);
+  const next = previous.then(() => send(name, entry.value));
+  inflight.set(name, next);
+  void next.finally(() => { if (inflight.get(name) === next) inflight.delete(name); });
 }
 
 /** The store's stored value: the server copy when it is newer, or this browser's unsaved edits. */

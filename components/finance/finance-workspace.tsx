@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
+import type { Deal as ApiDeal } from "@/lib/api/types";
+import { demoMode } from "@/lib/demo-mode";
+import * as books from "@/lib/finance-books-records";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips, StatTile as Kpi, rowClick, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +45,17 @@ import { todayIso } from "@/lib/today";
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { minimumFractionDigits: Number.isInteger(Math.round(value * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
+/** Months that have at least one record, plus the current calendar month, sorted ascending. */
+function dataMonths(invoices: { date: string }[], bills: { date: string }[], expenses: { date: string }[]): string[] {
+  const today = todayIso();
+  const set = new Set<string>();
+  set.add(today.slice(0, 7));
+  for (const i of invoices) set.add(i.date.slice(0, 7));
+  for (const b of bills) set.add(b.date.slice(0, 7));
+  for (const e of expenses) set.add(e.date.slice(0, 7));
+  return [...set].sort();
+}
+
 /** Views that are not built yet. They say so instead of showing empty tables. */
 const comingSoon: Record<string, string> = {
 };
@@ -57,9 +72,14 @@ export function FinanceWorkspace() {
     syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
     syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
     syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
+    if (!demoMode) books.syncBooks().catch((error: unknown) => toast.warning(`Expenses, bank lines and cash not loaded from the server: ${message(error)}`));
     // The bill form matches a bill to a purchase order, so the orders load here too.
-    syncOperations().catch((error: unknown) => toast.warning(`Purchase orders not loaded from the server: ${message(error)}`));
-  }, []);
+    // Only load operations data when the user has the stock:adjust permission; accountants
+    // without it would get a 403 toast on every page load.
+    if (hasPermission(session.permissions, "stock:adjust")) {
+      syncOperations().catch(() => {/* PO data is optional for Finance */});
+    }
+  }, [session.permissions]);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const titles: Record<string, string> = { overview: "Finance overview", invoices: "Invoices", "credit-notes": "Credit notes", funds: "Fund requests & budgets", approvals: "Approvals queue", periods: "Period locks", payables: "Bills & payables", receivables: "Payments & receivables", "profit-loss": "Profit & loss", budgets: "Budgets by quarter", "cash-flow": "Cash flow", reconciliation: "Bank reconciliation", "month-end": "Month-end close", expenses: "Expenses & petty cash", gst: "GST summary", reports: "Financial reports" };
@@ -203,16 +223,16 @@ function PayablesView({ me }: { me: string }) {
               {bills.length === 0 ? <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No bills yet.</td></tr> : null}
               {bills.map((bill) => {
                 const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
-                const owed = Math.round((bill.amount - paid) * 100) / 100;
+                const owed = Math.round((bill.amount - (bill.tds ?? 0) - paid) * 100) / 100;
                 const status = owed <= 0 ? "paid" : bill.dueDate < today ? "overdue" : paid > 0 ? "part paid" : "open";
                 const order = purchaseOrders.find((o) => o.id === bill.poId);
-                const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
+                const match = threeWayMatch(bill.amount - (bill.gst ?? 0), order, workflowRules().matchTolerancePercent);
                 const held = bill.poId !== undefined && !match.matched && owed > 0;
                 return (
                   <tr key={bill.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-medium">{bill.number}<span className="block text-xs font-normal text-muted-foreground">{bill.vendor} · {bill.vendorBillNo}</span></td>
                     <td className="px-4 py-3">{bill.dueDate}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}{bill.gst ? <span className="block text-xs text-muted-foreground">GST {money(bill.gst)} · <button type="button" className="underline-offset-2 hover:underline" title="Section 17(5): GST on food, cars and personal use cannot be taken as input credit" onClick={() => void toggleBlocked(bill.id, !bill.itcBlocked)}>{bill.itcBlocked ? "credit blocked" : "credit taken"}</button></span> : null}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(bill.amount)}{bill.gst ? <span className="block text-xs text-muted-foreground">GST {money(bill.gst)} · <button type="button" className="underline-offset-2 hover:underline" title="Section 17(5): GST on food, cars and personal use cannot be taken as input credit" onClick={() => void toggleBlocked(bill.id, !bill.itcBlocked)}>{bill.itcBlocked ? "credit blocked" : "credit taken"}</button></span> : null}{bill.tds ? <span className="block text-xs text-muted-foreground">TDS {money(bill.tds)}{bill.tdsSection ? ` · ${bill.tdsSection}` : ""}</span> : null}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(owed)}</td>
                     <td className="px-4 py-3"><Badge variant={status === "paid" ? "success" : status === "overdue" ? "danger" : "warning"}>{status}</Badge></td>
                     <td className="px-4 py-3 text-xs">{order ? <span className={match.matched ? "text-success" : "text-warning"}>{order.number}: {match.status}</span> : <span className="text-muted-foreground">no order</span>}</td>
@@ -247,9 +267,9 @@ function BudgetsView({ me }: { me: string }) {
   const [quarter, setQuarter] = React.useState<1 | 2 | 3 | 4>(current.quarter);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
 
-  function save(lineId: string) {
+  async function save(lineId: string) {
     const planned = Number(drafts[lineId] ?? "");
-    const problem = setBudgetPlan(lineId, fiscalYear, quarter, planned, me);
+    const problem = demoMode ? setBudgetPlan(lineId, fiscalYear, quarter, planned, me) : await books.setBudgetPlan(lineId, fiscalYear, quarter, planned);
     if (problem) return toast.error(problem);
     toast.success("Plan saved");
     setDrafts((current) => ({ ...current, [lineId]: "" }));
@@ -304,16 +324,19 @@ function MonthEndView({ me }: { me: string }) {
   const closeReviews = useFinanceStore((state) => state.closeReviews);
   const markCloseReviewed = useFinanceStore((state) => state.markCloseReviewed);
   const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
-  const months = ["2026-08", "2026-09", "2026-10"];
-  const [month, setMonth] = React.useState("2026-10");
-  const payments = bookPayments(invoices, bills);
+  const matchExpenses = useFinanceStore((state) => state.expenses);
+  const months = dataMonths(invoices, bills, matchExpenses);
+  const [month, setMonth] = React.useState(() => todayIso().slice(0, 7));
+  const matchTopUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const matchMovements = useFinanceStore((state) => state.bankEntries);
+  const payments = bookPayments(invoices, bills, matchExpenses, matchTopUps, matchMovements);
   const matchedKeys = new Set<string | null>(bankLines.map((l) => l.matchedKey));
   const checks = monthEndChecks({ month, invoices, bills, bankLines, bookPayments: payments, matchedKeys, lockedThrough, reviews: closeReviews.filter((r) => r.startsWith(`${month}:`)).map((r) => r.slice(month.length + 1)), dueAmount, creditNotes });
-  const ready = checks.every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
+  const ready = checks.filter((c) => c.id !== "lock").every((c) => c.passed || (c.manual && closeReviews.includes(`${month}:${c.id}`)));
   const end = monthEnd(month);
 
-  function signOff(item: string) {
-    const problem = markCloseReviewed(month, item, me);
+  async function signOff(item: string) {
+    const problem = demoMode ? markCloseReviewed(month, item, me) : await books.markCloseReviewed(month, item);
     if (problem) return toast.error(problem);
     toast.success("Signed off");
   }
@@ -372,15 +395,15 @@ function ExpensesView({ me }: { me: string }) {
   const [paidFrom, setPaidFrom] = React.useState<"petty cash" | "bank">("petty cash");
   const [topUp, setTopUp] = React.useState("");
 
-  function save() {
-    const problem = addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom }, me);
+  async function save() {
+    const problem = demoMode ? addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom }, me) : await books.addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom });
     if (problem) return toast.error(problem);
     toast.success("Expense recorded");
     setPayee(""); setAmount("");
   }
 
-  function topUpCash() {
-    const problem = topUpPettyCash({ date, amount: Number(topUp) }, me);
+  async function topUpCash() {
+    const problem = demoMode ? topUpPettyCash({ date, amount: Number(topUp) }, me) : await books.topUpPettyCash({ date, amount: Number(topUp) });
     if (problem) return toast.error(problem);
     toast.success("Petty cash topped up");
     setTopUp("");
@@ -436,14 +459,15 @@ function ExpensesView({ me }: { me: string }) {
   );
 }
 
-/** GST summary for one month: output tax on sales by rate, input tax on expenses, and the net to check. */
+/** GST summary for one month: output tax on sales by rate, input tax on purchases and expenses, and the net to check. */
 function GstView() {
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const expenses = useFinanceStore((state) => state.expenses);
-  const months = ["2026-08", "2026-09", "2026-10"];
-  const [month, setMonth] = React.useState("2026-10");
-  const summary = gstSummary(month, invoices, creditNotes, expenses);
+  const bills = useFinanceStore((state) => state.bills);
+  const months = dataMonths(invoices, bills, expenses);
+  const [month, setMonth] = React.useState(() => todayIso().slice(0, 7));
+  const summary = gstSummary(month, invoices, creditNotes, expenses, bills);
 
   return (
     <>
@@ -464,7 +488,7 @@ function GstView() {
           <div className="grid gap-1 text-sm tabular-nums">
             <div className="flex justify-between"><span>Output tax on sales</span><span>{money(summary.outputTax)}</span></div>
             <div className="flex justify-between text-xs text-muted-foreground"><span>Less tax on approved credit notes this month</span><span>{money(summary.creditTax)}</span></div>
-            <div className="flex justify-between"><span>Input tax on expenses</span><span>{money(summary.inputTax)}</span></div>
+            <div className="flex justify-between"><span>Input tax on purchases and expenses</span><span>{money(summary.inputTax)}</span></div>
             <div className="flex justify-between font-semibold"><span>Net to check before filing</span><span>{summary.netPayable < 0 ? `-${money(Math.abs(summary.netPayable))}` : money(summary.netPayable)}</span></div>
           </div>
         </CardContent>
@@ -486,7 +510,7 @@ function ReportsView() {
   const live = invoices.filter((i) => !i.cancelled);
   const receivable = live.reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const overdue = live.filter((i) => i.dueDate < todayIso()).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
-  const owedToVendors = bills.reduce((sum, b) => sum + (b.amount - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
+  const owedToVendors = bills.reduce((sum, b) => sum + Math.max(0, b.amount - (b.tds ?? 0) - b.payments.reduce((s, p) => s + p.amount, 0)), 0);
   const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
   const closing = months.length > 0 ? months[months.length - 1].closing : openingCash;
   const buckets = ["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"];
@@ -530,13 +554,16 @@ function ReconciliationView({ me }: { me: string }) {
   const matchBankLine = useFinanceStore((state) => state.matchBankLine);
   const [text, setText] = React.useState("");
   const [errors, setErrors] = React.useState<string[]>([]);
-  const payments = bookPayments(invoices, bills);
+  const matchExpenses = useFinanceStore((state) => state.expenses);
+  const matchTopUps = useFinanceStore((state) => state.pettyCashTopUps);
+  const matchMovements = useFinanceStore((state) => state.bankEntries);
+  const payments = bookPayments(invoices, bills, matchExpenses, matchTopUps, matchMovements);
   const matchedKeys = new Set(bankLines.filter((l) => l.matchedKey).map((l) => l.matchedKey));
   const unmatchedPayments = payments.filter((p) => !matchedKeys.has(p.key));
   const unmatchedLines = bankLines.filter((l) => !l.matchedKey).length;
 
-  function save() {
-    const result = importBankStatement(text, me);
+  async function save() {
+    const result = demoMode ? importBankStatement(text, me) : await books.importBankStatement(text);
     setErrors(result.errors);
     if (result.imported > 0) {
       toast.success(`${result.imported} line${result.imported === 1 ? "" : "s"} imported`);
@@ -560,7 +587,8 @@ function ReconciliationView({ me }: { me: string }) {
         <CardContent className="grid gap-2 text-sm">
           {bankLines.length === 0 ? <p className="text-muted-foreground">No statement lines yet.</p> : null}
           {bankLines.map((line) => {
-            const options = payments.filter((p) => (p.direction === 1) === (line.amount > 0) && (!matchedKeys.has(p.key) || p.key === line.matchedKey));
+            // Exact amounts first, then the nearest: the right match is usually at the top.
+            const options = payments.filter((p) => (p.direction === 1) === (line.amount > 0) && (!matchedKeys.has(p.key) || p.key === line.matchedKey)).sort((a, b) => Math.abs(a.amount - Math.abs(line.amount)) - Math.abs(b.amount - Math.abs(line.amount)));
             return (
               <div key={line.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
                 <span>
@@ -568,7 +596,7 @@ function ReconciliationView({ me }: { me: string }) {
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={line.matchedKey ? "success" : "warning"}>{line.matchedKey ? "matched" : "not matched"}</Badge>
-                  <select aria-label={`Match ${line.description}`} className={selectClass} value={line.matchedKey ?? ""} onChange={(e) => { const p = matchBankLine(line.id, e.target.value || null, me); if (p) toast.error(p); }}>
+                  <select aria-label={`Match ${line.description}`} className={selectClass} value={line.matchedKey ?? ""} onChange={async (e) => { const key = e.target.value || null; const p = demoMode ? matchBankLine(line.id, key, me) : await books.matchBankLine(line.id, key); if (p) toast.error(p); }}>
                     <option value="">{line.matchedKey ? "Unmatch…" : "Match to a payment…"}</option>
                     {options.map((o) => <option key={o.key} value={o.key}>{o.label} · {money(o.amount)} · {o.date}</option>)}
                   </select>
@@ -607,15 +635,15 @@ function CashFlowView({ me }: { me: string }) {
   const months = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, pettyCashTopUps);
   const lastClosing = months.length > 0 ? months[months.length - 1].closing : openingCash;
 
-  function saveOpening() {
-    const problem = setOpeningCash(Number(opening), me);
+  async function saveOpening() {
+    const problem = demoMode ? setOpeningCash(Number(opening), me) : await books.setOpeningCash(Number(opening));
     if (problem) return toast.error(problem);
     toast.success("Opening cash saved");
   }
 
-  function saveEntry() {
+  async function saveEntry() {
     const sign = direction === "in" ? 1 : -1;
-    const problem = addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) }, me);
+    const problem = demoMode ? addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) }, me) : await books.addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) });
     if (problem) return toast.error(problem);
     toast.success("Bank movement recorded");
     setDescription(""); setAmount("");
@@ -694,9 +722,10 @@ function ProfitLossView() {
     ["Sales (ex-GST)", pnl.sales, false],
     ["Less approved credit notes (ex-GST)", -pnl.credits || 0, false],
     ["Net sales", pnl.netSales, true],
-    ["Less bills recorded", -(pnl.costs - pnl.writeOffs) || 0, false],
+    ["Less bills recorded (ex-GST)", -pnl.billCosts || 0, false],
+    ["Less expenses", -pnl.expenseCosts || 0, false],
     ["Less bad debt written off", -pnl.writeOffs || 0, false],
-    ["Profit before payroll and expenses", pnl.profit, true],
+    ["Profit before payroll", pnl.profit, true],
   ];
   return (
     <>
@@ -709,7 +738,7 @@ function ProfitLossView() {
             {from || to ? <Button size="sm" variant="ghost" onClick={() => { setFrom(""); setTo(""); }}>Clear period</Button> : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs as they were entered. Payroll and expense claims are not in this figure yet.
+            Sales are shown without GST. A credit note reduces sales by its share of the invoice before GST. Bills are costs at their amount before GST. Expenses are costs at their entered amount. Payroll is not in this figure yet.
           </p>
           <table className="w-full text-sm tabular-nums">
             <tbody>
@@ -753,7 +782,7 @@ function BalanceSheetCard() {
   const cash = flow.length > 0 ? flow[flow.length - 1].closing : openingCash;
   const receivables = invoices.filter((i) => !i.cancelled).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const stock = items.reduce((sum, item) => sum + stockOn(movements, item.id) * item.rate, 0);
-  const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
+  const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - (bill.tds ?? 0) - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
   // Schedule III, vertical form: equity is share capital plus reserves and surplus; reserves include the profit to date.
   const reserves = profitAndLoss(invoices, creditNotes, bills, expenses).profit;
   const equity = shareCapital + reserves;
@@ -777,7 +806,7 @@ function BalanceSheetCard() {
       <CardHeader><CardTitle className="text-base">Balance sheet to date</CardTitle></CardHeader>
       <CardContent className="grid gap-3 text-sm">
         <p className="text-xs text-muted-foreground">Laid out as Schedule III requires: equity and liabilities, then assets. Enter the share capital from the company&apos;s records. A difference other than zero means some entries are still missing, such as opening balances or fixed assets, and is shown rather than hidden.</p>
-        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const p = setShareCapital(Number(capitalInput) || 0, me); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
+        <form className="flex flex-wrap items-end gap-2" onSubmit={async (e) => { e.preventDefault(); const p = demoMode ? setShareCapital(Number(capitalInput) || 0, me) : await books.setShareCapital(Number(capitalInput) || 0); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
           <Label htmlFor="share-capital" className="grid gap-1 text-xs">Share capital (₹)<Input id="share-capital" type="number" min={0} value={capitalInput} onChange={(e) => setCapitalInput(e.target.value)} className="w-40" /></Label>
           <Button type="submit" size="sm" variant="secondary">Save share capital</Button>
         </form>
@@ -849,14 +878,16 @@ function InvoicesView({ me }: { me: string }) {
   }, []);
   const invoices = useFinanceStore((state) => state.invoices);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
-  const [creating, setCreating] = React.useState(false);
+  const params = useSearchParams();
+  // "Raise the invoice" on a won deal opens this with the deal chosen.
+  const fromDeal = params.get("deal") ?? "";
+  const [creating, setCreating] = React.useState(Boolean(fromDeal));
   const [paying, setPaying] = React.useState<Invoice | null>(null);
   const [selected, setSelected] = React.useState<Invoice | null>(null);
-  const params = useSearchParams();
   type Show = "all" | "unpaid" | "overdue" | "paid";
   const [show, setShow] = React.useState<Show>(() => { const asked = params.get("status"); return asked === "unpaid" || asked === "overdue" || asked === "paid" ? asked : "all"; });
   const [aging, setAging] = React.useState(() => params.get("aging") ?? "");
-  const [find, setFind] = React.useState("");
+  const [find, setFind] = React.useState(() => params.get("q") ?? "");
   const live = invoices.filter((invoice) => !invoice.cancelled);
   const statusOf = (invoice: Invoice) => invoiceStatus(invoice, creditNotes);
   const counts = { all: invoices.length, unpaid: live.filter((invoice) => statusOf(invoice) !== "paid").length, overdue: live.filter((invoice) => statusOf(invoice) === "overdue").length, paid: invoices.filter((invoice) => statusOf(invoice) === "paid").length };
@@ -900,7 +931,7 @@ function InvoicesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right tabular-nums">{money(invoiceTotals(invoice).total)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(dueAmount(invoice, creditNotes))}</td>
                     <td className="px-4 py-3"><Badge variant={status === "overdue" ? "warning" : status === "paid" ? "success" : "neutral"}>{status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="secondary" disabled={status === "paid"} onClick={() => setPaying(invoice)}>Record payment</Button>{status === "overdue" ? <Button size="sm" variant="ghost" asChild><Link href={`/workspace/finance-accounting?view=credit-notes&workspace=finance-accounting&invoice=${invoice.id}&kind=write-off`}>Write off</Link></Button> : null}</div></td>
+                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{status !== "paid" && <Button size="sm" variant="secondary" onClick={() => setPaying(invoice)}>Record payment</Button>}{status === "overdue" ? <Button size="sm" variant="ghost" asChild><Link href={`/workspace/finance-accounting?view=credit-notes&workspace=finance-accounting&invoice=${invoice.id}&kind=write-off`}>Write off</Link></Button> : null}</div></td>
                   </tr>
                 );
               })}
@@ -909,14 +940,14 @@ function InvoicesView({ me }: { me: string }) {
           </table>
         </CardContent>
       </Card>
-      {creating ? <NewInvoiceDialog me={me} onClose={() => setCreating(false)} /> : null}
+      {creating ? <NewInvoiceDialog me={me} initialDeal={fromDeal} onClose={() => setCreating(false)} /> : null}
       {paying ? <PaymentDialog invoice={paying} onClose={() => setPaying(null)} /> : null}
       {selected ? <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} /> : null}
     </>
   );
 }
 
-function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) {
+function NewInvoiceDialog({ me, initialDeal = "", onClose }: { me: string; initialDeal?: string; onClose: () => void }) {
   const session = useSession();
   const canCreate = hasPermission(session.permissions, "billing:manage");
   const [customer, setCustomer] = React.useState("");
@@ -927,6 +958,19 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
   const [dueDays, setDueDays] = React.useState("30");
   const [lines, setLines] = React.useState<InvoiceLine[]>([{ item: "", hsn: "", qty: 1, rate: 0, gstRate: 18 }]);
   const [error, setError] = React.useState("");
+  // The company's deals with their figures, won first: choosing one fills in who and what is invoiced.
+  const crmDeals = useApi<ApiDeal[]>(demoMode ? null : "/deals?limit=100&after_id=0");
+  const dealChoices = demoMode ? links.deals.map((d) => ({ id: d.id, label: d.label })) : [...(crmDeals.data ?? [])].sort((a, b) => Number(b.stage === "won") - Number(a.stage === "won")).map((d) => ({ id: d.id, label: `${d.name} · ${d.customerName}${d.stage === "won" ? " · won" : ` · ${d.stage}`}` }));
+  const chooseDeal = React.useCallback((id: string) => {
+    setDealId(id);
+    const deal = crmDeals.data?.find((item) => item.id === id);
+    if (!deal) return;
+    setCustomer(deal.customerName);
+    setCustomerCompany(deal.company ?? "");
+    setLines((current) => current.length === 1 && !current[0].item.trim() && !current[0].rate ? [{ ...current[0], item: deal.name, qty: 1, rate: Number(deal.amount) }] : current);
+  }, [crmDeals.data]);
+  const [chosenInitial, setChosenInitial] = React.useState(false);
+  if (initialDeal && !chosenInitial && crmDeals.data) { setChosenInitial(true); chooseDeal(initialDeal); }
   const today = todayIso();
   const due = new Date(Date.parse(today) + Number(dueDays || 0) * 86400000).toISOString().slice(0, 10);
   const preview = invoiceTotals({ sameState, lines, id: "", number: "", customer, customerCompany, date: today, dueDate: due, payments: [], createdBy: me });
@@ -952,7 +996,7 @@ function NewInvoiceDialog({ me, onClose }: { me: string; onClose: () => void }) 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-customer">Customer</Label><Input id="inv-customer" value={customer} onChange={(e) => setCustomer(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-company">Company</Label><Input id="inv-company" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} /></div>
-          <div className="flex flex-col gap-1.5"><Label htmlFor="inv-deal">CRM deal (optional)</Label><select id="inv-deal" className={selectClass} value={dealId} onChange={(e) => setDealId(e.target.value)}><option value="">None</option>{links.deals.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
+          <div className="flex flex-col gap-1.5"><Label htmlFor="inv-deal">CRM deal (optional)</Label><select id="inv-deal" className={selectClass} value={dealId} onChange={(e) => chooseDeal(e.target.value)}><option value="">None</option>{dealChoices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-supply">Place of supply</Label><select id="inv-supply" className={selectClass} value={sameState ? "same" : "other"} onChange={(e) => setSameState(e.target.value === "same")}><option value="same">Same state (CGST + SGST)</option><option value="other">Other state (IGST)</option></select></div>
           <div className="flex flex-col gap-1.5"><Label htmlFor="inv-due">Payment due in (days)</Label><Input id="inv-due" type="number" min={0} value={dueDays} onChange={(e) => setDueDays(e.target.value)} /></div>
         </div>
@@ -1106,7 +1150,7 @@ function CreditNotesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-muted-foreground">{note.reason}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{money(note.amount)}</td>
                     <td className="px-4 py-3"><Badge variant={note.status === "approved" ? "success" : note.status === "rejected" ? "danger" : "warning"}>{note.status}</Badge></td>
-                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? <Button size="sm" variant="secondary" onClick={() => { void approveCreditNote(note.id, me).then((problem) => (problem ? toast.error(problem) : toast.success("Credit note approved"))); }}>Approve</Button> : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
+                    <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setDocsFor(note)}>Documents</Button>{note.status === "pending" ? (note.createdBy === me ? <span className="text-xs text-muted-foreground" title="The person who raised a credit note cannot approve it.">Raised by you</span> : <Button size="sm" variant="secondary" onClick={async () => { const problem = await approveCreditNote(note.id, me); if (problem) toast.error(problem); else toast.success("Credit note approved"); }}>Approve</Button>) : <span className="text-xs text-muted-foreground">by {note.approvedBy}</span>}</td>
                   </tr>
                 );
               })}

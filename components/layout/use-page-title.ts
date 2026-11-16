@@ -11,6 +11,13 @@ export function usePageTitle() {
   const items = getNavSectionsForWorkspace(workspaceId).flatMap((s) => s.items);
   // A page that carries extra parameters (a selected chat, a report) still belongs to its menu item.
   const byPath = items.find((item) => item.href.split("?")[0] === pathname);
+  // Next, the item whose own parameters all match, whatever else the address carries
+  // ("?view=workspaces&activate=…" is still Workspaces, not the first item on /settings).
+  const byOwn = items.find((item) => {
+    const [itemPath, itemQuery] = item.href.split("?");
+    if (pathname !== itemPath || !itemQuery) return false;
+    return [...new URLSearchParams(itemQuery).entries()].every(([key, value]) => key === "workspace" || searchParams.get(key) === value);
+  });
   return (
     items
       .find((item) => {
@@ -22,9 +29,9 @@ export function usePageTitle() {
         }
         // Filters on a page (its period, a chosen company, a preview) keep the page's title.
         for (const [key] of searchParams.entries()) {
-          if (!["workspace", "period", "company", "preview", "add", "health", "filter", "kind", "status", "aging", "show", "stock", "project"].includes(key) && !itemParams.has(key)) return false;
+          if (!["workspace", "period", "company", "preview", "add", "health", "filter", "kind", "status", "aging", "show", "stock", "project", "q"].includes(key) && !itemParams.has(key)) return false;
         }
         return true;
-      })?.label || byPath?.label || "Janus"
+      })?.label || byOwn?.label || byPath?.label || "Janus"
   );
 }

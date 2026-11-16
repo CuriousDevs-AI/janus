@@ -3,7 +3,6 @@ import { Hash, Menu, Search, LogOut } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
-import { usePageTitle } from "@/components/layout/use-page-title";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { Button } from "@/components/ui/button";
 import { demoMode } from "@/lib/demo-mode";
@@ -20,7 +19,6 @@ export function Topbar() {
   const signOut = useSignOut();
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const setMobile = useUIStore((s) => s.setMobileNavOpen);
-  const title = usePageTitle();
   const account = useDemoAccount();
   const login = useLoginAccount();
   const router = useRouter();
@@ -38,11 +36,9 @@ export function Topbar() {
         >
           <Menu className="size-4" />
         </Button>
+        {/* The area only, on every screen: each page carries its own title, so it is not said twice. */}
         <div className="flex min-w-0 items-center gap-2">
-          <span className="max-w-[min(38vw,280px)] truncate text-sm font-medium">{title}</span>
-          <span className="hidden border border-accent-border bg-accent-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent sm:inline-flex">
-            <span className="max-w-[180px] truncate">{workspace.name}</span>
-          </span>
+          <span className="max-w-[50vw] truncate text-sm font-medium sm:max-w-[280px]">{workspace.name}</span>
         </div>
       </div>
       <div className="flex items-center gap-3">

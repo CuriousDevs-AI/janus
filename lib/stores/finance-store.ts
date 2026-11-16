@@ -67,7 +67,7 @@ export function fiscalPeriod(date: string): { fiscalYear: string; quarter: 1 | 2
   return { fiscalYear: `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`, quarter };
 }
 /** A bill from a vendor: money the company owes, paid in one or more payments. */
-export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string; gst?: number; itcBlocked?: boolean }
+export interface Bill { id: string; number: string; vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; payments: Payment[]; createdBy: string; poId?: string; gst?: number; itcBlocked?: boolean; tds?: number; tdsSection?: string }
 
 export const lineTotals = (line: InvoiceLine) => {
   const taxable = Math.round(line.qty * line.rate * 100) / 100;
@@ -399,11 +399,11 @@ export const useFinanceStore = create<FinanceState>()(
         if (!bill) return "Bill not found.";
         if (bill.poId) {
           const order = useOperationsStore.getState().purchaseOrders.find((o) => o.id === bill.poId);
-          const match = threeWayMatch(bill.amount, order, workflowRules().matchTolerancePercent);
+          const match = threeWayMatch(bill.amount - (bill.gst ?? 0), order, workflowRules().matchTolerancePercent);
           if (!match.matched) return `Payment is held: ${bill.number} does not match its order yet (${match.status}).`;
         }
         const paid = bill.payments.reduce((sum, item) => sum + item.amount, 0);
-        const due = Math.round((bill.amount - paid) * 100) / 100;
+        const due = Math.round((bill.amount - (bill.tds ?? 0) - paid) * 100) / 100;
         if (payment.amount <= 0) return "Enter an amount above zero.";
         if (payment.amount > due + 0.001) return `Payment is more than the ₹${due.toLocaleString("en-IN")} still owed on ${bill.number}.`;
         set((state) => ({
@@ -537,7 +537,7 @@ function allocate(lineId: string, amount: number) {
   useFinanceStore.setState((state) => ({ budgetLines: state.budgetLines.map((item) => item.id === lineId ? { ...item, allocated: item.allocated + amount } : item) }));
 }
 
-/** Credit notes reduce what the customer owes. Pending notes are counted only when `ignorePending` is false. */
+/** Credit notes reduce what the customer owes. Only approved notes count unless `includePending` is set. */
 /**
  * Profit and loss to date (plan §8.7 V2). Sales are ex-GST. An approved credit note reduces sales by its
  * taxable share of the invoice it refers to. Bills are costs as entered. Payroll and expense claims are
@@ -547,10 +547,11 @@ export interface GstRow { rate: number; taxable: number; cgst: number; sgst: num
 
 /**
  * GST summary for one month (plan §8.7 V2). Output tax is from the sales invoices, by GST rate; approved credit
- * notes reduce it by their tax share. Input tax is the GST on expenses. This is a summary to check, not a return:
- * it is confirmed with the company's accountant before filing.
+ * notes reduce it by their tax share. Input tax is the GST on expenses plus claimable ITC from bills (where
+ * itcBlocked is not true). This is a summary to check, not a return: it is confirmed with the company's
+ * accountant before filing.
  */
-export function gstSummary(month: string, invoices: Invoice[], creditNotes: CreditNote[], expenses: Expense[]) {
+export function gstSummary(month: string, invoices: Invoice[], creditNotes: CreditNote[], expenses: Expense[], bills: Bill[] = []) {
   const byRate = new Map<number, GstRow>();
   const round = (value: number) => Math.round(value * 100) / 100;
   for (const invoice of invoices.filter((i) => !i.cancelled && i.date.startsWith(month))) {
@@ -573,7 +574,9 @@ export function gstSummary(month: string, invoices: Invoice[], creditNotes: Cred
   }
   const outputTax = round(rows.reduce((sum, r) => sum + r.cgst + r.sgst + r.igst, 0) - creditTax);
   const inputExpenses = expenses.filter((e) => e.date.startsWith(month));
-  const inputTax = round(inputExpenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0));
+  const expenseItc = inputExpenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0);
+  const billItc = bills.filter((b) => b.date.startsWith(month) && !b.itcBlocked).reduce((sum, b) => sum + (b.gst ?? 0), 0);
+  const inputTax = round(expenseItc + billItc);
   return { rows, creditTax: round(creditTax), outputTax, inputTax, netPayable: round(outputTax - inputTax) };
 }
 
@@ -596,11 +599,13 @@ export function profitAndLoss(invoices: Invoice[], creditNotes: CreditNote[], bi
       return sum + note.amount * taxableShare;
     }, 0);
   const writeOffs = creditNotes.filter((note) => note.status === "approved" && note.kind === "write-off").reduce((sum, note) => sum + note.amount, 0);
-  const costs = bills.reduce((sum, bill) => sum + bill.amount, 0) + expenses.reduce((sum, e) => sum + e.amount, 0) + writeOffs;
+  const billCosts = bills.reduce((sum, bill) => sum + bill.amount - (bill.gst ?? 0), 0);
+  const expenseCosts = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const costs = billCosts + expenseCosts + writeOffs;
   const round = (value: number) => Math.round(value * 100) / 100;
   const netSales = round(sales - credits);
   const profit = round(netSales - costs);
-  return { sales: round(sales), credits: round(credits), netSales, writeOffs: round(writeOffs), costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
+  return { sales: round(sales), credits: round(credits), netSales, writeOffs: round(writeOffs), billCosts: round(billCosts), expenseCosts: round(expenseCosts), costs: round(costs), profit, margin: netSales > 0 ? round((profit / netSales) * 100) : null };
 }
 
 export interface CashFlowMonth { month: string; receipts: number; payments: number; other: number; net: number; closing: number }
@@ -633,8 +638,13 @@ export function cashFlowByMonth(invoices: Invoice[], bills: Bill[], bankEntries:
 }
 
 /** Every book payment (customer receipts and bill payments) with the key a bank line matches it by. */
-export function bookPayments(invoices: Invoice[], bills: Bill[]) {
+/** Every movement of money the books know about, for matching to bank lines: receipts, bill
+ * payments, bank-paid expenses (with their GST), petty cash top-ups and bank movements. */
+export function bookPayments(invoices: Invoice[], bills: Bill[], expenses: Expense[] = [], topUps: PettyCashTopUp[] = [], movements: BankEntry[] = []) {
   return [
+    ...expenses.filter((e) => e.paidFrom === "bank").map((e) => ({ key: `exp:${e.id}:0`, date: e.date, amount: Math.round(e.amount * (100 + e.gstRate)) / 100, label: `Expense · ${e.payee}`, direction: -1 as const })),
+    ...topUps.map((t) => ({ key: `top:${t.id}:0`, date: t.date, amount: t.amount, label: "Petty cash top-up", direction: -1 as const })),
+    ...movements.map((m) => ({ key: `mov:${m.id}:0`, date: m.date, amount: Math.abs(m.amount), label: `Bank movement · ${m.description}`, direction: (m.amount > 0 ? 1 : -1) as 1 | -1 })),
     ...invoices.flatMap((invoice) => invoice.payments.map((p) => ({ key: `inv:${invoice.id}:${p.id}`, date: p.date, amount: p.amount, label: `Receipt ${invoice.number} · ${invoice.customer}`, direction: 1 as const }))),
     ...bills.flatMap((bill) => bill.payments.map((p) => ({ key: `bill:${bill.id}:${p.id}`, date: p.date, amount: p.amount, label: `Payment ${bill.number} · ${bill.vendor}`, direction: -1 as const }))),
   ];
@@ -644,9 +654,9 @@ export function creditedAmount(invoiceId: string, notes: CreditNote[], includePe
   return notes.filter((note) => note.invoiceId === invoiceId && (note.status === "approved" || (includePending && note.status === "pending"))).reduce((sum, note) => sum + note.amount, 0);
 }
 
-export function dueAmount(invoice: Invoice, notes: CreditNote[], options: { ignorePending?: boolean } = {}) {
+export function dueAmount(invoice: Invoice, notes: CreditNote[], options: { includePending?: boolean } = {}) {
   const paid = invoice.payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const credited = creditedAmount(invoice.id, notes, !options.ignorePending);
+  const credited = creditedAmount(invoice.id, notes, !!options.includePending);
   return Math.max(0, Math.round((invoiceTotals(invoice).total - paid - credited) * 100) / 100);
 }
 

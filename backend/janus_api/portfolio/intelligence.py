@@ -52,10 +52,21 @@ Use ONLY the numbered facts and passages below. Each line starts with its id in 
 - If the owner states a lasting fact about one company that is not already in the facts (when a
   customer pays, who files GST), end with one line: REMEMBER <company name>: <the fact>.
 
-Period: {period}.
+Period: {period}.{topic}
 
 Facts and passages:
 {facts}"""
+
+
+# The department chat a question came from, and what its figures are about.
+TOPICS = {
+    "sales": "CRM & Sales (leads, deals, pipeline, customers)",
+    "people": "HR & People (headcount, leave, claims, payroll)",
+    "finance": "Finance (profit, money owed both ways, cash, GST and TDS)",
+    "stock": "Operations & Inventory (stock, reorder levels, expiring batches, dispatches)",
+    "support": "Customer Support (open, urgent, escalated and old tickets)",
+    "projects": "Projects & Delivery (active and late projects, milestones, acceptance)",
+}
 
 
 def _month_start() -> datetime:
@@ -385,6 +396,11 @@ async def ask(
         )[::-1]
 
         view = await portfolio.summary(db, user_id, current_tenant, ip, data.period)
+        if data.companyId is not None:
+            only = [company for company in view.companies if company.id == data.companyId]
+            if not only:
+                raise ApiError("not_found", "That company is not in your Portfolio.", 404)
+            view = view.model_copy(update={"companies": only})
         sources = facts_for(view)
         names: dict[str, int] = {}
         for company in view.companies:
@@ -438,6 +454,10 @@ async def ask(
         )
         system = SYSTEM.format(
             period=period,
+            topic=f"\nAsked from the {TOPICS[data.topic]} chat: lead with those figures, but"
+            " answer what is asked."
+            if data.topic
+            else "",
             facts="\n".join(f"[{s.id}] {s.text}" for s in sources) or "(none)",
         )
         turns = [t for q in history for t in (("user", q.question), ("assistant", q.answer))]

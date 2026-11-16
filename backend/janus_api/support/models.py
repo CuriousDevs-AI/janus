@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, Date, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from janus_api.core.db import Base
@@ -29,6 +29,7 @@ class SupportTicket(Base):
     external_key: Mapped[str] = mapped_column(String(64))
     number: Mapped[str] = mapped_column(String(20))
     subject: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
     priority: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20))
     assignee: Mapped[str | None] = mapped_column(String(64))

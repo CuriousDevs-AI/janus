@@ -7,7 +7,7 @@ can be carried out. Every step writes an audit row in the same transaction as th
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -20,6 +20,8 @@ from janus_api.it.models import ITChange
 
 router = APIRouter(prefix="/v1/it", tags=["IT"])
 Manage = Annotated[Actor, Depends(require("settings:manage"))]
+Limit = Annotated[int, Query(ge=1, le=100)]
+AfterId = Annotated[int, Query(ge=0, le=2**63 - 1)]
 
 
 class ChangeCreate(BaseModel):
@@ -43,13 +45,13 @@ class ChangeOut(BaseModel):
 
 
 async def _names(db: Db, ids: set[int]) -> dict[int, str]:
+    if not ids:
+        return {}
     rows = await db.execute(select(User.id, User.name).where(User.id.in_(ids)))
     return {row.id: row.name for row in rows.all()}
 
 
-async def _out(db: Db, row: ITChange) -> ChangeOut:
-    ids = {row.requested_by} | ({row.decided_by} if row.decided_by else set())
-    names = await _names(db, ids)
+def _out(row: ITChange, names: dict[int, str]) -> ChangeOut:
     return ChangeOut(
         id=str(row.id),
         number=row.number,
@@ -60,6 +62,13 @@ async def _out(db: Db, row: ITChange) -> ChangeOut:
         decided_by=names.get(row.decided_by) if row.decided_by else None,
         raised_on=row.raised_on,
     )
+
+
+async def _out_single(db: Db, row: ITChange) -> ChangeOut:
+    """Resolve names for a single change (used after create/update)."""
+    ids = {row.requested_by} | ({row.decided_by} if row.decided_by else set())
+    names = await _names(db, ids)
+    return _out(row, names)
 
 
 async def _change(db: Db, tenant_id: int, change_id: int, *, lock: bool = False) -> ITChange:
@@ -73,13 +82,26 @@ async def _change(db: Db, tenant_id: int, change_id: int, *, lock: bool = False)
 
 
 @router.get("/changes", response_model=list[ChangeOut])
-async def list_changes(actor: Manage, db: Db) -> list[ChangeOut]:
-    rows = await db.scalars(
+async def list_changes(
+    actor: Manage, db: Db, after_id: AfterId = 0, limit: Limit = 50
+) -> list[ChangeOut]:
+    query = (
         select(ITChange)
         .where(ITChange.tenant_id == actor.session.tenant_id)
         .order_by(ITChange.id.desc())
+        .limit(limit)
     )
-    return [await _out(db, row) for row in rows.all()]
+    if after_id:
+        query = query.where(ITChange.id < after_id)
+    rows = (await db.scalars(query)).all()
+    # Batch-resolve all user ids in one query instead of per-row.
+    all_ids: set[int] = set()
+    for row in rows:
+        all_ids.add(row.requested_by)
+        if row.decided_by:
+            all_ids.add(row.decided_by)
+    names = await _names(db, all_ids)
+    return [_out(row, names) for row in rows]
 
 
 @router.post("/changes", response_model=ChangeOut, status_code=201)
@@ -108,7 +130,7 @@ async def request_change(data: ChangeCreate, actor: Manage, db: Db, request: Req
         ip=request_ip(request),
         details={"change": row.number, "risk": data.risk},
     )
-    return await _out(db, row)
+    return await _out_single(db, row)
 
 
 @router.post("/changes/{change_id}/decision", response_model=ChangeOut)
@@ -132,7 +154,7 @@ async def decide_change(
         ip=request_ip(request),
         details={"change": row.number, "status": row.status},
     )
-    return await _out(db, row)
+    return await _out_single(db, row)
 
 
 @router.post("/changes/{change_id}/complete", response_model=ChangeOut)
@@ -151,4 +173,4 @@ async def complete_change(change_id: int, actor: Manage, db: Db, request: Reques
         ip=request_ip(request),
         details={"change": row.number},
     )
-    return await _out(db, row)
+    return await _out_single(db, row)

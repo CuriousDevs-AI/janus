@@ -1,11 +1,12 @@
 import hashlib
 import json
 import secrets
+from datetime import datetime
 from typing import cast
 
 import phonenumbers
 from pydantic import ValidationError
-from sqlalchemy import select, text
+from sqlalchemy import case, func, literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
@@ -14,7 +15,7 @@ from janus_api.business.service import enqueue_event
 from janus_api.core.errors import ApiError, ProcessingError
 from janus_api.core.security import now
 from janus_api.crm import schemas
-from janus_api.crm.models import Contact, Deal, Lead
+from janus_api.crm.models import Contact, CustomerNote, Deal, Lead, LeadNote
 from janus_api.crm.schemas import CapturedContact, ContactOut, LeadOut, LeadSource, ManualLeadIn
 from janus_api.org.service import active_member, teammate_user_ids
 from janus_api.sources.models import IngestReceipt, SourceConnection
@@ -169,7 +170,23 @@ def lead_out(lead: Lead, contact: Contact | None = None, owner: User | None = No
         recordingReference=lead.recording_reference,
         createdAt=lead.created_at,
         lastActivityAt=lead.last_activity_at,
+        nextFollowUpOn=lead.next_follow_up_on,
+        lostCategory=lead.lost_category,
+        lostReason=lead.lost_reason,
+        lostAt=lead.lost_at,
     )
+
+
+def set_lost(
+    item: Lead | Deal, stage: str, category: str | None, note: str, when: datetime
+) -> None:
+    """Records why a lead or deal was lost and when; it keeps the first day it was lost."""
+    if stage != "lost":
+        item.lost_category, item.lost_reason, item.lost_at = None, "", None
+        return
+    item.lost_category, item.lost_reason = category, note
+    if item.lost_at is None:
+        item.lost_at = when
 
 
 async def visible_owners(
@@ -191,6 +208,7 @@ async def list_leads(
     after_id: int,
     limit: int,
     lead_id: int | None = None,
+    search: str | None = None,
 ) -> list[LeadOut]:
     owners = await visible_owners(db, tenant_id, user_id, permissions)
     query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id > after_id)
@@ -198,6 +216,26 @@ async def list_leads(
         query = query.where(Lead.owner_id.in_(owners))
     if lead_id is not None:
         query = query.where(Lead.id == lead_id)
+    if search:
+        pattern = f"%{search}%"
+        # Match contact fields or any follow-up note body for this lead.
+        note_match = (
+            select(LeadNote.id)
+            .where(
+                LeadNote.tenant_id == Lead.tenant_id,
+                LeadNote.lead_id == Lead.id,
+                LeadNote.body.ilike(pattern),
+            )
+            .exists()
+        )
+        query = query.where(
+            Contact.name.ilike(pattern)
+            | Contact.phone_e164.ilike(pattern)
+            | Contact.email.ilike(pattern)
+            | Contact.company.ilike(pattern)
+            | Lead.requirement.ilike(pattern)
+            | note_match
+        )
     rows = (
         await db.execute(
             query.join(
@@ -307,14 +345,21 @@ async def update_lead(
     contact.company = data.company.strip()
     lead.requirement = data.requirement.strip()
     lead.stage = data.stage
+    if data.stage in ("won", "lost"):
+        lead.next_follow_up_on = None
     lead.last_activity_at = now()
+    set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
     await db.flush()
     record(
         db,
         "lead.updated",
         user_id=user_id,
         tenant_id=tenant_id,
-        details={"lead_id": lead.id, "stage": lead.stage},
+        details={
+            "lead_id": lead.id,
+            "stage": lead.stage,
+            **({"lost_category": lead.lost_category} if lead.lost_category else {}),
+        },
     )
     owner = await db.get(User, lead.owner_id) if lead.owner_id else None
     return lead_out(lead, contact, owner)
@@ -538,6 +583,37 @@ async def manual_connection(db: AsyncSession, tenant_id: int) -> SourceConnectio
     return connection
 
 
+async def _existing_active_leads(
+    db: AsyncSession, tenant_id: int, phone: str | None, email: str | None
+) -> list[tuple[int, str, str]]:
+    """Active leads for a contact identified by phone or email: (lead_id, name, stage)."""
+    contact: Contact | None = None
+    if phone:
+        contact = await db.scalar(
+            select(Contact).where(Contact.tenant_id == tenant_id, Contact.phone_e164 == phone)
+        )
+    if contact is None and email:
+        contact = await db.scalar(
+            select(Contact).where(Contact.tenant_id == tenant_id, Contact.email == email)
+        )
+    if contact is None:
+        return []
+    rows = (
+        await db.execute(
+            select(Lead.id, Contact.name, Lead.stage)
+            .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+            .where(
+                Lead.tenant_id == tenant_id,
+                Lead.contact_id == contact.id,
+                Lead.stage.not_in(("won", "lost")),
+            )
+            .order_by(Lead.id.desc())
+            .limit(5)
+        )
+    ).all()
+    return [(int(row[0]), str(row[1] or "Unnamed"), str(row[2])) for row in rows]
+
+
 async def create_manual_lead(
     db: AsyncSession,
     tenant_id: int,
@@ -548,7 +624,8 @@ async def create_manual_lead(
 ) -> tuple[LeadOut, bool]:
     """Creates a lead for the person who typed it in, once per key. Returns (lead, created)."""
     connection = await manual_connection(db, tenant_id)
-    fields = data.model_dump(mode="json")
+    fields = data.model_dump(mode="json", exclude={"skipDuplicateCheck"})
+    # Idempotency: an exact retry with the same key returns the earlier lead, no duplicate check.
     existing = await db.scalar(
         select(IngestReceipt).where(
             IngestReceipt.tenant_id == tenant_id,
@@ -563,6 +640,22 @@ async def create_manual_lead(
         if replayed is None:
             raise ApiError("not_found", "Lead not found.", 404)
         return await get_lead(db, tenant_id, user_id, permissions, replayed), False
+    # Warn when a contact already has active leads, unless the user acknowledged it.
+    if not data.skipDuplicateCheck:
+        try:
+            phone = normalize_phone(data.phone)
+        except ProcessingError:
+            phone = None
+        email = str(data.email).casefold() if data.email else None
+        dupes = await _existing_active_leads(db, tenant_id, phone, email)
+        if dupes:
+            names = ", ".join(f"{name} (stage: {stage})" for _, name, stage in dupes[:3])
+            raise ApiError(
+                "duplicate_contact_leads",
+                f"This contact already has active leads: {names}. "
+                "Add anyway if this is a separate enquiry.",
+                409,
+            )
     payload = json.dumps(fields, sort_keys=True).encode()
     receipt = IngestReceipt(
         tenant_id=tenant_id,
@@ -590,3 +683,351 @@ _LEAD_PROBLEMS = {
     "invalid_contact_fields": "Check the lead's details.",
     "invalid_phone": "Enter a mobile number with its country code, such as +91 98111 22334.",
 }
+
+
+# Stage ordering for the "furthest stage" aggregation in the customer list.
+_STAGE_ORDER = {
+    "lost": 0,
+    "new": 1,
+    "contacted": 2,
+    "qualified": 3,
+    "demo": 4,
+    "proposal": 5,
+    "negotiation": 6,
+    "approval": 7,
+    "won": 8,
+}
+
+
+async def list_customers(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    after_id: int,
+    limit: int,
+    query: str | None = None,
+    filter_kind: str = "all",
+) -> list[schemas.CustomerListRow]:
+    """Paged customer list with lead/deal summaries, respecting lead-owner visibility."""
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+
+    # Stage rank for furthest-stage aggregation.
+    stage_rank = case(
+        *[(Lead.stage == stage, literal(rank)) for stage, rank in _STAGE_ORDER.items()],
+        else_=literal(0),
+    )
+
+    # Base query: group by contact, aggregate leads.
+    base = (
+        select(
+            Contact.id.label("contact_id"),
+            Contact.name,
+            Contact.phone_e164,
+            Contact.email,
+            Contact.company,
+            func.count(Lead.id).label("lead_count"),
+            func.coalesce(func.sum(Deal.amount), 0).label("deal_value"),
+            func.max(stage_rank).label("max_stage_rank"),
+            func.max(Lead.last_activity_at).label("last_activity_at"),
+        )
+        .select_from(Lead)
+        .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
+        .outerjoin(
+            Deal,
+            (Deal.lead_id == Lead.id) & (Deal.tenant_id == Lead.tenant_id) & (Deal.stage != "lost"),
+        )
+        .where(Lead.tenant_id == tenant_id)
+    )
+    if owners is not None:
+        base = base.where(Lead.owner_id.in_(owners))
+
+    # Text search across contact fields.
+    if query:
+        pattern = f"%{query}%"
+        base = base.where(
+            Contact.name.ilike(pattern)
+            | Contact.phone_e164.ilike(pattern)
+            | Contact.email.ilike(pattern)
+            | Contact.company.ilike(pattern)
+        )
+
+    base = base.group_by(Contact.id)
+
+    # Filter.
+    if filter_kind == "active":
+        base = base.having(func.bool_or(Lead.stage.not_in(("won", "lost"))))
+    elif filter_kind == "won":
+        base = base.having(func.bool_or(Lead.stage == "won"))
+    elif filter_kind == "needs_attention":
+        from datetime import UTC, datetime, timedelta
+
+        cutoff = datetime.now(UTC) - timedelta(days=3)
+        base = base.having(
+            func.bool_or((Lead.last_activity_at <= cutoff) & Lead.stage.not_in(("won", "lost")))
+        )
+
+    sub = base.subquery()
+
+    # Pagination by contact_id.
+    outer = (
+        select(sub)
+        .where(sub.c.contact_id > after_id)
+        .order_by(sub.c.last_activity_at.desc().nullslast(), sub.c.contact_id)
+        .limit(limit)
+    )
+    rows = (await db.execute(outer)).all()
+
+    # Reverse map stage rank to label.
+    rank_to_stage = {v: k for k, v in _STAGE_ORDER.items()}
+
+    # Resolve owner for each contact's most recent lead.
+    contact_ids = [row.contact_id for row in rows]
+    owner_info: dict[int, tuple[str | None, str | None]] = {}
+    if contact_ids:
+        # For each contact, find the latest lead's owner.
+        latest_leads = (
+            await db.execute(
+                select(Lead.contact_id, Lead.owner_id, User.name)
+                .outerjoin(User, User.id == Lead.owner_id)
+                .where(
+                    Lead.tenant_id == tenant_id,
+                    Lead.contact_id.in_(contact_ids),
+                )
+                .distinct(Lead.contact_id)
+                .order_by(Lead.contact_id, Lead.last_activity_at.desc())
+            )
+        ).all()
+        for cid, oid, oname in latest_leads:
+            owner_info[int(cid)] = (str(oid) if oid else None, oname)
+
+    return [
+        schemas.CustomerListRow(
+            contactId=str(row.contact_id),
+            name=row.name or row.phone_e164 or row.email or f"Customer #{row.contact_id}",
+            phone=row.phone_e164,
+            email=row.email,
+            company=row.company or "",
+            leadCount=int(row.lead_count),
+            dealValue=format(row.deal_value, ".2f"),
+            stage=rank_to_stage.get(int(row.max_stage_rank), "new"),
+            ownerId=owner_info.get(int(row.contact_id), (None, None))[0],
+            ownerName=owner_info.get(int(row.contact_id), (None, None))[1],
+            lastActivityAt=row.last_activity_at,
+        )
+        for row in rows
+    ]
+
+
+async def _visible_lead(
+    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], lead_id: int
+) -> Lead:
+    """The lead, if this person may see it; the same rule as the lead list."""
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id == lead_id)
+    if owners is not None:
+        query = query.where(Lead.owner_id.in_(owners))
+    lead = await db.scalar(query)
+    if lead is None:
+        raise ApiError("not_found", "Lead not found.", 404)
+    return lead
+
+
+async def list_notes(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    lead_id: int,
+    after_id: int = 0,
+    limit: int = 50,
+) -> list[schemas.NoteOut]:
+    lead = await _visible_lead(db, tenant_id, user_id, permissions, lead_id)
+    q = (
+        select(LeadNote, User.name)
+        .outerjoin(User, User.id == LeadNote.author_id)
+        .where(LeadNote.tenant_id == tenant_id, LeadNote.lead_id == lead.id)
+        .order_by(LeadNote.created_at.desc(), LeadNote.id.desc())
+        .limit(limit)
+    )
+    if after_id:
+        q = q.where(LeadNote.id < after_id)
+    rows = (await db.execute(q)).all()
+    return [
+        schemas.NoteOut(
+            id=str(note.id),
+            body=note.body,
+            author=name,
+            nextFollowUpOn=note.next_follow_up_on,
+            createdAt=note.created_at,
+        )
+        for note, name in rows
+    ]
+
+
+async def add_note(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    lead_id: int,
+    data: schemas.NoteIn,
+) -> schemas.NoteOut:
+    """Writes down a follow-up: it counts as activity and sets when to follow up next."""
+    lead = await _visible_lead(db, tenant_id, user_id, permissions, lead_id)
+    note = LeadNote(
+        tenant_id=tenant_id,
+        lead_id=lead.id,
+        author_id=user_id,
+        body=data.body.strip(),
+        next_follow_up_on=data.nextFollowUpOn,
+    )
+    db.add(note)
+    lead.last_activity_at = now()
+    lead.next_follow_up_on = data.nextFollowUpOn
+    # A new lead someone has spoken to has been contacted; later stages are left as they are.
+    if lead.stage == "new":
+        lead.stage = "contacted"
+    await db.flush()
+    record(
+        db,
+        "lead.followed_up",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"lead_id": lead.id, "next": str(data.nextFollowUpOn or "")},
+    )
+    author = await db.get(User, user_id)
+    return schemas.NoteOut(
+        id=str(note.id),
+        body=note.body,
+        author=author.name if author else None,
+        nextFollowUpOn=note.next_follow_up_on,
+        createdAt=note.created_at or now(),
+    )
+
+
+async def assign_leads(
+    db: AsyncSession, tenant_id: int, user_id: int, data: schemas.AssignIn
+) -> schemas.AssignOut:
+    """Gives leads to an active member of the company, or takes them from their owner. The caller
+    holds leads:assign, so may hand any lead in the company to anyone in it."""
+    from janus_api.org import overview as org
+
+    ids = [int(item) for item in data.leadIds if item.isdigit()]
+    if len(ids) != len(data.leadIds):
+        raise ApiError("invalid_lead", "Choose the leads to assign.", 422)
+    owner: User | None = None
+    if data.ownerId is not None:
+        if (
+            not data.ownerId.isdigit()
+            or await org.active_role(db, tenant_id, int(data.ownerId)) is None
+        ):
+            raise ApiError(
+                "invalid_owner", "Choose someone who is an active member of this company.", 422
+            )
+        owner = await db.get(User, int(data.ownerId))
+    leads = (
+        await db.scalars(
+            select(Lead).where(Lead.tenant_id == tenant_id, Lead.id.in_(ids)).with_for_update()
+        )
+    ).all()
+    if len(leads) != len(ids):
+        raise ApiError("not_found", "One of these leads no longer exists.", 404)
+    for lead in leads:
+        lead.owner_id = owner.id if owner else None
+    await db.flush()
+    record(
+        db,
+        "lead.assigned",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"leads": len(leads), "owner_id": owner.id if owner else ""},
+    )
+    return schemas.AssignOut(assigned=len(leads), ownerName=owner.name if owner else None)
+
+
+# ---------------------------------------------------------------------------
+# Customer notes
+# ---------------------------------------------------------------------------
+
+
+async def _visible_contact(
+    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], contact_id: int
+) -> Contact:
+    """The contact, if this person may see at least one of its leads."""
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    visible = select(Lead.id).where(Lead.contact_id == Contact.id, Lead.tenant_id == tenant_id)
+    if owners is not None:
+        visible = visible.where(Lead.owner_id.in_(owners))
+    contact = await db.scalar(
+        select(Contact).where(
+            Contact.id == contact_id, Contact.tenant_id == tenant_id, visible.exists()
+        )
+    )
+    if contact is None:
+        raise ApiError("not_found", "Contact not found.", 404)
+    return contact
+
+
+async def list_customer_notes(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+    after_id: int = 0,
+    limit: int = 50,
+) -> list[schemas.CustomerNoteOut]:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    q = (
+        select(CustomerNote, User.name)
+        .outerjoin(User, User.id == CustomerNote.author_id)
+        .where(CustomerNote.tenant_id == tenant_id, CustomerNote.contact_id == contact.id)
+        .order_by(CustomerNote.created_at.desc(), CustomerNote.id.desc())
+        .limit(limit)
+    )
+    if after_id:
+        q = q.where(CustomerNote.id < after_id)
+    rows = (await db.execute(q)).all()
+    return [
+        schemas.CustomerNoteOut(
+            id=str(note.id),
+            body=note.body,
+            author=name,
+            createdAt=note.created_at,
+        )
+        for note, name in rows
+    ]
+
+
+async def add_customer_note(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+    data: schemas.CustomerNoteIn,
+) -> schemas.CustomerNoteOut:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    note = CustomerNote(
+        tenant_id=tenant_id,
+        contact_id=contact.id,
+        author_id=user_id,
+        body=data.body.strip(),
+    )
+    db.add(note)
+    await db.flush()
+    record(
+        db,
+        "contact.note_added",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"contact_id": contact.id, "note_id": note.id},
+    )
+    author = await db.get(User, user_id)
+    return schemas.CustomerNoteOut(
+        id=str(note.id),
+        body=note.body,
+        author=author.name if author else None,
+        createdAt=note.created_at or now(),
+    )

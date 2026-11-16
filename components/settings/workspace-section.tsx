@@ -4,7 +4,6 @@ import * as React from "react";
 import { activeCompany } from "@/lib/company";
 import { isFirstCompany } from "@/lib/companies";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
-import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bell, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
@@ -29,12 +28,15 @@ import { api, message } from "@/lib/api/client";
 import { useApi as apiUse } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import { lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo-universe";
-import { useSession } from "@/components/auth/session-provider";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
+import { ProfileCard } from "@/components/settings/profile-card";
 import { BillingSection } from "@/components/settings/billing-section";
 import { formatCurrencyINR } from "@/lib/utils";
 import { LiveBusinessOverview } from "@/components/business/business-overview";
-import { usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
+import { inr, usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
+import { LiveAccessReview, LiveDataExport } from "@/components/business/company-settings";
+import { useSession } from "@/components/auth/session-provider";
+import { hasPermission } from "@/lib/demo-persona";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -55,16 +57,11 @@ export function WorkspaceSection() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view");
   const requestedSection = searchParams.get("section");
-  const session = useSession();
   const [timezone, setTimezone] = React.useState(tenant.timezone);
   const [hoursStart, setHoursStart] = React.useState(tenant.businessHours.start);
   const [hoursEnd, setHoursEnd] = React.useState(tenant.businessHours.end);
   const [defaultChannel, setDefaultChannel] = React.useState<ChannelType>(tenant.defaultChannel);
   const [settingsSection, setSettingsSection] = React.useState(() => requestedSection || "profile");
-  const [profileName, setProfileName] = React.useState(session.user.name);
-  const [profilePhone, setProfilePhone] = React.useState(session.user.phone ?? "");
-  const [profileTimezone, setProfileTimezone] = React.useState(session.user.timezone || tenant.timezone);
-  const [profileLanguage, setProfileLanguage] = React.useState(session.user.language || "en");
 
   const [regionalSaving, setRegionalSaving] = React.useState(false);
 
@@ -83,78 +80,38 @@ export function WorkspaceSection() {
     }
   }
 
-  async function handleProfileSave() {
-    try {
-      await api("/me", {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: profileName.trim(),
-          phone: profilePhone.trim() || null,
-          timezone: profileTimezone,
-          language: profileLanguage,
-        }),
-      });
-      toast.success("Profile saved");
-    } catch (error) {
-      toast.error(message(error));
-    }
-  }
-
   if (view === "overview") return <BusinessOverviewPanel />;
   if (view === "workspaces") return <WorkspacesPanel />;
-  if (view === "administration") return <AdministrationPanel section={requestedSection} session={session} name={profileName} phone={profilePhone} timezone={profileTimezone} language={profileLanguage} onNameChange={setProfileName} onPhoneChange={setProfilePhone} onTimezoneChange={setProfileTimezone} onLanguageChange={setProfileLanguage} onSave={handleProfileSave} />;
+  if (view === "administration") return <AdministrationPanel section={requestedSection} />;
   // The plan is the account's and lives in the Portfolio; an old link here says so.
   if (view === "settings" && requestedSection === "billing") return <BillingSection />;
 
-  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Currency & Timezone"], ["security", "Security & Privacy"], ["data", "Data Management"]];
+  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", demoMode ? "Currency & Timezone" : "Hours & Timezone"], ["security", demoMode ? "Security & Privacy" : "Access & Security"], ["data", demoMode ? "Data Management" : "Export Your Data"]];
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="sr-only">Business Settings</h1>
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
           {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership.">{demoMode ? <StructurePanel /> : <RealStructure />}</SectionCard>}
-          {settingsSection === "locale" && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
-          {settingsSection === "security" && <SectionCard title="Security & privacy" description="Control account protection and business data safeguards.">{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <UnavailableMessage text="Security policy status is not connected yet. Configure sessions and two-step verification from the account security area." />}</SectionCard>}
-          {settingsSection === "data" && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
+          {settingsSection === "locale" && !demoMode && <LiveHours />}
+          {settingsSection === "locale" && demoMode && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
+          {settingsSection === "security" && <SectionCard title={demoMode ? "Security & privacy" : "Who can get in"} description={demoMode ? "Control account protection and business data safeguards." : "Everyone with access to this business, from its member list. Check it whenever someone leaves."}>{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <LiveAccessReview />}</SectionCard>}
+          {settingsSection === "data" && !demoMode && <SectionCard title="Export your records" description="Everything your business keeps in Janus, as spreadsheets you own."><LiveDataExport /></SectionCard>}
+          {settingsSection === "data" && demoMode && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
       </main>
     </div>
   );
 }
 
-function AdministrationPanel({
-  section,
-  session,
-  name,
-  phone,
-  timezone,
-  language,
-  onNameChange,
-  onPhoneChange,
-  onTimezoneChange,
-  onLanguageChange,
-  onSave,
-}: {
-  section: string | null;
-  session: ReturnType<typeof useSession>;
-  name: string;
-  phone: string;
-  timezone: string;
-  language: string;
-  onNameChange: (value: string) => void;
-  onPhoneChange: (value: string) => void;
-  onTimezoneChange: (value: string) => void;
-  onLanguageChange: (value: string) => void;
-  onSave: () => void;
-}) {
-  if (section === "profile") return <ProfilePanel session={session} name={name} phone={phone} timezone={timezone} language={language} onNameChange={onNameChange} onPhoneChange={onPhoneChange} onTimezoneChange={onTimezoneChange} onLanguageChange={onLanguageChange} onSave={onSave} />;
+function AdministrationPanel({ section }: { section: string | null }) {
+  if (section === "profile") return <ProfileCard />;
   if (section === "billing") return <BillingSection />;
 
   const sections = [
-    { title: "Profile", description: "Your name, contact details, language and personal preferences.", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRound },
+    { title: "Profile", description: "Your name, phone and sign-in email, and the companies you belong to.", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRound },
     { title: "People & Access", description: "Members, invitations, roles, permissions and workspace access.", href: "/settings?tab=team&workspace=business", icon: UsersRound },
-    { title: "Notifications", description: "Choose which business events and approvals reach your team.", href: "/settings?tab=notifications&workspace=business", icon: Bell },
-    { title: "Security & Sessions", description: "Password, sign-in sessions, audit history and account protection.", href: "/settings?tab=security&workspace=business", icon: LockKeyhole },
+    { title: "Notifications", description: "The Monday summary, alerts when a company needs you, and this browser's notifications.", href: "/settings?tab=notifications&workspace=business", icon: Bell },
+    { title: "Security & Sessions", description: "Your password, and every device signed in as you.", href: "/settings?tab=security&workspace=business", icon: LockKeyhole },
   ];
 
   return <div className="flex flex-col gap-5">
@@ -167,53 +124,13 @@ function AdministrationPanel({
   </div>;
 }
 
-function ProfilePanel({
-  session,
-  name,
-  phone,
-  timezone,
-  language,
-  onNameChange,
-  onPhoneChange,
-  onTimezoneChange,
-  onLanguageChange,
-  onSave,
-}: {
-  session: ReturnType<typeof useSession>;
-  name: string;
-  phone: string;
-  timezone: string;
-  language: string;
-  onNameChange: (value: string) => void;
-  onPhoneChange: (value: string) => void;
-  onTimezoneChange: (value: string) => void;
-  onLanguageChange: (value: string) => void;
-  onSave: () => void;
-}) {
-  const initials = name.trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "U";
-  return <div className="flex flex-col gap-4">
-    <SectionCard title="Profile" description="The details your team sees when you create, approve or assign work.">
-      <div className="flex flex-col gap-5">
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-muted text-sm font-semibold text-accent">{initials}</span>
-          <div className="min-w-0"><p className="text-sm font-medium">{name || "Your profile"}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{session.user.email}</p></div>
-          <Badge variant="neutral" className="ml-auto">{session.role}</Badge>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FieldRow label="Full name"><Input value={name} onChange={(event) => onNameChange(event.target.value)} autoComplete="name" /></FieldRow>
-          <FieldRow label="Email"><Input value={session.user.email} readOnly disabled aria-describedby="profile-email-help" /><span id="profile-email-help" className="text-[11px] text-muted-foreground">Contact an owner to change your sign-in email.</span></FieldRow>
-          <FieldRow label="Phone"><Input value={phone} onChange={(event) => onPhoneChange(event.target.value)} type="tel" autoComplete="tel" placeholder="+91 98xxx xxxxx" /></FieldRow>
-          <FieldRow label="Language"><Select value={language} onValueChange={onLanguageChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="en">English</SelectItem><SelectItem value="hi">Hindi</SelectItem></SelectContent></Select></FieldRow>
-          <FieldRow label="Timezone"><Select value={timezone} onValueChange={onTimezoneChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></FieldRow>
-        </div>
-      </div>
-    </SectionCard>
-    <div className="flex justify-end"><Button onClick={onSave} disabled={!name.trim()}>Save profile</Button></div>
-  </div>;
-}
-
 function BusinessOverviewPanel() {
-  const live = apiUse<{ leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }>("/business/reports/summary");
+  const session = useSession();
+  const canReadReports = hasPermission(session.permissions, "reports:read");
+  // Users without reports:read see neither the summary nor the portfolio figures: show them a
+  // graceful message instead of 403 errors and dashes.
+  const canView = demoMode || canReadReports;
+  const live = apiUse<{ leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }>(canView ? "/business/reports/summary" : null);
   const data = demoMode ? demoOverview : live.data;
   const loading = demoMode ? false : live.loading;
   const error = demoMode ? undefined : live.error;
@@ -224,7 +141,7 @@ function BusinessOverviewPanel() {
   // The API sends the pipeline as a decimal string; show it as rupees, like every other amount.
   const pipelineAmount = Number(data?.pipelineValue);
   const pipeline = data?.pipelineValue != null && Number.isFinite(pipelineAmount) ? formatCurrencyINR(pipelineAmount, false) : "—";
-  const unavailable = loading ? "Loading verified CRM records…" : error ? "CRM summary is unavailable right now." : null;
+  const unavailable = loading ? "Reading your records…" : error ? "CRM summary is unavailable right now." : null;
   const company = activeCompany();
   const crmOn = !demoMode || company.workspaces.includes("crm-sales");
   // The finance-flavoured panels below are written for the first company only.
@@ -233,22 +150,28 @@ function BusinessOverviewPanel() {
   // The company's own figures, as the Portfolio reads them for it: money, people, filings and what
   // needs the Owner. Someone whose role cannot read the Portfolio keeps the CRM summary below.
   const [periodKey, setPeriodKey] = React.useState<PortfolioPeriodKey>("month");
-  const figures = usePortfolioApi<PortfolioSummary>(demoMode ? null : `/portfolio/summary?period=${periodKey}`, { keepPrevious: true });
+  const figures = usePortfolioApi<PortfolioSummary>(canView && !demoMode ? `/portfolio/summary?period=${periodKey}` : null, { keepPrevious: true });
   const shown = figures.data;
   const mine = shown?.companies.find((item) => item.current);
   const top = mine?.attention[0];
+  if (!canView) return (
+    <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
+        <p className="mt-3 text-sm text-muted-foreground">This view is for the Owner and users with Report access. Ask an Owner to grant you the Reports permission if you need it.</p>
+      </div>
+    </div>
+  );
   return (
     <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business</p>
-            <Badge variant="neutral">Owner view</Badge>
+            <h1 className="text-2xl font-semibold tracking-tight">Business Overview</h1>
           </div>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Business overview</h2>
           <p className="mt-1 text-sm text-muted-foreground">A view of verified activity from your connected workspaces.</p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+        <Button size="sm" variant="secondary" onClick={() => (mine ? figures.reload() : window.location.reload())}>
           <RefreshCw className="size-3.5" />
           Refresh
         </Button>
@@ -259,7 +182,7 @@ function BusinessOverviewPanel() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Janus brief</p>
-            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.leads} leads, ${mine.crm.openDeals} open deals and ${formatCurrencyINR(Number(mine.crm.pipelineValue), false)} in open pipeline.` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
+            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.openDeals ? `${mine.crm.openDeals} open deal${mine.crm.openDeals === 1 ? "" : "s"} worth ${inr(Number(mine.crm.pipelineValue))} in the pipeline.` : "No open deals in the pipeline."}` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
           </div>
         </div>
         <Link href="/ai?workspace=business" className="shrink-0 text-sm font-medium text-accent hover:underline">Ask Janus →</Link>
@@ -267,13 +190,13 @@ function BusinessOverviewPanel() {
 
       {demoMode && !company.setupDone && <section className="flex flex-wrap items-center justify-between gap-3 border border-warning/40 bg-warning-muted px-4 py-3"><div><p className="text-sm font-medium">Finish setting up {company.name}</p><p className="text-xs text-muted-foreground">Choose its workspaces and add the first people to switch the company on.</p></div><Button size="sm" asChild><Link href={`/setup?finish=${company.id}`}>Continue setup</Link></Button></section>}
 
-      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} stale={figures.stale} /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
+      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : !demoMode && figures.loading ? <OverviewSkeleton /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
       </div> : <div className="grid gap-3 sm:grid-cols-3">
-        <OverviewKpi label="People" value={String(people.length)} detail="In HR & People" />
-        <OverviewKpi label="Departments" value={String(new Set(people.map((item) => item.department)).size)} detail="Teams on record" />
+        <OverviewKpi label="People" value={demoMode ? String(people.length) : "—"} detail={demoMode ? "In HR & People" : "See HR & People"} />
+        <OverviewKpi label="Departments" value={demoMode ? String(new Set(people.map((item) => item.department)).size) : "—"} detail={demoMode ? "Teams on record" : "See Business Settings"} />
         <OverviewKpi label="CRM & Sales" value="Off" detail="Switch it on under Workspaces" />
       </div>}
 
@@ -297,7 +220,7 @@ function BusinessOverviewPanel() {
         <InsightGraph />
       </>}
 
-      {!mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
+      {demoMode && !mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
           <Badge variant="success">HR & People connected</Badge>
@@ -306,6 +229,15 @@ function BusinessOverviewPanel() {
       </SectionCard>}
     </div>
   );
+}
+
+/** The overview's shape while its figures load, so nothing jumps when they arrive. */
+function OverviewSkeleton() {
+  return <div className="flex flex-col gap-6" role="status" aria-label="Reading your records">
+    <div className="h-24 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-[104px] animate-pulse rounded-lg border border-[#e4e4df] bg-white" />)}</div>
+    <div className="h-64 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
+  </div>;
 }
 
 function OverviewKpi({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -427,10 +359,25 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function UnavailableSection({ title, description }: { title: string; description: string }) { return <SectionCard title={title} description={description}><UnavailableMessage text="No verified records are available for this section yet." /></SectionCard>; }
 /** The company's departments as HR keeps them, with how many people each has. */
+type HrRecords = { records: Record<string, Array<{ key: string; data: Record<string, unknown> }>> };
+type Department = { id: string; name: string; active?: boolean; headId?: string | null };
+
+/**
+ * Departments and how many people are in each, from the HR records the server keeps: never from
+ * this browser, which would show another company's or the demo's departments.
+ */
 function RealStructure() {
-  const departments = useHrOrgStore((state) => state.departments).filter((item) => item.active);
-  const employees = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
-  if (departments.length === 0) return <UnavailableMessage text="No departments yet. Add them under HR, in Departments & roles." />;
+  const spaces = apiUse<Array<{ type: string; status: string }>>("/workspaces");
+  const hrOn = spaces.data?.some((item) => item.type === "hr_people" && item.status === "active");
+  const hr = apiUse<HrRecords>(hrOn ? "/hr/records" : null);
+  if (spaces.loading || (hrOn && hr.loading)) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!hrOn) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text="Departments are kept in HR & People, which is not switched on for this business." /><Link href="/settings?tab=workspace&view=workspaces&workspace=business&activate=hr-people" className="text-sm font-medium text-accent hover:underline">Switch on HR &amp; People</Link></div>;
+  if (hr.error) return <UnavailableMessage text={`Departments could not be read: ${hr.error}`} />;
+  const setting = hr.data?.records.config?.find((item) => item.key === "org.departments")?.data.value;
+  const departments = (Array.isArray(setting) ? (setting as Department[]) : []).filter((item) => item.active !== false);
+  const employees = (hr.data?.records.employee ?? []).map((item) => item.data as { id: string; name?: string; department?: string; status?: string }).filter((item) => item.status !== "archived");
+  if (departments.length === 0) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text={`No departments yet${employees.length ? `, so the ${employees.length} ${employees.length === 1 ? "person" : "people"} in HR belong to none` : ""}.`} /><Link href="/workspace/hr-people?view=organization&workspace=hr-people" className="text-sm font-medium text-accent hover:underline">Add departments in HR &amp; People</Link></div>;
+  const unplaced = employees.filter((item) => !departments.some((department) => department.name === item.department)).length;
   return (
     <ul className="divide-y divide-border">
       {departments.map((department) => {
@@ -438,13 +385,52 @@ function RealStructure() {
         const head = employees.find((item) => item.id === department.headId)?.name;
         return (
           <li key={department.id} className="flex items-center justify-between gap-3 py-3 text-sm">
-            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : null}</span>
+            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : <span className="font-normal text-warning"> · no head</span>}</span>
             <span className="text-muted-foreground">{people} {people === 1 ? "person" : "people"}</span>
           </li>
         );
       })}
+      {unplaced > 0 && <li className="flex items-center justify-between gap-3 py-3 text-sm"><span className="text-muted-foreground">In no department</span><span className="text-muted-foreground">{unplaced} {unplaced === 1 ? "person" : "people"}</span></li>}
     </ul>
   );
+}
+
+type SavedHours = { timezone: string; businessHoursStart: string | null; businessHoursEnd: string | null };
+
+/** The business's timezone and working hours, as saved: the form starts from them, not from defaults. */
+function LiveHours() {
+  const saved = apiUse<SavedHours>("/business/setup");
+  if (saved.loading) return <SectionCard><p className="text-sm text-muted-foreground">Loading your hours…</p></SectionCard>;
+  if (saved.error || !saved.data) return <SectionCard title="Hours & timezone"><UnavailableMessage text={saved.error ?? "Your hours could not be loaded."} /></SectionCard>;
+  return <HoursForm initial={saved.data} onSaved={saved.reload} />;
+}
+
+function HoursForm({ initial, onSaved }: { initial: SavedHours; onSaved: () => void }) {
+  const [timezone, setTimezone] = React.useState(initial.timezone || "Asia/Kolkata");
+  const [start, setStart] = React.useState(initial.businessHoursStart ?? "09:00");
+  const [end, setEnd] = React.useState(initial.businessHoursEnd ?? "18:00");
+  const [saving, setSaving] = React.useState(false);
+  const dirty = timezone !== initial.timezone || start !== (initial.businessHoursStart ?? "09:00") || end !== (initial.businessHoursEnd ?? "18:00");
+  const wrong = start && end && start >= end ? "Closing time must be after opening time." : "";
+  const options = timezones.some((item) => item.value === timezone) ? timezones : [{ value: timezone, label: timezone }, ...timezones];
+  async function save() {
+    setSaving(true);
+    try {
+      await api("/business/setup", { method: "PATCH", body: JSON.stringify({ timezone, businessHoursStart: start, businessHoursEnd: end }) });
+      toast.success("Hours saved");
+      onSaved();
+    } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
+  }
+  return <SectionCard title="Hours & timezone" description="When your business is open, and the timezone it works in. Amounts are always in rupees.">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{options.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow>
+      <FieldRow label="Opens at"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></FieldRow>
+      <FieldRow label="Closes at"><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></FieldRow>
+    </div>
+    {wrong && <p role="alert" className="mt-2 text-xs text-danger">{wrong}</p>}
+    <p className="mt-3 text-[11px] text-muted-foreground">Saved with your business. Janus does not yet hold back messages or workflows outside these hours.</p>
+    <div className="mt-4 flex justify-end"><Button disabled={!dirty || Boolean(wrong) || saving} onClick={save}>{saving ? "Saving…" : "Save hours"}</Button></div>
+  </SectionCard>;
 }
 
 function UnavailableMessage({ text }: { text: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">{text}</div>; }
@@ -452,69 +438,98 @@ function UnavailableMessage({ text }: { text: string }) { return <div className=
 function WorkspacesPanel() {
   const searchParams = useSearchParams();
   const activate = searchParams.get("activate");
-  const activationDefinition = workspaceDefinitions.find((workspace) => workspace.id === activate && workspace.status === "planned");
+  const activationDefinition = workspaceDefinitions.find((workspace) => workspace.id === activate && workspace.id !== "business" && workspace.id !== "portfolio");
   const [createOpen, setCreateOpen] = React.useState(Boolean(activationDefinition));
   const [workspaceName, setWorkspaceName] = React.useState(activationDefinition?.name ?? "");
-  const [workspaceType, setWorkspaceType] = React.useState(activationDefinition?.id ?? "hr_people");
-  const [createdWorkspaces, setCreatedWorkspaces] = React.useState<{ id: string; type: string; name: string; description: string }[]>([]);
+  const [workspaceType, setWorkspaceType] = React.useState(activationDefinition?.id ?? "");
+  // The workspaces switched on for this business, as the server holds them; null until loaded.
+  const [records, setRecords] = React.useState<WorkspaceRecord[] | null>(null);
+  const [members, setMembers] = React.useState<Record<string, WorkspacePerson[]>>({});
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const switchedOn = demoMode ? activeCompany().workspaces : null;
-  const created = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio" && (switchedOn ? switchedOn.includes(workspace.id) : workspace.status === "active"));
-  const available = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio" && (switchedOn ? !switchedOn.includes(workspace.id) : workspace.status === "planned"));
+  const departments = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio");
+  const recordFor = (id: string) => records?.find((item) => item.type === id.replaceAll("-", "_"));
+  // Team Chat has no workspace record: it is on for every business.
+  const isOn = (workspace: (typeof departments)[number]) => switchedOn ? switchedOn.includes(workspace.id) : workspace.id === "team-chat" || records === null ? workspace.status === "active" : Boolean(recordFor(workspace.id));
+  const ready = demoMode || records !== null || Boolean(loadError);
+  const created = ready ? departments.filter(isOn) : [];
+  const available = ready ? departments.filter((workspace) => !isOn(workspace)) : [];
 
   React.useEffect(() => {
-    api<{ id: string; type: string; name: string; description: string }[]>("/workspaces")
-      .then((items) => setCreatedWorkspaces(items.filter((item) => item.type !== "crm_sales")))
-      .catch((error) => setLoadError(message(error)));
+    if (demoMode) return;
+    let cancelled = false;
+    api<WorkspaceRecord[]>("/workspaces")
+      .then(async (items) => {
+        if (cancelled) return;
+        setRecords(items);
+        // Who is in each workspace and who leads it; a workspace without a manager has nobody accountable.
+        const lists = await Promise.all(items.map((item) => api<WorkspacePerson[]>(`/workspaces/${item.id}/members`).then((people) => [item.id, people] as const).catch(() => [item.id, null] as const)));
+        if (!cancelled) setMembers(Object.fromEntries(lists.filter((entry): entry is readonly [string, WorkspacePerson[]] => entry[1] !== null)));
+      })
+      .catch((error) => { if (!cancelled) setLoadError(message(error)); });
+    return () => { cancelled = true; };
   }, []);
+  function staffing(workspaceId: string) {
+    const record = recordFor(workspaceId);
+    const people = record ? members[record.id] : undefined;
+    if (!people) return undefined;
+    const leads = people.filter((person) => person.accessLevel === "manager" || person.accessLevel === "owner");
+    const managers = people.filter((person) => person.accessLevel === "manager");
+    return { text: `${people.length} ${people.length === 1 ? "person" : "people"} · ${managers.length ? `managed by ${managers.slice(0, 2).map((person) => person.name).join(", ")}${managers.length > 2 ? ` and ${managers.length - 2} more` : ""}` : leads.length ? "no manager yet, only the Owner" : "nobody leads it yet"}`, warn: managers.length === 0 };
+  }
+  function openActivate(id?: string) {
+    const definition = departments.find((workspace) => workspace.id === (id ?? available[0]?.id));
+    setWorkspaceType(definition?.id ?? "");
+    setWorkspaceName(definition?.name ?? "");
+    setCreateOpen(true);
+  }
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-accent">Business setup</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Workspaces</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Create and manage the workspaces your business uses.</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-3.5" />Activate workspace</Button>
+        {available.length > 0 && <Button size="sm" onClick={() => openActivate()}><Plus className="size-3.5" />Activate workspace</Button>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <WorkspaceMetric label="Active workspaces" value={String(created.length + createdWorkspaces.length)} detail="Ready for your team" />
-        <WorkspaceMetric label="Available to activate" value={String(available.length)} detail="Department workspaces" />
+        <WorkspaceMetric label="Active workspaces" value={ready ? String(created.length) : "—"} detail={ready && created.some((workspace) => staffing(workspace.id)?.warn) ? `${created.filter((workspace) => staffing(workspace.id)?.warn).length} without a manager` : "Switched on for this business"} />
+        <WorkspaceMetric label="Available to activate" value={ready ? String(available.length) : "—"} detail="Department workspaces" />
       </div>
 
       <SectionCard title="Active workspaces" description="These are the workspaces currently enabled for this business. Open one to enter its workflow.">
         <div className="grid gap-3 lg:grid-cols-2">
-          {created.map((workspace) => (
-            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description} href={workspace.id === "crm-sales" ? "/dashboard?workspace=crm-sales" : `/workspace/${workspace.id}?workspace=${workspace.id}`} primary />
-          ))}
-          {createdWorkspaces.map((workspace) => (
-            <WorkspaceCard key={workspace.id} name={workspace.name} description={workspace.description || "Ready for manager and access configuration."} href={`/workspace/${workspace.type.replaceAll("_", "-")}?workspace=${workspace.type.replaceAll("_", "-")}`} />
-          ))}
+          {!ready && <p className="text-sm text-muted-foreground">Loading workspaces…</p>}
+          {created.map((workspace) => {
+            const team = staffing(workspace.id);
+            return <WorkspaceCard key={workspace.id} name={recordFor(workspace.id)?.name || workspace.name} description={recordFor(workspace.id)?.description || workspace.description} staffing={team?.text} warn={team?.warn} href={workspace.id === "crm-sales" ? "/dashboard?workspace=crm-sales" : workspace.id === "team-chat" ? "/team?workspace=team-chat" : `/workspace/${workspace.id}?workspace=${workspace.id}`} />;
+          })}
         </div>
-        {loadError && <div className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800">Additional workspace records are unavailable: {loadError}. CRM & Sales remains available locally.</div>}
+        {created.some((workspace) => staffing(workspace.id)?.warn) && <p className="mt-3 text-xs text-muted-foreground">A workspace without a manager leaves its approvals and follow-ups to you. <Link href="/settings?tab=team" className="text-accent hover:underline">Give it a manager in People & Access</Link></p>}
+        {loadError && <div className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800">The workspace list could not be loaded: {loadError}. Showing the usual workspaces.</div>}
       </SectionCard>
 
-      <SectionCard title="Available workspaces" description="Activate a department when you are ready. Each activation opens the same simple create workflow.">
+      {ready && available.length > 0 && <SectionCard title="Available workspaces" description="Switch on a department when you are ready. Its records stay separate, and you choose who joins it.">
         <div className="grid gap-3 sm:grid-cols-2">
           {available.map((workspace) => (
             <div key={workspace.id} className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><Plus className="size-4" /></span>
               <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-foreground">{workspace.name}</span><span className="mt-1 block text-xs text-muted-foreground">{workspace.description}</span></span>
-              {demoMode && !["crm-sales", "hr-people"].includes(workspace.id) ? <Badge variant="neutral">Coming soon</Badge> : <Button size="sm" variant="secondary" onClick={() => { setWorkspaceType(workspace.id); setCreateOpen(true); }}>Activate</Button>}
+              {demoMode && !["crm-sales", "hr-people"].includes(workspace.id) ? <Badge variant="neutral">Coming soon</Badge> : <Button size="sm" variant="secondary" onClick={() => openActivate(workspace.id)}>Activate</Button>}
             </div>
           ))}
         </div>
-      </SectionCard>
+      </SectionCard>}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
               <DialogTitle>Activate workspace</DialogTitle>
             <DialogDescription>
-              Create a tenant-scoped workspace. Its records and access will stay isolated from CRM & Sales.
+              Switch on a department for this business. Its records stay in it, and only the people you add can open it.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
@@ -531,7 +546,7 @@ function WorkspacesPanel() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="workspace-type" className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Workspace type</label>
-            <Select value={workspaceType} onValueChange={setWorkspaceType}>
+            <Select value={workspaceType} onValueChange={(value) => { if (!workspaceName.trim() || departments.some((workspace) => workspace.name === workspaceName)) setWorkspaceName(departments.find((workspace) => workspace.id === value)?.name ?? ""); setWorkspaceType(value); }}>
               <SelectTrigger id="workspace-type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {available.filter((workspace) => !demoMode || ["crm-sales", "hr-people"].includes(workspace.id)).map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
@@ -541,15 +556,15 @@ function WorkspacesPanel() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
-              disabled={!workspaceName.trim() || saving}
+              disabled={!workspaceName.trim() || !workspaceType || saving}
               onClick={async () => {
                 setSaving(true);
                 try {
-                  const created = await api<{ id: string; type: string; name: string; description: string }>("/workspaces", {
+                  const created = await api<WorkspaceRecord>("/workspaces", {
                     method: "POST",
                     body: JSON.stringify({ type: workspaceType.replaceAll("-", "_"), name: workspaceName.trim() }),
                   });
-                  setCreatedWorkspaces((items) => [...items, created]);
+                  setRecords((items) => [...(items ?? []), created]);
                   setWorkspaceName("");
                   setCreateOpen(false);
                   toast.success("Workspace activated");
@@ -573,8 +588,11 @@ function WorkspaceMetric({ label, value, detail }: { label: string; value: strin
   return <div className="rounded-lg border border-border bg-surface p-4"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><p className="mt-2 text-xl font-semibold text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
-function WorkspaceCard({ name, description, href, primary = false }: { name: string; description: string; href: string; primary?: boolean }) {
-  return <Link href={href} className={`group flex items-center gap-3 rounded-lg border px-4 py-4 transition-colors ${primary ? "border-accent-border bg-accent-muted/40 hover:bg-accent-muted" : "border-border bg-surface hover:border-accent-border hover:bg-surface-2"}`}><span className="flex min-w-0 flex-1 flex-col gap-1"><span className="flex items-center gap-2 text-sm font-medium text-foreground">{name}<Badge variant="success">Active</Badge></span><span className="text-xs text-muted-foreground">{description}</span></span><ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-accent" /></Link>;
+type WorkspaceRecord = { id: string; type: string; name: string; description: string };
+type WorkspacePerson = { membershipId: string; name: string; email: string; accessLevel: string };
+
+function WorkspaceCard({ name, description, href, staffing, warn = false }: { name: string; description: string; href: string; staffing?: string; warn?: boolean }) {
+  return <Link href={href} className="group flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-4 transition-colors hover:border-accent-border hover:bg-surface-2"><span className="flex min-w-0 flex-1 flex-col gap-1"><span className="flex items-center gap-2 text-sm font-medium text-foreground">{name}<Badge variant="success">Active</Badge></span><span className="text-xs text-muted-foreground">{description}</span>{staffing && <span className={`text-xs ${warn ? "text-warning" : "text-muted-foreground"}`}>{staffing}</span>}</span><ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-accent" /></Link>;
 }
 
 function SectionTabs({ items, value, onChange }: { items: string[][]; value: string; onChange: (value: string) => void }) {

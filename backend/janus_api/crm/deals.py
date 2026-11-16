@@ -13,7 +13,7 @@ from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.crm import schemas
 from janus_api.crm.models import Contact, Deal, Lead
-from janus_api.crm.service import visible_owners
+from janus_api.crm.service import set_lost, visible_owners
 
 
 async def query_for(
@@ -49,7 +49,9 @@ def output(deal: Deal, lead: Lead, contact: Contact, owner: User | None = None) 
             amount=format(deal.amount, ".2f"),
             stage=deal.stage,
             expectedCloseAt=deal.expected_close_at,
+            lostCategory=deal.lost_category,
             lostReason=deal.lost_reason,
+            lostAt=deal.lost_at,
             version=deal.version,
             createdAt=deal.created_at,
             updatedAt=deal.updated_at,
@@ -101,10 +103,11 @@ async def create(
         amount=data.amount,
         stage=data.stage,
         expected_close_at=data.expectedCloseAt,
-        lost_reason=data.lostReason,
     )
     db.add(deal)
     lead.stage, lead.last_activity_at = data.stage, now()
+    set_lost(deal, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
+    set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
     await db.flush()
     record(
         db,
@@ -117,6 +120,7 @@ async def create(
             "stage": deal.stage,
             "name": deal.name,
             "expected_close_at": str(deal.expected_close_at or ""),
+            "lost_category": deal.lost_category or "",
             "lost_reason": deal.lost_reason,
             "amount": format(deal.amount, ".2f"),
         },
@@ -131,15 +135,34 @@ async def update(
     deal, lead, contact, owner = await get(db, actor, deal_id, lock=True)
     if deal.version != data.version:
         raise ApiError("stale_deal", "This deal changed. Refresh it before saving again.", 409)
-    before = (deal.name, deal.amount, deal.stage, deal.expected_close_at, deal.lost_reason)
-    after = (data.name, data.amount, data.stage, data.expectedCloseAt, data.lostReason)
+    before = (
+        deal.name,
+        deal.amount,
+        deal.stage,
+        deal.expected_close_at,
+        deal.lost_category,
+        deal.lost_reason,
+    )
+    after = (
+        data.name,
+        data.amount,
+        data.stage,
+        data.expectedCloseAt,
+        data.lostCategory,
+        data.lostReason,
+    )
     if before == after:
         return output(deal, lead, contact, owner)
     old_stage = deal.stage
-    deal.name, deal.amount, deal.stage, deal.expected_close_at, deal.lost_reason = after
+    deal.name, deal.amount, deal.stage, deal.expected_close_at = after[:4]
     deal.version += 1
     deal.updated_at = lead.last_activity_at = now()
     lead.stage = deal.stage
+    set_lost(deal, data.stage, data.lostCategory, data.lostReason, deal.updated_at)
+    set_lost(lead, data.stage, data.lostCategory, data.lostReason, deal.updated_at)
+    # A won or lost deal has nothing left to follow up.
+    if deal.stage in ("won", "lost"):
+        lead.next_follow_up_on = None
     record(
         db,
         "deal.updated",
@@ -152,6 +175,7 @@ async def update(
             "name": deal.name,
             "amount": format(deal.amount, ".2f"),
             "expected_close_at": str(deal.expected_close_at or ""),
+            "lost_category": deal.lost_category or "",
             "lost_reason": deal.lost_reason,
             "version": deal.version,
         },
@@ -164,24 +188,29 @@ async def events(
     db: AsyncSession, actor: Actor, deal_id: int, before_id: int | None, limit: int
 ) -> list[schemas.DealEvent]:
     await get(db, actor, deal_id)
-    query = select(AuditLog).where(
-        AuditLog.tenant_id == actor.session.tenant_id,
-        AuditLog.action.in_(["deal.created", "deal.updated"]),
-        AuditLog.details["deal_id"].astext == str(deal_id),
+    query = (
+        select(AuditLog, User.name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(
+            AuditLog.tenant_id == actor.session.tenant_id,
+            AuditLog.action.in_(["deal.created", "deal.updated"]),
+            AuditLog.details["deal_id"].astext == str(deal_id),
+        )
     )
     if before_id:
         query = query.where(AuditLog.id < before_id)
-    rows = (await db.scalars(query.order_by(AuditLog.id.desc()).limit(limit))).all()
+    rows = (await db.execute(query.order_by(AuditLog.id.desc()).limit(limit))).all()
     return [
         schemas.DealEvent(
             id=str(row.id),
             action=row.action,
             userId=str(row.user_id) if row.user_id else None,
+            userName=user_name,
             details={
                 key: str(value) if key in {"deal_id", "lead_id"} else value
                 for key, value in row.details.items()
             },
             createdAt=row.created_at,
         )
-        for row in rows
+        for row, user_name in rows
     ]

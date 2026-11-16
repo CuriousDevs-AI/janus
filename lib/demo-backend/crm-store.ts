@@ -28,8 +28,8 @@ const seed = () => ({
     return { id: buyer.id, name: buyer.contact, phone: buyer.phone, email: buyer.email, company: buyer.company, whatsappOptIn: Boolean(consented), doNotContact: false, consentSource: consented?.consentSource ?? null, consentUpdatedAt: consented?.consentUpdatedAt ?? null };
   }),
   events: Object.fromEntries(dealRows.map((deal): [string, DealEvent[]] => {
-    const list: DealEvent[] = [{ id: `${deal.id}-created`, action: "created", userId: deal.ownerId, details: { name: deal.name }, createdAt: deal.createdAt }];
-    if (deal.stage !== "new") list.unshift({ id: `${deal.id}-stage`, action: "stage_changed", userId: deal.ownerId, details: { from: "new", to: deal.stage }, createdAt: deal.updatedAt });
+    const list: DealEvent[] = [{ id: `${deal.id}-created`, action: "created", userId: deal.ownerId, userName: deal.ownerName ?? null, details: { name: deal.name }, createdAt: deal.createdAt }];
+    if (deal.stage !== "new") list.unshift({ id: `${deal.id}-stage`, action: "stage_changed", userId: deal.ownerId, userName: deal.ownerName ?? null, details: { from: "new", to: deal.stage }, createdAt: deal.updatedAt });
     return [deal.id, list];
   })),
 });

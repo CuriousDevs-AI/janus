@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore, type HrRegularisation } from "@/lib/stores/hr-operations-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { classify, shiftLabel, toMinutes } from "@/lib/hr-attendance";
 import { isTeamOf } from "@/lib/hr-leave";
 import { PunchCard } from "@/components/hr-people/punch-card";
@@ -33,7 +33,7 @@ export function HrAttendanceView({ role, actorId }: { role: HrDemoRole; actorId:
   const hrAdmin = canManageHr(role);
   const wide = canManageHr(role) || role === "payroll_admin";
   const actor = employees.find((item) => item.id === actorId);
-  const actorName = actor?.name ?? "HR";
+  const actorName = actorDisplayName(actor?.name);
   const scope = employees.filter((item) => item.status !== "archived" && (wide || isTeamOf(item, actorId)) && (department === "all" || item.department === department));
   const scopeIds = new Set(scope.map((item) => item.id));
   const rows = attendance.filter((item) => item.date === date && scopeIds.has(item.employeeId) && (filter === "all" || (filter === "exceptions" ? item.status === "late" || item.status === "absent" || Boolean(item.anomaly) : item.status === filter)));

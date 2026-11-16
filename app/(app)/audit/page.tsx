@@ -1,4 +1,6 @@
 "use client";
+import { demoMode } from "@/lib/demo-mode";
+import { LiveAuditLog } from "@/components/crm/live-audit";
 
 import * as React from "react";
 import Link from "next/link";
@@ -37,7 +39,7 @@ function actorLabel(actor: ActivityActor): string {
   }
 }
 
-export default function AuditLogPage() {
+function DemoAuditLog() {
   const [query, setQuery] = React.useState("");
   const [resultFilter, setResultFilter] = React.useState<"all" | AuditEvent["result"]>("all");
 
@@ -146,4 +148,9 @@ export default function AuditLogPage() {
       )}
     </div>
   );
+}
+
+/** A real business sees its own records; the demo keeps its preview. */
+export default function Page() {
+  return demoMode ? <DemoAuditLog /> : <LiveAuditLog />;
 }

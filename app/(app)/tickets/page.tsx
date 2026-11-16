@@ -59,7 +59,15 @@ function TicketsPageContent() {
   const storeCustomers = useAppStore((s) => s.customers);
   // A real account's customers are the people its leads came from; the demo list is the demo's own.
   const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
+  // Everyone in the company, names only: used to resolve assignee names.
+  const membersApi = useApi<{ id: number; name: string }[]>(demoMode ? null : "/team/people");
   const customers = React.useMemo(() => demoMode ? storeCustomers : customersFromLeads(leadsApi.data ?? []), [storeCustomers, leadsApi.data]);
+  // A real account's people are its members on the server; the demo team is the demo's own.
+  const membersByServerId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    if (!demoMode) for (const m of membersApi.data ?? []) map.set(String(m.id), m.name);
+    return map;
+  }, [membersApi.data]);
   const router = useRouter();
   React.useEffect(() => {
     syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
@@ -130,8 +138,7 @@ function TicketsPageContent() {
             <Radio className="size-4 shrink-0 text-accent" />
             <p className="text-[12.5px] text-foreground">
               New tickets arrive automatically from the same channels as leads — Website Chat, Email, WhatsApp and
-              other <span className="font-medium">Lead Sources</span>. Migrating from Zendesk, Freshdesk, Intercom or
-              Jira Service Desk? Connect it under <span className="font-medium">Integrations</span>.
+              other <span className="font-medium">Lead Sources</span>.
             </p>
           </div>
           <ArrowRight className="size-4 shrink-0 text-accent transition-transform group-hover:translate-x-0.5" />
@@ -180,7 +187,7 @@ function TicketsPageContent() {
           </TableHeader>
           <TableBody>
             {rows.map(({ ticket, customer }) => {
-              const assignee = getUserById(ticket.assigneeId);
+              const assigneeName = demoMode ? getUserById(ticket.assigneeId)?.name : membersByServerId.get(ticket.assigneeId ?? "");
               const company = getCompanyById(customer!.companyId);
               return (
                 <TableRow key={ticket.id} className="cursor-pointer" onClick={() => router.push(`/tickets/${ticket.id}`)}>
@@ -201,7 +208,7 @@ function TicketsPageContent() {
                   <TableCell>
                     <TicketStatusBadge status={ticket.status} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{assignee?.name ?? "Unassigned"}</TableCell>
+                  <TableCell className="text-muted-foreground">{assigneeName ?? "Unassigned"}</TableCell>
                   <TableCell>
                     {ticket.slaMinutesRemaining === null ? (
                       <span className="text-muted-foreground">—</span>

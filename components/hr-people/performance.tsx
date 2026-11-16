@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore, type HrReview } from "@/lib/stores/hr-operations-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, HrTable, hrCell, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export function HrPerformanceView({ role, actorId }: { role: HrDemoRole; actorId
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [starting, setStarting] = React.useState(false);
   const hr = canManageHr(role);
-  const actorName = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actorName = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const personOf = (id: string) => employees.find((item) => item.id === id);
   const scoped = reviews.filter((item) => { const person = personOf(item.employeeId); return hr || item.employeeId === actorId || (role === "reporting_manager" && person?.managerId === actorId); });
   const open = scoped.find((item) => item.id === openId);

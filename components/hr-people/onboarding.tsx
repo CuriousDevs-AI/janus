@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { lifecycleEvent, useHrLifecycleStore } from "@/lib/stores/hr-lifecycle-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole, HrEmployee, HrOnboardingTask } from "@/lib/types";
 
@@ -40,7 +40,7 @@ export function HrOnboardingView({ role, actorId, personal = false }: { role: Hr
   const notesByEmployee = useHrLifecycleStore((state) => state.onboardingNotes);
   const addNote = useHrLifecycleStore((state) => state.addOnboardingNote);
   const manager = canManageHr(role);
-  const actorName = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actorName = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const caseIds = [...new Set([...onboardingTasks.map((task) => task.employeeId), ...employees.filter((item) => item.status === "onboarding").map((item) => item.id)])];
   const cases = employees.filter((item) => caseIds.includes(item.id) && (personal ? item.id === actorId : manager || role === "payroll_admin" || item.managerId === actorId));
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -75,7 +75,7 @@ export function HrOnboardingView({ role, actorId, personal = false }: { role: Hr
   const notes = selected ? notesByEmployee[selected.id] ?? [] : [];
 
   return <div className="space-y-5">
-    {!personal && <HrStats items={[{ label: "People onboarding", value: cases.filter((item) => item.status === "onboarding").length, hint: "Not yet active" }, { label: "Open tasks", value: all.filter((task) => task.status !== "done").length, hint: `${all.length} in total` }, { label: "Overdue", value: overdue.length, hint: overdue.length ? "Past their due date" : "Everything on time" }, { label: "Ready to complete", value: cases.filter((item) => item.status === "onboarding" && progress(item.id) === 100).length, hint: "All tasks done" }]} />}
+    {!personal && <HrStats items={[{ label: "People onboarding", value: cases.length, hint: "Not yet active" }, { label: "Open tasks", value: all.filter((task) => task.status !== "done").length, hint: `${all.length} in total` }, { label: "Overdue", value: overdue.length, hint: overdue.length ? "Past their due date" : "Everything on time" }, { label: "Ready to complete", value: cases.filter((item) => progress(item.id) === 100).length, hint: "All tasks done" }]} />}
     <div className={personal ? "" : "grid gap-4 xl:grid-cols-[300px_1fr]"}>
       {!personal && <HrPanel title="New joiners"><ul className="divide-y divide-border">{cases.map((item) => <li key={item.id}><button type="button" aria-current={selected?.id === item.id} onClick={() => setSelectedId(item.id)} className={`w-full px-5 py-3 text-left hover:bg-surface-2 ${selected?.id === item.id ? "bg-surface-2" : ""}`}><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{item.name}</span><HrStatus status={item.status} /></div><p className="mt-1 text-xs text-muted-foreground">{item.title} · joins {hrDate(item.joiningDate)}</p><div className="mt-2 h-1.5 bg-surface-2" aria-hidden><div className="h-1.5 bg-accent" style={{ width: `${progress(item.id)}%` }} /></div></button></li>)}</ul></HrPanel>}
       {selected && <div className="space-y-5">

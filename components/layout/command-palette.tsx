@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useEffect } from "react";
-import { Building2, LayoutGrid } from "lucide-react";
+import { Building2, Inbox, LayoutGrid } from "lucide-react";
 import { demoMode } from "@/lib/demo-mode";
 import { hrNavVisible } from "@/lib/hr-nav";
 import { useDemoAccount } from "@/lib/demo-persona";
@@ -71,6 +71,12 @@ export function CommandPalette() {
               {workspaceId !== "portfolio" && session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role)) && <CommandItem onSelect={() => { setOpen(false); router.push(portfolioHome); }}><LayoutGrid className="size-4" />Portfolio · all companies</CommandItem>}
               {session.tenants.filter((item) => item.status === "active" && item.id !== session.tenant.id).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchTenant(item.id, businessHome, item.name).catch((error) => toast.error(message(error))); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
             </CommandGroup>}
+            <CommandGroup heading="Quick access">
+              <CommandItem onSelect={() => { setOpen(false); router.push("/work"); }}>
+                <Inbox className="size-4" />
+                Work Inbox
+              </CommandItem>
+            </CommandGroup>
             {navSections.map((section) => (
               <CommandGroup key={section.title} heading={section.title}>
                 {section.items.map((item) => (

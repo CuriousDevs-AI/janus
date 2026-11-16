@@ -9,6 +9,7 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrCareerStore } from "@/lib/stores/hr-career-store";
+import { actorDisplayName } from "@/lib/hr-people-access";
 import { changeLines, kindLabels, subordinatesOf } from "@/lib/hr-career";
 import { nextEmployeeIds, normalisePhone, parseDate, todayIst } from "@/lib/hr-import";
 import { acmeEmployees } from "@/lib/mock-data/hr-people";
@@ -26,7 +27,7 @@ export function EmployeeFormDialog({ employee, actorId, onClose }: { employee?: 
   const editing = Boolean(employee);
   const [form, setForm] = React.useState({ name: employee?.name ?? "", email: employee?.email ?? "", phone: employee?.phone ?? "", title: employee?.title ?? "", department: employee?.department ?? "", branch: employee?.branch ?? "", type: employee?.employmentType ?? "full_time" as HrEmployee["employmentType"], joiningDate: employee?.joiningDate ?? todayIst(), birthDate: employee?.birthDate ?? "", managerId: employee?.managerId ?? "", salary: "", checklist: true });
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((state) => ({ ...state, [key]: value }));
-  const actor = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actor = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const blocked = employee ? subordinatesOf(employees, employee.id) : new Set<string>();
   const managers = employees.filter((item) => item.status !== "archived" && item.id !== employee?.id && !blocked.has(item.id));
   const orgDepartments = useHrOrgStore((state) => state.departments);

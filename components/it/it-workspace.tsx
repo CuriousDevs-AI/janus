@@ -15,6 +15,16 @@ import { usePeople } from "@/lib/people-directory";
 import { completeITChange, decideITChange, requestITChange, syncITChanges } from "@/lib/it-records";
 import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore, type ITChange, type Incident } from "@/lib/stores/it-store";
 
+/** People from the directory, with IT-offboarded people removed. */
+function useITPeople() {
+  const people = usePeople();
+  const offboarded = useITStore((state) => state.offboarded);
+  return React.useMemo(
+    () => people.filter((p) => !offboarded.includes(p.name)),
+    [people, offboarded],
+  );
+}
+
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
 const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 const comingSoon: Record<string, string> = {
@@ -31,6 +41,17 @@ export function ITWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
   const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk", incidents: "Incidents", changes: "Change management", reports: "IT reports", monitoring: "Infrastructure monitoring" };
+  const descriptions: Record<string, string> = {
+    overview: "Assets, the access each person holds, and software licences. Every change is written to the log.",
+    assets: "Devices, equipment and other physical items the company owns and assigns to people.",
+    access: "Who has access to which systems, at what level. Grant and remove access in one place.",
+    licenses: "Software licences, seats and renewal dates. Track cost and who is using each licence.",
+    helpdesk: "Requests from people in the company. Each one is worked by an IT assignee until resolved.",
+    incidents: "Something that is down or wrong. Each incident keeps a timeline of what was done.",
+    changes: "Planned changes to systems or devices. Someone other than the requester approves, then it is carried out.",
+    reports: "IT in numbers: assets, requests, incidents and changes at a glance.",
+    monitoring: "Systems IT keeps an eye on. Record each check; a system marked down opens a critical incident.",
+  };
 
   if (view in comingSoon) {
     return (
@@ -43,7 +64,7 @@ export function ITWorkspace() {
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col">
-      <PageHeader title={titles[view] ?? "IT overview"} description="Assets, the access each person holds, and software licences. Every change is written to the log." />
+      <PageHeader title={titles[view] ?? "IT overview"} description={descriptions[view]} />
       <div className="flex flex-col gap-4 px-6 pb-10">
         {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : view === "incidents" ? <IncidentsView /> : view === "changes" ? <ChangesView /> : view === "reports" ? <ITReportsView /> : view === "monitoring" ? <MonitoringView /> : <OverviewView />}
       </div>
@@ -90,7 +111,7 @@ function OverviewView() {
 
 /** IT requests from people in the company: raised, assigned, started and resolved. */
 function HelpdeskView() {
-  const people = usePeople();
+  const people = useITPeople();
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const tickets = useITStore((state) => state.helpdesk);
@@ -244,12 +265,18 @@ function ChangesView() {
   }, []);
   const [title, setTitle] = React.useState("");
   const [risk, setRisk] = React.useState<ITChange["risk"]>("low");
+  const [saving, setSaving] = React.useState(false);
 
   async function request() {
-    const problem = await requestITChange({ title, risk }, me);
-    if (problem) return toast.error(problem);
-    toast.success("Change requested");
-    setTitle("");
+    setSaving(true);
+    try {
+      const problem = await requestITChange({ title, risk }, me);
+      if (problem) return toast.error(problem);
+      toast.success("Change requested");
+      setTitle("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -261,7 +288,7 @@ function ChangesView() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Input aria-label="Change title" placeholder="What will change?" value={title} onChange={(e) => setTitle(e.target.value)} />
             <select aria-label="Change risk" className={selectClass} value={risk} onChange={(e) => setRisk(e.target.value as ITChange["risk"])}><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select>
-            <Button disabled={title.trim().length < 5} onClick={request}>Request change</Button>
+            <Button disabled={saving || title.trim().length < 5} onClick={request}>{saving ? "Saving…" : "Request change"}</Button>
           </div>
         </CardContent>
       </Card>
@@ -273,11 +300,13 @@ function ChangesView() {
               <span><span className="font-medium">{c.number}</span> · {c.title}<span className="block text-xs text-muted-foreground">{c.risk} risk · requested by {c.requestedBy} on {c.raisedOn}{c.decidedBy ? ` · decided by ${c.decidedBy}` : ""}</span></span>
               <span className="flex flex-wrap items-center gap-2">
                 <Badge variant={c.status === "done" || c.status === "approved" ? "success" : c.status === "rejected" ? "danger" : "warning"}>{c.status}</Badge>
-                {c.status === "pending" ? (
+                {c.status === "pending" && c.requestedBy !== me ? (
                   <>
                     <Button size="sm" variant="secondary" onClick={async () => { const p = await decideITChange(c.id, true, me); if (p) toast.error(p); }}>Approve</Button>
                     <Button size="sm" variant="ghost" onClick={async () => { const p = await decideITChange(c.id, false, me); if (p) toast.error(p); }}>Reject</Button>
                   </>
+                ) : c.status === "pending" ? (
+                  <span className="text-xs text-muted-foreground">Waiting for someone else to decide</span>
                 ) : null}
                 {c.status === "approved" ? <Button size="sm" onClick={async () => { const p = await completeITChange(c.id, me); if (p) toast.error(p); }}>Mark carried out</Button> : null}
               </span>
@@ -375,7 +404,7 @@ function MonitoringView() {
 }
 
 function AssetsView() {
-  const people = usePeople();
+  const people = useITPeople();
   const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
@@ -463,7 +492,7 @@ function AssetsView() {
 }
 
 function AccessView() {
-  const people = usePeople();
+  const people = useITPeople();
   const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
@@ -521,7 +550,7 @@ function AccessView() {
 }
 
 function LicensesView() {
-  const people = usePeople();
+  const people = useITPeople();
   const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";

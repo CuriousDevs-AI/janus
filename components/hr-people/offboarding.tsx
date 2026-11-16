@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { exitChecklist, lifecycleEvent, lifecycleId, useHrLifecycleStore, type HrClearanceOwner, type HrExitRecord } from "@/lib/stores/hr-lifecycle-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { demoMode } from "@/lib/demo-mode";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
 
@@ -28,7 +29,7 @@ export function HrOffboardingView({ role, actorId }: { role: HrDemoRole; actorId
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [starting, setStarting] = React.useState(false);
   const manager = canManageHr(role);
-  const actorName = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actorName = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const visible = exits.filter((exit) => manager || role === "payroll_admin" || employees.find((item) => item.id === exit.employeeId)?.managerId === actorId);
   const selected = visible.find((exit) => exit.id === selectedId) ?? visible.find((exit) => !["completed", "cancelled"].includes(exit.status)) ?? visible[0];
   const open = visible.filter((exit) => !["completed", "cancelled"].includes(exit.status));
@@ -74,7 +75,7 @@ function ExitDetail({ exit, role, actorName, manager, onTask, onFinish, onCancel
         {!allowed && !closed && <p className="ml-7 text-[11px] text-muted-foreground">Only {ownerLabels[task.owner]} or HR can update this task.</p>}
       </li>; })}</ul>
       {manager && !closed && <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={onCancel}>Cancel exit</Button><Button onClick={onFinish} disabled={!allDone}>{allDone ? "Complete exit and archive" : "Finish all tasks to complete"}</Button></div>}
-      <div><h3 className="mb-2 text-sm font-semibold">Activity</h3><ol className="divide-y divide-border border border-border text-sm">{exit.events.map((event) => <li key={event.id} className="px-4 py-2"><p>{event.text}</p><p className="text-xs text-muted-foreground">{event.actor} · {dateTime(event.at)}</p></li>)}{!exit.events.length && <li className="px-4 py-3 text-xs text-muted-foreground">No activity yet.</li>}</ol><p className="mt-2 text-[11px] text-muted-foreground">Acting as {actorName}. Demo records stay in this browser.</p></div>
+      <div><h3 className="mb-2 text-sm font-semibold">Activity</h3><ol className="divide-y divide-border border border-border text-sm">{exit.events.map((event) => <li key={event.id} className="px-4 py-2"><p>{event.text}</p><p className="text-xs text-muted-foreground">{event.actor} · {dateTime(event.at)}</p></li>)}{!exit.events.length && <li className="px-4 py-3 text-xs text-muted-foreground">No activity yet.</li>}</ol><p className="mt-2 text-[11px] text-muted-foreground">Acting as {actorName}.{demoMode ? " Demo records stay in this browser." : ""}</p></div>
     </div>
   </HrPanel>;
 }

@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { blankCandidateDetail, lifecycleEvent, useHrLifecycleStore, type HrCandidateDetail } from "@/lib/stores/hr-lifecycle-store";
-import { canManageHr, salaryVisible } from "@/lib/hr-people-access";
+import { demoMode } from "@/lib/demo-mode";
+import { actorDisplayName, canManageHr, salaryVisible } from "@/lib/hr-people-access";
 import { HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrCandidate, HrDemoRole } from "@/lib/types";
 
@@ -24,7 +25,7 @@ export function HrRecruitmentView({ role, actorId }: { role: HrDemoRole; actorId
   const [adding, setAdding] = React.useState(false);
   const [showRejected, setShowRejected] = React.useState(false);
   const manager = canManageHr(role);
-  const actorName = employees.find((item) => item.id === actorId)?.name ?? "HR";
+  const actorName = actorDisplayName(employees.find((item) => item.id === actorId)?.name);
   const open = candidates.filter((item) => !["accepted", "rejected"].includes(item.stage));
   const selected = candidates.find((item) => item.id === selectedId);
   const rejected = candidates.filter((item) => item.stage === "rejected");
@@ -83,7 +84,7 @@ function CandidateDialog({ candidate, role, manager, actorName, onClose }: { can
     const version = detail.offer.status === "sent" && changed ? detail.offer.version + 1 : detail.offer.version;
     setCandidateDetail(candidate.id, { offer: { salaryMonthly: Number(offer.salaryMonthly), joiningDate: offer.joiningDate, location: offer.location.trim(), status, version } });
     log(status === "sent" ? `Offer v${version} sent: ${hrMoney(Number(offer.salaryMonthly))}/month, joining ${hrDate(offer.joiningDate)}.` : `Offer draft saved (v${version}).`);
-    toast.success(status === "sent" ? `Offer v${version} marked as sent (demo — nothing is emailed)` : "Offer draft saved");
+    toast.success(status === "sent" ? `Offer v${version} marked as sent${demoMode ? " (demo — nothing is emailed)" : ""}` : "Offer draft saved");
   }
   function reply(answer: "accepted" | "rejected") {
     setCandidateDetail(candidate.id, { offer: { ...detail.offer, status: answer } });

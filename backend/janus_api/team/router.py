@@ -183,8 +183,10 @@ async def read(space_id: int, data: schemas.ReadIn, actor: CurrentActor, db: Db)
 
 
 @router.get("/messages/{message_id}/replies", response_model=list[schemas.MessageOut])
-async def replies(message_id: int, actor: CurrentActor, db: Db) -> list[schemas.MessageOut]:
-    return await service.list_replies(db, actor, message_id)
+async def replies(
+    message_id: int, actor: CurrentActor, db: Db, limit: Limit = 50
+) -> list[schemas.MessageOut]:
+    return await service.list_replies(db, actor, message_id, limit)
 
 
 @router.patch("/messages/{message_id}", response_model=schemas.MessageOut)

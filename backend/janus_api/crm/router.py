@@ -1,25 +1,36 @@
+from datetime import datetime, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db, require
-from janus_api.crm import deals, schemas, service
+from janus_api.crm import account, deals, overview, schemas, service
 
+IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/v1", tags=["CRM"])
 Reader = Annotated[Actor, Depends(require("leads:read_own"))]
 Writer = Annotated[Actor, Depends(require("leads:write"))]
+# Owners and managers hand leads to their team.
+Assigner = Annotated[Actor, Depends(require("leads:assign"))]
 Limit = Annotated[int, Query(ge=1, le=100)]
 AfterId = Annotated[int, Query(ge=0, le=2**63 - 1)]
 
 
 @router.get("/leads", response_model=list[schemas.LeadOut])
 async def leads(
-    actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 100
+    actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 100, q: str | None = None
 ) -> list[schemas.LeadOut]:
     return await service.list_leads(
-        db, actor.session.tenant_id, actor.user.id, actor.permissions, after_id, limit
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        after_id,
+        limit,
+        search=q,
     )
 
 
@@ -68,10 +79,43 @@ async def update_lead(
     )
 
 
+@router.get("/leads/{lead_id}/notes", response_model=list[schemas.NoteOut])
+async def lead_notes(
+    lead_id: Identifier, actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 50
+) -> list[schemas.NoteOut]:
+    return await service.list_notes(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id, after_id, limit
+    )
+
+
+@router.post("/leads/{lead_id}/notes", response_model=schemas.NoteOut, status_code=201)
+async def add_lead_note(
+    lead_id: Identifier, data: schemas.NoteIn, actor: Writer, db: Db
+) -> schemas.NoteOut:
+    return await service.add_note(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id, data
+    )
+
+
+@router.post("/leads/assign", response_model=schemas.AssignOut)
+async def assign_leads(data: schemas.AssignIn, actor: Assigner, db: Db) -> schemas.AssignOut:
+    return await service.assign_leads(db, actor.session.tenant_id, actor.user.id, data)
+
+
 @router.delete("/leads/{lead_id}", status_code=204)
 async def delete_lead(lead_id: Identifier, actor: Writer, db: Db) -> None:
     await service.delete_lead(
         db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id
+    )
+
+
+@router.get("/contacts/{contact_id}/account", response_model=schemas.CustomerAccountOut)
+async def contact_account(
+    contact_id: Identifier, actor: Reader, db: Db
+) -> schemas.CustomerAccountOut:
+    """What this customer was invoiced, paid and owes; amounts only for a role with money."""
+    return await account.account(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
     )
 
 
@@ -96,6 +140,26 @@ async def update_contact(
     )
 
 
+@router.get("/contacts/{contact_id}/notes", response_model=list[schemas.CustomerNoteOut])
+async def contact_notes(
+    contact_id: Identifier, actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 50
+) -> list[schemas.CustomerNoteOut]:
+    return await service.list_customer_notes(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id, after_id, limit
+    )
+
+
+@router.post(
+    "/contacts/{contact_id}/notes", response_model=schemas.CustomerNoteOut, status_code=201
+)
+async def add_contact_note(
+    contact_id: Identifier, data: schemas.CustomerNoteIn, actor: Writer, db: Db
+) -> schemas.CustomerNoteOut:
+    return await service.add_customer_note(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id, data
+    )
+
+
 @router.patch("/contacts/{contact_id}/consent", response_model=schemas.ContactOut)
 async def update_contact_consent(
     contact_id: Identifier, data: schemas.ContactConsentUpdate, actor: Writer, db: Db
@@ -107,6 +171,27 @@ async def update_contact_consent(
         actor.permissions,
         contact_id,
         data,
+    )
+
+
+@router.get("/customers", response_model=list[schemas.CustomerListRow])
+async def customers(
+    actor: Reader,
+    db: Db,
+    after_id: AfterId = 0,
+    limit: Limit = 50,
+    q: str | None = None,
+    filter: str = "all",
+) -> list[schemas.CustomerListRow]:
+    return await service.list_customers(
+        db,
+        actor.session.tenant_id,
+        actor.user.id,
+        actor.permissions,
+        after_id,
+        limit,
+        q,
+        filter,
     )
 
 
@@ -145,3 +230,20 @@ async def deal_events(
     limit: Limit = 50,
 ) -> list[schemas.DealEvent]:
     return await deals.events(db, actor, deal_id, before_id, limit)
+
+
+@router.get("/lost-reasons", response_model=list[schemas.LostReasonOut])
+async def lost_reasons(
+    actor: Assigner, db: Db, days: Annotated[int, Query(ge=1, le=366)] = 90
+) -> list[schemas.LostReasonOut]:
+    """Why the company's leads were lost in the last few days, for whoever runs the team."""
+    today = datetime.now(IST).date()
+    reasons = await overview.lost_reasons(
+        db, actor.session.tenant_id, today - timedelta(days=days - 1), today
+    )
+    return [
+        schemas.LostReasonOut(
+            category=item.category, label=item.label, count=item.count, value=str(item.value)
+        )
+        for item in reasons
+    ]

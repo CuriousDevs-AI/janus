@@ -2,7 +2,7 @@
 
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
-import { type ITChange, useITStore } from "@/lib/stores/it-store";
+import { TODAY, type ITChange, useITStore } from "@/lib/stores/it-store";
 
 /**
  * IT change requests are recorded on the server: the server numbers them, checks who may decide, and
@@ -31,12 +31,15 @@ const toLocal = (row: ServerChange): ITChange => ({
   raisedOn: row.raised_on,
 });
 
-function keep(change: ITChange) {
-  useITStore.setState((state) => ({
-    changes: state.changes.some((item) => item.id === change.id)
+function keep(change: ITChange, logText?: string, by?: string) {
+  useITStore.setState((state) => {
+    const changes = state.changes.some((item) => item.id === change.id)
       ? state.changes.map((item) => (item.id === change.id ? change : item))
-      : [change, ...state.changes],
-  }));
+      : [change, ...state.changes];
+    if (!logText || !by) return { changes };
+    const entry = { id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: TODAY, ts: new Date().toISOString(), by, text: logText };
+    return { changes, log: [entry, ...state.log] };
+  });
 }
 
 /** Loads the company's IT changes from the server, newest first. */
@@ -49,7 +52,8 @@ export async function syncITChanges(): Promise<void> {
 export async function requestITChange(input: { title: string; risk: ITChange["risk"] }, by: string): Promise<string | null> {
   if (demoMode) return useITStore.getState().requestChange(input, by);
   try {
-    keep(toLocal(await api<ServerChange>("/it/changes", { method: "POST", body: JSON.stringify(input) })));
+    const change = toLocal(await api<ServerChange>("/it/changes", { method: "POST", body: JSON.stringify(input) }));
+    keep(change, `Requested ${change.number}: ${change.title}`, by);
     return null;
   } catch (error: unknown) {
     return message(error);
@@ -59,7 +63,8 @@ export async function requestITChange(input: { title: string; risk: ITChange["ri
 export async function decideITChange(id: string, approve: boolean, by: string): Promise<string | null> {
   if (demoMode) return useITStore.getState().decideChange(id, approve, by);
   try {
-    keep(toLocal(await api<ServerChange>(`/it/changes/${encodeURIComponent(id)}/decision`, { method: "POST", body: JSON.stringify({ approve }) })));
+    const change = toLocal(await api<ServerChange>(`/it/changes/${encodeURIComponent(id)}/decision`, { method: "POST", body: JSON.stringify({ approve }) }));
+    keep(change, `${approve ? "Approved" : "Rejected"} ${change.number}`, by);
     return null;
   } catch (error: unknown) {
     return message(error);
@@ -69,7 +74,8 @@ export async function decideITChange(id: string, approve: boolean, by: string): 
 export async function completeITChange(id: string, by: string): Promise<string | null> {
   if (demoMode) return useITStore.getState().completeChange(id, by);
   try {
-    keep(toLocal(await api<ServerChange>(`/it/changes/${encodeURIComponent(id)}/complete`, { method: "POST" })));
+    const change = toLocal(await api<ServerChange>(`/it/changes/${encodeURIComponent(id)}/complete`, { method: "POST" }));
+    keep(change, `${change.number} carried out`, by);
     return null;
   } catch (error: unknown) {
     return message(error);

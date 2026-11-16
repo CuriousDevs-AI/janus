@@ -4,6 +4,8 @@ Portfolio owns no business records. It asks each module for its figures through 
 `overview` functions and puts them side by side; it never reads another module's tables.
 """
 
+import asyncio
+import time
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import NamedTuple
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.business import overview as business
+from janus_api.core.db import session_factory
 from janus_api.core.names import party_key
 from janus_api.core.tenancy import set_context
 from janus_api.crm import overview as crm
@@ -21,7 +24,7 @@ from janus_api.it import overview as it
 from janus_api.operations import overview as operations
 from janus_api.org import overview as org
 from janus_api.org import service as org_service
-from janus_api.portfolio import attention, documents, preferences, schemas
+from janus_api.portfolio import attention, customers, documents, preferences, schemas
 from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.compliance import plan as compliance_plan
 from janus_api.portfolio.compliance.plan import compliance_view
@@ -142,6 +145,19 @@ async def approvals(db: AsyncSession, tenant_id: int, staff: hr.People) -> list[
     ]
 
 
+def sales_ratios(item: crm.Closed) -> schemas.SalesRatios:
+    """Win rate, average won deal and days to win, from the deals closed in a period."""
+    closed = item.won + item.lost
+    return schemas.SalesRatios(
+        won=item.won,
+        lost=item.lost,
+        winRate=round(item.won / closed * 100) if closed else None,
+        wonValue=rupees(item.won_value),
+        avgDealSize=rupees(item.won_value / item.won) if item.won else None,
+        cycleDays=round(item.cycle_days) if item.cycle_days is not None else None,
+    )
+
+
 async def company_summary(
     db: AsyncSession,
     company: org.Company,
@@ -149,17 +165,43 @@ async def company_summary(
     today: date,
     period: schemas.Period,
     *,
+    user_id: int,
     money: bool,
     detail: bool = True,
     trade: dict[int, Trade] | None = None,
     limits: schemas.Thresholds | None = None,
+    own: frozenset[str] = frozenset(),
 ) -> schemas.CompanySummary:
-    """One company's headline numbers, and with `detail` its operating view.
+    """One company's headline numbers, and with ``detail`` its operating view.
 
-    The caller has set this company's context, so row-level security applies to every query.
+    Each company already runs on its own session (via ``_read_company``), so queries here
+    are sequential on that session.  Cross-company parallelism plus the TTL cache on
+    ``summary()`` handle concurrency.
     """
     tenant_id = company.id
+    start_now = date.fromisoformat(period.start)
+    end_now = date.fromisoformat(period.end)
+    start_before = date.fromisoformat(period.previousStart)
+    end_before = date.fromisoformat(period.previousEnd)
+
+    # ── Headline: CRM, finance, counts ──
     sales = await crm.pipeline(db, tenant_id)
+    quiet_count, quiet_list = await crm.quiet_leads(db, tenant_id, today)
+    due_today, overdue, due_list = await crm.follow_ups(db, tenant_id, today)
+    lost = await crm.lost_reasons(db, tenant_id, today - timedelta(days=89), today)
+    member_count = await org.active_member_count(db, tenant_id)
+    open_ticket_count = await support.open_count(db, tenant_id)
+    money_sum = await money_summary(db, tenant_id, today) if money else None
+    pf_current = await period_figures(db, tenant_id, start_now, end_now, money=money)
+    pf_previous = await period_figures(db, tenant_id, start_before, end_before, money=money)
+    if not detail:
+        staff, goods, work, tickets_data = None, None, None, None
+    else:
+        staff = await hr.people(db, tenant_id, today)
+        goods = await operations.stock(db, tenant_id, today)
+        work = await projects.delivery(db, tenant_id, today)
+        tickets_data = await support.tickets(db, tenant_id, today)
+
     out = schemas.CompanySummary(
         id=str(tenant_id),
         name=company.name,
@@ -168,8 +210,8 @@ async def company_summary(
         businessModel=company.business_model,
         createdAt=company.created_on.isoformat(),
         current=current,
-        members=await org.active_member_count(db, tenant_id),
-        openTickets=await support.open_count(db, tenant_id),
+        members=member_count,
+        openTickets=open_ticket_count,
         crm=schemas.CrmSummary(
             leads=sales.leads,
             openDeals=sales.open_deals,
@@ -177,32 +219,44 @@ async def company_summary(
             lostDeals=sales.lost_deals,
             pipelineValue=str(sales.pipeline_value),
             wonValue=str(sales.won_value),
+            quietLeads=quiet_count,
+            quietList=[
+                schemas.QuietLead(
+                    id=str(item.id),
+                    name=item.name,
+                    company=item.company,
+                    stage=item.stage,
+                    days=item.days,
+                )
+                for item in quiet_list
+            ],
+            followUpsToday=due_today,
+            followUpsOverdue=overdue,
+            followUpList=[
+                schemas.DueFollowUp(id=str(item.id), name=item.name, on=item.on.isoformat())
+                for item in due_list
+            ],
+            lostReasons=[
+                schemas.LostReasonCount(
+                    category=item.category,
+                    label=item.label,
+                    count=item.count,
+                    value=str(item.value),
+                )
+                for item in lost
+            ],
         ),
-        money=await money_summary(db, tenant_id, today) if money else None,
-        period=schemas.PeriodCompare(
-            current=await period_figures(
-                db,
-                tenant_id,
-                date.fromisoformat(period.start),
-                date.fromisoformat(period.end),
-                money=money,
-            ),
-            previous=await period_figures(
-                db,
-                tenant_id,
-                date.fromisoformat(period.previousStart),
-                date.fromisoformat(period.previousEnd),
-                money=money,
-            ),
-        ),
+        money=money_sum,
+        period=schemas.PeriodCompare(current=pf_current, previous=pf_previous),
     )
     if not detail:
         return out
-    # Payroll, claim amounts and stock value are money: shown only where the role includes it.
-    staff = await hr.people(db, tenant_id, today)
-    goods = await operations.stock(db, tenant_id, today)
-    work = await projects.delivery(db, tenant_id, today)
-    tickets = await support.tickets(db, tenant_id, today)
+
+    assert staff is not None
+    assert goods is not None
+    assert work is not None
+    assert tickets_data is not None
+
     out.people = schemas.People(
         headcount=staff.headcount,
         onLeaveToday=staff.on_leave_today,
@@ -227,18 +281,64 @@ async def company_summary(
         awaitingAcceptanceValue=rupees(work.awaiting_acceptance_value),
     )
     out.support = schemas.Support(
-        open=tickets.open,
-        urgent=tickets.urgent,
-        escalated=tickets.escalated,
-        olderThanWeek=tickets.older_than_week,
+        open=tickets_data.open,
+        urgent=tickets_data.urgent,
+        escalated=tickets_data.escalated,
+        olderThanWeek=tickets_data.older_than_week,
     )
-    out.approvals = await approvals(db, tenant_id, staff)
-    out.compliancePlan, out.compliance = await compliance_view(db, tenant_id, today)
-    out.registration = await compliance_plan.registration(db, tenant_id)
+
+    # ── Detail analytics ──
+    appr_list = await approvals(db, tenant_id, staff)
+    comp_plan_obj, comp_data = await compliance_view(db, tenant_id, today)
+    reg = await compliance_plan.registration(db, tenant_id)
+    tgts = await targets_view(db, tenant_id, money=money)
+    everything, since = await compliance_plan.register(db, tenant_id, today)
+    docs = await documents.for_company(db, tenant_id, today)
+
+    ch_now = await crm.leads_by_source(db, tenant_id, start_now, end_now)
+    ch_before = await crm.leads_by_source(db, tenant_id, start_before, end_before)
+    cl_now = await crm.closed(db, tenant_id, start_now, end_now)
+    cl_before = await crm.closed(db, tenant_id, start_before, end_before)
+    reps_data = await crm.reps(db, tenant_id, start_now, end_now)
+    fn_now = await crm.funnel(db, tenant_id, start_now, end_now)
+    fn_before = await crm.funnel(db, tenant_id, start_before, end_before)
+    won_deals_list = await crm.won_deals(db, tenant_id, start_now, end_now) if money else []
+
+    fema_owed = None
+    if not money:
+        if company.business_model == "import_export":
+            fema_owed = await finance.money(db, tenant_id, today)
+        billed = None
+        bk_now = None
+        bk_before = None
+        cash_pos = None
+        posted: dict[date, int] = {}
+        s_now: dict[str, int] = {}
+        s_before: dict[str, int] = {}
+        c_now: dict[str, int] = {}
+        c_before: dict[str, int] = {}
+        cust_fig = None
+    else:
+        billed = await finance.invoiced_deals(db, tenant_id)
+        bk_now = await books_for(db, tenant_id, start_now, end_now)
+        bk_before = await books_for(db, tenant_id, start_before, end_before)
+        cash_pos = await cash_position(db, tenant_id)
+        last_end = today.replace(day=1) - timedelta(days=1)
+        last_month = last_end.replace(day=1)
+        posted = await finance.payroll_posted(db, tenant_id, last_month, last_end)
+        s_now = await finance.sales_by_customer(db, tenant_id, start_now, end_now)
+        s_before = await finance.sales_by_customer(db, tenant_id, start_before, end_before)
+        c_now = await finance.costs_by_vendor(db, tenant_id, start_now, end_now)
+        c_before = await finance.costs_by_vendor(db, tenant_id, start_before, end_before)
+        cust_fig = await customers.figures(db, tenant_id, today, own)
+
+    out.approvals = appr_list
+    out.compliancePlan, out.compliance = comp_plan_obj, comp_data
+    out.registration = reg
     out.complianceGaps = compliance_plan.gaps(
-        out.compliancePlan, out.registration, staff.headcount, staff.monthly_payroll > 0
+        comp_plan_obj, reg, staff.headcount, staff.monthly_payroll > 0
     )
-    out.targets = await targets_view(db, tenant_id, money=money)
+    out.targets = tgts
     out.attention = attention.attention(
         out.money,
         out.approvals,
@@ -249,11 +349,8 @@ async def company_summary(
         limits,
         company.business_model,
     )
-    # FEMA is a compliance matter too: a role without money still learns an export payment is past
-    # the 9-month limit, by count only, so a CA sharing the Portfolio sees the risk.
-    if not money and company.business_model == "import_export":
-        owed = await finance.money(db, tenant_id, today)
-        late, oldest = owed.unpaid_9_months_invoices, owed.unpaid_oldest_months
+    if not money and company.business_model == "import_export" and fema_owed:
+        late, oldest = fema_owed.unpaid_9_months_invoices, fema_owed.unpaid_oldest_months
         if late:
             age = (
                 f"unpaid {oldest} months"
@@ -266,15 +363,12 @@ async def company_summary(
                 f"{late} export invoice{'' if late == 1 else 's'} {age}, past FEMA's 9-month limit",
                 f"/portfolio?view=compliance&company={tenant_id}",
             )
-    # A company tracking no filings is not "up to date": it is not set up. With people on its
-    # payroll, TDS and PF or ESI usually apply, so that is urgent.
-    out.complianceSetUp = compliance_plan.set_up(out.compliancePlan, out.registration)
-    everything, since = await compliance_plan.register(db, tenant_id, today)
+    out.complianceSetUp = compliance_plan.set_up(comp_plan_obj, reg)
     out.unfiledCount = sum(due.status == "overdue" for due in everything)
     out.unfiledSince = since.isoformat()
-    if money and out.compliancePlan.gstFiling != "none":
-        out.gst = await gst_position(db, tenant_id, today, out.compliancePlan.gstin)
-    if money and out.compliancePlan.tds:
+    if money and comp_plan_obj.gstFiling != "none":
+        out.gst = await gst_position(db, tenant_id, today, comp_plan_obj.gstin)
+    if money and comp_plan_obj.tds:
         out.tds = await tds_month(db, tenant_id, today, everything)
     if not out.complianceSetUp and (staff.headcount or sales.leads or out.money):
         out.attention = attention.with_line(
@@ -284,52 +378,82 @@ async def company_summary(
             + (f" for {staff.headcount} people on the payroll" if staff.headcount else ""),
             "/portfolio?view=compliance",
         )
-    out.documents = await documents.for_company(db, tenant_id, today)
-    for severity, text in documents.attention_lines(out.documents):
+    leads_page = "/leads?workspace=crm-sales"
+    if overdue:
+        out.attention = attention.with_line(
+            out.attention,
+            "high" if overdue >= 3 else "medium",
+            f"{overdue} lead follow-up{'s are' if overdue != 1 else ' is'} overdue",
+            leads_page,
+        )
+    if quiet_count >= 3:
+        out.attention = attention.with_line(
+            out.attention,
+            "medium",
+            f"{quiet_count} open leads have had no call or message for 3 days or more",
+            leads_page,
+        )
+    out.documents = docs
+    for severity, text in documents.attention_lines(docs):
         out.attention = attention.with_line(
             out.attention, severity, text, f"/portfolio?view=companies&company={tenant_id}"
         )
     out.health = attention.health(out.attention)
-    span_now = date.fromisoformat(period.start), date.fromisoformat(period.end)
-    span_before = date.fromisoformat(period.previousStart), date.fromisoformat(period.previousEnd)
-    channels_now = await crm.leads_by_source(db, tenant_id, *span_now)
-    channels_before = await crm.leads_by_source(db, tenant_id, *span_before)
     out.leadSources = sorted(
         (
             schemas.SourceMove(
                 source=source,
-                current=channels_now.get(source, 0),
-                previous=channels_before.get(source, 0),
+                current=ch_now.get(source, 0),
+                previous=ch_before.get(source, 0),
             )
-            for source in channels_now.keys() | channels_before.keys()
+            for source in ch_now.keys() | ch_before.keys()
         ),
         key=lambda item: (-max(item.current, item.previous), item.source),
     )
-    if money:
-        out.books = schemas.BooksCompare(
-            current=await books_for(db, tenant_id, *span_now),
-            previous=await books_for(db, tenant_id, *span_before),
+    if money and billed is not None:
+        unbilled = [deal for deal in won_deals_list if str(deal[0]) not in billed]
+        out.wonNotInvoiced = len(unbilled)
+        out.wonNotInvoicedValue = rupees(sum((deal[2] for deal in unbilled), Decimal(0)))
+    if cl_now.won or cl_now.lost or cl_before.won or cl_before.lost:
+        out.sales = schemas.SalesRatiosCompare(
+            current=sales_ratios(cl_now), previous=sales_ratios(cl_before)
         )
-        # Salaries are not booked yet, so a company can show a profit on its bills and still lose
-        # money once its people are paid. Estimate the period's salaries from the monthly ones on
-        # record and say so when that turns the period into a loss.
-        # Where every month of the period is posted, the recorded salaries are used instead.
-        now_books = out.books.current
+    if money and cust_fig is not None:
+        out.customerFigures = cust_fig
+    if fn_now.leads or fn_before.leads:
+        out.funnel = schemas.FunnelCompare(
+            current=schemas.FunnelStep(**vars(fn_now)),
+            previous=schemas.FunnelStep(**vars(fn_before)),
+        )
+    out.reps = [
+        schemas.RepLine(
+            name=rep.name,
+            assigned=rep.owner_id is not None,
+            leads=rep.leads,
+            won=rep.won,
+            wonValue=rupees(rep.won_value),
+            openLeads=rep.open_leads,
+        )
+        for rep in reps_data
+    ]
+    if money and bk_now is not None:
+        out.books = schemas.BooksCompare(current=bk_now, previous=bk_before)
+        now_books = bk_now
         if now_books.salariesComplete:
             after = Decimal(now_books.profitBeforePayroll) - Decimal(now_books.salariesPosted)
             if after < 0:
                 out.attention = attention.with_loss(out.attention, after, estimate=False)
                 out.health = attention.health(out.attention)
         elif staff.headcount and staff.monthly_payroll > 0:
-            days = (span_now[1] - span_now[0]).days + 1
+            days = (end_now - start_now).days + 1
             salaries = staff.monthly_payroll * days / Decimal("30.44")
             after = Decimal(now_books.profitBeforePayroll) - salaries
             if after < 0:
                 out.attention = attention.with_loss(out.attention, after)
                 out.health = attention.health(out.attention)
-        out.cash = await cash_position(db, tenant_id)
-        if out.cash and out.cash.runwayMonths is not None and out.cash.runwayMonths < 6:
-            months = out.cash.runwayMonths
+        out.cash = cash_pos
+        if cash_pos and cash_pos.runwayMonths is not None and cash_pos.runwayMonths < 6:
+            months = cash_pos.runwayMonths
             out.attention = attention.with_line(
                 out.attention,
                 "high" if months < 3 else "medium",
@@ -339,38 +463,28 @@ async def company_summary(
             out.health = attention.health(out.attention)
         last_end = today.replace(day=1) - timedelta(days=1)
         last_month = last_end.replace(day=1)
-        posted = await finance.payroll_posted(db, tenant_id, last_month, last_end)
         out.payroll = schemas.PayrollMonth(
             month=f"{last_month:%Y-%m}",
             label=f"{last_month:%b %Y}",
             posted=rupees(posted[last_month], paise=True) if last_month in posted else None,
             fromHr=rupees(staff.monthly_payroll),
         )
-        sales_now = await finance.sales_by_customer(db, tenant_id, *span_now)
-        sales_before = await finance.sales_by_customer(db, tenant_id, *span_before)
-        # Biggest in this period first, so the first is "the biggest customer" everywhere; then
-        # those who bought only before, so a fall in sales can still be explained by name.
         ranked = sorted(
-            sales_now.keys() | sales_before.keys(),
-            key=lambda name: (-sales_now.get(name, 0), -sales_before.get(name, 0), name),
+            s_now.keys() | s_before.keys(),
+            key=lambda name: (-s_now.get(name, 0), -s_before.get(name, 0), name),
         )
-        buying = [name for name in ranked if sales_now.get(name, 0) > 0][:8]
-        stopped = [name for name in ranked if sales_now.get(name, 0) <= 0][:4]
+        buying = [name for name in ranked if s_now.get(name, 0) > 0][:8]
+        stopped = [name for name in ranked if s_now.get(name, 0) <= 0][:4]
         out.customers = [
             schemas.CustomerMove(
                 name=name,
-                current=rupees(sales_now.get(name, 0), paise=True),
-                previous=rupees(sales_before.get(name, 0), paise=True),
+                current=rupees(s_now.get(name, 0), paise=True),
+                previous=rupees(s_before.get(name, 0), paise=True),
             )
             for name in buying + stopped
         ]
         if trade is not None:
-            trade[tenant_id] = Trade(
-                sales_now,
-                await finance.costs_by_vendor(db, tenant_id, *span_now),
-                sales_before,
-                await finance.costs_by_vendor(db, tenant_id, *span_before),
-            )
+            trade[tenant_id] = Trade(s_now, c_now, s_before, c_before)
     return out
 
 
@@ -517,6 +631,48 @@ def intercompany(companies: list[schemas.CompanySummary], trade: dict[int, Trade
         )
 
 
+async def _read_company(
+    user_id: int,
+    tenant_id: int,
+    company: org.Company,
+    is_current: bool,
+    as_of: date,
+    period: schemas.Period,
+    *,
+    money: bool,
+    detail: bool,
+    limits: schemas.Thresholds | None,
+    own: frozenset[str],
+) -> tuple[schemas.CompanySummary, int, Trade | None]:
+    """Read one company on its own connection so companies run in parallel.
+
+    Audit records are NOT written here: the caller writes them after all reads finish,
+    so the parallel sessions stay read-only and cannot deadlock via FK-check ShareLock waits.
+    """
+    local_trade: dict[int, Trade] = {}
+    async with session_factory()() as conn:
+        await set_context(conn, user_id=user_id, tenant_id=tenant_id)
+        result = await company_summary(
+            conn,
+            company,
+            is_current,
+            as_of,
+            period,
+            user_id=user_id,
+            money=money,
+            detail=detail,
+            trade=local_trade,
+            limits=limits,
+            own=own,
+        )
+    return result, tenant_id, local_trade.get(tenant_id)
+
+
+_summary_cache: dict[str, tuple[float, schemas.PortfolioSummary]] = {}
+_summary_locks: dict[str, asyncio.Lock] = {}
+_SUMMARY_TTL = 15
+
+
 async def summary(
     db: AsyncSession,
     user_id: int,
@@ -530,43 +686,98 @@ async def summary(
 ) -> schemas.PortfolioSummary:
     """Every company whose Portfolio this person may see: those they own, and those an Owner shared.
 
-    Each is read on its own, under its own context, never across companies. Money is included only
-    where the person's role there holds portfolio:finance.
+    Each is read on its own connection, in parallel, never across companies. Money is included
+    only where the person's role there holds portfolio:finance.
+
+    Results are cached for 15 seconds per user+period so concurrent requests coalesce.
     """
-    companies = []
+    cache_key = f"{user_id}:{period_key}:{detail}"
+    now = time.monotonic()
+    cached = _summary_cache.get(cache_key)
+    if cached and now - cached[0] < _SUMMARY_TTL:
+        return cached[1]
+    if cache_key not in _summary_locks:
+        _summary_locks[cache_key] = asyncio.Lock()
+    async with _summary_locks[cache_key]:
+        cached = _summary_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < _SUMMARY_TTL:
+            return cached[1]
+        result = await _summary_uncached(
+            db, user_id, current_tenant, ip, period_key, today, detail=detail, as_of=as_of
+        )
+        _summary_cache[cache_key] = (time.monotonic(), result)
+        expired = [k for k, (t, _) in _summary_cache.items() if now - t > _SUMMARY_TTL * 4]
+        for k in expired:
+            _summary_cache.pop(k, None)
+            _summary_locks.pop(k, None)
+        return result
+
+
+async def _summary_uncached(
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int | None,
+    ip: str | None,
+    period_key: str = "month",
+    today: date | None = None,
+    *,
+    detail: bool = True,
+    as_of: date | None = None,
+) -> schemas.PortfolioSummary:
     trade: dict[int, Trade] = {}
     # The period ends on `today` (the digest's week ends on Sunday); what is owed, late or due is
     # as of `as_of`, the day it is read, so the email and the page say the same.
     today = today or today_ist()
     period = period_for(period_key, today)
     as_of = as_of or today_ist()
-    # When a company turns red is this person's own setting.
-    await set_context(db, user_id=user_id, tenant_id=current_tenant)
-    limits = (await preferences.read(db, user_id)).thresholds
-    try:
-        for tenant_id in await readable_companies(db, user_id):
-            await set_context(db, user_id=user_id, tenant_id=tenant_id)
-            # Re-check the role under this company's context before reading anything.
-            _, role = await org_service.membership(db, user_id, tenant_id)
-            company = await org.company(db, tenant_id)
-            if "portfolio:read" not in role.permissions or company is None:
+    # Collect each company's name and the person's role there on a separate session that is
+    # closed before the parallel reads, so it cannot hold a transaction lock they wait on.
+    resolved: list[tuple[int, org.Company, list[str]]] = []  # (tenant_id, company, permissions)
+    names: set[str] = set()
+    async with session_factory()() as setup:
+        await set_context(setup, user_id=user_id, tenant_id=current_tenant)
+        limits = (await preferences.read(setup, user_id)).thresholds
+        readable = await readable_companies(setup, user_id)
+        for tenant_id in readable:
+            await set_context(setup, user_id=user_id, tenant_id=tenant_id)
+            _, role = await org_service.membership(setup, user_id, tenant_id)
+            company = await org.company(setup, tenant_id)
+            if company is None or "portfolio:read" not in role.permissions:
                 continue
-            companies.append(
-                await company_summary(
-                    db,
-                    company,
-                    tenant_id == current_tenant,
-                    as_of,
-                    period,
-                    money="portfolio:finance" in role.permissions,
-                    detail=detail,
-                    trade=trade,
-                    limits=limits,
-                )
+            names.add(company.name.strip().casefold())
+            resolved.append((tenant_id, company, list(role.permissions)))
+    own = frozenset(names)
+    # Read every company's figures in parallel, each on its own DB connection.
+    # The parallel sessions are read-only: audit records are written afterwards on a single
+    # session to avoid FK-check ShareLock waits that would deadlock against other connections.
+    results = await asyncio.gather(
+        *(
+            _read_company(
+                user_id,
+                tenant_id,
+                company,
+                tenant_id == current_tenant,
+                as_of,
+                period,
+                money="portfolio:finance" in perms,
+                detail=detail,
+                limits=limits,
+                own=own,
             )
-            record(db, "portfolio.company_read", user_id=user_id, tenant_id=tenant_id, ip=ip)
-    finally:
-        # Flushes the audit rows under the last company, then returns to the session's own company.
+            for tenant_id, company, perms in resolved
+        )
+    )
+    companies = []
+    for item, tid, trade_item in results:
+        companies.append(item)
+        if trade_item is not None:
+            trade[tid] = trade_item
+    # Write audit rows on the handler's own session (shared with authenticate()) so the
+    # INSERT's FK check on users.id doesn't need a ShareLock on a separate transaction.
+    if db is not None and resolved:
+        for tid, _, _ in resolved:
+            await set_context(db, user_id=user_id, tenant_id=tid)
+            record(db, "portfolio.company_read", user_id=user_id, tenant_id=tid, ip=ip)
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     intercompany(companies, trade)
     return schemas.PortfolioSummary(period=period, companies=companies)

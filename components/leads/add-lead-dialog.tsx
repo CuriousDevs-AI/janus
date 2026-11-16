@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { api, message } from "@/lib/api/client";
+import { APIError, api, message } from "@/lib/api/client";
 import type { Lead } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,18 +19,21 @@ export function AddLeadDialog({ open, onOpenChange, onAdded }: { open: boolean; 
   // A problem with one field shows under that field; anything else the server says shows above the buttons.
   const [fieldErrors, setFieldErrors] = React.useState<Partial<Record<keyof typeof empty | "contact", string>>>({});
   const [error, setError] = React.useState("");
+  // When the server reports existing active leads for this contact, show a warning and let the user confirm.
+  const [duplicateWarning, setDuplicateWarning] = React.useState("");
   // Editing a field clears its message, so an answered problem never lingers until the next submit.
   const set = (key: keyof typeof empty) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
     setFieldErrors((current) => ({ ...current, [key]: undefined, ...(key === "phone" || key === "email" ? { contact: undefined } : {}) }));
     setError("");
+    setDuplicateWarning("");
   };
 
   function close(next: boolean) {
-    if (!next) { setForm(empty); setError(""); setFieldErrors({}); }
+    if (!next) { setForm(empty); setError(""); setFieldErrors({}); setDuplicateWarning(""); }
     onOpenChange(next);
   }
-  async function save() {
+  async function save(skipDuplicateCheck = false) {
     const problems: typeof fieldErrors = {};
     if (form.name.trim().length < 2) problems.name = "Enter the customer's name.";
     if (!form.phone.trim() && !form.email.trim()) problems.contact = "Add a mobile number or an email so the lead can be reached.";
@@ -39,12 +42,17 @@ export function AddLeadDialog({ open, onOpenChange, onAdded }: { open: boolean; 
     setSaving(true);
     setError("");
     try {
-      await api<Lead>("/leads", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ ...form, source: "manual" }) });
+      await api<Lead>("/leads", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ ...form, source: "manual", skipDuplicateCheck }) });
       toast.success("Lead added");
       close(false);
       onAdded();
     } catch (caught) {
-      setError(message(caught));
+      const msg = message(caught);
+      if (!skipDuplicateCheck && caught instanceof APIError && caught.code === "duplicate_contact_leads") {
+        setDuplicateWarning(msg);
+      } else {
+        setError(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -65,6 +73,14 @@ export function AddLeadDialog({ open, onOpenChange, onAdded }: { open: boolean; 
           </div>
           {fieldErrors.contact && <p id="lead-add-contact-error" className="-mt-1.5 text-xs text-danger">{fieldErrors.contact}</p>}
           <div className="flex flex-col gap-1.5"><Label htmlFor="lead-add-requirement">Requirement</Label><Textarea id="lead-add-requirement" value={form.requirement} onChange={set("requirement")} /></div>
+          {duplicateWarning && (
+            <div role="alert" className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm">
+              <p>{duplicateWarning}</p>
+              <Button type="button" size="sm" variant="secondary" className="mt-2" disabled={saving} onClick={() => void save(true)}>
+                {saving ? "Adding…" : "Add anyway"}
+              </Button>
+            </div>
+          )}
           {error && <p role="alert" className="text-xs text-danger">{error}</p>}
           <DialogFooter><Button type="button" variant="secondary" onClick={() => close(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add lead"}</Button></DialogFooter>
         </form>

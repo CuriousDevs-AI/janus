@@ -53,6 +53,7 @@ interface ITState {
   incidents: Incident[];
   monitors: Monitor[];
   changes: ITChange[];
+  offboarded: string[];
   addMonitor: (input: { name: string; kind: Monitor["kind"] }, by: string) => string | null;
   recordCheck: (id: string, status: Monitor["status"], note: string, by: string) => string | null;
   raiseIncident: (input: { title: string; severity: Incident["severity"]; assetId: string | null }, by: string) => string | null;
@@ -76,7 +77,7 @@ interface ITState {
   freeSeat: (licenceId: string, person: string, by: string) => string | null;
 }
 
-const demoSeed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => {
+const demoSeed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors" | "offboarded"> => {
   return {
     assets: [
       { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta" },
@@ -106,10 +107,11 @@ const demoSeed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "h
     helpdesk: [
       { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22", dueOn: "2026-10-23" },
     ],
+    offboarded: [],
   };
 };
 
-const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors"> => (isFirstCompany ? demoSeed() : { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [] });
+const seed = (): Pick<ITState, "assets" | "access" | "licences" | "log" | "helpdesk" | "incidents" | "changes" | "monitors" | "offboarded"> => (isFirstCompany ? demoSeed() : { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [], offboarded: [] });
 
 /** Renewal due inside the next 30 days. */
 export function renewalSoon(licence: Licence) {
@@ -326,6 +328,7 @@ export const useITStore = create<ITState>()(
             access: state.access.map((g) => g.person === person && g.status === "active" ? { ...g, status: "removed", removedBy: by } : g),
             assets: state.assets.map((a) => a.assignedTo === person ? { ...a, status: "in stock", assignedTo: null } : a),
             log: [...entries, ...state.log],
+            offboarded: state.offboarded.includes(person) ? state.offboarded : [...state.offboarded, person],
           });
           return null;
         },

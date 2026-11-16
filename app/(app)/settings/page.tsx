@@ -27,6 +27,8 @@ import { NotificationsSection } from "@/components/settings/notifications-sectio
 import { SecuritySection } from "@/components/settings/security-section";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { BusinessPeopleAccess } from "@/components/business/people-access";
+import { demoMode } from "@/lib/demo-mode";
+import { LivePeopleAccess } from "@/components/business/people-access-live";
 
 type SettingsTab =
   | "workspace"
@@ -74,14 +76,20 @@ function SettingsPageInner() {
   const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "workspace";
   const view = searchParams.get("view");
   const isBusinessPeopleAccess = businessMode && (activeTab === "team" || activeTab === "roles");
-  const showPageHeader = !isBusinessPeopleAccess && !(businessMode && activeTab === "workspace" && (view === "overview" || view === "settings" || view === "workspaces"));
-  const pageHeader = activeTab !== "workspace"
-    ? { title: "Settings", description: "Manage your profile, access, notifications and business configuration." }
-    : view === "overview"
-      ? { title: "Business Overview", description: "See business health, performance and the work that needs attention." }
-      : view === "workspaces"
-        ? { title: "Workspaces", description: "Create and manage the workspaces your business uses." }
-        : { title: "Settings", description: "Manage your profile, access, notifications and business configuration." };
+  // Overview, Workspaces and People & Access draw their own header with their actions.
+  const showPageHeader = !isBusinessPeopleAccess && !(businessMode && activeTab === "workspace" && (view === "overview" || view === "workspaces"));
+  const section = searchParams.get("section");
+  const pageHeader = activeTab === "security"
+    ? { title: "Security & Sessions", description: "Your password and every device signed in as you." }
+    : activeTab === "notifications"
+      ? { title: "Notifications", description: "The emails and alerts Janus sends you." }
+      : activeTab !== "workspace"
+        ? { title: "Settings", description: "Manage your profile, access, notifications and business configuration." }
+        : view === "administration" && (section ?? "profile") === "profile"
+          ? { title: "Profile", description: "Your name, contact details, language and timezone, across every workspace." }
+          : view === "settings"
+            ? { title: "Business Settings", description: "How the company appears on invoices and reports, its legal details, hours and data." }
+            : { title: "Settings", description: "Manage your profile, access, notifications and business configuration." };
 
   function setTab(tab: SettingsTab) {
     router.replace(`/settings?tab=${tab}`);
@@ -131,8 +139,8 @@ function SettingsPageInner() {
           <div className={activeTab === "workspace" ? "" : "hidden"}>
             <WorkspaceSection key={`${searchParams.get("view") ?? "default"}-${searchParams.get("section") ?? ""}`} />
           </div>
-          <div className={activeTab === "team" ? "" : "hidden"}>{businessMode ? <BusinessPeopleAccess /> : <TeamSection />}</div>
-          <div className={activeTab === "roles" ? "" : "hidden"}>{businessMode ? <BusinessPeopleAccess initialSection="roles" /> : <RolesSection />}</div>
+          <div className={activeTab === "team" ? "" : "hidden"}>{businessMode ? (demoMode ? <BusinessPeopleAccess /> : <LivePeopleAccess />) : <TeamSection />}</div>
+          <div className={activeTab === "roles" ? "" : "hidden"}>{businessMode ? (demoMode ? <BusinessPeopleAccess initialSection="roles" /> : <LivePeopleAccess initialSection="roles" />) : <RolesSection />}</div>
           <div className={activeTab === "channels" ? "" : "hidden"}><ChannelsSection /></div>
           <div className={activeTab === "ai" ? "" : "hidden"}><AISection /></div>
           <div className={activeTab === "knowledge" ? "" : "hidden"}><KnowledgeSection /></div>

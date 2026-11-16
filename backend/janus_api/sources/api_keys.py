@@ -122,8 +122,15 @@ async def receive(db: AsyncSession, public_key: str, request: Request) -> schema
         .where(SourceConnection.id == key.connection_id, SourceConnection.public_key == public_key)
         .with_for_update()
     )
-    if connection is None or connection.kind != "api_key" or connection.status != "connected":
+    if connection is None or connection.kind != "api_key":
         raise ApiError("forbidden", "This API key cannot ingest into this source.", 403)
+    # The caller holds a valid key for this source, so say why it is refused.
+    if connection.status != "connected":
+        raise ApiError(
+            "source_paused",
+            "This lead source is paused in Janus. Switch it back on to send leads.",
+            409,
+        )
     await db.refresh(key, with_for_update=True)
     if (
         key.revoked_at

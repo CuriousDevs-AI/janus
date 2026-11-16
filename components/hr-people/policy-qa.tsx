@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { loadHrFile, useHrDocumentStore } from "@/lib/stores/hr-document-store";
 import { useHrOperationsStore, type HrPolicyQuestion } from "@/lib/stores/hr-operations-store";
-import { canManageHr } from "@/lib/hr-people-access";
+import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { answerQuestion, policySource, settingsSource, type Answer, type Citation, type PolicySource } from "@/lib/hr-policy-qa";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
@@ -29,7 +29,7 @@ export function HrPolicyQaView({ role, actorId }: { role: HrDemoRole; actorId: s
   const [fileText, setFileText] = React.useState<Record<string, string>>({});
   const manager = canManageHr(role);
   const actor = employees.find((item) => item.id === actorId);
-  const actorName = actor?.name ?? "HR";
+  const actorName = actorDisplayName(actor?.name);
 
   const uploaded = React.useMemo(() => policies.filter((item) => extras[item.id]?.fileKey), [policies, extras]);
   React.useEffect(() => {

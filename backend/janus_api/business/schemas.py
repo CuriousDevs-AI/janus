@@ -22,6 +22,9 @@ class SetupOut(BaseModel):
     industry: str
     companySize: str
     timezone: str
+    # Working hours as HH:MM, so the settings form starts from what was saved.
+    businessHoursStart: str | None = None
+    businessHoursEnd: str | None = None
     setupCompleted: bool
     completedSteps: list[str]
     nextStep: str | None
@@ -34,8 +37,8 @@ class SetupUpdate(BaseModel):
     industry: str | None = Field(default=None, max_length=120)
     companySize: str | None = Field(default=None, max_length=80)
     timezone: str | None = Field(default=None, max_length=80)
-    businessHoursStart: str | None = Field(default=None, max_length=5)
-    businessHoursEnd: str | None = Field(default=None, max_length=5)
+    businessHoursStart: str | None = Field(default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    businessHoursEnd: str | None = Field(default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
     defaultChannel: str | None = Field(default=None, max_length=40)
     completedSteps: list[str] | None = Field(default=None, max_length=20)
 
@@ -80,37 +83,6 @@ class WorkspaceMemberUpdate(BaseModel):
     permissions: list[str] = Field(default_factory=list, max_length=50)
 
 
-class AgentOut(BaseModel):
-    id: str
-    key: str
-    name: str
-    department: str
-    status: str
-    workspaceId: str | None
-    configuration: dict[str, Any]
-
-
-class AgentCreate(BaseModel):
-    key: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
-    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
-    department: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)
-    ]
-    workspaceId: int | None = None
-    configuration: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentUpdate(BaseModel):
-    name: Annotated[
-        str | None, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)
-    ] = None
-    department: Annotated[
-        str | None, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)
-    ] = None
-    status: AgentStatus | None = None
-    configuration: dict[str, Any] | None = None
-
-
 class WorkflowOut(BaseModel):
     id: str
     name: str
@@ -121,6 +93,9 @@ class WorkflowOut(BaseModel):
     requiresApproval: bool
     workspaceId: str | None
     folderId: str | None = None
+    updatedAt: datetime | None = None
+    # Why it would not run as it stands, in words for the person; empty when it is ready.
+    problems: list[str] = Field(default_factory=list)
 
 
 class FolderIn(BaseModel):
@@ -148,6 +123,8 @@ class TemplateOut(BaseModel):
     trigger: dict[str, Any]
     steps: list[Any]
     modules: list[str]
+    # What the person chooses before it runs: "channel" for a Team Chat post, "project" for a task.
+    needs: list[str] = Field(default_factory=list)
 
 
 class WorkflowCreate(BaseModel):
@@ -194,17 +171,3 @@ class ReportSummary(BaseModel):
     pipelineValue: str
     dataSources: list[str]
     unavailable: list[str]
-
-
-class IntelligenceAsk(BaseModel):
-    question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
-    ]
-    workspaceId: str | None = None
-
-
-class IntelligenceAnswer(BaseModel):
-    answer: str
-    sources: list[str]
-    unavailable: list[str]
-    requiresApproval: bool = False

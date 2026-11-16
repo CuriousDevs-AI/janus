@@ -5,10 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth.models import User
-from janus_api.business import schemas
+from janus_api.business import engine, schemas
 from janus_api.business.engine import enqueue_event as enqueue_event
 from janus_api.business.models import (
-    AgentDefinition,
     AutomationExecution,
     AutomationWorkflow,
     BusinessWorkspace,
@@ -87,6 +86,8 @@ async def get_setup(db: AsyncSession, tenant_id: int) -> schemas.SetupOut:
         industry=tenant.industry,
         companySize=tenant.company_size,
         timezone=tenant.timezone,
+        businessHoursStart=(tenant.business_hours or {}).get("start"),
+        businessHoursEnd=(tenant.business_hours or {}).get("end"),
         setupCompleted=len(completed) == len(steps),
         completedSteps=completed,
         nextStep=next((step for step in steps if step not in completed), None),
@@ -316,18 +317,6 @@ async def update_workspace_member(
     )
 
 
-def agent_out(item: AgentDefinition) -> schemas.AgentOut:
-    return schemas.AgentOut(
-        id=str(item.id),
-        key=item.agent_key,
-        name=item.name,
-        department=item.department,
-        status=item.status,
-        workspaceId=str(item.workspace_id) if item.workspace_id else None,
-        configuration=item.configuration,
-    )
-
-
 def workflow_out(item: AutomationWorkflow) -> schemas.WorkflowOut:
     return schemas.WorkflowOut(
         id=str(item.id),
@@ -339,6 +328,9 @@ def workflow_out(item: AutomationWorkflow) -> schemas.WorkflowOut:
         requiresApproval=item.requires_approval,
         workspaceId=str(item.workspace_id) if item.workspace_id else None,
         folderId=str(item.folder_id) if item.folder_id else None,
+        # Only when already loaded: the database sets it, and a fresh write leaves it unread.
+        updatedAt=item.__dict__.get("updated_at"),
+        problems=engine.problems(item.trigger, item.actions or []),
     )
 
 
@@ -409,23 +401,4 @@ async def report_summary(
         pipelineValue=str(Decimal(pipeline or 0)),
         dataSources=["CRM leads", "CRM deals"],
         unavailable=["expenses", "cash flow", "department metrics"],
-    )
-
-
-async def intelligence_answer(
-    db: AsyncSession, tenant_id: int, question: str, workspace_id: int | None
-) -> schemas.IntelligenceAnswer:
-    summary = await report_summary(db, tenant_id, workspace_id)
-    scope = f" for workspace {workspace_id}" if workspace_id else ""
-    answer = (
-        f"For the connected CRM{scope}, Janus found {summary.leads} leads, "
-        f"{summary.openDeals} open deals and {summary.wonDeals} won deals. "
-        f"The current open pipeline is {summary.pipelineValue}. "
-        "This answer is grounded in stored CRM records; no recommendation or external "
-        "action was executed."
-    )
-    return schemas.IntelligenceAnswer(
-        answer=answer,
-        sources=summary.dataSources,
-        unavailable=summary.unavailable,
     )

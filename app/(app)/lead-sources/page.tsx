@@ -2,11 +2,13 @@
 import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { useState } from "react";
-import { FileSpreadsheet, Globe, Key, MessageCircle, Phone, Plus, Settings2, Webhook } from "lucide-react";
+import { FileSpreadsheet, Globe, Key, Lock, MessageCircle, Phone, Plus, Settings2, Webhook } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
 import { demoSourceRows } from "@/lib/api/demo-data";
+import { demoMode } from "@/lib/demo-mode";
+import { sourceKindLabel, sourceOptions } from "@/lib/lead-source-options";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +22,12 @@ export default function LeadSourcesPage() {
   const sources = useApi<Source[]>(
     allowed ? `/sources?limit=50&after_id=${after}` : null,
   );
-  const usingDemo = !allowed || Boolean(sources.error);
-  const sourceRows = sources.data ?? (usingDemo ? demoSourceRows : []);
-  const enabledSources = sourceRows.filter((source) => source.status === "connected");
+  // Sample sources are the demo's alone: a real business never sees them, even on an error.
+  const sourceRows = sources.data ?? (demoMode ? demoSourceRows : []);
+  // A paused source stays listed, so it can be found and switched back on.
+  const enabledSources = demoMode ? sourceRows.filter((source) => source.status === "connected") : sourceRows;
+  const pausedCount = demoMode ? 0 : sourceRows.filter((source) => source.status !== "connected").length;
+  const unverified = can(session, "sources:manage") && !session.user.email_verified_at;
   const availableSources = sourceRows.filter((source) => source.status === "available");
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
@@ -40,8 +45,8 @@ export default function LeadSourcesPage() {
                 </Link>
               </Button>
             ) : (
-              <Button disabled>
-                <Plus />
+              <Button variant="secondary" disabled>
+                <Lock className="size-3.5" />
                 Add a new lead source
               </Button>
             )}
@@ -54,9 +59,19 @@ export default function LeadSourcesPage() {
             Ask an owner or admin to configure lead sources.
           </p>
         )}
+        {unverified && (
+          <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm">
+            Verify your email address to set up lead sources: a source receives customers&apos; details, so it needs a confirmed owner. Use the link in the email Janus sent you, or send it again from the banner at the top of the page.
+          </p>
+        )}
+        {!demoMode && sources.error && (
+          <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+            Your lead sources could not be read: {sources.error}. Refresh to try again; leads keep arriving meanwhile.
+          </p>
+        )}
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Enabled sources ({enabledSources.length})
+            {demoMode ? `Enabled sources (${enabledSources.length})` : `Your sources (${enabledSources.length})${pausedCount ? ` · ${pausedCount} paused` : ""}`}
           </h2>
           
           {allowed && sources.loading && (
@@ -64,7 +79,7 @@ export default function LeadSourcesPage() {
               Loading connections…
             </p>
           )}
-          {enabledSources.length === 0 && (
+          {enabledSources.length === 0 && !sources.loading && !sources.error && (
             <p className="text-sm text-muted-foreground">
               {after === "0"
                 ? "No enabled sources yet. Add your first lead source to begin."
@@ -81,7 +96,7 @@ export default function LeadSourcesPage() {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{source.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{source.connectionKind === "oauth" ? "WhatsApp Cloud API" : source.preset}</p>
+                      <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">{sourceKindLabel(source)}{source.status !== "connected" && <Badge variant="neutral">Paused: not taking leads</Badge>}</p>
                     </div>
                   </div>
                   <Link href={source.connectionKind === "oauth" ? "/lead-sources/whatsapp" : `/lead-sources/${source.id}`} aria-label={`Edit ${source.name}`} title="Edit source" className="rounded-md p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground">
@@ -123,11 +138,28 @@ export default function LeadSourcesPage() {
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Available sources ({availableSources.length})
+              {demoMode ? `Available sources (${availableSources.length})` : "Add another source"}
             </h2>
             <p className="text-xs text-muted-foreground">Connect when you are ready to capture more enquiries.</p>
           </div>
-          {availableSources.length === 0 ? (
+          {!demoMode ? (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {sourceOptions.map(([name, description, Icon, href]) =>
+                allowed ? (
+                  <Link key={name} href={href} className="group flex min-h-[120px] gap-3 border border-border bg-surface p-5 shadow-sm transition hover:border-accent">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2"><Icon className="size-5 text-muted-foreground group-hover:text-accent" /></span>
+                    <span className="flex flex-col gap-1"><span className="text-sm font-medium">{name}</span><span className="text-xs leading-relaxed text-muted-foreground">{description}</span></span>
+                  </Link>
+                ) : (
+                  <div key={name} className="relative flex min-h-[120px] gap-3 border border-border bg-surface p-5 opacity-50" aria-disabled="true">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2"><Icon className="size-5 text-muted-foreground" /></span>
+                    <span className="flex flex-col gap-1"><span className="text-sm font-medium text-muted-foreground">{name}</span><span className="text-xs leading-relaxed text-muted-foreground">{description}</span></span>
+                    <Lock className="absolute right-3 top-3 size-4 text-muted-foreground" />
+                  </div>
+                ),
+              )}
+            </div>
+          ) : availableSources.length === 0 ? (
             <p className="text-sm text-muted-foreground">All currently supported sources are connected.</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">

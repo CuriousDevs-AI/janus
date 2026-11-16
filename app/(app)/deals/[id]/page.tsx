@@ -1,4 +1,5 @@
 "use client";
+import { lostWords } from "@/lib/lost-reasons";
 import { ContactConversation } from "@/components/chat/contact-conversation";
 import { CustomerCalls } from "@/components/calls/customer-call";
 import { use, useState } from "react";
@@ -23,6 +24,9 @@ export default function DealPage({
   const { id } = use(params);
   const session = useSession();
   const result = useApi<Deal>(`/deals/${encodeURIComponent(id)}`);
+  // A won deal becomes a sale once it is invoiced; with Finance on, say so where the deal is won.
+  const spaces = useApi<Array<{ type: string; status: string }>>("/workspaces");
+  const financeOn = Boolean(spaces.data?.some((item) => item.type === "finance_accounting" && item.status === "active"));
   const [cursors, setCursors] = useState<string[]>([]);
   const history = useApi<DealEvent[]>(
     result.data
@@ -76,6 +80,11 @@ export default function DealPage({
                 <Link href={`/leads/${deal.leadId}`}>Open lead</Link>
               </Button>
               {deal.phone && <WhatsAppButton contactId={deal.customerId} />}
+              {deal.stage === "won" && financeOn && can(session, "billing:manage") && (
+                <Button size="sm" asChild>
+                  <Link href={`/workspace/finance-accounting?view=invoices&workspace=finance-accounting&deal=${deal.id}`}>Raise the invoice</Link>
+                </Button>
+              )}
             </div>
           </div>
           <ContactConversation contactId={deal.customerId} />
@@ -99,10 +108,10 @@ export default function DealPage({
                     <dt>Expected close</dt>
                     <dd>{deal.expectedCloseAt || "Not set"}</dd>
                   </div>
-                  {deal.lostReason && (
+                  {deal.stage === "lost" && (deal.lostCategory || deal.lostReason) && (
                     <div>
-                      <dt>Loss reason</dt>
-                      <dd>{deal.lostReason}</dd>
+                      <dt>Why it was lost</dt>
+                      <dd>{lostWords(deal.lostCategory, deal.lostReason)}</dd>
                     </div>
                   )}
                 </dl>
@@ -130,16 +139,13 @@ export default function DealPage({
                       {event.action === "deal.created"
                         ? "Deal created"
                         : event.details.from_stage !== event.details.to_stage
-                          ? `Moved from ${String(event.details.from_stage)} to ${String(event.details.to_stage)}`
+                          ? `Moved from ${stageWord(event.details.from_stage)} to ${stageWord(event.details.to_stage)}`
                           : "Deal details updated"}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatDateTime(event.createdAt)} ·{" "}
-                      {event.userId === session.user.id
-                        ? session.user.name
-                        : event.userId
-                          ? `Member #${event.userId}`
-                          : "System"}
+                      {event.userName
+                        || (event.userId ? `Member #${event.userId}` : "System")}
                     </p>
                     {event.details.amount !== undefined && (
                       <p className="mt-1 text-xs">
@@ -147,9 +153,9 @@ export default function DealPage({
                         {formatCurrencyINR(Number(event.details.amount), false)}
                       </p>
                     )}
-                    {event.details.lost_reason && (
+                    {(event.details.lost_category || event.details.lost_reason) && (
                       <p className="mt-1 whitespace-pre-wrap text-xs">
-                        Reason: {String(event.details.lost_reason)}
+                        Reason: {lostWords(String(event.details.lost_category || ""), String(event.details.lost_reason || ""))}
                       </p>
                     )}
                   </li>
@@ -184,4 +190,10 @@ export default function DealPage({
       )}
     </div>
   );
+}
+
+/** "qualified" as the stage reads on screen: "Qualified". */
+function stageWord(stage: unknown) {
+  const key = String(stage) as keyof typeof dealStageMeta;
+  return dealStageMeta[key]?.label ?? String(stage);
 }

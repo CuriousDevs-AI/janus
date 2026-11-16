@@ -123,8 +123,9 @@ async def _bill_out(db: Db, row: FinanceBill) -> BillOut:
     if row.po_key is not None:
         order = await operations.received_order(db, row.tenant_id, row.po_key)
         rules = await rules_for(db, row.tenant_id)
+        net = row.amount_paise - row.gst_paise
         match = (
-            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
+            _match(net, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )
@@ -172,15 +173,92 @@ async def _bill(db: Db, tenant_id: int, bill_id: int, *, lock: bool = False) -> 
 
 
 @router.get("/bills", response_model=list[BillOut])
-async def list_bills(actor: Billing, db: Db) -> list[BillOut]:
-    rows = (
+async def list_bills(
+    actor: Billing,
+    db: Db,
+    limit: int = 200,
+    after_id: int = 0,
+) -> list[BillOut]:
+    limit = min(max(limit, 1), 500)
+    tenant_id = actor.session.tenant_id
+    query = (
+        select(FinanceBill)
+        .where(FinanceBill.tenant_id == tenant_id)
+        .order_by(FinanceBill.id.desc())
+        .limit(limit)
+    )
+    if after_id:
+        query = query.where(FinanceBill.id < after_id)
+    rows = list((await db.scalars(query)).all())
+    if not rows:
+        return []
+    ids = [row.id for row in rows]
+    # Batch-load payments for all bills in one query.
+    all_payments = (
         await db.scalars(
-            select(FinanceBill)
-            .where(FinanceBill.tenant_id == actor.session.tenant_id)
-            .order_by(FinanceBill.id.desc())
+            select(FinanceBillPayment)
+            .where(FinanceBillPayment.bill_id.in_(ids))
+            .order_by(FinanceBillPayment.id)
         )
     ).all()
-    return [await _bill_out(db, row) for row in rows]
+    payments_by_bill: dict[int, list[FinanceBillPayment]] = {}
+    for payment in all_payments:
+        payments_by_bill.setdefault(payment.bill_id, []).append(payment)
+    # Batch-load PO matches for bills with a po_key.
+    po_keys = [row.po_key for row in rows if row.po_key is not None]
+    orders = {}
+    if po_keys:
+        for key in po_keys:
+            order = await operations.received_order(db, tenant_id, key)
+            if order is not None:
+                orders[key] = order
+    rules = await rules_for(db, tenant_id) if po_keys else None
+    result: list[BillOut] = []
+    for row in rows:
+        bill_payments = payments_by_bill.get(row.id, [])
+        paid = sum(p.amount_paise for p in bill_payments)
+        match = "no order"
+        if row.po_key is not None:
+            order = orders.get(row.po_key)
+            net = row.amount_paise - row.gst_paise
+            match = (
+                _match(net, order.received_paise, rules.match_tolerance_percent)
+                if order and rules
+                else "no order"
+            )
+        result.append(
+            BillOut(
+                id=str(row.id),
+                number=row.number,
+                vendor=row.vendor,
+                vendor_bill_no=row.vendor_bill_no,
+                bill_date=row.bill_date,
+                due_date=row.due_date,
+                amount_paise=row.amount_paise,
+                gst_paise=row.gst_paise,
+                itc_blocked=row.itc_blocked,
+                tds_paise=row.tds_paise,
+                tds_section=row.tds_section,
+                opening=row.opening,
+                po_key=row.po_key,
+                match=match,
+                paid_paise=paid,
+                due_paise=max(0, row.amount_paise - row.tds_paise - paid),
+                created_by=row.created_by_name,
+                payments=[
+                    BillPaymentOut(
+                        id=str(p.id),
+                        amount_paise=p.amount_paise,
+                        method=p.method,
+                        reference=p.reference,
+                        paid_on=p.paid_on,
+                        recorded_by=p.recorded_by_name,
+                    )
+                    for p in bill_payments
+                ],
+            )
+        )
+    return result
 
 
 @router.post("/bills", response_model=BillOut, status_code=201)
@@ -208,7 +286,8 @@ async def record_bill(
         order = await operations.received_order(db, tenant_id, data.po_key)
         if order is None:
             raise ApiError("po_not_found", "The purchase order was not found.", 422)
-        if _match(data.amount_paise, order.received_paise, Decimal(0)) == "goods not received":
+        net = data.amount_paise - data.gst_paise
+        if _match(net, order.received_paise, Decimal(0)) == "goods not received":
             raise ApiError(
                 "goods_not_received",
                 f"No goods have been received against {order.number} yet.",
@@ -307,8 +386,9 @@ async def pay_bill(
     if row.po_key is not None:
         order = await operations.received_order(db, tenant_id, row.po_key)
         rules = await rules_for(db, tenant_id)
+        net = row.amount_paise - row.gst_paise
         match = (
-            _match(row.amount_paise, order.received_paise, rules.match_tolerance_percent)
+            _match(net, order.received_paise, rules.match_tolerance_percent)
             if order
             else "no order"
         )

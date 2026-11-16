@@ -67,7 +67,7 @@ function Inbox() {
   const list = useApi<WhatsAppConversation[]>(
     demoMode ? null : `/whatsapp/conversations?limit=50&before_id=${before}`,
   );
-  const usingDemo = demoMode || Boolean(list.error);
+  const usingDemo = demoMode;
   const access = useCrmAccess();
   const reload = list.reload;
   useEffect(() => {

@@ -9,7 +9,7 @@ writes an audit row in the same transaction.
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -35,6 +35,7 @@ class TicketCreate(BaseModel):
     external_key: str = Field(min_length=1, max_length=64)
     number: str = Field(min_length=2, max_length=20)
     subject: str = Field(min_length=3, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
     priority: Priority
     status: AnyStatus = "open"
 
@@ -56,6 +57,7 @@ class TicketOut(BaseModel):
     external_key: str
     number: str
     subject: str
+    description: str | None
     priority: str
     status: str
     assignee: str | None
@@ -69,6 +71,7 @@ def _out(row: SupportTicket) -> TicketOut:
         external_key=row.external_key,
         number=row.number,
         subject=row.subject,
+        description=row.description,
         priority=row.priority,
         status=row.status,
         assignee=row.assignee,
@@ -90,12 +93,21 @@ async def _ticket(db: Db, tenant_id: int, key: str, *, lock: bool = False) -> Su
 
 
 @router.get("/tickets", response_model=list[TicketOut])
-async def list_tickets(actor: Work, db: Db) -> list[TicketOut]:
-    rows = await db.scalars(
+async def list_tickets(
+    actor: Work,
+    db: Db,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    after_id: Annotated[int | None, Query(ge=0)] = None,
+) -> list[TicketOut]:
+    query = (
         select(SupportTicket)
         .where(SupportTicket.tenant_id == actor.session.tenant_id)
         .order_by(SupportTicket.id.desc())
+        .limit(limit)
     )
+    if after_id is not None:
+        query = query.where(SupportTicket.id < after_id)
+    rows = await db.scalars(query)
     return [_out(row) for row in rows.all()]
 
 
@@ -118,6 +130,7 @@ async def create_ticket(
         external_key=data.external_key,
         number=data.number,
         subject=data.subject.strip(),
+        description=(data.description or "").strip() or None,
         priority=data.priority,
         status=data.status,
         opened_by=actor.user.id,

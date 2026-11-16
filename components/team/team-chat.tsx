@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, Hash, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
@@ -47,7 +47,10 @@ function newKey() {
 export function TeamChat() {
   const session = useSession();
   const call = useVoiceCall();
-  const requested = useSearchParams().get("space");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requested = searchParams.get("space");
   const [selected, setSelected] = React.useState<string | null>(requested);
   const [threadId, setThreadId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -124,6 +127,19 @@ export function TeamChat() {
     setSelected(id);
     setThreadId(null);
   }
+
+  // Keep the URL in sync with the selected space so reload and deep links work.
+  React.useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const current = params.get("space");
+    if (selected && current !== selected) {
+      params.set("space", selected);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    } else if (!selected && current) {
+      params.delete("space");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [selected, searchParams, router, pathname]);
 
   // Escape closes an open thread, as in the desktop apps.
   React.useEffect(() => {
@@ -366,6 +382,7 @@ export function TeamChat() {
                     onChanged={() => { reloadMessages(); reloadReplies(); }}
                     activeThreadId={threadId}
                     showAuthors={space?.kind !== "dm"}
+                    canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
                   />
                 )}
               </div>
@@ -415,12 +432,13 @@ export function TeamChat() {
                     emptyText="No replies yet. Start the thread."
                     onOpenThread={setThreadId}
                     onChanged={() => { reloadReplies(); reloadMessages(); }}
+                    canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
                   />
                 </div>
                 <Composer
                   placeholder="Reply to the thread"
                   autoFocusKey={threadId}
-                  disabled={!space || (isChannel(space.kind) && !space.joined)}
+                  disabled={!space || !space.canPost || (isChannel(space.kind) && !space.joined)}
                   allowFiles={false}
                   onSend={(body) => send(body, threadId)}
                 />

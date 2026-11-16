@@ -6,9 +6,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, or_, select, update
 
 from janus_api.auth.service import Actor
-from janus_api.business import engine, schemas, service
+from janus_api.business import engine, export, schemas, service
 from janus_api.business.models import (
-    AgentDefinition,
     AutomationExecution,
     AutomationFolder,
     AutomationWorkflow,
@@ -21,7 +20,6 @@ from janus_api.org.service import membership
 router = APIRouter(prefix="/v1", tags=["Business management"])
 Owner = Annotated[Actor, Depends(require("workspaces:manage"))]
 Reports = Annotated[Actor, Depends(require("reports:read"))]
-Intelligence = Annotated[Actor, Depends(require("ai:manage"))]
 Agents = Annotated[Actor, Depends(require("agents:manage"))]
 Automations = Annotated[Actor, Depends(require("automations:manage"))]
 
@@ -84,252 +82,137 @@ async def update_workspace_member(
     )
 
 
+@router.get(
+    "/business/export",
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_business(actor: Owner, db: Db, request: Request) -> Response:
+    """Every record of the business as spreadsheets in one ZIP. Owner only; audited."""
+    name, body = await export.build(db, actor.session.tenant_id, actor.user.id, request_ip(request))
+    return Response(
+        body,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.get("/business/reports/summary", response_model=schemas.ReportSummary)
 async def report_summary(actor: Reports, db: Db) -> schemas.ReportSummary:
     return await service.report_summary(db, actor.session.tenant_id)
 
 
-@router.post("/business/intelligence/ask", response_model=schemas.IntelligenceAnswer)
-async def intelligence(
-    data: schemas.IntelligenceAsk, actor: Intelligence, db: Db
-) -> schemas.IntelligenceAnswer:
-    workspace_id = await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, data.workspaceId
-    )
-    return await service.intelligence_answer(
-        db, actor.session.tenant_id, data.question, workspace_id
-    )
-
-
-@router.get("/business/agents", response_model=list[schemas.AgentOut])
-async def agents(actor: CurrentActor, db: Db) -> list[schemas.AgentOut]:
-    workspace_ids = await service.accessible_workspace_ids(
-        db, actor.session.tenant_id, actor.user.id
-    )
-    return [
-        service.agent_out(item)
-        for item in (
-            await db.scalars(
-                select(AgentDefinition)
-                .where(AgentDefinition.tenant_id == actor.session.tenant_id)
-                .where(
-                    or_(
-                        AgentDefinition.workspace_id.is_(None),
-                        AgentDefinition.workspace_id.in_(workspace_ids),
-                    )
-                )
-                .where(AgentDefinition.status != "archived")
-                .order_by(AgentDefinition.id)
-            )
-        ).all()
-    ]
-
-
-@router.post("/business/agents", response_model=schemas.AgentOut, status_code=201)
-async def create_agent(
-    data: schemas.AgentCreate, actor: Agents, db: Db, request: Request
-) -> schemas.AgentOut:
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, data.workspaceId
-    )
-    item = AgentDefinition(
-        tenant_id=actor.session.tenant_id,
-        workspace_id=data.workspaceId,
-        agent_key=data.key,
-        name=data.name,
-        department=data.department,
-        configuration=data.configuration,
-    )
-    db.add(item)
-    await db.flush()
-    from janus_api.audit.service import record
-
-    record(
-        db,
-        "business.agent_created",
-        tenant_id=actor.session.tenant_id,
-        user_id=actor.user.id,
-        ip=request_ip(request),
-        details={"agent_id": item.id},
-    )
-    return service.agent_out(item)
-
-
-@router.get("/business/agents/{agent_id}", response_model=schemas.AgentOut)
-async def agent_detail(agent_id: int, actor: CurrentActor, db: Db) -> schemas.AgentOut:
-    item = await db.scalar(
-        select(AgentDefinition).where(
-            AgentDefinition.id == agent_id,
-            AgentDefinition.tenant_id == actor.session.tenant_id,
-            AgentDefinition.status != "archived",
-        )
-    )
-    if item is None:
-        from janus_api.core.errors import ApiError
-
-        raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, item.workspace_id
-    )
-    return service.agent_out(item)
-
-
-@router.patch("/business/agents/{agent_id}", response_model=schemas.AgentOut)
-async def update_agent(
-    agent_id: int, data: schemas.AgentUpdate, actor: Agents, db: Db, request: Request
-) -> schemas.AgentOut:
-    item = await db.scalar(
-        select(AgentDefinition)
-        .where(
-            AgentDefinition.id == agent_id,
-            AgentDefinition.tenant_id == actor.session.tenant_id,
-        )
-        .with_for_update()
-    )
-    if item is None:
-        from janus_api.core.errors import ApiError
-
-        raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, item.workspace_id
-    )
-    for key, value in (
-        ("name", data.name),
-        ("department", data.department),
-        ("status", data.status),
-        ("configuration", data.configuration),
-    ):
-        if value is not None:
-            setattr(item, key, value)
-    from janus_api.audit.service import record
-
-    record(
-        db,
-        "business.agent_updated",
-        tenant_id=actor.session.tenant_id,
-        user_id=actor.user.id,
-        ip=request_ip(request),
-        details={"agent_id": agent_id},
-    )
-    return service.agent_out(item)
-
-
-@router.delete("/business/agents/{agent_id}", response_model=schemas.AgentOut)
-async def archive_agent(agent_id: int, actor: Agents, db: Db, request: Request) -> schemas.AgentOut:
-    item = await db.scalar(
-        select(AgentDefinition)
-        .where(
-            AgentDefinition.id == agent_id,
-            AgentDefinition.tenant_id == actor.session.tenant_id,
-        )
-        .with_for_update()
-    )
-    if item is None:
-        from janus_api.core.errors import ApiError
-
-        raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, item.workspace_id
-    )
-    item.status = "archived"
-    from janus_api.audit.service import record
-
-    record(
-        db,
-        "business.agent_archived",
-        tenant_id=actor.session.tenant_id,
-        user_id=actor.user.id,
-        ip=request_ip(request),
-        details={"agent_id": agent_id},
-    )
-    return service.agent_out(item)
-
-
-@router.post("/business/agents/{agent_id}/test", response_model=dict, status_code=202)
-async def test_agent(agent_id: int, actor: Agents, db: Db, request: Request) -> dict[str, Any]:
-    """Run a side-effect-free agent preview against its saved contract."""
-    item = await db.scalar(
-        select(AgentDefinition).where(
-            AgentDefinition.id == agent_id,
-            AgentDefinition.tenant_id == actor.session.tenant_id,
-            AgentDefinition.status != "archived",
-        )
-    )
-    if item is None:
-        raise ApiError("not_found", "Agent not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, item.workspace_id
-    )
-    from janus_api.audit.service import record
-
-    record(
-        db,
-        "business.agent_dry_run",
-        tenant_id=actor.session.tenant_id,
-        user_id=actor.user.id,
-        ip=request_ip(request),
-        details={"agent_id": agent_id},
-    )
-    return {
-        "agentId": str(item.id),
-        "status": "dry_run",
-        "sideEffects": False,
-        "readScopes": item.configuration.get(
-            "readScopes", item.configuration.get("readPermissions", [])
-        ),
-        "proposedActions": item.configuration.get("actions", []),
-        "message": "Dry run completed. No messages were sent and no business records were changed.",
-    }
-
-
 # Starting points for a workflow. Every template starts by hand. Its steps describe the work; Janus
 # carries out only the steps in `engine.SUPPORTED`, so these templates are plans to adapt until
 # their modules' steps can run.
+# Starting points that run as they are, once the person picks where they post or add tasks. Each
+# uses only steps Janus carries out (see engine.SUPPORTED).
+def _post(message: str, title: str) -> dict[str, Any]:
+    return {
+        "id": "post",
+        "type": "action",
+        "module": "communication",
+        "action": "send_notification",
+        "title": title,
+        "config": {"channel": "", "message": message},
+    }
+
+
+def _task(title: str, step_title: str, days: int = 1) -> dict[str, Any]:
+    return {
+        "id": "task",
+        "type": "action",
+        "module": "projects_delivery",
+        "action": "create_task",
+        "title": step_title,
+        "config": {"project": "", "title": title, "dueInDays": days},
+    }
+
+
 TEMPLATES = [
     schemas.TemplateOut(
-        id="weekly-pipeline-review",
-        name="Weekly pipeline review",
-        description="Review open deals each week, flag those without a next step, and agree follow-ups.",
-        trigger={"type": "manual"},
+        id="new-lead-alert",
+        name="Tell the team about every new lead",
+        description="The moment a lead is captured, post it in a Team Chat channel so someone "
+        "replies while the buyer is still interested.",
+        trigger={"type": "lead_created"},
         steps=[
-            {"module": "crm_sales", "action": "review_open_deals"},
-            {"module": "crm_sales", "action": "assign_follow_ups"},
+            _post(
+                "New lead: {{lead.name}} came in from {{lead.source}}. Who is replying?",
+                "Post the lead in Team Chat",
+            )
         ],
-        modules=["CRM & Sales"],
+        modules=["CRM & Sales", "Team Chat"],
+        needs=["channel"],
     ),
     schemas.TemplateOut(
-        id="overdue-invoice-reminders",
-        name="Overdue invoice reminders",
-        description="List invoices past their due date and prepare reminders for owner approval.",
-        trigger={"type": "manual"},
-        steps=[
-            {"module": "finance_accounting", "action": "list_overdue_invoices"},
-            {"module": "finance_accounting", "action": "prepare_reminders"},
-        ],
-        modules=["Finance & Accounting"],
+        id="new-lead-call-task",
+        name="Call every new lead within a day",
+        description="Add a task to call each new lead, due tomorrow, so no enquiry is forgotten.",
+        trigger={"type": "lead_created"},
+        steps=[_task("Call {{lead.name}} about their enquiry", "Add a call task")],
+        modules=["CRM & Sales", "Projects & Delivery"],
+        needs=["project"],
     ),
     schemas.TemplateOut(
-        id="new-joiner-checklist",
-        name="New joiner checklist",
-        description="Check a new employee's documents, accounts and onboarding tasks before day one.",
-        trigger={"type": "manual"},
+        id="new-ticket-alert",
+        name="Flag every new support ticket",
+        description="Post each new ticket, with its priority, in a Team Chat channel so it is "
+        "picked up before it breaches its deadline.",
+        trigger={"type": "ticket_created"},
         steps=[
-            {"module": "hr_people", "action": "check_documents"},
-            {"module": "it_infrastructure", "action": "request_accounts"},
-            {"module": "hr_people", "action": "confirm_onboarding_tasks"},
+            _post(
+                "Ticket {{ticket.number}} opened, {{ticket.priority}} priority: {{ticket.subject}}",
+                "Post the ticket in Team Chat",
+            )
         ],
-        modules=["HR & People", "IT & Infrastructure"],
+        modules=["Customer Support & Success", "Team Chat"],
+        needs=["channel"],
     ),
     schemas.TemplateOut(
-        id="low-stock-reorder",
-        name="Low stock reorder",
-        description="Find items below their reorder level and draft requisitions for approval.",
-        trigger={"type": "manual"},
+        id="new-ticket-task",
+        name="Turn every ticket into a task",
+        description="Add a task for each new ticket, due tomorrow, so it has an owner and a date.",
+        trigger={"type": "ticket_created"},
+        steps=[_task("Resolve {{ticket.number}}: {{ticket.subject}}", "Add a ticket task")],
+        modules=["Customer Support & Success", "Projects & Delivery"],
+        needs=["project"],
+    ),
+    schemas.TemplateOut(
+        id="spend-request-alert",
+        name="Tell approvers about every spend request",
+        description="Post each spend request, with its amount and purpose, where the people who "
+        "approve spending will see it, so money is not held up or spent unchecked.",
+        trigger={"type": "spend_requested"},
         steps=[
-            {"module": "operations_inventory", "action": "list_low_stock"},
-            {"module": "operations_inventory", "action": "draft_requisitions"},
+            _post(
+                "Spend request {{spend.number}}: {{spend.amount}} for {{spend.purpose}}, raised by"
+                " {{spend.requested_by}}. Approve or reject it in Finance.",
+                "Post the request in Team Chat",
+            )
         ],
-        modules=["Operations & Inventory"],
+        modules=["Finance & Accounting", "Team Chat"],
+        needs=["channel"],
+    ),
+    schemas.TemplateOut(
+        id="credit-note-alert",
+        name="Flag every credit note and write-off",
+        description="Each time money owed is reduced, post the amount, customer and reason, so "
+        "discounts and write-offs are seen before they are approved.",
+        trigger={"type": "credit_note_raised"},
+        steps=[
+            _post(
+                "{{credit_note.kind}} {{credit_note.number}}: {{credit_note.amount}} off invoice"
+                " {{credit_note.invoice}} for {{credit_note.customer}}. Reason:"
+                " {{credit_note.reason}}. It waits for approval in Finance.",
+                "Post it in Team Chat",
+            )
+        ],
+        modules=["Finance & Accounting", "Team Chat"],
+        needs=["channel"],
     ),
 ]
 
@@ -359,6 +242,16 @@ TRIGGERS: list[dict[str, object]] = [
         "label": "When a support ticket is opened",
         "module": "customer_support",
     },
+    {
+        "type": "spend_requested",
+        "label": "When a spend request is raised",
+        "module": "finance_accounting",
+    },
+    {
+        "type": "credit_note_raised",
+        "label": "When a credit note or write-off is raised",
+        "module": "finance_accounting",
+    },
 ]
 
 
@@ -366,7 +259,7 @@ TRIGGERS: list[dict[str, object]] = [
 async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict[str, object]]]:
     """What the workflow editor offers: the company's workspaces, how a workflow starts, its steps.
 
-    A workflow starts by hand, or when a lead is captured or a support ticket is opened. The steps
+    A workflow starts by hand, or on a new lead, support ticket, spend request or credit note. The steps
     are the core ones and those the templates use; `supported` says whether Janus carries one out.
     """
     switched_on = set(
@@ -416,6 +309,17 @@ def _refuse_unsupported(workflow: AutomationWorkflow) -> None:
     if refused:
         steps = "; ".join(f"step {item['index'] + 1}: {item['reason']}" for item in refused)
         raise ApiError("unsupported_steps", f"Janus cannot run this workflow yet. {steps}", 422)
+
+
+def _refuse_not_ready(workflow: AutomationWorkflow) -> None:
+    """A workflow that starts on its own is not switched on until it would run: otherwise every
+    new lead or ticket would leave a failed run and nobody would notice."""
+    if (workflow.trigger or {}).get("type") not in engine.EVENT_TRIGGERS:
+        return
+    _refuse_unsupported(workflow)
+    found = engine.problems(workflow.trigger, workflow.actions or [])
+    if found:
+        raise ApiError("not_ready", "Finish setting it up first. " + " ".join(found), 422)
 
 
 async def _folder(db: Db, tenant_id: int, folder_id: int) -> AutomationFolder:
@@ -620,30 +524,6 @@ async def workflow_runs(
     return [service.execution_out(item) for item in items]
 
 
-@router.get("/business/automations/{workflow_id}/versions", response_model=list[dict[str, Any]])
-async def workflow_versions(workflow_id: int, actor: CurrentActor, db: Db) -> list[dict[str, Any]]:
-    workflow = await db.scalar(
-        select(AutomationWorkflow).where(
-            AutomationWorkflow.id == workflow_id,
-            AutomationWorkflow.tenant_id == actor.session.tenant_id,
-            AutomationWorkflow.status != "archived",
-        )
-    )
-    if workflow is None:
-        raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
-    )
-    return [
-        {
-            "version": 1,
-            "status": workflow.status,
-            "createdAt": workflow.created_at,
-            "changeNote": "Initial workflow version",
-        }
-    ]
-
-
 @router.patch("/business/automations/{workflow_id}/draft", response_model=schemas.WorkflowOut)
 async def save_workflow_draft(
     workflow_id: int, data: schemas.WorkflowUpdate, actor: Automations, db: Db, request: Request
@@ -670,7 +550,10 @@ async def save_workflow_draft(
     ):
         if value is not None:
             setattr(item, key, value)
-    item.status = "draft"
+    # A switched-on workflow stays on with the saved changes, so its next run uses them. One the
+    # changes leave unable to run is switched off rather than left on to fail; its problems say why.
+    if item.status != "active" or engine.problems(item.trigger, item.actions or []):
+        item.status = "draft"
     from janus_api.audit.service import record
 
     record(
@@ -702,8 +585,7 @@ async def publish_workflow(
     await service.ensure_workspace_access(
         db, actor.session.tenant_id, actor.user.id, item.workspace_id
     )
-    if (item.trigger or {}).get("type") in engine.EVENT_TRIGGERS:
-        _refuse_unsupported(item)
+    _refuse_not_ready(item)
     item.status = "active"
     from janus_api.audit.service import record
 
@@ -780,6 +662,8 @@ async def set_workflow_status(
     await service.ensure_workspace_access(
         db, actor.session.tenant_id, actor.user.id, item.workspace_id
     )
+    if request.url.path.endswith("/on"):
+        _refuse_not_ready(item)
     item.status = "active" if request.url.path.endswith("/on") else "paused"
     return service.workflow_out(item)
 
@@ -940,6 +824,8 @@ async def update_automation(
     ):
         if value is not None:
             setattr(item, key, value)
+    if item.status == "active":
+        _refuse_not_ready(item)
     from janus_api.audit.service import record
 
     record(

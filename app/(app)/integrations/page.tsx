@@ -1,4 +1,6 @@
 "use client";
+import { redirect } from "next/navigation";
+import { demoMode } from "@/lib/demo-mode";
 
 import * as React from "react";
 import Link from "next/link";
@@ -17,7 +19,7 @@ import {
   accountLabelFor,
 } from "@/components/integrations/integration-meta";
 
-export default function IntegrationsPage() {
+function DemoIntegrationsPage() {
   const router = useRouter();
   const [items, setItems] = React.useState<Integration[]>(seedIntegrations);
 
@@ -243,4 +245,10 @@ function IntegrationCard({
       <div className="mt-auto flex items-center gap-2 pt-1">{actions}</div>
     </div>
   );
+}
+
+/** Only the demo has these; a real business is taken to the page that does this job. */
+export default function Page() {
+  if (!demoMode) redirect("/lead-sources?workspace=crm-sales");
+  return <DemoIntegrationsPage />;
 }

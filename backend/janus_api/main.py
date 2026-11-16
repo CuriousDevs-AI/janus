@@ -10,8 +10,10 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from janus_api.ai.router import router as ai_router
+from janus_api.audit.router import router as audit_router
 from janus_api.auth.router import router as auth_router
 from janus_api.billing.router import router as billing_router
+from janus_api.business.reports import router as reports_router
 from janus_api.business.router import router as business_router
 from janus_api.calls.router import public as calls_public_router
 from janus_api.calls.router import router as calls_router
@@ -19,6 +21,7 @@ from janus_api.core.db import check_database_role
 from janus_api.core.errors import install_errors
 from janus_api.crm.router import router as crm_router
 from janus_api.finance.bills import router as finance_bills_router
+from janus_api.finance.books import router as finance_books_router
 from janus_api.finance.funds import router as finance_funds_router
 from janus_api.finance.records import router as finance_records_router
 from janus_api.finance.router import router as finance_router
@@ -59,7 +62,9 @@ install_errors(app)
 app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(business_router)
+app.include_router(reports_router)
 app.include_router(org_router)
+app.include_router(audit_router)
 app.include_router(portfolio_router)
 app.include_router(billing_router)
 app.include_router(sources_router)
@@ -78,6 +83,7 @@ app.include_router(effort_router)
 app.include_router(finance_router)
 app.include_router(finance_records_router)
 app.include_router(finance_bills_router)
+app.include_router(finance_books_router)
 app.include_router(finance_funds_router)
 app.include_router(rules_router)
 app.include_router(it_router)

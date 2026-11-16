@@ -73,14 +73,14 @@ export const crmNavSections: NavSection[] = [
     items: [
       { label: "AI Assistant", href: "/ai?workspace=crm-sales", icon: Sparkles, requiredPermission: "ai:manage" },
       { label: "Agents", href: "/agents?workspace=crm-sales", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage" },
-      { label: "Evaluations", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage" },
+      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage", demoOnly: true },
+      { label: "Evaluations", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage", demoOnly: true },
     ],
   },
   {
     title: "CRM Management",
     items: [
-      { label: "Integrations", href: "/integrations", icon: Plug, requiredPermission: "settings:manage" },
+      { label: "Integrations", href: "/integrations", icon: Plug, requiredPermission: "settings:manage", demoOnly: true },
       { label: "Approvals", href: "/approvals", icon: ShieldCheck, requiredPermission: "approvals:manage" },
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Audit Logs", href: "/audit", icon: ScrollText, requiredPermission: "settings:manage" },
@@ -102,6 +102,8 @@ export const businessNavSections: NavSection[] = [
     items: [
       { label: "People & Access", href: "/settings?tab=team", icon: Users, requiredPermission: "members:manage" },
       { label: "Workspaces", href: "/settings?tab=workspace&view=workspaces", icon: Building2, requiredPermission: "settings:manage" },
+      // Who changed what across the company: the same audit trail CRM & Sales shows.
+      { label: "Audit Logs", href: "/audit?workspace=business", icon: ScrollText, requiredPermission: "settings:manage" },
     ],
   },
   {
@@ -109,6 +111,7 @@ export const businessNavSections: NavSection[] = [
     items: [
       { label: "Business Reports", href: "/analytics", icon: BarChart3, requiredPermission: "settings:manage" },
       { label: "AI Agents", href: "/agents", icon: Bot, requiredPermission: "agents:manage" },
+      { label: "AI Usage & Cost", href: "/usage?workspace=business", icon: Gauge, requiredPermission: "ai:manage" },
     ],
   },
   {
@@ -117,16 +120,10 @@ export const businessNavSections: NavSection[] = [
       { label: "Workflows", href: "/automations?workspace=business", icon: Workflow, requiredPermission: "agents:manage" },
     ],
   },
+  // Your own profile, password and notifications are in My account (the menu on your name), the
+  // same in every workspace; this menu keeps the company's settings.
   {
     title: "Settings",
-    items: [
-      { label: "Profile", href: "/settings?tab=workspace&view=administration&section=profile&workspace=business", icon: UserRoundPlus, requiredPermission: "settings:manage" },
-      { label: "Security & Sessions", href: "/settings?tab=security&workspace=business", icon: ShieldCheck, requiredPermission: "settings:manage" },
-      { label: "Notifications", href: "/settings?tab=notifications&workspace=business", icon: Bell, requiredPermission: "settings:manage" },
-    ],
-  },
-  {
-    title: "Business Settings",
     items: [
       { label: "Business Settings", href: "/settings?tab=workspace&view=settings", icon: Settings2, requiredPermission: "settings:manage" },
     ],

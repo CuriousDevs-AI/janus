@@ -96,6 +96,7 @@ function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }
             <TicketStatusBadge status={ticket.status} />
           </div>
           <p className="text-[13px] text-muted-foreground">{ticket.subject}</p>
+          {ticket.description && <p className="mt-1 text-[13px] text-foreground">{ticket.description}</p>}
           <Link href={`/customers/${customer.id}`} className="text-[12px] text-muted-foreground hover:text-accent">
             {[customer.name, company?.name].filter(Boolean).join(" · ")}
           </Link>

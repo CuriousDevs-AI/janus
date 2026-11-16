@@ -17,7 +17,7 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<typeof Dial
   return (
     <DialogPrimitive.Overlay
       className={cn(
-        "fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] data-[state=open]:animate-fade-in",
+        "fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] max-sm:bg-black/80 max-sm:backdrop-blur-sm data-[state=open]:animate-fade-in",
         className
       )}
       {...props}

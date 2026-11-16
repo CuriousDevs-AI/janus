@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
-import { answerLive, type Answer } from "@/features/portfolio/lib/answer";
+import { answerFromKnowledge, answerLive, type Answer } from "@/features/portfolio/lib/answer";
+import { isAdviceQuestion, type AdvisorOut } from "@/features/portfolio/lib/advisor";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
 import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
-import type { PortfolioAsked, PortfolioCompany, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
+import type { PortfolioAsked, PortfolioCompany, PortfolioKnowledgeItem, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
 
 const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["Which company needs immediate attention?", TriangleAlert],
@@ -20,6 +21,15 @@ const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
   ["Compare profit across companies", Scale],
   ["What are the biggest financial risks?", Landmark],
   ["Who is my biggest customer?", Building2],
+  ["Any GST or TDS due?", FileCheck2],
+];
+/** The first questions for one business on its own: what an owner asks most days. */
+const ownSuggestions: [string, React.ComponentType<{ className?: string }>][] = [
+  ["What needs my attention?", TriangleAlert],
+  ["How can I improve the business?", Sparkles],
+  ["How is my sales team doing?", Building2],
+  ["What is our conversion this month?", TrendingDown],
+  ["How much profit did we make?", Scale],
   ["Any GST or TDS due?", FileCheck2],
 ];
 /** Questions about one company that Janus rules can answer when the company is named. */
@@ -33,37 +43,51 @@ const about = (name: string): string[] => [
 const RULES = "rules";
 const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [], portfolioKeys: [], canAddKeys: false };
 
+/** A department's chat (HR, Finance…): its name, the questions it starts with, and the figures a
+ * model should lead with. */
+export type DepartmentChat = { name: string; topic?: "sales" | "people" | "finance" | "stock" | "support" | "projects"; questions: [string, React.ComponentType<{ className?: string }>][]; placeholder: string };
+
 /** One turn: Janus rules answer on the page; a model answers on the server with the facts it cited. */
 type Turn = { q: string; rules?: Answer; ai?: PortfolioAsked; pending?: boolean; error?: string };
 
 /** This page load's conversation, per person, so moving to another Portfolio page and back keeps it. */
 const conversations = new Map<string, Turn[]>();
 
-export function Intelligence({ list, period }: { list: PortfolioCompany[]; period?: PortfolioPeriod }) {
+/**
+ * Janus answers questions from the Portfolio's figures and what it was told. Given one `company`
+ * (Business Management), it answers about that company alone, and a model reads only its records.
+ */
+export function Intelligence({ list: all, period, company, department }: { list: PortfolioCompany[]; period?: PortfolioPeriod; company?: PortfolioCompany; department?: DepartmentChat }) {
+  const list = company ? [company] : all;
   const preview = React.useContext(PreviewRole);
   const who = useSession().user.id;
   const models = usePortfolioApi<PortfolioModels>(preview ? null : "/portfolio/intelligence/models");
   const history = usePortfolioApi<PortfolioAsked[]>(preview ? null : "/portfolio/intelligence/history");
   const available = models.data ?? rulesOnly;
+  // Janus rules answer from the records first, then from the facts and documents the owner approved.
+  const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>(preview ? null : "/portfolio/knowledge");
   const [chosen, setChosen] = React.useState(RULES);
   const model = available.options.find((option) => option.id === chosen) ?? available.options[0];
-  const [turns, setTurnsState] = React.useState<Turn[]>(() => conversations.get(who) ?? []);
-  const setTurns = (change: (current: Turn[]) => Turn[]) => setTurnsState((current) => { const next = change(current); conversations.set(who, next); return next; });
+  // Each department keeps its own conversation, apart from Janus Intelligence's.
+  const thread = `${who}:${department?.name ?? ""}`;
+  const [turns, setTurnsState] = React.useState<Turn[]>(() => conversations.get(thread) ?? []);
+  const setTurns = (change: (current: Turn[]) => Turn[]) => setTurnsState((current) => { const next = change(current); conversations.set(thread, next); return next; });
   const [q, setQ] = React.useState("");
   const [cleared, setCleared] = React.useState(false);
   const [panel, setPanel] = React.useState<"knowledge" | null>(null);
   const [settingUp, setSettingUp] = React.useState(false);
   const [focus, setFocus] = React.useState<string | null>(null);
-  const focused = list.find((item) => item.id === focus);
-  const tries = focused ? about(focused.name) : suggestions.map(([text]) => text);
-  const earlier = cleared ? [] : (history.data ?? []);
+  const focused = company ?? list.find((item) => item.id === focus);
+  const tries = department ? department.questions.map(([text]) => text) : company ? ownSuggestions.map(([text]) => text) : focused ? about(focused.name) : suggestions.map(([text]) => text);
+  // Saved questions are the whole business's; a department chat starts from its own.
+  const earlier = cleared || department ? [] : (history.data ?? []);
   const shown: Turn[] = [...earlier.map((item) => ({ q: item.question, ai: item })), ...turns];
   const busy = turns.some((turn) => turn.pending);
 
   const scroller = React.useRef<HTMLDivElement>(null);
   const box = React.useRef<HTMLTextAreaElement>(null);
   // Keep the newest message in view as the conversation grows.
-  React.useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [shown.length, busy]);
+  React.useEffect(() => { if (shown.length) scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [shown.length, busy]);
 
   const ask = async (text: string) => {
     const clean = text.trim();
@@ -71,11 +95,31 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
     setQ("");
     if (box.current) box.current.style.height = "auto";
     box.current?.focus({ preventScroll: true });
-    if (model.id === RULES) { setTurns((current) => [...current, { q: clean, rules: answerLive(clean, list, period) }]); return; }
+    if (model.id === RULES && company && isAdviceQuestion(clean)) {
+      // One company open: the Advisor's findings, the same the Advisor page and the morning brief show.
+      setTurns((current) => [...current, { q: clean, pending: true }]);
+      try {
+        const advice = await api<AdvisorOut>("/business/advisor");
+        const top = advice.findings.slice(0, 3);
+        const rules: Answer = top.length
+          ? { text: `${top.length === 1 ? "One thing" : `${top.length} things`} would help ${advice.company} most now, most serious first. Open Advisor to add them to your plan; I check each against your figures.`, rows: top.map((item): [string, string] => [item.title, `${item.sees} This week: ${item.action}`]) }
+          : { text: `Nothing in ${advice.company}'s figures needs fixing right now. Keep the records current and I will say when something does.` };
+        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, rules } : turn));
+      } catch (error) {
+        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, error: message(error) } : turn));
+      }
+      return;
+    }
+    if (model.id === RULES) {
+      const fromRecords = answerLive(clean, list, period);
+      const mine = (knowledge.data ?? []).filter((item) => list.some((entry) => entry.id === item.companyId));
+      setTurns((current) => [...current, { q: clean, rules: fromRecords.matched === false ? answerFromKnowledge(clean, mine, fromRecords) : fromRecords }]);
+      return;
+    }
     setTurns((current) => [...current, { q: clean, pending: true }]);
     const settle = (done: Turn) => setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? done : turn));
     try {
-      const answer = await api<PortfolioAsked>("/portfolio/intelligence/ask", { method: "POST", body: JSON.stringify({ question: clean, model: model.id, period: period?.key ?? "month" }) });
+      const answer = await api<PortfolioAsked>("/portfolio/intelligence/ask", { method: "POST", body: JSON.stringify({ question: clean, model: model.id, period: period?.key ?? "month", ...(company ? { companyId: company.id } : {}), ...(department?.topic ? { topic: department.topic } : {}) }) });
       settle({ q: clean, ai: answer });
     } catch (error) {
       settle({ q: clean, error: message(error) });
@@ -93,13 +137,13 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
         <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"><Sparkles className="size-4" aria-hidden /></span>
-            <div className="min-w-0"><p className="text-sm font-semibold">Janus</p><p className="truncate text-xs text-muted-foreground">Across {list.length} {list.length === 1 ? "company" : "companies"}{period ? ` · ${period.label}` : ""} · answers only from your figures</p></div>
+            <div className="min-w-0"><p className="text-sm font-semibold">{department ? `Janus · ${department.name}` : "Janus"}</p><p className="truncate text-xs text-muted-foreground">{company ? company.name : `Across ${list.length} ${list.length === 1 ? "company" : "companies"}`}{period ? ` · ${period.label}` : ""} · answers only from your figures</p></div>
           </div>
           {turns.length > 0 && <Button size="sm" variant="ghost" onClick={() => setTurns(() => [])} title="Start a new conversation"><MessageSquarePlus className="size-4" />New chat</Button>}
         </header>
 
         <div ref={scroller} className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          {shown.length === 0 ? <Welcome count={list.length} onAsk={(text) => void ask(text)} />
+          {shown.length === 0 ? <Welcome count={list.length} company={company} department={department} onAsk={(text) => void ask(text)} />
             : <ol className="mx-auto flex max-w-3xl flex-col gap-6" aria-live="polite">{shown.map((turn, index) => <li key={index} className="flex flex-col gap-3">
               <p className="max-w-[85%] self-end whitespace-pre-line rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-accent-foreground">{turn.q}</p>
               <div className="flex items-start gap-3">
@@ -117,7 +161,7 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
 
         <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); void ask(q); }}>
           <div className="flex items-end gap-2 rounded-xl border border-input bg-surface-2 px-3 py-2 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
-            <textarea ref={box} aria-label="Ask Janus" rows={1} value={q} placeholder="Ask about sales, profit, money owed, filings or a company…"
+            <textarea ref={box} aria-label="Ask Janus" rows={1} value={q} placeholder={department ? department.placeholder : company ? "Ask about sales, profit, money owed, customers or filings…" : "Ask about sales, profit, money owed, filings or a company…"}
               onChange={(event) => { setQ(event.target.value); event.target.style.height = "auto"; event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`; }}
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void ask(q); } }}
               className="max-h-[140px] min-h-[24px] flex-1 resize-none bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground" />
@@ -138,15 +182,16 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
           {!preview && <Button size="sm" variant="outline" className="mt-3 w-full" disabled={!models.data} onClick={() => setSettingUp(true)}>Set up model</Button>}
           {!preview && available.options.length > 1 && <a className="mt-2 block text-center text-xs text-accent hover:underline" href="/portfolio?view=ai-keys">Manage AI keys</a>}
         </div>
-        {list.length > 1 && <div className="rounded-xl border border-border bg-surface p-4">
+        {!company && list.length > 1 && <div className="rounded-xl border border-border bg-surface p-4">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Building2 className="size-3.5" aria-hidden />Ask about</p>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ask about">
             <button type="button" aria-pressed={!focused} onClick={() => setFocus(null)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${!focused ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>All companies</button>
             {list.map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(focus === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${focus === item.id ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}
           </div>
         </div>}
-        {(shown.length > 0 || focused) && <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{focused ? `Try asking about ${focused.name}` : "Try asking"}</p>
+        {/* Once a conversation starts the opening suggestions are gone, so they move here. */}
+        {(shown.length > 0 || (focused && !company)) && <div className="rounded-xl border border-border bg-surface p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{focused && !company ? `Try asking about ${focused.name}` : "Try asking"}</p>
           <ul className="flex flex-col gap-1">{tries.map((text) => <li key={text}><button type="button" disabled={busy} onClick={() => void ask(text)} className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50">{text}</button></li>)}</ul>
         </div>}
         {!preview && <div className="rounded-xl border border-border bg-surface p-4">
@@ -162,14 +207,15 @@ export function Intelligence({ list, period }: { list: PortfolioCompany[]; perio
   </div>;
 }
 
-function Welcome({ count, onAsk }: { count: number; onAsk: (text: string) => void }) {
-  return <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-6 py-6 text-center">
+function Welcome({ count, company, department, onAsk }: { count: number; company?: PortfolioCompany; department?: DepartmentChat; onAsk: (text: string) => void }) {
+  const offered: [string, React.ComponentType<{ className?: string }>][] = department?.questions ?? (company ? ownSuggestions : suggestions);
+  return <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center gap-6 py-6 text-center">
     <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-muted text-accent"><Sparkles className="size-6" aria-hidden /></span>
     <div>
-      <h2 className="text-lg font-semibold">Ask about all {count} {count === 1 ? "company" : "companies"}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Every answer names the company and the figure behind it, and says when the records cannot answer.</p>
+      <h2 className="text-lg font-semibold">{department && company ? `Ask about ${department.name} at ${company.name}` : company ? `Ask about ${company.name}` : `Ask about all ${count} ${count === 1 ? "company" : "companies"}`}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{company ? "Every answer gives the figure behind it, and says when the records cannot answer." : "Every answer names the company and the figure behind it, and says when the records cannot answer."}</p>
     </div>
-    <div className="grid w-full gap-2 sm:grid-cols-2">{suggestions.map(([text, Icon]) => <button key={text} type="button" onClick={() => onAsk(text)} className="flex items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 text-left text-[13px] transition-colors hover:border-accent-border hover:bg-accent-muted">
+    <div className="grid w-full gap-2 sm:grid-cols-2">{offered.map(([text, Icon]) => <button key={text} type="button" onClick={() => onAsk(text)} className="flex items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 text-left text-[13px] transition-colors hover:border-accent-border hover:bg-accent-muted">
       <Icon className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden /><span>{text}</span>
     </button>)}</div>
   </div>;
@@ -197,7 +243,7 @@ function RulesAnswer({ answer }: { answer: Answer }) {
   return <>
     <p className="leading-relaxed">{answer.text}</p>
     {answer.rows && answer.rows.length > 0 && <Rows rows={answer.rows} />}
-    <p className="mt-2.5 text-[11px] text-muted-foreground">Janus rules · free · from the figures on the Portfolio</p>
+    <p className="mt-2.5 text-[11px] text-muted-foreground">Janus rules · free · {answer.knowledge ? "quoted from what you told Janus" : "from your records"}</p>
   </>;
 }
 

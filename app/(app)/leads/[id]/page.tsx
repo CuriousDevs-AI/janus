@@ -22,10 +22,12 @@ import {
 } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
 import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
+import { FollowUpBox, followUpWords, type LeadNote } from "@/components/crm/follow-up";
 import { useSession } from "@/components/auth/session-provider";
 import { LeadDeal } from "@/components/deals/deal-form";
 import { WhatsAppButton } from "@/components/inbox/whatsapp-button";
 import { Badge } from "@/components/ui/badge";
+import { lostWords } from "@/lib/lost-reasons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateTime } from "@/lib/utils";
@@ -179,6 +181,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const lead = useApi<Lead>(`/leads/${encodeURIComponent(id)}`);
   const deal = useApi<Deal>(lead.data?.dealId ? `/deals/${encodeURIComponent(lead.data.dealId)}` : null);
   const dealEvents = useApi<DealEvent[]>(deal.data ? `/deals/${encodeURIComponent(deal.data.id)}/events?limit=50` : null);
+  const notes = useApi<LeadNote[]>(`/leads/${encodeURIComponent(id)}/notes`);
 
   if (!lead.data) {
     return (
@@ -214,9 +217,25 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       : "Unassigned";
   const currentStage = stages.indexOf(leadData.stage as (typeof stages)[number]);
   const sourceLabel = label(leadData.source);
-  const hasRecentActivity = leadData.lastActivityAt !== leadData.createdAt;
+  // A follow-up note already explains its own activity; the generic line is for anything else.
+  const explained = (notes.data ?? []).some((note) => Math.abs(Date.parse(note.createdAt) - Date.parse(leadData.lastActivityAt)) < 5000);
+  const hasRecentActivity = leadData.lastActivityAt !== leadData.createdAt && !explained;
   // One list, newest first, as the timeline's label says.
   const timeline = [
+    ...(notes.data ?? []).map((note) => ({
+      key: `note-${note.id}`,
+      at: note.createdAt,
+      node: (
+        <TimelineItem
+          key={`note-${note.id}`}
+          icon={<MessageSquareText className="size-4" />}
+          title={`Follow-up${note.author ? ` · ${note.author}` : ""}`}
+          detail={`${note.body}${note.nextFollowUpOn ? ` Next follow-up ${followUpWords(note.nextFollowUpOn)}.` : ""}`}
+          time={formatDateTime(note.createdAt)}
+          tone="info"
+        />
+      ),
+    })),
     {
       key: "captured",
       at: leadData.createdAt,
@@ -330,6 +349,11 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               </div>
               <Badge variant={stageVariant(leadData.stage)}>{label(leadData.stage)}</Badge>
             </div>
+            {leadData.stage === "lost" && (leadData.lostCategory || leadData.lostReason) && (
+              <p className="mt-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
+                <span className="font-medium">Lost: </span>{lostWords(leadData.lostCategory, leadData.lostReason)}
+              </p>
+            )}
             <div className="mt-5 flex gap-1">
               {stages.map((stage, index) => {
                 const complete = leadData.stage !== "lost" && currentStage >= index;
@@ -345,6 +369,8 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               })}
             </div>
           </section>
+
+          <FollowUpBox leadId={leadData.id} onSaved={() => { notes.reload(); lead.reload(); }} />
 
           <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -412,6 +438,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd className="text-right font-medium">{sourceLabel}</dd></div>
               <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Owner</dt><dd className="text-right font-medium">{owner}</dd></div>
               <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Created</dt><dd className="text-right font-medium">{formatDateTime(leadData.createdAt)}</dd></div>
+              <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Next follow-up</dt><dd className={`text-right font-medium ${leadData.nextFollowUpOn && followUpWords(leadData.nextFollowUpOn).includes("overdue") ? "text-warning" : ""}`}>{leadData.nextFollowUpOn ? followUpWords(leadData.nextFollowUpOn) : "Not set"}</dd></div>
               {leadData.campaign && <div className="flex items-start justify-between gap-3"><dt className="text-muted-foreground">Campaign</dt><dd className="text-right font-medium">{leadData.campaign}</dd></div>}
             </dl>
             {leadData.recordingUrl && /^https?:\/\//.test(leadData.recordingUrl) && (

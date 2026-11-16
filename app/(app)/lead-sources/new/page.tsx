@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Building2, FileSpreadsheet, Globe, Key, MessageCircle, Phone, Users, Webhook } from "lucide-react";
+import { comingSoonSources, sourceOptions } from "@/lib/lead-source-options";
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { Preset, Source, SourceKind } from "@/lib/api/types";
@@ -13,18 +13,7 @@ import { SecretValue } from "@/components/lead-sources/secret-value";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-const sourceOptions = [
-  ["Website Form & Chat Widget", "Add a form to your website and capture enquiries automatically.", Globe, "/lead-sources/new?kind=embed"],
-  ["WhatsApp Business", "Connect Meta Cloud API for follow-ups and replies.", MessageCircle, "/lead-sources/whatsapp"],
-  ["Custom Webhook", "Receive leads from forms, ads, Zapier, Make or your own tools.", Webhook, "/lead-sources/new?kind=webhook&preset=custom"],
-  ["Phone Calls & Missed Calls", "Turn new caller numbers into leads with recordings attached.", Phone, "/lead-sources/new?kind=webhook&preset=exotel&calls=1"],
-  ["REST API", "Create leads from your own product with a scoped API key.", Key, "/lead-sources/new?kind=api_key"],
-  ["CSV Import", "Import a one-off list of leads with contact matching.", FileSpreadsheet, "/lead-sources/new?kind=csv"],
-] as const;
-const comingSoon = [
-  ["Meta Lead Ads", "Facebook and Instagram Instant Forms in one connection.", Users],
-  ["IndiaMART", "Pull enquiries using the seller's CRM API key.", Building2],
-] as const;
+const comingSoon = comingSoonSources;
 
 export default function Page() {
   return <Suspense fallback={<p className="p-6">Loading…</p>}><Setup /></Suspense>;
@@ -44,7 +33,7 @@ function Setup() {
       <Link href="/lead-sources" className="text-xs text-muted-foreground">← Lead Sources</Link>
       <h1 className="text-xl font-semibold">{created ? "Connection created" : selectedKind ? "Set up a lead source" : "Add a new lead source"}</h1>
       {!allowed ? (
-        <p className="text-sm">A verified owner or admin can configure sources.</p>
+        <p className="text-sm">{can(session, "sources:manage") ? <>Verify your email address first: a source receives customers&apos; details, so it needs a confirmed owner. Use the link in the email Janus sent you, or send it again from the banner at the top of the page.</> : "Ask an owner or admin to set up lead sources."}</p>
       ) : !selectedKind ? (
         <>
           <StepIndicator step={1} />

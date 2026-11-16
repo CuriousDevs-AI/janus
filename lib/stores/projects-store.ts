@@ -192,8 +192,9 @@ export const useProjectsStore = create<ProjectsState>()(
         const problem = await moveBudget("draw", input.budgetLineId, input.budget, `Project: ${input.name.trim()}`, by, TODAY);
         if (problem) return `Budget: ${problem}`;
         const id = `prj-${Date.now()}`;
+        const initialStatus = input.start <= TODAY ? "active" : "planned";
         set((state) => ({
-          projects: [...state.projects, { ...input, id, name: input.name.trim(), status: "planned", createdBy: by }],
+          projects: [...state.projects, { ...input, id, name: input.name.trim(), status: initialStatus, createdBy: by }],
           // Version 1 is the plan as first set, so every later change can be compared with it.
           versions: [...state.versions, { id: `pv-${Date.now()}`, projectId: id, number: 1, budget: input.budget, end: input.end, note: "Plan as first set", by, date: TODAY }],
           trail: withTrail(state.trail, trailEntry("projects", TODAY, by, `Created project ${input.name.trim()} · budget ₹${input.budget.toLocaleString("en-IN")} from ${line.name}`)),
@@ -203,7 +204,10 @@ export const useProjectsStore = create<ProjectsState>()(
       addMilestone: (input) => {
         if (input.name.trim().length < 3) return "Enter the milestone name.";
         if (input.amount < 0) return "The amount cannot be negative.";
-        set((state) => ({ milestones: [...state.milestones, { ...input, id: `ms-${Date.now()}`, status: "planned" }] }));
+        set((state) => ({
+          milestones: [...state.milestones, { ...input, id: `ms-${Date.now()}`, status: "planned" }],
+          projects: state.projects.map((p) => p.id === input.projectId && p.status === "planned" ? { ...p, status: "active" } : p),
+        }));
         return null;
       },
       completeMilestone: (id, by) => {
@@ -262,7 +266,10 @@ export const useProjectsStore = create<ProjectsState>()(
       },
       addTask: (input) => {
         if (input.title.trim().length < 3) return "Enter the task title.";
-        set((state) => ({ tasks: [...state.tasks, { ...input, id: `tk-${Date.now()}`, status: "todo" }] }));
+        set((state) => ({
+          tasks: [...state.tasks, { ...input, id: `tk-${Date.now()}`, status: "todo" }],
+          projects: state.projects.map((p) => p.id === input.projectId && p.status === "planned" ? { ...p, status: "active" } : p),
+        }));
         return null;
       },
       setTaskStatus: (id, status) => set((state) => ({ tasks: state.tasks.map((t) => t.id === id ? { ...t, status } : t) })),

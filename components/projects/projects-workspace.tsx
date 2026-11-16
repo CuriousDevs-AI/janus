@@ -30,6 +30,25 @@ import { message } from "@/lib/api/client";
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
+/** Load the company's team members from the directory API (real mode only). */
+function useDirectory() {
+  const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
+  React.useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api<{ user_id: string; name: string }[]>("/project-timelines/directory");
+        if (!cancelled) setPeople(list);
+      } catch {
+        /* without the directory the dropdowns stay empty */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  return people;
+}
+
 const comingSoon: Record<string, string> = {
 };
 
@@ -47,7 +66,7 @@ export function ProjectsWorkspace() {
       .catch((error: unknown) => toast.warning(`Some projects are not on the server yet: ${message(error)}`))
       .finally(() => setChecked(true));
   }, []);
-  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", calendar: "Project calendar", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery" };
+  const titles: Record<string, string> = { overview: "Delivery overview", timesheets: "Timesheets", resources: "Resource allocation", reports: "Project profitability", calendar: "Project calendar", projects: "Projects", milestones: "Milestones & billing", tasks: "Tasks", changes: "Change requests", "client-delivery": "Client delivery", timeline: "Project Timeline" };
 
   if (view in comingSoon) {
     return (
@@ -75,8 +94,8 @@ export function ProjectsWorkspace() {
             {view === "calendar" && <CalendarView />}
             {view === "client-delivery" && <ClientView />}
             {view === "timeline" && <TimelineView />}
-            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <OverviewView />}
-            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar"].includes(view) && <ProjectsTrail />}
+            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar", "timeline"].includes(view) && <OverviewView />}
+            {!["projects", "milestones", "tasks", "changes", "client-delivery", "timesheets", "resources", "reports", "calendar", "timeline"].includes(view) && <ProjectsTrail />}
           </>
         ) : null}
       </div>
@@ -98,6 +117,8 @@ function TimesheetsView({ me }: { me: string }) {
   const projects = useProjectsStore((state) => state.projects);
   const timesheets = useProjectsStore((state) => state.timesheets);
   const logHours = useProjectsStore((state) => state.logHours);
+  const directory = useDirectory();
+  const people = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directory.map((u) => ({ key: u.user_id, name: u.name }));
   const [projectId, setProjectId] = React.useState("");
   const [person, setPerson] = React.useState(me);
   const [date, setDate] = React.useState(TODAY);
@@ -119,7 +140,7 @@ function TimesheetsView({ me }: { me: string }) {
           <p className="text-xs text-muted-foreground">Log the hours a person worked on a project, by day. Hours are entered, not estimated. A day cannot go over 12 hours for one person.</p>
           <div className="grid gap-3 sm:grid-cols-6">
             <select aria-label="Project" className={selectClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Project…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <select aria-label="Person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}>{people.map((u) => <option key={u.key} value={u.name}>{u.name}</option>)}</select>
             <Input aria-label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             <Input aria-label="Hours" type="number" min={0.5} max={12} step={0.5} placeholder="Hours" value={hours} onChange={(e) => setHours(e.target.value)} />
             <Input aria-label="Note" placeholder="What was done" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -158,6 +179,8 @@ function ResourcesView() {
   const setAllocation = useProjectsStore((state) => state.setAllocation);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
+  const directory = useDirectory();
+  const people = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directory.map((u) => ({ key: u.user_id, name: u.name }));
   const [projectId, setProjectId] = React.useState("");
   const [person, setPerson] = React.useState("");
   const [percent, setPercent] = React.useState("");
@@ -177,19 +200,19 @@ function ResourcesView() {
         <CardContent className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-4">
             <select aria-label="Allocation project" className={selectClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Project…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <select aria-label="Allocation person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Allocation person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{people.map((u) => <option key={u.key} value={u.name}>{u.name}</option>)}</select>
             <Input aria-label="Share of week" type="number" min={1} max={100} placeholder="% of week" value={percent} onChange={(e) => setPercent(e.target.value)} />
             <Button disabled={!projectId || !person || !(Number(percent) > 0)} onClick={save}>Save share</Button>
           </div>
         </CardContent>
       </Card>
-      {users.map((u) => {
+      {people.map((u) => {
         const mine = allocations.filter((a) => a.person === u.name);
         const total = mine.reduce((sum, a) => sum + a.percent, 0);
         const logged = timesheets.filter((t) => t.person === u.name && t.date >= weekStart && t.date <= TODAY).reduce((sum, t) => sum + t.hours, 0);
         if (mine.length === 0 && logged === 0) return null;
         return (
-          <Card key={u.id}>
+          <Card key={u.key}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 {u.name}
@@ -216,6 +239,8 @@ function ProfitabilityView() {
   const timesheets = useProjectsStore((state) => state.timesheets);
   const rates = useProjectsStore((state) => state.rates);
   const setCostRate = useProjectsStore((state) => state.setCostRate);
+  const directoryPeople = useDirectory();
+  const costPeople = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directoryPeople.map((u) => ({ key: u.user_id, name: u.name }));
   const [person, setPerson] = React.useState("");
   const [hourly, setHourly] = React.useState("");
 
@@ -233,7 +258,7 @@ function ProfitabilityView() {
         <CardContent className="grid gap-3 text-sm">
           <p className="text-xs text-muted-foreground">Project cost is hours logged times what each person costs an hour. A person with no cost set uses ₹{DEFAULT_HOURLY_COST} an hour.</p>
           <div className="grid gap-3 sm:grid-cols-4">
-            <select aria-label="Cost person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Cost person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{costPeople.map((u) => <option key={u.key} value={u.name}>{u.name}</option>)}</select>
             <Input aria-label="Cost per hour" type="number" min={0} placeholder="₹ per hour" value={hourly} onChange={(e) => setHourly(e.target.value)} />
             <Button disabled={!person || hourly === ""} onClick={save}>Save cost</Button>
           </div>
@@ -305,7 +330,7 @@ function OverviewView() {
   const projects = useProjectsStore((state) => state.projects);
   const milestones = useProjectsStore((state) => state.milestones);
   const tasks = useProjectsStore((state) => state.tasks);
-  const counts = { active: projects.filter((p) => p.status === "active").length, late: projects.filter((p) => projectHealth(p, milestones, tasks) === "late").length, atRisk: projects.filter((p) => projectHealth(p, milestones, tasks) === "at risk").length, openTasks: tasks.filter((t) => t.status !== "done").length, overdueTasks: tasks.filter((t) => t.status !== "done" && t.due < TODAY).length };
+  const counts = { active: projects.filter((p) => p.status !== "done").length, late: projects.filter((p) => projectHealth(p, milestones, tasks) === "late").length, atRisk: projects.filter((p) => projectHealth(p, milestones, tasks) === "at risk").length, openTasks: tasks.filter((t) => t.status !== "done").length, overdueTasks: tasks.filter((t) => t.status !== "done" && t.due < TODAY).length };
   const to = (view: string, extra: Record<string, string> = {}) => workspaceHref("projects-delivery", view, extra);
   const order = { late: 0, "at risk": 1, "on track": 2, done: 3 } as const;
   return (
@@ -338,6 +363,7 @@ function ProjectsView({ me }: { me: string }) {
   const closeProject = useProjectsStore((state) => state.closeProject);
   const lines = useFinanceStore((state) => state.budgetLines);
   const [form, setForm] = React.useState({ name: "", client: "", customerId: "", type: PROJECT_TYPES[0] as string, owner: me, ownerId: "", start: TODAY, end: addDays(TODAY, 60), budget: "", budgetLineId: "" });
+  const [saving, setSaving] = React.useState(false);
   // The server's copy of each project's core fields is loaded when the screen opens (real mode only).
   React.useEffect(() => {
     if (demoMode) return;
@@ -350,22 +376,7 @@ function ProjectsView({ me }: { me: string }) {
     });
   }, []);
   // The company directory, for choosing an owner by account (real mode only).
-  const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
-  React.useEffect(() => {
-    if (demoMode) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await api<{ user_id: string; name: string }[]>("/project-timelines/directory");
-        if (!cancelled) setPeople(list);
-      } catch {
-        /* without the directory the owner is typed as before */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const people = useDirectory();
   const links = useCrmLinkOptions();
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
   const params = useSearchParams();
@@ -377,23 +388,29 @@ function ProjectsView({ me }: { me: string }) {
   const pickedProject = projects.find((p) => p.id === picked);
 
   async function save() {
-    const ownerChosen = form.ownerId || undefined;
-    const problem = await addProject({ name: form.name, client: form.client.trim() || "Internal", customerId: form.customerId || undefined, type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
-    if (problem) return toast.error(problem);
-    toast.success("Project created; its budget is drawn from the fund line");
-    setForm({ ...form, name: "", client: "", customerId: "", budget: "" });
-    // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
-    const created = useProjectsStore.getState().projects.at(-1);
-    if (created) {
-      mirrorNewProject(created, created.owner, ownerChosen)
-        .then((links) => { if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(created.id, links); })
-        .catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
-      syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
-        .then((result) => {
-          if (result) useProjectsStore.getState().linkPeople(created.id, result.links);
-          if (result && result.unmatched.length > 0) toast.warning(`Timeline created. Could not match: ${describeUnmatched(result.unmatched)}. Fix the names, then sync the team.`);
-        })
-        .catch((error: unknown) => toast.error(`Timeline not created: ${message(error)}`));
+    if (saving) return;
+    setSaving(true);
+    try {
+      const ownerChosen = form.ownerId || undefined;
+      const problem = await addProject({ name: form.name, client: form.client.trim() || "Internal", customerId: form.customerId || undefined, type: form.type as Project["type"], owner: form.owner.trim() || me, start: form.start, end: form.end, budget: Number(form.budget), budgetLineId: form.budgetLineId }, me);
+      if (problem) return toast.error(problem);
+      toast.success("Project created; its budget is drawn from the fund line");
+      setForm({ ...form, name: "", client: "", customerId: "", budget: "" });
+      // The project's timeline and team are created with it. A failure here is reported, never blocks the project.
+      const created = useProjectsStore.getState().projects.at(-1);
+      if (created) {
+        mirrorNewProject(created, created.owner, ownerChosen)
+          .then((links) => { if (Object.keys(links).length > 0) useProjectsStore.getState().linkPeople(created.id, links); })
+          .catch((error: unknown) => toast.warning(`Project saved here, but not on the server: ${message(error)}`));
+        syncProjectTimeline(created, projectPersonRefs(created, [], [], created.id))
+          .then((result) => {
+            if (result) useProjectsStore.getState().linkPeople(created.id, result.links);
+            if (result && result.unmatched.length > 0) toast.warning(`Timeline created. Could not match: ${describeUnmatched(result.unmatched)}. Fix the names, then sync the team.`);
+          })
+          .catch((error: unknown) => toast.error(`Timeline not created: ${message(error)}`));
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -414,7 +431,7 @@ function ProjectsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-budget">Budget (₹)</Label><Input id="pj-budget" type="number" min={0} value={form.budget} onChange={(e) => set({ budget: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="pj-line">Budget line</Label><select id="pj-line" className={selectClass} value={form.budgetLineId} onChange={(e) => set({ budgetLineId: e.target.value })}><option value="">Choose…</option>{lines.map((l) => <option key={l.id} value={l.id}>{l.name} · {money(l.allocated - l.drawn)} left</option>)}</select></div>
           </div>
-          <Button className="w-fit" onClick={save}>Create project</Button>
+          <Button className="w-fit" disabled={saving} onClick={save}>{saving ? "Creating…" : "Create project"}</Button>
         </CardContent>
       </Card>
       {projects.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-2">
@@ -524,7 +541,8 @@ function MilestonesView({ me }: { me: string }) {
                     <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">
                       {m.status === "planned" ? <Button size="sm" variant="secondary" onClick={() => { const p = complete(m.id, me); if (p) toast.error(p); else { mirrorMilestoneStatus(m.projectId, m.id, "done").catch((error: unknown) => toast.warning(`Not updated on the server: ${message(error)}`)); toast.success("Marked complete"); } }}>Mark complete</Button> : null}
                       {m.status === "done" && m.dispute ? <span className="self-center text-xs text-muted-foreground">Resolve the dispute to accept</span> : null}
-                      {m.status === "done" && !m.dispute ? <Button size="sm" variant="secondary" onClick={() => { void accept(m.id, me).then((p) => { if (p) toast.error(p); else { mirrorMilestoneStatus(m.projectId, m.id, "accepted").catch((error: unknown) => toast.warning(`Not accepted on the server: ${message(error)}`)); toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); } }); }}>Accept</Button> : null}
+                      {m.status === "done" && !m.dispute && m.completedBy === me ? <span className="self-center text-xs text-muted-foreground">Completed by you — someone else must accept</span> : null}
+                      {m.status === "done" && !m.dispute && m.completedBy !== me ? <Button size="sm" variant="secondary" onClick={() => { void accept(m.id, me).then((p) => { if (p) toast.error(p); else { mirrorMilestoneStatus(m.projectId, m.id, "accepted").catch((error: unknown) => toast.warning(`Not accepted on the server: ${message(error)}`)); toast.success(m.amount > 0 ? "Accepted; invoice created in Finance" : "Accepted"); } }); }}>Accept</Button> : null}
                     </div></td>
                   </tr>
                 );

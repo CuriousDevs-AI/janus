@@ -86,6 +86,11 @@ export interface Lead {
   recordingReference: string | null;
   createdAt: string;
   lastActivityAt: string;
+  /** When someone agreed to follow up next, if a date was set. */
+  nextFollowUpOn?: string | null;
+  lostCategory?: import("@/lib/lost-reasons").LostCategory | null;
+  lostReason?: string;
+  lostAt?: string | null;
 }
 export interface Contact {
   id: string;
@@ -190,7 +195,9 @@ export interface Deal {
   amount: string;
   stage: import("@/lib/types").DealStage;
   expectedCloseAt: string | null;
+  lostCategory?: import("@/lib/lost-reasons").LostCategory | null;
   lostReason: string;
+  lostAt?: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -199,6 +206,7 @@ export interface DealEvent {
   id: string;
   action: string;
   userId: string | null;
+  userName: string | null;
   details: Record<string, string | number | boolean>;
   createdAt: string;
 }

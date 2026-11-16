@@ -168,6 +168,10 @@ async def raise_fund_request(
         ip=request_ip(request),
         details={"request": row.number, "amount_paise": data.amount_paise},
     )
+    # Workflows that start on a spend request (telling the approvers, for one) run for this one.
+    from janus_api.business.service import enqueue_event
+
+    await enqueue_event(db, tenant_id, "spend_requested", {"fund_request_id": row.id})
     return _out(row)
 
 

@@ -10,6 +10,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import {
   ChevronsUpDown,
   Circle,
+  Inbox,
   Plus,
 } from "lucide-react";
 import {
@@ -212,6 +213,48 @@ export function SidebarNav({
 
       {/* Nav. In Team Chat the chats themselves take the menu's place, as in WhatsApp. */}
       {teamChatList ? <TeamChatSidebarList onNavigate={onNavigate} /> : <nav className="flex-1 overflow-y-auto py-3">
+        {/* Work Inbox: the one cross-workspace page, always at the top of every sidebar. */}
+        {workspaceId !== "portfolio" && <div className={cn("mb-4", collapsed ? "px-2" : "px-3")}>
+          <ul className="flex flex-col gap-0.5">
+            <li>
+              {collapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href="/work"
+                      onClick={onNavigate}
+                      aria-current={pathname === "/work" ? "page" : undefined}
+                      className={cn(
+                        "group flex items-center justify-center gap-2.5 rounded-md px-0 py-2 text-[13px] transition-colors",
+                        pathname === "/work"
+                          ? "bg-accent-muted text-foreground"
+                          : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+                      )}
+                    >
+                      <Inbox className={cn("size-3.5 shrink-0", pathname === "/work" && "text-accent")} />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Work Inbox</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Link
+                  href="/work"
+                  onClick={onNavigate}
+                  aria-current={pathname === "/work" ? "page" : undefined}
+                  className={cn(
+                    "group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition-colors",
+                    pathname === "/work"
+                      ? "bg-accent-muted text-foreground"
+                      : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+                  )}
+                >
+                  <Inbox className={cn("size-3.5 shrink-0", pathname === "/work" && "text-accent")} />
+                  <span className="truncate">Work Inbox</span>
+                </Link>
+              )}
+            </li>
+          </ul>
+        </div>}
         {visibleSections.map((section) => (
           <div
             key={section.title}
@@ -309,6 +352,17 @@ export function SidebarNav({
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel className="break-all normal-case tracking-normal" title={currentUser.email}>{currentUser.email}</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {/* You as a person, the same in every workspace: profile, password and devices, emails. */}
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=profile&workspace=${workspaceId}`}>My account</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=security&workspace=${workspaceId}`}>Password and devices</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=notifications&workspace=${workspaceId}`}>Notifications</Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {/* Settings belong to one company, so from the Portfolio each company's are reached from
                 its page. The plan belongs to the account and lives in the Portfolio. */}
             {workspaceId === "portfolio" ? <>
@@ -323,7 +377,7 @@ export function SidebarNav({
               </DropdownMenuItem>
             </> : <>
               <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
+                <Link href={workspaceId === "business" ? "/settings?tab=workspace&view=settings&workspace=business" : "/settings"}>Company settings</Link>
               </DropdownMenuItem>
             </>}
             <DropdownMenuSeparator />

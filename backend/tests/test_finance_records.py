@@ -125,7 +125,7 @@ async def test_a_payment_more_than_is_due_is_refused(
     assert exact.status_code == 201 and exact.json()["due_paise"] == 0
 
 
-async def test_credit_notes_need_another_approver_and_pending_notes_reduce_what_is_due(
+async def test_credit_notes_need_another_approver_and_pending_notes_do_not_reduce_due(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:
     owner = await signup(client, mailbox)
@@ -142,7 +142,8 @@ async def test_credit_notes_need_another_approver_and_pending_notes_reduce_what_
     }
     raised = await client.post(url, headers={**owner.headers, **_key("cn-1")}, json=note_body)
     assert raised.status_code == 201, raised.text
-    assert raised.json()["due_paise"] == TOTAL - 1000000
+    # A pending credit note does not reduce what is due (correctness.md).
+    assert raised.json()["due_paise"] == TOTAL
     note = raised.json()["credit_notes"][0]
     assert note["number"] == "CN-2026-0101" and note["status"] == "pending"
 
@@ -152,6 +153,8 @@ async def test_credit_notes_need_another_approver_and_pending_notes_reduce_what_
     approved = await client.post(f"/v1/finance/credit-notes/{note['id']}/approve", headers=second)
     assert approved.status_code == 200
     assert approved.json()["credit_notes"][0]["approved_by"]
+    # Once approved, the credit note reduces what is due.
+    assert approved.json()["due_paise"] == TOTAL - 1000000
     again = await client.post(f"/v1/finance/credit-notes/{note['id']}/approve", headers=second)
     assert again.status_code == 409 and again.json()["error"]["code"] == "not_pending"
 

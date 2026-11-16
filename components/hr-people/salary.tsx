@@ -30,7 +30,7 @@ export function HrSalaryView({ role, actorId }: { role: HrDemoRole; actorId: str
   const years = [...new Set([fyOf(`${latest}-01`), fyOf(`${first}-01`), fyOf(hrToday())])].sort((a, b) => b - a);
   const [fy, setFy] = React.useState(years[0]);
   const [open, setOpen] = React.useState<Line | null>(null);
-  if (!employee) return <HrPanel title="Salary"><HrEmpty>This account is not linked to an employee record.</HrEmpty></HrPanel>;
+  if (!employee) return <HrPanel title="Salary"><HrEmpty>This account is not linked to an employee record. Ask HR to link your account.</HrEmpty></HrPanel>;
 
   const rows: Row[] = fyMonths(fy).filter((key) => key <= latest).flatMap((key) => {
     const slip = buildPayslip(employee, key);
