@@ -70,9 +70,8 @@ def permissions_of(member: Membership, role: Role) -> list[str]:
 
 SYSTEM_ROLES = {
     "owner": sorted(PERMISSIONS),
-    "admin": sorted(
-        PERMISSIONS - {"billing:manage", "portfolio:read", "portfolio:finance", "portfolio:share"}
-    ),
+    # Reads this company's figures (migration 0083); sharing it stays the Owner's.
+    "admin": sorted(PERMISSIONS - {"billing:manage", "portfolio:share"}),
     "manager": [
         "leads:read_own",
         "leads:read_team",

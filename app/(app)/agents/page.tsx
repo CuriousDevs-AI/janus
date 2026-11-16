@@ -17,6 +17,7 @@ import { api, message } from "@/lib/api/client";
 import { leadSourceConnections } from "@/lib/mock-data/lead-sources";
 import { toast } from "sonner";
 import { demoMode } from "@/lib/demo-mode";
+import { LiveAgents } from "@/components/business/agents-live";
 import { WorkspaceCopyDialog, workspaceCopyOptions, type WorkspaceCopyTarget } from "@/components/workspace-copy-dialog";
 
 type Agent = { id: string; key: string; name: string; department: string; status: string; workspaceId: string | null; configuration: Record<string, unknown> };
@@ -45,6 +46,11 @@ const demoExecutions: Execution[] = [
 
 const workspaceNames: Record<string, string> = { crm_sales: "CRM & Sales", finance_accounting: "Finance & Accounting", customer_support: "Customer Support & Success", operations_inventory: "Operations & Inventory", hr_people: "HR & People", projects_delivery: "Projects & Delivery", it_infrastructure: "IT & Infrastructure", business: "Business" };
 export default function AgentsPage() {
+  // A real business gets agents that run; the demo keeps its preview.
+  return demoMode ? <AgentsPreview /> : <LiveAgents />;
+}
+
+function AgentsPreview() {
   const router = useRouter(); const params = useSearchParams();
   const agents = useApi<Agent[]>("/business/agents"); const workflows = useApi<Workflow[]>("/business/automations"); const executions = useApi<Execution[]>("/business/automations/executions"); const workspaces = useApi<Workspace[]>("/workspaces");
   const [newAgent, setNewAgent] = React.useState(false); const [newWorkflow, setNewWorkflow] = React.useState(false); const [settings, setSettings] = React.useState(false); const [detail, setDetail] = React.useState<Agent | null>(null); const [editAgent, setEditAgent] = React.useState<Agent | null>(null); const [editWorkflow, setEditWorkflow] = React.useState<Workflow | null>(null); const [notice, setNotice] = React.useState(""); const [copyAgent, setCopyAgent] = React.useState<Agent | null>(null);

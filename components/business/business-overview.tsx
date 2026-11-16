@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, CircleCheck, FileCheck2, Gavel } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { FilterChips, StatTile, workspaceHref } from "@/components/shared/stat-tile";
-import { change, day, healthName, healthTone, inr, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
+import { change, day, healthName, healthTone, inr, KeyRatios, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
 const card = "rounded-xl border border-[#e4e4df] bg-white p-5";
@@ -69,6 +69,8 @@ export function LiveBusinessOverview({ company, period, onPeriod, stale }: { com
           : <StatTile label="Members" value={String(company.members)} detail="People who can sign in" href="/settings?tab=team" />}
       </div>
     </div>
+
+    <KeyRatios company={company} financeHref={finance("receivables")} crmHref={crm("/deals")} />
 
     <div className="grid gap-4 xl:grid-cols-2">
       <section className={card} aria-label="Waiting for a decision">

@@ -21,7 +21,6 @@ from janus_api.org.service import membership
 router = APIRouter(prefix="/v1", tags=["Business management"])
 Owner = Annotated[Actor, Depends(require("workspaces:manage"))]
 Reports = Annotated[Actor, Depends(require("reports:read"))]
-Intelligence = Annotated[Actor, Depends(require("ai:manage"))]
 Agents = Annotated[Actor, Depends(require("agents:manage"))]
 Automations = Annotated[Actor, Depends(require("automations:manage"))]
 
@@ -87,18 +86,6 @@ async def update_workspace_member(
 @router.get("/business/reports/summary", response_model=schemas.ReportSummary)
 async def report_summary(actor: Reports, db: Db) -> schemas.ReportSummary:
     return await service.report_summary(db, actor.session.tenant_id)
-
-
-@router.post("/business/intelligence/ask", response_model=schemas.IntelligenceAnswer)
-async def intelligence(
-    data: schemas.IntelligenceAsk, actor: Intelligence, db: Db
-) -> schemas.IntelligenceAnswer:
-    workspace_id = await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, data.workspaceId
-    )
-    return await service.intelligence_answer(
-        db, actor.session.tenant_id, data.question, workspace_id
-    )
 
 
 @router.get("/business/agents", response_model=list[schemas.AgentOut])

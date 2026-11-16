@@ -11,6 +11,8 @@ import { useSession } from "@/components/auth/session-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LostReasonFields } from "@/components/crm/lost-reason-fields";
+import type { LostCategory } from "@/lib/lost-reasons";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,8 @@ export function DealForm({
   onSaved: (deal: Deal) => void;
 }) {
   const [stage, setStage] = useState<DealStage>(deal?.stage ?? "new");
+  const [lostCategory, setLostCategory] = useState<LostCategory | "">(deal?.lostCategory ?? (deal?.lostReason ? "other" : ""));
+  const [lostReason, setLostReason] = useState(deal?.lostReason ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
@@ -50,7 +54,8 @@ export function DealForm({
                 amount: data.get("amount"),
                 stage,
                 expectedCloseAt: data.get("expectedCloseAt") || null,
-                lostReason: data.get("lostReason") || "",
+                lostCategory: stage === "lost" ? lostCategory || null : null,
+                lostReason: stage === "lost" ? lostReason : "",
                 ...(deal ? { version: deal.version } : {}),
               }),
             },
@@ -115,16 +120,12 @@ export function DealForm({
           </select>
         </div>
         {stage === "lost" && (
-          <div className="space-y-1.5">
-            <Label htmlFor="deal-loss">Why was this deal lost?</Label>
-            <Input
-              id="deal-loss"
-              name="lostReason"
-              required
-              maxLength={1000}
-              defaultValue={deal?.lostReason ?? ""}
-            />
-          </div>
+          <LostReasonFields
+            id="deal-loss"
+            category={lostCategory}
+            note={lostReason}
+            onChange={(category, note) => { setLostCategory(category); setLostReason(note); }}
+          />
         )}
         {stage === "approval" && (
           <p className="text-xs text-muted-foreground">
