@@ -221,7 +221,7 @@ export function SidebarNav({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Link
-                      href="/work"
+                      href={`/work?workspace=${workspaceId}`}
                       onClick={onNavigate}
                       aria-current={pathname === "/work" ? "page" : undefined}
                       className={cn(
@@ -238,7 +238,7 @@ export function SidebarNav({
                 </Tooltip>
               ) : (
                 <Link
-                  href="/work"
+                  href={`/work?workspace=${workspaceId}`}
                   onClick={onNavigate}
                   aria-current={pathname === "/work" ? "page" : undefined}
                   className={cn(

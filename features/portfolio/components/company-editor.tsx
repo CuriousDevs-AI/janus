@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, message } from "@/lib/api/client";
+import { invalidatePortfolioCache } from "@/features/portfolio/lib/use-portfolio-api";
 import { businessModels, businessOrder } from "@/features/portfolio/lib/business";
 import type { BusinessModel, EntityType, LeaderRole, PortfolioCompany, PortfolioPersonRecord, PortfolioRegistration } from "@/features/portfolio/types";
 
@@ -48,6 +49,7 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
         await api(`/portfolio/companies/${item.id}/details`, { method: "PUT", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), companySize: size, businessModel: model }) });
       }
       await api(`/portfolio/companies/${item.id}/registration`, { method: "PUT", body: JSON.stringify({ ...form, directors: people.map((person) => ({ name: person.name.trim(), din: person.din?.trim() || null, roles: person.roles, title: person.title?.trim() || null })) }) });
+      invalidatePortfolioCache();
       toast.success(`${basics ? name.trim() : item.name} saved.`);
       onSaved();
       onClose();

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Annotated
 from urllib.parse import quote
 
@@ -57,6 +58,11 @@ async def leave(space_id: int, actor: CurrentActor, db: Db) -> schemas.SpaceOut:
 @router.get("/conversations", response_model=list[schemas.SpaceOut])
 async def conversations(actor: CurrentActor, db: Db) -> list[schemas.SpaceOut]:
     return await service.list_conversations(db, actor)
+
+
+@router.post("/notes", response_model=schemas.SpaceOut)
+async def my_notes(actor: CurrentActor, db: Db) -> schemas.SpaceOut:
+    return await service.my_notes(db, actor)
 
 
 @router.post("/conversations", response_model=schemas.SpaceOut, status_code=201)
@@ -257,6 +263,60 @@ async def remove_member(
     return await service.remove_member(db, actor, space_id, user_id)
 
 
+@router.post("/spaces/{space_id}/members", response_model=schemas.SpaceOut, status_code=201)
+async def add_space_member(
+    space_id: int, data: schemas.AddMemberIn, actor: CurrentActor, db: Db
+) -> schemas.SpaceOut:
+    return await service.add_member(db, actor, space_id, data.user_id)
+
+
+@router.delete("/spaces/{space_id}/members/{user_id}", response_model=schemas.SpaceOut)
+async def remove_space_member(
+    space_id: int, user_id: int, actor: CurrentActor, db: Db
+) -> schemas.SpaceOut:
+    return await service.remove_member(db, actor, space_id, user_id)
+
+
+@router.post("/spaces/{space_id}/favourite", status_code=200)
+async def toggle_favourite(space_id: int, actor: CurrentActor, db: Db) -> dict[str, bool]:
+    active = await service.toggle_favourite(db, actor, space_id)
+    return {"favourite": active}
+
+
+@router.post("/spaces/{space_id}/mute", status_code=200)
+async def toggle_mute(space_id: int, actor: CurrentActor, db: Db) -> dict[str, bool]:
+    active = await service.toggle_mute(db, actor, space_id)
+    return {"muted": active}
+
+
+@router.get("/spaces/{space_id}/detail", response_model=schemas.SpaceDetailOut)
+async def get_space_detail(space_id: int, actor: CurrentActor, db: Db) -> schemas.SpaceDetailOut:
+    return await service.space_detail(db, actor, space_id)
+
+
+@router.patch("/spaces/{space_id}/topic", status_code=204)
+async def patch_topic(space_id: int, data: schemas.TopicIn, actor: CurrentActor, db: Db) -> None:
+    await service.update_topic(db, actor, space_id, data)
+
+
+@router.patch("/spaces/{space_id}/settings", response_model=schemas.SpaceOut)
+async def update_settings(
+    space_id: int, data: schemas.SpaceSettingsIn, actor: CurrentActor, db: Db
+) -> schemas.SpaceOut:
+    return await service.update_space_settings(db, actor, space_id, data.name, data.topic)
+
+
+@router.get("/spaces/{space_id}/media", response_model=list[schemas.AttachmentGalleryOut])
+async def space_media(
+    space_id: int,
+    actor: CurrentActor,
+    db: Db,
+    kind: str = Query(default="all", pattern="^(all|images|docs)$"),
+    limit: Limit = 50,
+) -> list[schemas.AttachmentGalleryOut]:
+    return await service.space_media(db, actor, space_id, kind, limit)
+
+
 @router.post("/messages/{message_id}/save", response_model=schemas.MessageOut)
 async def save_msg(message_id: int, actor: CurrentActor, db: Db) -> schemas.MessageOut:
     return await service.save_message(db, actor, message_id)
@@ -285,6 +345,11 @@ async def mark_seen(message_id: int, actor: CurrentActor, db: Db) -> dict[str, o
 @router.get("/messages/{message_id}/seen")
 async def seen_by(message_id: int, actor: CurrentActor, db: Db) -> list[dict[str, object]]:
     return await service.seen_by(db, actor, message_id)
+
+
+@router.get("/messages/{message_id}/info", response_model=schemas.MessageInfoOut)
+async def message_info(message_id: int, actor: CurrentActor, db: Db) -> schemas.MessageInfoOut:
+    return await service.message_info(db, actor, message_id)
 
 
 @router.post(
@@ -344,12 +409,45 @@ async def typing(data: schemas.TypingIn, actor: CurrentActor) -> Response:
 
 @router.get("/typing/{space_id}")
 async def who_typing(space_id: int, actor: CurrentActor, db: Db) -> dict[str, object]:
-    uid = service.get_typing(actor.session.tenant_id, space_id)
-    if uid is None or uid == actor.user.id:
-        return {"typing": None}
+    uids = service.get_typing_users(actor.session.tenant_id, space_id, exclude=actor.user.id)
+    if not uids:
+        return {"typing": []}
     people = await service.list_people(db, actor)
-    name = next((p.name for p in people if p.id == uid), None)
-    return {"typing": {"userId": uid, "name": name} if name else None}
+    by_id = {p.id: p.name for p in people}
+    return {"typing": [{"userId": uid, "name": by_id[uid]} for uid in uids if uid in by_id]}
+
+
+@router.post(
+    "/spaces/{space_id}/schedule",
+    response_model=schemas.ScheduledOut,
+    status_code=201,
+)
+async def schedule_message(
+    space_id: int,
+    data: schemas.ScheduleIn,
+    actor: CurrentActor,
+    db: Db,
+) -> schemas.ScheduledOut:
+    return await service.schedule_message(db, actor, space_id, data)
+
+
+@router.get("/scheduled", response_model=list[schemas.ScheduledOut])
+async def list_scheduled(actor: CurrentActor, db: Db) -> list[schemas.ScheduledOut]:
+    return await service.list_scheduled(db, actor)
+
+
+@router.delete("/scheduled/{scheduled_id}", status_code=204)
+async def cancel_scheduled(scheduled_id: int, actor: CurrentActor, db: Db) -> Response:
+    await service.cancel_scheduled(db, actor, scheduled_id)
+    return Response(status_code=204)
+
+
+@router.get("/link-preview")
+async def link_preview(
+    url: Annotated[str, Query(min_length=10, max_length=2000)],
+    actor: CurrentActor,
+) -> dict[str, str]:
+    return service.fetch_link_preview(url)
 
 
 @router.post("/spaces/{space_id}/files", response_model=schemas.MessageOut, status_code=201)
@@ -395,8 +493,21 @@ async def find_messages(
     db: Db,
     q: str = Query(min_length=2, max_length=100),
     limit: Limit = 20,
+    from_user: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    space_id: int | None = None,
 ) -> list[schemas.SearchHit]:
-    return await service.search(db, actor, q.strip(), limit)
+    return await service.search(
+        db,
+        actor,
+        q.strip(),
+        limit,
+        from_user=from_user,
+        date_from=date_from,
+        date_to=date_to,
+        space_id=space_id,
+    )
 
 
 # ---- Voice calls -------------------------------------------------------------------------------

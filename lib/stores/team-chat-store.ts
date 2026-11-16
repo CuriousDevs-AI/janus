@@ -7,6 +7,7 @@ export interface TeamChatActions {
   create: () => void;
   newMessage: () => void;
   searchMessages: () => void;
+  refresh: () => void;
 }
 
 interface TeamChatState {

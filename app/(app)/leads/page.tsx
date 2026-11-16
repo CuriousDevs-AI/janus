@@ -62,6 +62,8 @@ import { followUpWords, isDue } from "@/components/crm/follow-up";
 import { useApi } from "@/lib/api/use-api";
 import { LostReasonFields } from "@/components/crm/lost-reason-fields";
 import type { LostCategory } from "@/lib/lost-reasons";
+import { LeadDetailDrawer } from "@/components/crm/lead-detail";
+import { ImportDialog } from "@/components/crm/import-dialog";
 
 type Row = { lead: Lead };
 type EditForm = {
@@ -179,11 +181,14 @@ export default function LeadsPage() {
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   // Leads whose follow-up falls today or has passed: the list a salesperson works through first.
   const [dueOnly, setDueOnly] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [ownerFilter, setOwnerFilter] = useState<"all" | "mine" | "none">("all");
   const [editing, setEditing] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -223,7 +228,10 @@ export default function LeadsPage() {
     const controller = new AbortController();
     const load = async () => {
       const searchParam = serverQuery ? `&q=${encodeURIComponent(serverQuery)}` : "";
-      const leads = await api<Lead[]>(`/leads?limit=50&after_id=${after}${searchParam}`, {
+      const stageParam = stageFilter !== "all" ? `&stage=${encodeURIComponent(stageFilter)}` : "";
+      const sourceParam = sourceFilter !== "all" ? `&source=${encodeURIComponent(sourceFilter)}` : "";
+      const ownerParam = ownerFilter === "mine" ? `&owner_id=${session.user.id}` : "";
+      const leads = await api<Lead[]>(`/leads?limit=50&after_id=${after}${searchParam}${stageParam}${sourceParam}${ownerParam}`, {
         signal: controller.signal,
       });
       if (!controller.signal.aborted)
@@ -237,7 +245,7 @@ export default function LeadsPage() {
         setResult({ after, rows: demoMode ? demoLeadRows.map((lead) => ({ lead })) : [], error: message(error) });
     });
     return () => controller.abort();
-  }, [after, version, serverQuery]);
+  }, [after, version, serverQuery, stageFilter, sourceFilter, ownerFilter, session.user.id]);
 
   const loaded = result?.after === after ? result : null;
   const usingDemo = demoMode && Boolean(loaded?.error);
@@ -248,13 +256,10 @@ export default function LeadsPage() {
   // Who a lead can be given to: the company's active members, for those who may assign.
   const members = useApi<{ user_id: string | number; name: string; status: string }[]>(!demoMode && canAssign ? "/members/directory" : null);
   const people = demoMode ? assignees.map((item) => ({ id: item.crmUserId, label: `${item.name} · ${item.title}` })) : (members.data ?? []).filter((item) => item.status === "active").map((item) => ({ id: String(item.user_id), label: item.name }));
-  const [ownerFilter, setOwnerFilter] = useState<"all" | "mine" | "none">("all");
   const [assigning, setAssigning] = useState(false);
   const [assignTo, setAssignTo] = useState("none");
-  const sources = useMemo(
-    () => [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])],
-    [loaded],
-  );
+  const filterOpts = useApi<{ stages: string[]; sources: string[]; owners: { id: string; name: string }[] }>(!demoMode ? "/leads/filter-options" : null);
+  const sources = filterOpts.data?.sources ?? [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])];
   const rows = useMemo(() => {
     return (
       loaded?.rows.filter(({ lead }) => {
@@ -411,10 +416,15 @@ export default function LeadsPage() {
               Refresh
             </Button>
             {can(session, "leads:write") && (
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="size-3.5" />
-                Add lead
-              </Button>
+              <>
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="size-3.5" />
+                  Add lead
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setImporting(true)}>
+                  Import CSV
+                </Button>
+              </>
             )}
             {can(session, "sources:manage") && (
               <Button size="sm" variant="secondary" asChild>
@@ -585,7 +595,8 @@ export default function LeadsPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${displayName}`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {!usingDemo && <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5" />View lead</Link></DropdownMenuItem>}
+                          {!usingDemo && <DropdownMenuItem onSelect={() => setDrawerLead(lead)}><Eye className="size-3.5" />Quick view</DropdownMenuItem>}
+                          {!usingDemo && <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5" />Full page</Link></DropdownMenuItem>}
                           {canEditRows && <DropdownMenuItem onSelect={() => openEdit(row)}><Pencil className="size-3.5" />Edit and update</DropdownMenuItem>}
                           {canEditRows && <><DropdownMenuSeparator /><DropdownMenuItem variant="destructive" onSelect={() => { setActionError(""); setDeleting(row); }}><Trash2 className="size-3.5" />Delete lead</DropdownMenuItem></>}
                         </DropdownMenuContent>
@@ -603,6 +614,8 @@ export default function LeadsPage() {
       <div className="flex gap-2 p-6"><Button size="sm" variant="ghost" onClick={() => { setAfter("0"); setVersion((value) => value + 1); }}>First page</Button><Button size="sm" variant="secondary" disabled={!loaded || loaded.rows.length !== 50} onClick={() => setAfter(loaded!.rows.at(-1)!.lead.id)}>Next 50</Button></div>
 
       <AddLeadDialog open={adding} onOpenChange={setAdding} onAdded={() => { setAfter("0"); setVersion((value) => value + 1); }} />
+      <ImportDialog open={importing} onOpenChange={setImporting} onDone={() => { setAfter("0"); setVersion((value) => value + 1); }} />
+      <LeadDetailDrawer lead={drawerLead} open={Boolean(drawerLead)} onOpenChange={(open) => { if (!open) setDrawerLead(null); }} onUpdated={() => setVersion((value) => value + 1)} />
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>

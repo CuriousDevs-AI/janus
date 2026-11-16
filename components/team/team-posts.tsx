@@ -175,6 +175,11 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
                       <span className="text-xs font-medium tabular-nums text-muted-foreground">{option.votes} · {share}%</span>
                     </span>
                   </button>
+                  {!poll.anonymous && option.voters.length > 0 ? (
+                    <p className="mt-0.5 truncate pl-6 text-[10px] text-muted-foreground">
+                      {option.voters.map((v) => v.name).join(", ")}
+                    </p>
+                  ) : null}
                 </li>
               );
             })}
@@ -228,6 +233,21 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
               </button>
             ))}
           </div>
+          {event.goingNames.length > 0 ? (
+            <p className="mt-2 truncate text-[10px] text-muted-foreground">
+              <span className="font-medium text-success">Going:</span> {event.goingNames.map((p) => p.name).join(", ")}
+            </p>
+          ) : null}
+          {event.maybeNames.length > 0 ? (
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+              <span className="font-medium text-warning">Maybe:</span> {event.maybeNames.map((p) => p.name).join(", ")}
+            </p>
+          ) : null}
+          {event.declinedNames.length > 0 ? (
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+              <span className="font-medium">Declined:</span> {event.declinedNames.map((p) => p.name).join(", ")}
+            </p>
+          ) : null}
           <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground"><Face name={item.author.name} /> Planned by {item.mine ? "you" : item.author.name}</p>
         </div>
       </article>

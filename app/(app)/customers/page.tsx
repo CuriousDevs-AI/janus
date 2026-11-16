@@ -16,6 +16,7 @@ import { useApi } from "@/lib/api/use-api";
 import type { Contact, Deal, Lead } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
+import { CustomerDetailPanel } from "@/components/crm/customer-detail";
 
 type Filter = "all" | "active" | "won" | "needs_attention";
 
@@ -64,6 +65,7 @@ export default function CustomersPage() {
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
   const [afterId, setAfterId] = React.useState("0");
+  const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null);
 
   // Debounce search to avoid a request per keystroke.
   React.useEffect(() => {
@@ -145,6 +147,14 @@ export default function CustomersPage() {
     else customers.reload();
   }
 
+  if (selectedContactId && !demoMode) {
+    return (
+      <div className="mx-auto flex max-w-[1400px] flex-col h-full">
+        <CustomerDetailPanel contactId={selectedContactId} onBack={() => setSelectedContactId(null)} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
       <PageHeader
@@ -216,7 +226,7 @@ export default function CustomersPage() {
               const dealValue = Number(row.dealValue);
               const name = displayName(row);
               return (
-                <TableRow key={row.contactId} className="cursor-pointer" onClick={() => router.push(`/customers/${row.contactId}`)}>
+                <TableRow key={row.contactId} className="cursor-pointer" onClick={() => setSelectedContactId(row.contactId)}>
                   <TableCell><div className="flex items-center gap-2"><CustomerAvatar name={name} color="#4169e1" size="sm" /><span className="font-medium text-foreground">{name}</span></div></TableCell>
                   <TableCell className="text-muted-foreground">{row.company || "—"}</TableCell>
                   <TableCell className="capitalize text-muted-foreground">{row.stage.replaceAll("_", " ")}</TableCell>

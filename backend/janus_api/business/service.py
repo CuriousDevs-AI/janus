@@ -122,6 +122,8 @@ async def update_setup(
             "setup_steps": data.completedSteps,
         }
     record(db, "business.setup_updated", tenant_id=tenant_id, user_id=user_id, ip=ip)
+    from janus_api.portfolio.summary import invalidate_summary
+    invalidate_summary(user_id)
     return await get_setup(db, tenant_id)
 
 

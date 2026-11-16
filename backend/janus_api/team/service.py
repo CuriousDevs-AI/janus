@@ -11,6 +11,7 @@ import hmac
 import re
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -31,9 +32,12 @@ from janus_api.team.models import (
     TeamReaction,
     TeamResponse,
     TeamSavedMessage,
+    TeamScheduledMessage,
     TeamSignal,
     TeamSpace,
+    TeamSpaceFavourite,
     TeamSpaceMember,
+    TeamSpaceMute,
     TeamVoicePresence,
 )
 
@@ -133,6 +137,8 @@ def _title(space: TeamSpace, others: list[schemas.PersonOut]) -> str:
     if space.kind == "voice":
         return space.name or "Voice"
     if space.kind == "dm":
+        if space.source_kind == "notes":
+            return "You"
         return others[0].name if others else "Direct message"
     if not others:
         return "Group"
@@ -174,6 +180,18 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
     preview = None
     if last is not None:
         preview = "Message deleted" if last.deleted_at is not None else _preview(last)
+    fav = await db.scalar(
+        select(TeamSpaceFavourite).where(
+            TeamSpaceFavourite.user_id == actor.user.id,
+            TeamSpaceFavourite.space_id == space.id,
+        )
+    )
+    mute = await db.scalar(
+        select(TeamSpaceMute).where(
+            TeamSpaceMute.user_id == actor.user.id,
+            TeamSpaceMute.space_id == space.id,
+        )
+    )
     return schemas.SpaceOut(
         id=str(space.id),
         kind=space.kind,
@@ -190,6 +208,8 @@ async def _space_out(db: Db, actor: Actor, space: TeamSpace) -> schemas.SpaceOut
         announcements=space.announcements,
         canPost=not space.announcements or _announcer(actor),
         private=space.private,
+        favourite=fav is not None,
+        muted=mute is not None,
     )
 
 
@@ -312,6 +332,31 @@ async def _spaces_out(db: Db, actor: Actor, spaces: list[TeamSpace]) -> list[sch
             )
         )
 
+    # 7. Favourites and mutes (batch)
+    fav_ids: set[int] = set()
+    mute_ids: set[int] = set()
+    if space_ids:
+        fav_ids = set(
+            (
+                await db.scalars(
+                    select(TeamSpaceFavourite.space_id).where(
+                        TeamSpaceFavourite.user_id == actor.user.id,
+                        TeamSpaceFavourite.space_id.in_(space_ids),
+                    )
+                )
+            ).all()
+        )
+        mute_ids = set(
+            (
+                await db.scalars(
+                    select(TeamSpaceMute.space_id).where(
+                        TeamSpaceMute.user_id == actor.user.id,
+                        TeamSpaceMute.space_id.in_(space_ids),
+                    )
+                )
+            ).all()
+        )
+
     # Build outputs
     out: list[schemas.SpaceOut] = []
     for space in spaces:
@@ -339,6 +384,8 @@ async def _spaces_out(db: Db, actor: Actor, spaces: list[TeamSpace]) -> list[sch
                 announcements=space.announcements,
                 canPost=not space.announcements or _announcer(actor),
                 private=space.private,
+                favourite=space.id in fav_ids,
+                muted=space.id in mute_ids,
             )
         )
     return out
@@ -372,9 +419,12 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
         )
         for message_id, user_id, value in found.all():
             answers.setdefault(message_id, []).append((user_id, value))
-    named = await _people(
-        db, {int(row.meta["to"]) for row in posts if row.kind == "kudos" and row.meta}
-    )
+    people_ids: set[int] = {
+        int(row.meta["to"]) for row in posts if row.kind == "kudos" and row.meta
+    }
+    for uids in answers.values():
+        people_ids.update(uid for uid, _ in uids)
+    named = await _people(db, people_ids)
     out: dict[int, dict[str, object]] = {}
     for row in posts:
         meta = row.meta or {}
@@ -389,15 +439,26 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
         elif row.kind == "poll":
             closes = datetime.fromisoformat(meta["closes_at"]) if meta.get("closes_at") else None
             anon = bool(meta.get("anonymous"))
-            extra["poll"] = schemas.PollOut(
-                options=[
+            poll_options: list[schemas.PollOptionOut] = []
+            for option in meta.get("options", []):
+                opt_voters = [(uid, v) for uid, v in given if v == option["id"]]
+                voters: list[schemas.PollVoterOut] = []
+                if not anon:
+                    voters = [
+                        schemas.PollVoterOut(id=uid, name=named[uid].name)
+                        for uid, _ in opt_voters
+                        if uid in named
+                    ]
+                poll_options.append(
                     schemas.PollOptionOut(
                         id=option["id"],
                         text=option["text"],
-                        votes=sum(1 for _, value in given if value == option["id"]),
+                        votes=len(opt_voters),
+                        voters=voters,
                     )
-                    for option in meta.get("options", [])
-                ],
+                )
+            extra["poll"] = schemas.PollOut(
+                options=poll_options,
                 myVote=mine,
                 total=len(given),
                 closesAt=closes,
@@ -405,6 +466,18 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
                 anonymous=anon,
             )
         elif row.kind == "event":
+            evt_rsvps = given
+
+            def _rsvp(
+                answer: str,
+                rsvps: list[tuple[int, str]] = evt_rsvps,
+            ) -> list[schemas.RsvpPersonOut]:
+                return [
+                    schemas.RsvpPersonOut(id=uid, name=named[uid].name)
+                    for uid, v in rsvps
+                    if v == answer and uid in named
+                ]
+
             extra["event"] = schemas.EventOut(
                 startsAt=datetime.fromisoformat(meta["starts_at"]),
                 place=meta.get("place", ""),
@@ -412,6 +485,9 @@ async def _posts_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> dict[int,
                 maybe=sum(1 for _, value in given if value == "maybe"),
                 declined=sum(1 for _, value in given if value == "no"),
                 mine=mine,
+                goingNames=_rsvp("going"),
+                maybeNames=_rsvp("maybe"),
+                declinedNames=_rsvp("no"),
             )
         elif row.kind == "meeting":
             join_url = f"/team?space={row.space_id}&meeting={row.id}&workspace=team-chat"
@@ -496,12 +572,37 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
         ).all()
     )
     people_names = {uid: u.name for uid, u in people.items()}
+
+    # Delivery status: for actor's own messages, check if others have read past them
+    my_space_ids = {row.space_id for row in rows if row.author_id == actor.user.id}
+    peer_reads: dict[int, list[int]] = {}
+    if my_space_ids:
+        read_rows = (
+            await db.execute(
+                select(TeamSpaceMember.space_id, TeamSpaceMember.last_read_id).where(
+                    TeamSpaceMember.space_id.in_(my_space_ids),
+                    TeamSpaceMember.user_id != actor.user.id,
+                )
+            )
+        ).all()
+        for sid, lr in read_rows:
+            peer_reads.setdefault(sid, []).append(lr)
+
     out = []
     for row in rows:
         author = people[row.author_id]
         deleted = row.deleted_at is not None
         pinner = pinners.get(row.pinned_by) if row.pinned_by else None
         mentions = parse_mentions(row.body, people_names) if not deleted else []
+        delivery = ""
+        if row.author_id == actor.user.id and not deleted:
+            reads = peer_reads.get(row.space_id, [])
+            if reads and all(lr >= row.id for lr in reads):
+                delivery = "seen"
+            elif reads and any(lr >= row.id for lr in reads):
+                delivery = "seen"
+            else:
+                delivery = "sent"
         out.append(
             schemas.MessageOut(
                 id=str(row.id),
@@ -521,6 +622,7 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
                 pinnedBy=schemas.PersonOut(id=pinner.id, name=pinner.name) if pinner else None,
                 saved=row.id in saved_ids,
                 mentions=mentions,
+                delivery=delivery,
                 **posts.get(row.id, {}),
             )
         )
@@ -696,6 +798,38 @@ async def open_conversation(
     return await _space_out(db, actor, space), True
 
 
+async def my_notes(db: Db, actor: Actor) -> schemas.SpaceOut:
+    """Get or create the user's personal notes space (self-chat like WhatsApp 'You')."""
+    tenant_id = actor.session.tenant_id
+    user_id = actor.user.id
+    existing = await db.scalar(
+        select(TeamSpace).where(
+            TeamSpace.tenant_id == tenant_id,
+            TeamSpace.source_kind == "notes",
+            TeamSpace.source_id == str(user_id),
+        )
+    )
+    if existing:
+        mem = await _member(db, existing.id, user_id)
+        if mem is None:
+            db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=existing.id, user_id=user_id))
+            await db.flush()
+        return await _space_out(db, actor, existing)
+    space = TeamSpace(
+        tenant_id=tenant_id,
+        kind="dm",
+        name=None,
+        source_kind="notes",
+        source_id=str(user_id),
+        created_by=user_id,
+    )
+    db.add(space)
+    await db.flush()
+    db.add(TeamSpaceMember(tenant_id=tenant_id, space_id=space.id, user_id=user_id))
+    await db.flush()
+    return await _space_out(db, actor, space)
+
+
 async def list_messages(
     db: Db, actor: Actor, space_id: int, before_id: int, limit: int
 ) -> list[schemas.MessageOut]:
@@ -779,6 +913,9 @@ async def post_message(
     return (await _messages_out(db, actor, [row]))[0], True
 
 
+EDIT_WINDOW = timedelta(minutes=5)
+
+
 async def edit_message(
     db: Db, actor: Actor, message_id: int, data: schemas.MessageEdit
 ) -> schemas.MessageOut:
@@ -787,6 +924,12 @@ async def edit_message(
         raise ApiError("not_author", "You can only edit your own messages.", 403)
     if row.deleted_at is not None:
         raise ApiError("message_deleted", "A deleted message cannot be edited.", 409)
+    if _now() - row.created_at > EDIT_WINDOW:
+        raise ApiError(
+            "edit_window_closed",
+            "Messages can only be edited within 5 minutes of sending.",
+            422,
+        )
     row.body = data.body
     row.edited_at = _now()
     await db.flush()
@@ -1017,23 +1160,41 @@ def _like_pattern(term: str) -> str:
     return f"%{escaped}%"
 
 
-async def search(db: Db, actor: Actor, term: str, limit: int) -> list[schemas.SearchHit]:
+async def search(
+    db: Db,
+    actor: Actor,
+    term: str,
+    limit: int,
+    from_user: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    space_id: int | None = None,
+) -> list[schemas.SearchHit]:
     """Messages that contain the words, in channels and in the actor's own conversations."""
     tenant_id = actor.session.tenant_id
     my_spaces = select(TeamSpaceMember.space_id).where(TeamSpaceMember.user_id == actor.user.id)
+    filters = [
+        TeamMessage.tenant_id == tenant_id,
+        TeamMessage.deleted_at.is_(None),
+        TeamMessage.body.ilike(_like_pattern(term), escape="\\"),
+        or_(
+            and_(TeamSpace.kind == "channel", TeamSpace.private.is_(False)),
+            TeamSpace.id.in_(my_spaces),
+        ),
+    ]
+    if space_id is not None:
+        filters.append(TeamMessage.space_id == space_id)
+    if from_user is not None:
+        filters.append(TeamMessage.author_id == from_user)
+    if date_from is not None:
+        filters.append(TeamMessage.created_at >= date_from)
+    if date_to is not None:
+        filters.append(TeamMessage.created_at <= date_to)
     rows = (
         await db.scalars(
             select(TeamMessage)
             .join(TeamSpace, TeamSpace.id == TeamMessage.space_id)
-            .where(
-                TeamMessage.tenant_id == tenant_id,
-                TeamMessage.deleted_at.is_(None),
-                TeamMessage.body.ilike(_like_pattern(term), escape="\\"),
-                or_(
-                    and_(TeamSpace.kind == "channel", TeamSpace.private.is_(False)),
-                    TeamSpace.id.in_(my_spaces),
-                ),
-            )
+            .where(*filters)
             .order_by(TeamMessage.id.desc())
             .limit(limit)
         )
@@ -1360,8 +1521,8 @@ async def create_post(
             raise ApiError(
                 "announcers_only", "Only people who make announcements can post one.", 403
             )
-        if space.kind in ("dm", "group"):
-            raise ApiError("announce_in_channel", "Post announcements in a channel.", 422)
+        if space.kind == "dm":
+            raise ApiError("announce_in_channel", "Announcements are for channels and groups.", 422)
     elif data.kind == "kudos":
         if data.kudos_to is None or data.kudos_to == actor.user.id:
             raise ApiError("kudos_to", "Choose a teammate to thank.", 422)
@@ -1527,6 +1688,154 @@ async def seen_by(db: Db, actor: Actor, message_id: int) -> list[dict[str, objec
         }
         for r in results
     ]
+
+
+async def message_info(db: Db, actor: Actor, message_id: int) -> schemas.MessageInfoOut:
+    row = await _message(db, actor.session.tenant_id, message_id)
+    space = await _space(db, actor.session.tenant_id, row.space_id)
+    await _readable(db, actor, space)
+
+    author_person = (await _people(db, {row.author_id})).get(row.author_id)
+    author = (
+        schemas.PersonOut(id=author_person.id, name=author_person.name)
+        if author_person
+        else schemas.PersonOut(id=row.author_id, name="Unknown")
+    )
+
+    # Seen by
+    seen_rows = (
+        await db.execute(
+            select(TeamMessageSeen.user_id, TeamMessageSeen.seen_at)
+            .where(TeamMessageSeen.message_id == row.id)
+            .order_by(TeamMessageSeen.seen_at)
+        )
+    ).all()
+    seen_user_ids = {r.user_id for r in seen_rows}
+
+    # All members of this space
+    members = (
+        await db.execute(
+            select(TeamSpaceMember.user_id).where(TeamSpaceMember.space_id == row.space_id)
+        )
+    ).all()
+    all_member_ids = {m.user_id for m in members}
+    not_seen_ids = all_member_ids - seen_user_ids - {row.author_id}
+
+    people = await _people(db, seen_user_ids | not_seen_ids)
+
+    seen_by = [
+        schemas.SeenByOut(
+            userId=r.user_id,
+            name=people[r.user_id].name if r.user_id in people else "Unknown",
+            seenAt=r.seen_at,
+        )
+        for r in seen_rows
+        if r.user_id != row.author_id
+    ]
+    not_seen_by = [
+        schemas.PersonOut(id=uid, name=people[uid].name)
+        for uid in sorted(not_seen_ids)
+        if uid in people
+    ]
+
+    # Reactions with user names
+    reaction_rows = (
+        await db.execute(
+            select(TeamReaction.emoji, TeamReaction.user_id)
+            .where(TeamReaction.message_id == row.id)
+            .order_by(TeamReaction.emoji)
+        )
+    ).all()
+    react_people = await _people(db, {r.user_id for r in reaction_rows})
+    emoji_users: dict[str, list[schemas.PersonOut]] = {}
+    for r in reaction_rows:
+        p = react_people.get(r.user_id)
+        if p:
+            emoji_users.setdefault(r.emoji, []).append(schemas.PersonOut(id=p.id, name=p.name))
+    reaction_details = [
+        schemas.ReactionDetailOut(emoji=emoji, users=users) for emoji, users in emoji_users.items()
+    ]
+
+    # Poll / event details (reuse _posts_out logic inline)
+    poll_out = None
+    event_out = None
+    if row.kind in ("poll", "event"):
+        meta = row.meta or {}
+        responses = (
+            await db.execute(
+                select(TeamResponse.user_id, TeamResponse.value).where(
+                    TeamResponse.message_id == row.id
+                )
+            )
+        ).all()
+        given: list[tuple[int, str]] = [(r.user_id, r.value) for r in responses]
+        resp_people = await _people(db, {uid for uid, _ in given})
+
+        if row.kind == "poll":
+            closes = datetime.fromisoformat(meta["closes_at"]) if meta.get("closes_at") else None
+            anon = bool(meta.get("anonymous"))
+            mine = next((v for uid, v in given if uid == actor.user.id), None)
+            poll_options: list[schemas.PollOptionOut] = []
+            for option in meta.get("options", []):
+                opt_voters = [(uid, v) for uid, v in given if v == option["id"]]
+                voters: list[schemas.PollVoterOut] = []
+                if not anon:
+                    voters = [
+                        schemas.PollVoterOut(id=uid, name=resp_people[uid].name)
+                        for uid, _ in opt_voters
+                        if uid in resp_people
+                    ]
+                poll_options.append(
+                    schemas.PollOptionOut(
+                        id=option["id"],
+                        text=option["text"],
+                        votes=len(opt_voters),
+                        voters=voters,
+                    )
+                )
+            poll_out = schemas.PollOut(
+                options=poll_options,
+                myVote=mine,
+                total=len(given),
+                closesAt=closes,
+                closed=bool(closes and closes <= _now()),
+                anonymous=anon,
+            )
+        elif row.kind == "event":
+            mine = next((v for uid, v in given if uid == actor.user.id), None)
+
+            def _rsvp_info(
+                answer: str,
+                rsvps: list[tuple[int, str]] = given,
+            ) -> list[schemas.RsvpPersonOut]:
+                return [
+                    schemas.RsvpPersonOut(id=uid, name=resp_people[uid].name)
+                    for uid, v in rsvps
+                    if v == answer and uid in resp_people
+                ]
+
+            event_out = schemas.EventOut(
+                startsAt=datetime.fromisoformat(meta["starts_at"]),
+                place=meta.get("place", ""),
+                going=sum(1 for _, v in given if v == "going"),
+                maybe=sum(1 for _, v in given if v == "maybe"),
+                declined=sum(1 for _, v in given if v == "no"),
+                mine=mine,
+                goingNames=_rsvp_info("going"),
+                maybeNames=_rsvp_info("maybe"),
+                declinedNames=_rsvp_info("no"),
+            )
+
+    return schemas.MessageInfoOut(
+        id=str(row.id),
+        createdAt=row.created_at,
+        author=author,
+        seenBy=seen_by,
+        notSeenBy=not_seen_by,
+        reactions=reaction_details,
+        poll=poll_out,
+        event=event_out,
+    )
 
 
 MAX_PINS = 50
@@ -1698,12 +2007,27 @@ async def my_threads(db: Db, actor: Actor, limit: int = 30) -> list[schemas.Mess
     return await _messages_out(db, actor, list(roots))
 
 
+HR_PERM = "hr:manage"
+
+
+def _can_manage_members(actor: Actor, space: TeamSpace) -> bool:
+    is_creator = space.created_by == actor.user.id
+    is_hr = HR_PERM in actor.permissions
+    return is_creator or is_hr
+
+
 async def add_member(db: Db, actor: Actor, space_id: int, user_id: int) -> schemas.SpaceOut:
     space = await _space(db, actor.session.tenant_id, space_id)
-    if space.kind not in ("channel", "voice"):
-        raise ApiError("not_a_channel", "Members can only be added to channels.", 422)
+    if space.kind not in ("channel", "voice", "group"):
+        raise ApiError("not_allowed", "Members can only be added to channels and groups.", 422)
     if await _member(db, space.id, actor.user.id) is None:
-        raise ApiError("not_joined", "Join this channel first.", 403)
+        raise ApiError("not_joined", "Join this conversation first.", 403)
+    if space.kind == "group" and not _can_manage_members(actor, space):
+        raise ApiError(
+            "not_authorized",
+            "Only the group creator or HR can add members.",
+            403,
+        )
     if not await _active_member(db, actor.session.tenant_id, user_id):
         raise ApiError("person_not_found", "That person is not a member of this company.", 404)
     existing = await _member(db, space.id, user_id)
@@ -1715,17 +2039,67 @@ async def add_member(db: Db, actor: Actor, space_id: int, user_id: int) -> schem
 
 async def remove_member(db: Db, actor: Actor, space_id: int, user_id: int) -> schemas.SpaceOut:
     space = await _space(db, actor.session.tenant_id, space_id)
-    if space.kind not in ("channel", "voice"):
-        raise ApiError("not_a_channel", "Members can only be removed from channels.", 422)
+    if space.kind not in ("channel", "voice", "group"):
+        raise ApiError("not_allowed", "Members can only be removed from channels and groups.", 422)
     if space.announcements:
         raise ApiError("announcements_stay", "Everyone stays in announcements.", 422)
-    if space.created_by != actor.user.id:
+    if space.kind == "group" and not _can_manage_members(actor, space):
+        raise ApiError(
+            "not_authorized",
+            "Only the group creator or HR can remove members.",
+            403,
+        )
+    elif space.kind != "group" and space.created_by != actor.user.id:
         raise ApiError("not_creator", "Only the channel creator can remove members.", 403)
     member = await _member(db, space.id, user_id)
     if member is not None:
         await db.delete(member)
         await db.flush()
     return await _space_out(db, actor, space)
+
+
+async def toggle_favourite(db: Db, actor: Actor, space_id: int) -> bool:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    existing = await db.scalar(
+        select(TeamSpaceFavourite).where(
+            TeamSpaceFavourite.user_id == actor.user.id,
+            TeamSpaceFavourite.space_id == space.id,
+        )
+    )
+    if existing:
+        await db.delete(existing)
+        return False
+    db.add(
+        TeamSpaceFavourite(
+            tenant_id=actor.session.tenant_id,
+            user_id=actor.user.id,
+            space_id=space.id,
+        )
+    )
+    return True
+
+
+async def toggle_mute(db: Db, actor: Actor, space_id: int) -> bool:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    existing = await db.scalar(
+        select(TeamSpaceMute).where(
+            TeamSpaceMute.user_id == actor.user.id,
+            TeamSpaceMute.space_id == space.id,
+        )
+    )
+    if existing:
+        await db.delete(existing)
+        return False
+    db.add(
+        TeamSpaceMute(
+            tenant_id=actor.session.tenant_id,
+            user_id=actor.user.id,
+            space_id=space.id,
+        )
+    )
+    return True
 
 
 async def call_history(
@@ -1883,7 +2257,7 @@ PRESENCE_TIMEOUT = timedelta(minutes=5)
 AWAY_TIMEOUT = timedelta(minutes=2)
 MENTION_RE = re.compile(r"@(\w+(?:\s\w+)?)")
 
-_typing: dict[tuple[int, int], tuple[int, float]] = {}
+_typing: dict[tuple[int, int], dict[int, float]] = {}
 
 
 async def heartbeat(db: Db, actor: Actor) -> None:
@@ -1996,19 +2370,30 @@ async def get_presence(db: Db, actor: Actor) -> list[schemas.PresenceOut]:
 
 
 def start_typing(tenant_id: int, user_id: int, space_id: int) -> None:
-    _typing[(tenant_id, space_id)] = (user_id, time.monotonic())
+    key = (tenant_id, space_id)
+    if key not in _typing:
+        _typing[key] = {}
+    _typing[key][user_id] = time.monotonic()
+
+
+def get_typing_users(tenant_id: int, space_id: int, exclude: int | None = None) -> list[int]:
+    key = (tenant_id, space_id)
+    entry = _typing.get(key)
+    if not entry:
+        return []
+    now = time.monotonic()
+    expired = [uid for uid, ts in entry.items() if now - ts > 5]
+    for uid in expired:
+        entry.pop(uid)
+    if not entry:
+        _typing.pop(key, None)
+        return []
+    return [uid for uid in entry if uid != exclude]
 
 
 def get_typing(tenant_id: int, space_id: int) -> int | None:
-    key = (tenant_id, space_id)
-    entry = _typing.get(key)
-    if entry is None:
-        return None
-    user_id, ts = entry
-    if time.monotonic() - ts > 5:
-        _typing.pop(key, None)
-        return None
-    return user_id
+    users = get_typing_users(tenant_id, space_id)
+    return users[0] if users else None
 
 
 def parse_mentions(body: str, people_names: dict[int, str]) -> list[int]:
@@ -2024,3 +2409,332 @@ def parse_mentions(body: str, people_names: dict[int, str]) -> list[int]:
             if uid not in found:
                 found.append(uid)
     return found
+
+
+# ---- Space detail / members -------------------------------------------------------------
+
+
+async def space_detail(db: Db, actor: Actor, space_id: int) -> schemas.SpaceDetailOut:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    members_q = (
+        select(TeamSpaceMember, User.name)
+        .join(User, User.id == TeamSpaceMember.user_id)
+        .where(TeamSpaceMember.space_id == space_id)
+        .order_by(User.name)
+    )
+    rows = (await db.execute(members_q)).all()
+    user_ids = [r.TeamSpaceMember.user_id for r in rows]
+    presence_rows = (
+        (
+            await db.execute(
+                select(TeamPresence).where(
+                    TeamPresence.tenant_id == actor.session.tenant_id,
+                    TeamPresence.user_id.in_(user_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if user_ids
+        else []
+    )
+    pmap = {p.user_id: p for p in presence_rows}
+    now = _now()
+    members: list[schemas.SpaceMemberOut] = []
+    for r in rows:
+        m = r.TeamSpaceMember
+        p = pmap.get(m.user_id)
+        if p is None:
+            status = "offline"
+            s_text = s_emoji = ""
+            dnd = False
+        else:
+            age = now - p.last_active
+            if age > PRESENCE_TIMEOUT:
+                status = "offline"
+            elif age > AWAY_TIMEOUT:
+                status = "away"
+            else:
+                status = "online"
+            s_text = p.status_text
+            s_emoji = p.status_emoji
+            dnd = p.dnd
+        members.append(
+            schemas.SpaceMemberOut(
+                userId=m.user_id,
+                name=r.name,
+                role="creator" if m.user_id == space.created_by else "member",
+                joinedAt=m.joined_at,
+                status=status,
+                statusText=s_text,
+                statusEmoji=s_emoji,
+                dnd=dnd,
+            )
+        )
+    creator = await db.scalar(select(User).where(User.id == space.created_by))
+    return schemas.SpaceDetailOut(
+        id=str(space.id),
+        kind=space.kind,
+        name=space.name,
+        topic=space.topic,
+        createdAt=space.created_at,
+        createdBy=schemas.PersonOut(
+            id=creator.id if creator else 0,
+            name=creator.name if creator else "Unknown",
+        ),
+        memberCount=len(members),
+        members=members,
+        announcements=space.announcements,
+        private=space.private,
+    )
+
+
+async def update_topic(db: Db, actor: Actor, space_id: int, data: schemas.TopicIn) -> None:
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    space.topic = data.topic.strip()
+
+
+async def update_space_settings(
+    db: Db,
+    actor: Actor,
+    space_id: int,
+    name: str | None,
+    topic: str | None,
+) -> schemas.SpaceOut:
+    """Update a space's name (channels/voice only) or topic."""
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    if name is not None and space.kind in ("channel", "voice"):
+        space.name = name
+    if topic is not None:
+        space.topic = topic
+    await db.flush()
+    return await _space_out(db, actor, space)
+
+
+async def space_media(
+    db: Db,
+    actor: Actor,
+    space_id: int,
+    kind: str = "all",
+    limit: int = 50,
+) -> list[schemas.AttachmentGalleryOut]:
+    """Return attachments in a space, optionally filtered by type."""
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    msg_ids = select(TeamMessage.id).where(
+        TeamMessage.space_id == space_id, TeamMessage.deleted_at.is_(None)
+    )
+    filters: list[Any] = [
+        TeamAttachment.tenant_id == actor.session.tenant_id,
+        TeamAttachment.message_id.in_(msg_ids),
+    ]
+    if kind == "images":
+        filters.append(TeamAttachment.content_type.in_(list(IMAGE_TYPES)))
+    elif kind == "docs":
+        filters.append(~TeamAttachment.content_type.in_(list(IMAGE_TYPES)))
+    rows = (
+        await db.scalars(
+            select(TeamAttachment).where(*filters).order_by(TeamAttachment.id.desc()).limit(limit)
+        )
+    ).all()
+    user_ids = {r.uploader_id for r in rows}
+    names_map = await _people(db, user_ids) if user_ids else {}
+    return [
+        schemas.AttachmentGalleryOut(
+            id=str(r.id),
+            filename=r.filename,
+            contentType=r.content_type,
+            sizeBytes=r.size_bytes,
+            isImage=r.content_type in IMAGE_TYPES,
+            uploadedBy=names_map[r.uploader_id].name if r.uploader_id in names_map else "Unknown",
+            createdAt=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+# ---- Scheduled messages -----------------------------------------------------------------
+
+
+async def schedule_message(
+    db: Db, actor: Actor, space_id: int, data: schemas.ScheduleIn
+) -> schemas.ScheduledOut:
+    now = _now()
+    if data.send_at <= now:
+        raise ApiError("invalid_time", "Schedule a time in the future.", 422)
+    space = await _space(db, actor.session.tenant_id, space_id)
+    await _readable(db, actor, space)
+    row = TeamScheduledMessage(
+        tenant_id=actor.session.tenant_id,
+        space_id=space.id,
+        author_id=actor.user.id,
+        body=data.body.strip(),
+        send_at=data.send_at,
+    )
+    db.add(row)
+    await db.flush()
+    return schemas.ScheduledOut(
+        id=str(row.id),
+        spaceId=str(row.space_id),
+        body=row.body,
+        sendAt=row.send_at,
+        createdAt=row.created_at,
+    )
+
+
+async def list_scheduled(db: Db, actor: Actor) -> list[schemas.ScheduledOut]:
+    rows = (
+        await db.scalars(
+            select(TeamScheduledMessage)
+            .where(
+                TeamScheduledMessage.tenant_id == actor.session.tenant_id,
+                TeamScheduledMessage.author_id == actor.user.id,
+                TeamScheduledMessage.sent.is_(False),
+            )
+            .order_by(TeamScheduledMessage.send_at)
+        )
+    ).all()
+    return [
+        schemas.ScheduledOut(
+            id=str(r.id),
+            spaceId=str(r.space_id),
+            body=r.body,
+            sendAt=r.send_at,
+            createdAt=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+async def cancel_scheduled(db: Db, actor: Actor, scheduled_id: int) -> None:
+    row = await db.scalar(
+        select(TeamScheduledMessage).where(
+            TeamScheduledMessage.id == scheduled_id,
+            TeamScheduledMessage.tenant_id == actor.session.tenant_id,
+            TeamScheduledMessage.author_id == actor.user.id,
+            TeamScheduledMessage.sent.is_(False),
+        )
+    )
+    if not row:
+        raise ApiError("not_found", "Scheduled message not found.", 404)
+    await db.delete(row)
+    await db.flush()
+
+
+async def flush_scheduled(db: Db) -> int:
+    """Send all scheduled messages whose time has come. Returns count sent."""
+    now = _now()
+    rows = (
+        await db.scalars(
+            select(TeamScheduledMessage).where(
+                TeamScheduledMessage.sent.is_(False),
+                TeamScheduledMessage.send_at <= now,
+            )
+        )
+    ).all()
+    count = 0
+    for row in rows:
+        key = f"sched-{row.id}"
+        existing = await db.scalar(
+            select(TeamMessage).where(
+                TeamMessage.tenant_id == row.tenant_id,
+                TeamMessage.author_id == row.author_id,
+                TeamMessage.idempotency_key == key,
+            )
+        )
+        if not existing:
+            msg = TeamMessage(
+                tenant_id=row.tenant_id,
+                space_id=row.space_id,
+                author_id=row.author_id,
+                body=row.body,
+                idempotency_key=key,
+            )
+            db.add(msg)
+        row.sent = True
+        count += 1
+    await db.flush()
+    return count
+
+
+# ---- Link preview -----------------------------------------------------------------------
+
+import urllib.request  # noqa: E402
+from html.parser import HTMLParser  # noqa: E402
+
+_link_cache: dict[str, dict[str, str]] = {}
+
+
+class _OgParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.og: dict[str, str] = {}
+        self.title = ""
+        self._in_title = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "title":
+            self._in_title = True
+        if tag == "meta":
+            attr_dict = dict(attrs)
+            prop = attr_dict.get("property", "")
+            content = attr_dict.get("content", "") or ""
+            if prop == "og:title":
+                self.og["title"] = content
+            elif prop == "og:description":
+                self.og["description"] = content
+            elif prop == "og:image":
+                self.og["image"] = content
+            elif prop == "og:site_name":
+                self.og["siteName"] = content
+
+    def handle_data(self, data: str) -> None:
+        if self._in_title:
+            self.title += data
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "title":
+            self._in_title = False
+
+
+def fetch_link_preview(url: str) -> dict[str, str]:
+    if url in _link_cache:
+        return _link_cache[url]
+    empty: dict[str, str] = {"url": url}
+    if not url.startswith(("http://", "https://")):
+        return empty
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "JanusBot/1.0 (link preview)"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            ct = resp.headers.get("Content-Type", "")
+            if "text/html" not in ct:
+                return empty
+            html = resp.read(64 * 1024).decode("utf-8", errors="replace")
+    except Exception:
+        _link_cache[url] = empty
+        return empty
+
+    parser = _OgParser()
+    try:
+        parser.feed(html)
+    except Exception:
+        pass
+    result: dict[str, str] = {"url": url}
+    result["title"] = parser.og.get("title") or parser.title.strip() or ""
+    if parser.og.get("description"):
+        result["description"] = parser.og["description"]
+    if parser.og.get("image"):
+        result["image"] = parser.og["image"]
+    if parser.og.get("siteName"):
+        result["siteName"] = parser.og["siteName"]
+    _link_cache[url] = result
+    if len(_link_cache) > 500:
+        oldest = next(iter(_link_cache))
+        _link_cache.pop(oldest, None)
+    return result

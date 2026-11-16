@@ -3,6 +3,7 @@ import type { CallPerson } from "@/components/team/voice-call";
 export interface TeamPerson {
   id: number;
   name: string;
+  avatarUrl?: string;
   status?: "online" | "away" | "offline" | "";
   statusText?: string;
   statusEmoji?: string;
@@ -26,6 +27,8 @@ export interface TeamSpace {
   announcements: boolean;
   canPost: boolean;
   private: boolean;
+  favourite: boolean;
+  muted: boolean;
 }
 
 export interface TeamReaction {
@@ -51,14 +54,24 @@ export interface TeamMessage {
   title: string | null;
   kudos: { to: TeamPerson; value: string } | null;
   poll: {
-    options: Array<{ id: string; text: string; votes: number }>;
+    options: Array<{ id: string; text: string; votes: number; voters: Array<{ id: number; name: string }> }>;
     myVote: string | null;
     total: number;
     closesAt: string | null;
     closed: boolean;
     anonymous: boolean;
   } | null;
-  event: { startsAt: string; place: string; going: number; maybe: number; declined: number; mine: string | null } | null;
+  event: {
+    startsAt: string;
+    place: string;
+    going: number;
+    maybe: number;
+    declined: number;
+    mine: string | null;
+    goingNames: Array<{ id: number; name: string }>;
+    maybeNames: Array<{ id: number; name: string }>;
+    declinedNames: Array<{ id: number; name: string }>;
+  } | null;
   meeting: {
     startsAt: string;
     durationMinutes: number;
@@ -73,6 +86,7 @@ export interface TeamMessage {
   pinnedBy: TeamPerson | null;
   saved: boolean;
   mentions: number[];
+  delivery: "" | "sent" | "seen";
 }
 
 export type TeamPostKind = "announcement" | "kudos" | "poll" | "event" | "meeting";
@@ -92,6 +106,8 @@ export interface TeamAttachment {
   contentType: string;
   sizeBytes: number;
   isImage: boolean;
+  uploadedBy?: string;
+  createdAt?: string;
 }
 
 export interface TeamSearchHit {
@@ -121,6 +137,61 @@ export interface TeamPresence {
 export interface TypingUser {
   userId: number;
   name: string;
+}
+
+export interface SpaceMember {
+  userId: number;
+  name: string;
+  avatarUrl?: string;
+  role: string;
+  joinedAt: string;
+  status: string;
+  statusText: string;
+  statusEmoji: string;
+  dnd: boolean;
+}
+
+export interface SpaceDetail {
+  id: string;
+  kind: string;
+  name: string | null;
+  topic: string;
+  createdAt: string;
+  createdBy: TeamPerson;
+  memberCount: number;
+  members: SpaceMember[];
+  announcements: boolean;
+  private: boolean;
+}
+
+export interface TeamScheduledMessage {
+  id: string;
+  spaceId: string;
+  body: string;
+  sendAt: string;
+  createdAt: string;
+}
+
+export interface SeenByEntry {
+  userId: number;
+  name: string;
+  seenAt: string;
+}
+
+export interface ReactionDetail {
+  emoji: string;
+  users: Array<{ id: number; name: string }>;
+}
+
+export interface MessageInfo {
+  id: string;
+  createdAt: string;
+  author: TeamPerson;
+  seenBy: SeenByEntry[];
+  notSeenBy: Array<{ id: number; name: string }>;
+  reactions: ReactionDetail[];
+  poll: TeamMessage["poll"];
+  event: TeamMessage["event"];
 }
 
 /** The largest file the team chat accepts, the same as the server. */

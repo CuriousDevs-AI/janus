@@ -10,6 +10,7 @@ from janus_api.org import overview as org
 from janus_api.org import service as org_service
 from janus_api.portfolio import schemas
 from janus_api.portfolio.access import enter_company
+from janus_api.portfolio.summary import invalidate_summary
 
 # A login may own this many companies, so a runaway script cannot create tenants without end.
 MAX_COMPANIES = 20
@@ -43,6 +44,7 @@ async def create_company(
         company = await org.company(db, tenant_id)
         assert company is not None
         out = schemas.CompanyOut(id=str(company.id), name=company.name, industry=company.industry)
+        invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return out
@@ -64,6 +66,7 @@ async def update_details(
         )
         record(db, "portfolio.company_updated", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
+        invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return data

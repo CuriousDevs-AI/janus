@@ -211,6 +211,44 @@ class TeamPresence(Base):
     )
 
 
+class TeamScheduledMessage(Base):
+    """A message scheduled to be sent at a future time."""
+
+    __tablename__ = "team_scheduled_messages"
+    __table_args__ = (
+        CheckConstraint("char_length(body) BETWEEN 1 AND 4000", name="ck_scheduled_body"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
+    author_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    send_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    sent: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamSpaceFavourite(Base):
+    """A user's starred/favourite conversation, shown at the top of the sidebar."""
+
+    __tablename__ = "team_space_favourites"
+    __table_args__ = (UniqueConstraint("user_id", "space_id", name="uq_team_space_favourites"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamSpaceMute(Base):
+    """A muted conversation: no notifications, no unread badge."""
+
+    __tablename__ = "team_space_mutes"
+    __table_args__ = (UniqueConstraint("user_id", "space_id", name="uq_team_space_mutes"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    space_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("team_spaces.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class TeamSignal(Base):
     """A WebRTC message from one person in a call to another: an offer, an answer or a candidate."""
 

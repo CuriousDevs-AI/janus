@@ -11,6 +11,14 @@ import { api, message } from "@/lib/api/client";
  */
 const cache = new Map<string, unknown>();
 
+/**
+ * Drop every cached answer so the next read of any portfolio path fetches fresh data.
+ * Call after saving company details, registration or anything that changes the summary.
+ */
+export function invalidatePortfolioCache() {
+  cache.clear();
+}
+
 type Entry<T> = { key: string; path: string; data?: T; error?: string };
 
 /**

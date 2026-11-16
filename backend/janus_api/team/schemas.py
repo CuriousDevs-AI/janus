@@ -143,6 +143,8 @@ class SpaceOut(BaseModel):
     announcements: bool = False
     canPost: bool = True
     private: bool = False
+    favourite: bool = False
+    muted: bool = False
 
 
 class ReactionOut(BaseModel):
@@ -189,6 +191,7 @@ class MessageOut(BaseModel):
     pinnedBy: "PersonOut | None" = None
     saved: bool = False
     mentions: list[int] = []
+    delivery: str = ""
 
 
 class KudosOut(BaseModel):
@@ -196,10 +199,16 @@ class KudosOut(BaseModel):
     value: str
 
 
+class PollVoterOut(BaseModel):
+    id: int
+    name: str
+
+
 class PollOptionOut(BaseModel):
     id: str
     text: str
     votes: int
+    voters: list[PollVoterOut] = []
 
 
 class PollOut(BaseModel):
@@ -211,6 +220,11 @@ class PollOut(BaseModel):
     anonymous: bool = False
 
 
+class RsvpPersonOut(BaseModel):
+    id: int
+    name: str
+
+
 class EventOut(BaseModel):
     startsAt: datetime
     place: str
@@ -218,6 +232,9 @@ class EventOut(BaseModel):
     maybe: int
     declined: int
     mine: str | None
+    goingNames: list[RsvpPersonOut] = []
+    maybeNames: list[RsvpPersonOut] = []
+    declinedNames: list[RsvpPersonOut] = []
 
 
 class MeetingOut(BaseModel):
@@ -282,6 +299,65 @@ class TypingIn(BaseModel):
     space_id: int = Field(gt=0)
 
 
+class SpaceMemberOut(BaseModel):
+    userId: int
+    name: str
+    role: str = "member"
+    joinedAt: datetime
+    status: str = "offline"
+    statusText: str = ""
+    statusEmoji: str = ""
+    dnd: bool = False
+
+
+class SpaceDetailOut(BaseModel):
+    id: str
+    kind: str
+    name: str | None
+    topic: str
+    createdAt: datetime
+    createdBy: PersonOut
+    memberCount: int
+    members: list[SpaceMemberOut]
+    announcements: bool = False
+    private: bool = False
+
+
+class TopicIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topic: str = Field(max_length=200)
+
+
+class SpaceSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, pattern=CHANNEL_NAME, max_length=40)
+    topic: str | None = Field(default=None, max_length=200)
+
+
+class AttachmentGalleryOut(BaseModel):
+    id: str
+    filename: str
+    contentType: str
+    sizeBytes: int
+    isImage: bool
+    uploadedBy: str
+    createdAt: datetime
+
+
+class ScheduleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body: Body
+    send_at: datetime
+
+
+class ScheduledOut(BaseModel):
+    id: str
+    spaceId: str
+    body: str
+    sendAt: datetime
+    createdAt: datetime
+
+
 class IceServerOut(BaseModel):
     urls: list[str]
     username: str | None = None
@@ -294,4 +370,27 @@ class IceConfigOut(BaseModel):
     ttlSeconds: int
 
 
+class SeenByOut(BaseModel):
+    userId: int
+    name: str
+    seenAt: datetime
+
+
+class ReactionDetailOut(BaseModel):
+    emoji: str
+    users: list[PersonOut]
+
+
+class MessageInfoOut(BaseModel):
+    id: str
+    createdAt: datetime
+    author: PersonOut
+    seenBy: list[SeenByOut] = []
+    notSeenBy: list[PersonOut] = []
+    reactions: list[ReactionDetailOut] = []
+    poll: "PollOut | None" = None
+    event: "EventOut | None" = None
+
+
+MessageInfoOut.model_rebuild()
 MessageOut.model_rebuild()

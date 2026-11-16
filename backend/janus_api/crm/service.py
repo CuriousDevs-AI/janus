@@ -209,6 +209,10 @@ async def list_leads(
     limit: int,
     lead_id: int | None = None,
     search: str | None = None,
+    stage: str | None = None,
+    source: str | None = None,
+    owner_id: int | None = None,
+    tag_id: int | None = None,
 ) -> list[LeadOut]:
     owners = await visible_owners(db, tenant_id, user_id, permissions)
     query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id > after_id)
@@ -216,6 +220,25 @@ async def list_leads(
         query = query.where(Lead.owner_id.in_(owners))
     if lead_id is not None:
         query = query.where(Lead.id == lead_id)
+    if stage is not None:
+        query = query.where(Lead.stage == stage)
+    if source is not None:
+        query = query.where(Lead.source == source)
+    if owner_id is not None:
+        query = query.where(Lead.owner_id == owner_id)
+    if tag_id is not None:
+        from janus_api.crm.models import LeadTag
+
+        tag_exists = (
+            select(LeadTag.id)
+            .where(
+                LeadTag.tenant_id == Lead.tenant_id,
+                LeadTag.lead_id == Lead.id,
+                LeadTag.tag_id == tag_id,
+            )
+            .exists()
+        )
+        query = query.where(tag_exists)
     if search:
         pattern = f"%{search}%"
         # Match contact fields or any follow-up note body for this lead.
@@ -1031,3 +1054,205 @@ async def add_customer_note(
         author=author.name if author else None,
         createdAt=note.created_at or now(),
     )
+
+
+# ---------------------------------------------------------------------------
+# Lead & contact detail (360-degree views)
+# ---------------------------------------------------------------------------
+
+
+async def lead_detail(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    lead_id: int,
+) -> schemas.LeadDetailOut:
+    from janus_api.crm import activities as act_svc
+    from janus_api.crm import tags as tag_svc
+
+    lead_out = await get_lead(db, tenant_id, user_id, permissions, lead_id)
+    notes = await list_notes(db, tenant_id, user_id, permissions, lead_id, limit=50)
+    activities_list = await act_svc.list_activities(
+        db,
+        tenant_id,
+        lead_id=lead_id,
+        limit=50,
+    )
+    tags_list = await tag_svc.tags_for_lead(db, tenant_id, lead_id)
+
+    deal_out: schemas.DealOut | None = None
+    deal = await db.scalar(select(Deal).where(Deal.tenant_id == tenant_id, Deal.lead_id == lead_id))
+    if deal:
+        from janus_api.crm.deals import output as deal_output
+
+        lead_row = await db.scalar(
+            select(Lead).where(Lead.id == lead_id, Lead.tenant_id == tenant_id)
+        )
+        contact = (
+            await db.scalar(
+                select(Contact).where(
+                    Contact.id == lead_row.contact_id, Contact.tenant_id == tenant_id
+                )
+            )
+            if lead_row
+            else None
+        )
+        owner = await db.get(User, lead_row.owner_id) if lead_row and lead_row.owner_id else None
+        deal_out = deal_output(deal, lead_row, contact, owner) if lead_row and contact else None
+
+    return schemas.LeadDetailOut(
+        lead=lead_out,
+        deal=deal_out,
+        notes=notes,
+        activities=activities_list,
+        tags=tags_list,
+    )
+
+
+async def contact_detail(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+) -> schemas.ContactDetailOut:
+    from decimal import Decimal
+
+    from janus_api.crm import activities as act_svc
+    from janus_api.crm import tags as tag_svc
+
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    contact_out = schemas.ContactOut(
+        id=str(contact.id),
+        name=contact.name,
+        phone=contact.phone_e164,
+        email=contact.email,
+        company=contact.company,
+        whatsappOptIn=contact.whatsapp_opt_in,
+        doNotContact=contact.do_not_contact,
+        consentSource=contact.consent_source,
+        consentUpdatedAt=contact.consent_updated_at,
+    )
+
+    leads_rows = (
+        (
+            await db.execute(
+                select(Lead)
+                .where(Lead.tenant_id == tenant_id, Lead.contact_id == contact_id)
+                .order_by(Lead.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    total_deal_value = Decimal(0)
+    open_deal_value = Decimal(0)
+    lead_summaries: list[schemas.ContactLeadSummary] = []
+
+    for lead in leads_rows:
+        deal = await db.scalar(
+            select(Deal).where(Deal.tenant_id == tenant_id, Deal.lead_id == lead.id)
+        )
+        summary = schemas.ContactLeadSummary(
+            id=str(lead.id),
+            stage=lead.stage,
+            source=lead.source,
+            requirement=lead.requirement,
+            createdAt=lead.created_at,
+            dealId=str(deal.id) if deal else None,
+            dealName=deal.name if deal else None,
+            dealAmount=format(deal.amount, ".2f") if deal else None,
+            dealStage=deal.stage if deal else None,
+        )
+        lead_summaries.append(summary)
+        if deal:
+            total_deal_value += deal.amount
+            if deal.stage not in ("won", "lost"):
+                open_deal_value += deal.amount
+
+    notes = await list_customer_notes(db, tenant_id, user_id, permissions, contact_id, limit=50)
+    activities_list = await act_svc.list_activities(
+        db,
+        tenant_id,
+        contact_id=contact_id,
+        limit=50,
+    )
+    tags_list = await tag_svc.tags_for_contact(db, tenant_id, contact_id)
+
+    return schemas.ContactDetailOut(
+        contact=contact_out,
+        leads=lead_summaries,
+        notes=notes,
+        activities=activities_list,
+        tags=tags_list,
+        totalDealValue=format(total_deal_value, ".2f"),
+        openDealValue=format(open_deal_value, ".2f"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bulk operations
+# ---------------------------------------------------------------------------
+
+
+async def bulk_stage(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    data: schemas.BulkStageIn,
+) -> schemas.BulkResult:
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    ids = [int(x) for x in data.leadIds if x.isdigit()]
+    query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id.in_(ids)).with_for_update()
+    if owners is not None:
+        query = query.where(Lead.owner_id.in_(owners))
+    leads = (await db.scalars(query)).all()
+    for lead in leads:
+        lead.stage = data.stage
+        lead.last_activity_at = now()
+        set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
+    await db.flush()
+    record(
+        db,
+        "lead.bulk_stage",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"count": len(leads), "stage": data.stage},
+    )
+    return schemas.BulkResult(affected=len(leads))
+
+
+async def bulk_delete(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    data: schemas.BulkDeleteIn,
+) -> schemas.BulkResult:
+    owners = await visible_owners(db, tenant_id, user_id, permissions)
+    ids = [int(x) for x in data.leadIds if x.isdigit()]
+    query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id.in_(ids)).with_for_update()
+    if owners is not None:
+        query = query.where(Lead.owner_id.in_(owners))
+    leads = (await db.scalars(query)).all()
+    # Only delete leads without deals.
+    deleted = 0
+    for lead in leads:
+        has_deal = await db.scalar(
+            select(Deal.id).where(Deal.tenant_id == tenant_id, Deal.lead_id == lead.id)
+        )
+        if has_deal is None:
+            await db.delete(lead)
+            deleted += 1
+    await db.flush()
+    record(
+        db,
+        "lead.bulk_deleted",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"count": deleted},
+    )
+    return schemas.BulkResult(affected=deleted)

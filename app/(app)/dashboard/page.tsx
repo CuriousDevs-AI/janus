@@ -15,7 +15,7 @@ import { MetricCard } from "@/components/shared/metric-card";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api/use-api";
 import { useAllRows } from "@/lib/api/use-all-rows";
-import type { Deal, Lead, Source } from "@/lib/api/types";
+import type { DashboardStats, DailyPoint, FunnelData, RepData, Deal, Lead, Source } from "@/lib/api/types";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
 import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
 
@@ -28,7 +28,10 @@ const demoGrowthTrend = monthlyLeads.map((item) => ({ month: item.label, leads: 
 
 export default function DashboardPage() {
   const session = useSession();
-  // Every lead and deal, not the first page: Team today and the counts are for the whole company.
+  const stats = useApi<DashboardStats>(!demoMode ? "/dashboard/stats" : null);
+  const daily = useApi<DailyPoint[]>(!demoMode ? "/dashboard/daily?days=180" : null);
+  const funnel = useApi<FunnelData[]>(!demoMode ? "/dashboard/funnel?days=30" : null);
+  const reps = useApi<RepData[]>(!demoMode ? "/dashboard/reps?days=30" : null);
   const leads = useAllRows<Lead>("/leads");
   const deals = useAllRows<Deal>("/deals");
   const canViewSources =
@@ -38,8 +41,6 @@ export default function DashboardPage() {
     canViewSources ? "/sources?limit=50&after_id=0" : null,
   );
 
-  // The demo's sample records are the demo's alone: a real business never sees them, even on an error
-  // or when its role cannot manage sources.
   const usingDemoLeads = demoMode;
   const usingDemoDeals = demoMode;
   const usingDemoSources = demoMode;
@@ -48,20 +49,22 @@ export default function DashboardPage() {
   const dealRows = deals.data ?? (usingDemoDeals ? demoDealRows : []);
   const openDeals = dealRows.filter((deal) => !["won", "lost"].includes(deal.stage));
   const openValue = openDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
-  // The suggestions below come from the records on this page, so they always name someone who is really in the list.
   const biggest = [...openDeals].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
-  // A new lead nobody has called, messaged or logged a follow-up for yet.
   const unanswered = [...leadRows].filter((lead) => lead.stage === "new" && lead.lastActivityAt === lead.createdAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).sort((a, b) => Number(b.source === "phone_call") - Number(a.source === "phone_call"))[0];
   const connectedSources = (sources.data ?? (usingDemoSources ? demoConnectedSources : [])).filter(
     (source) => source.status === "connected",
   );
   const refresh = () => {
+    stats.reload();
+    daily.reload();
+    funnel.reload();
+    reps.reload();
     leads.reload();
     deals.reload();
     sources.reload();
   };
-  const loading = leads.loading || deals.loading || sources.loading;
-  const growthTrend = usingDemo ? demoGrowthTrend : sixMonths(leadRows, dealRows);
+  const loading = stats.loading || leads.loading || deals.loading || sources.loading;
+  const growthTrend = usingDemo ? demoGrowthTrend : daily.data ? daily.data.map((d) => ({ month: d.date.slice(5), leads: d.leads, pipeline: Number(d.wonValue) })) : sixMonths(leadRows, dealRows);
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-6 py-6">
@@ -80,10 +83,16 @@ export default function DashboardPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="Leads captured" value={loading ? "…" : String(leadRows.length)} />
-        <MetricCard label="Open deals" value={loading ? "…" : String(openDeals.length)} />
-        <MetricCard label="Open pipeline" value={loading ? "…" : formatCurrencyINR(openValue)} />
-        <MetricCard label="Connected sources" value={!sources.loading ? String(connectedSources.length) : "—"} />
+        <MetricCard label="Leads captured" value={loading ? "…" : String(stats.data?.totalLeads ?? leadRows.length)} />
+        <MetricCard label="Open deals" value={loading ? "…" : String(stats.data?.openDeals ?? openDeals.length)} />
+        <MetricCard label="Open pipeline" value={loading ? "…" : formatCurrencyINR(Number(stats.data?.pipelineValue ?? openValue))} />
+        <MetricCard label="Won this period" value={loading ? "…" : stats.data ? `${stats.data.wonDeals} · ${formatCurrencyINR(Number(stats.data.wonValue))}` : String(connectedSources.length)} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label="New today" value={loading ? "…" : String(stats.data?.newLeadsToday ?? "—")} />
+        <MetricCard label="New this week" value={loading ? "…" : String(stats.data?.newLeadsWeek ?? "—")} />
+        <MetricCard label="Conversion rate" value={loading ? "…" : stats.data?.conversionRate ? `${stats.data.conversionRate}%` : "—"} />
+        <MetricCard label="Avg cycle (days)" value={loading ? "…" : stats.data?.avgCycleDays ?? "—"} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
@@ -97,14 +106,13 @@ export default function DashboardPage() {
               <Link href="/leads">View all</Link>
             </Button>
           </div>
-          {loading && <p className="px-4 py-5 text-sm text-muted-foreground">Loading live data…</p>}
-          {!loading && leadRows.length === 0 && (
-            <div className="px-4 py-8 text-sm text-muted-foreground">
-              No leads yet. Connect a source to capture the first enquiry.
+          {leadRows.length === 0 && (
+            <div className="min-h-[200px] px-4 py-8 text-sm text-muted-foreground">
+              {loading ? "Loading live data…" : "No leads yet. Connect a source to capture the first enquiry."}
             </div>
           )}
-          {!loading && leadRows.length > 0 && (
-            <div className="divide-y divide-border">
+          {leadRows.length > 0 && (
+            <div className="min-h-[200px] divide-y divide-border">
               {leadRows.slice(0, 6).map((lead) => {
                 const content = (
                   <div className="min-w-0">
@@ -198,6 +206,54 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
+      {!demoMode && funnel.data && funnel.data.length > 0 && (
+        <section className="rounded-lg border border-border bg-surface p-5">
+          <div className="flex items-center gap-2"><TrendingUp className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Pipeline funnel</h2></div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Lead distribution across stages (last 30 days).</p>
+          <div className="mt-4 flex gap-1">
+            {funnel.data.filter((s) => s.count > 0 || ["new", "contacted", "qualified", "won", "lost"].includes(s.stage)).map((s) => {
+              const maxCount = Math.max(...funnel.data!.map((f) => f.count), 1);
+              return (
+                <div key={s.stage} className="min-w-0 flex-1 text-center">
+                  <div className="mx-auto h-24 w-full max-w-12 rounded-t bg-surface-3 relative">
+                    <div className="absolute bottom-0 w-full rounded-t bg-accent transition-all" style={{ height: `${(s.count / maxCount) * 100}%` }} />
+                  </div>
+                  <p className="mt-2 text-mono text-sm font-semibold">{s.count}</p>
+                  <p className="text-[10px] text-muted-foreground capitalize truncate">{s.stage}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatCurrencyINR(Number(s.value))}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {!demoMode && reps.data && reps.data.length > 0 && (
+        <section className="rounded-lg border border-border bg-surface">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="text-[13px] font-semibold">Rep leaderboard</h2>
+            <p className="mt-1 text-[11px] text-muted-foreground">Performance by sales rep over the last 30 days.</p>
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="px-4 py-2 text-left font-medium">Rep</th><th className="px-4 py-2 text-right font-medium">Leads</th><th className="px-4 py-2 text-right font-medium">Open</th><th className="px-4 py-2 text-right font-medium">Won</th><th className="px-4 py-2 text-right font-medium">Won value</th><th className="px-4 py-2 text-right font-medium">Conv %</th></tr></thead>
+              <tbody className="divide-y divide-border">
+                {reps.data.map((rep) => (
+                  <tr key={rep.ownerId ?? "unassigned"} className="hover:bg-surface-2">
+                    <td className="px-4 py-2.5 font-medium">{rep.name}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{rep.leads}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{rep.openLeads}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{rep.wonDeals}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrencyINR(Number(rep.wonValue))}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{rep.conversionRate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {(session.permissions.includes("*") || can(session, "leads:assign")) && <>
         <TeamToday leads={leadRows} deals={dealRows} />
         {!demoMode && <LostReasonsCard />}

@@ -2,16 +2,20 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronRight, Hash, Headphones, Lock, Megaphone, MessageSquarePlus, MoreVertical, Plus, Search, Users } from "lucide-react";
-import { cn, initials } from "@/lib/utils";
+import { BellOff, ChevronDown, ChevronRight, Hash, Headphones, Lock, LogOut, Megaphone, MessageSquarePlus, MoreVertical, Notebook, Plus, Search, Star, Users, Volume2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import { api, message as errorText } from "@/lib/api/client";
 import type { TeamSpace } from "@/components/team/types";
+import { TeamAvatar } from "@/components/team/team-avatar";
 import { useVoiceCall } from "@/components/team/voice-call";
 import { CallBar } from "@/components/team/voice-stage";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
@@ -42,17 +46,19 @@ export function TeamChatSidebarList({ onNavigate }: { onNavigate?: () => void })
         onCreate={then(actions.create)}
         onNewMessage={then(actions.newMessage)}
         onSearchMessages={then(actions.searchMessages)}
+        onRefresh={actions.refresh}
         loading={state.loading}
       />
     </div>
   );
 }
 
-type ChatFilter = "all" | "unread" | "official" | "channels" | "groups" | "direct";
+type ChatFilter = "all" | "unread" | "starred" | "official" | "channels" | "groups" | "direct";
 
 const FILTERS: Array<{ id: ChatFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
+  { id: "starred", label: "Starred" },
   { id: "official", label: "Official" },
   { id: "channels", label: "Channels" },
   { id: "groups", label: "Groups" },
@@ -81,6 +87,7 @@ export function ChatList({
   onCreate,
   onNewMessage,
   onSearchMessages,
+  onRefresh,
   loading,
 }: {
   channels: TeamSpace[];
@@ -90,11 +97,16 @@ export function ChatList({
   onCreate: () => void;
   onNewMessage: () => void;
   onSearchMessages: () => void;
+  onRefresh?: () => void;
   loading: boolean;
 }) {
   const [filter, setFilter] = React.useState<ChatFilter>("all");
   const [query, setQuery] = React.useState("");
+  const isNotes = (s: TeamSpace) => s.kind === "dm" && s.title === "You";
   const all = [...channels, ...direct].sort((left, right) => {
+    const ln = isNotes(left) ? 1 : 0;
+    const rn = isNotes(right) ? 1 : 0;
+    if (ln !== rn) return rn - ln;
     const a = left.lastMessageAt ? Date.parse(left.lastMessageAt) : 0;
     const b = right.lastMessageAt ? Date.parse(right.lastMessageAt) : 0;
     return b - a || left.title.localeCompare(right.title);
@@ -103,6 +115,7 @@ export function ChatList({
   const shown = all.filter((item) => {
     if (term && !`${item.title} ${item.name ?? ""}`.toLowerCase().includes(term)) return false;
     if (filter === "unread") return item.unread > 0;
+    if (filter === "starred") return item.favourite;
     if (filter === "official") return item.announcements;
     if (filter === "channels") return isChannel(item.kind);
     if (filter === "groups") return item.kind === "group";
@@ -159,6 +172,7 @@ export function ChatList({
           // Unread counts on the chips, so new official news stands out without opening the list.
           const count =
             item.id === "unread" ? all.filter((space) => space.unread > 0).length
+            : item.id === "starred" ? all.filter((space) => space.favourite).length
             : item.id === "official" ? all.filter((space) => space.announcements).reduce((sum, space) => sum + space.unread, 0)
             : 0;
           return (
@@ -171,10 +185,13 @@ export function ChatList({
               className={cn(
                 "inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 filter === item.id
-                  ? item.id === "official" ? "bg-warning-muted text-warning" : "bg-accent-muted text-accent"
+                  ? item.id === "official" ? "bg-warning-muted text-warning"
+                    : item.id === "starred" ? "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400"
+                    : "bg-accent-muted text-accent"
                   : "bg-surface-2 text-muted-foreground hover:text-foreground",
               )}
             >
+              {item.id === "starred" ? <Star className="size-3" /> : null}
               {item.id === "official" ? <Megaphone className="size-3" /> : null}
               {item.label}
               {count > 0 ? (
@@ -192,6 +209,7 @@ export function ChatList({
         filter={filter}
         selected={selected}
         onPick={onPick}
+        onRefresh={onRefresh}
         loading={loading}
       />
       <CallBar />
@@ -205,6 +223,7 @@ function SectionedList({
   filter,
   selected,
   onPick,
+  onRefresh,
   loading,
 }: {
   items: TeamSpace[];
@@ -212,21 +231,39 @@ function SectionedList({
   filter: ChatFilter;
   selected: string | null;
   onPick: (item: TeamSpace) => void;
+  onRefresh?: () => void;
   loading: boolean;
 }) {
   const [otherOpen, setOtherOpen] = React.useState(false);
   const sectioned = filter === "all" && !allEmpty && items.length > 0;
-  const yours = sectioned ? items.filter((item) => item.joined || !isChannel(item.kind)) : items;
-  const other = sectioned ? items.filter((item) => !item.joined && isChannel(item.kind)) : [];
+  const favourites = sectioned ? items.filter((item) => item.favourite) : [];
+  const yours = sectioned
+    ? items.filter((item) => !item.favourite && (item.joined || !isChannel(item.kind)))
+    : items;
+  const other = sectioned ? items.filter((item) => !item.favourite && !item.joined && isChannel(item.kind)) : [];
 
   return (
     <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Chats">
       {loading ? <li className="px-4 py-3 text-sm text-muted-foreground">Loading chats…</li> : null}
       {!loading && items.length === 0 ? (
         <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-          {allEmpty ? "No chats yet. Start a message or create a channel." : filter === "official" ? "No official announcements yet." : "No chats match."}
+          {allEmpty ? "No chats yet. Start a message or create a channel." : filter === "starred" ? "No starred chats. Star a chat to pin it here." : filter === "official" ? "No official announcements yet." : "No chats match."}
         </li>
       ) : null}
+
+      {sectioned && favourites.length > 0 ? (
+        <>
+          <li className="flex items-center gap-1.5 px-4 pb-1 pt-3">
+            <Star className="size-3 fill-yellow-500 text-yellow-500" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Starred</span>
+            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{favourites.length}</span>
+          </li>
+          {favourites.map((item) => (
+            <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} onRefresh={onRefresh} />
+          ))}
+        </>
+      ) : null}
+
       {sectioned && yours.length > 0 ? (
         <li className="flex items-center gap-1.5 px-4 pb-1 pt-3">
           <ChevronDown className="size-3 text-muted-foreground" />
@@ -235,8 +272,9 @@ function SectionedList({
         </li>
       ) : null}
       {yours.map((item) => (
-        <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
+        <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} onRefresh={onRefresh} />
       ))}
+
       {sectioned && other.length > 0 ? (
         <>
           <li>
@@ -251,7 +289,7 @@ function SectionedList({
             </button>
           </li>
           {otherOpen ? other.map((item) => (
-            <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} />
+            <ChatRow key={item.id} item={item} active={selected === item.id} onPick={onPick} onRefresh={onRefresh} />
           )) : null}
         </>
       ) : null}
@@ -260,6 +298,13 @@ function SectionedList({
 }
 
 export function ChatAvatar({ item, label }: { item: TeamSpace; label: string }) {
+  if (item.title === "You" && item.kind === "dm") {
+    return (
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+        <Notebook className="size-5" />
+      </span>
+    );
+  }
   if (item.announcements) {
     return (
       <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-warning-muted text-warning">
@@ -282,29 +327,62 @@ export function ChatAvatar({ item, label }: { item: TeamSpace; label: string }) 
     );
   }
   return (
-    <span className="relative">
-      <span
-        className="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-        style={{ backgroundColor: avatarColor(label) }}
-      >
-        {initials(label)}
-      </span>
-      {item.peer ? <PresenceDot status={item.peer.status} /> : null}
-    </span>
+    <TeamAvatar
+      person={{ id: item.peer?.id ?? 0, name: label, avatarUrl: item.peer?.avatarUrl, status: item.peer?.status }}
+      size="lg"
+      showStatus
+    />
   );
 }
 
-function ChatRow({ item, active, onPick }: { item: TeamSpace; active: boolean; onPick: (item: TeamSpace) => void }) {
+function ChatRow({ item, active, onPick, onRefresh }: { item: TeamSpace; active: boolean; onPick: (item: TeamSpace) => void; onRefresh?: () => void }) {
   const call = useVoiceCall();
   const live = call.spaceId === item.id;
   const people = live ? call.participants : item.inCall;
   const label = isChannel(item.kind) ? item.name ?? "" : item.title;
+  const isNotesRow = item.kind === "dm" && item.title === "You";
   const preview =
     people.length > 0
       ? null
-      : item.lastMessagePreview ?? (isChannel(item.kind) && !item.joined ? "Not joined yet" : "No messages yet");
+      : item.lastMessagePreview
+        ?? (isNotesRow ? "Message yourself"
+          : item.kind === "group" ? `Group · ${item.memberCount} member${item.memberCount !== 1 ? "s" : ""}`
+          : isChannel(item.kind) && !item.joined ? "Not joined yet"
+          : "No messages yet");
+
+  async function toggleFavourite() {
+    try {
+      const res = await api<{ favourite: boolean }>(`/team/spaces/${item.id}/favourite`, { method: "POST" });
+      toast.success(res.favourite ? "Starred" : "Unstarred");
+      onRefresh?.();
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
+  async function toggleMute() {
+    try {
+      const res = await api<{ muted: boolean }>(`/team/spaces/${item.id}/mute`, { method: "POST" });
+      toast.success(res.muted ? "Muted" : "Unmuted");
+      onRefresh?.();
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
+  async function leave() {
+    if (!isChannel(item.kind) || item.announcements) return;
+    try {
+      await api(`/team/channels/${item.id}/leave`, { method: "POST" });
+      toast.success("Left channel");
+      onRefresh?.();
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
   return (
-    <li>
+    <li className="group/row relative">
       <button
         type="button"
         onClick={() => onPick(item)}
@@ -321,8 +399,12 @@ function ChatRow({ item, active, onPick }: { item: TeamSpace; active: boolean; o
             <span className={cn("truncate text-[15px] text-foreground", item.unread > 0 && "font-semibold")}>
               {isChannel(item.kind) ? (item.private ? `🔒 ${label}` : `# ${label}`) : label}
             </span>
-            <span className={cn("shrink-0 text-[11px]", item.unread > 0 ? "font-medium text-success" : "text-muted-foreground")}>
-              {shortTime(item.lastMessageAt)}
+            <span className="flex shrink-0 items-center gap-1">
+              {item.muted ? <BellOff className="size-3 text-muted-foreground" /> : null}
+              {item.favourite ? <Star className="size-3 fill-yellow-500 text-yellow-500" /> : null}
+              <span className={cn("text-[11px]", item.unread > 0 ? "font-medium text-success" : "text-muted-foreground")}>
+                {shortTime(item.lastMessageAt)}
+              </span>
             </span>
           </span>
           <span className="mt-0.5 flex items-center gap-2">
@@ -335,36 +417,45 @@ function ChatRow({ item, active, onPick }: { item: TeamSpace; active: boolean; o
                 preview
               )}
             </span>
-            {item.unread > 0 ? (
-              <span className="min-w-5 rounded-full bg-success px-1.5 text-center text-[11px] font-semibold tabular-nums text-white">
+            {item.unread > 0 && !item.muted ? (
+              <span className="min-w-5 rounded-full bg-success px-1.5 text-center text-[11px] font-bold tabular-nums text-white shadow-sm shadow-success/30">
                 {item.unread > 99 ? "99+" : item.unread}
               </span>
             ) : null}
           </span>
         </span>
       </button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Chat options"
+            className="absolute right-2 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-0 hover:bg-surface-3 group-hover/row:opacity-100"
+          >
+            <MoreVertical className="size-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onSelect={() => void toggleFavourite()}>
+            <Star className={cn("size-3.5", item.favourite && "fill-yellow-500 text-yellow-500")} />
+            {item.favourite ? "Unstar" : "Star"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void toggleMute()}>
+            {item.muted ? <Volume2 className="size-3.5" /> : <BellOff className="size-3.5" />}
+            {item.muted ? "Unmute" : "Mute"}
+          </DropdownMenuItem>
+          {isChannel(item.kind) && !item.announcements && item.joined ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void leave()} className="text-destructive">
+                <LogOut className="size-3.5" /> Leave channel
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </li>
   );
 }
 
-export function PresenceDot({ status, className }: { status?: string; className?: string }) {
-  if (!status || status === "offline") return null;
-  return (
-    <span
-      className={cn(
-        "absolute bottom-0 right-0 size-3 rounded-full border-2 border-background",
-        status === "online" ? "bg-success" : "bg-warning",
-        className,
-      )}
-      aria-label={status === "online" ? "Online" : "Away"}
-    />
-  );
-}
-
-const AVATAR_COLORS = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
-
-function avatarColor(name: string) {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}

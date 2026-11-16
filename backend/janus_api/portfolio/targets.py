@@ -69,6 +69,8 @@ async def set_targets(
                 row.monthly, row.updated_by, row.updated_at = value, user_id, now()
         record(db, "portfolio.targets_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
+        from janus_api.portfolio.summary import invalidate_summary
+        invalidate_summary(user_id)
         result = await targets_view(db, tenant_id, money=True)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)

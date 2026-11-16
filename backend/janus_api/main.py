@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -44,6 +45,26 @@ from janus_api.vault.router import router as vault_router
 from janus_api.whatsapp.router import router as whatsapp_router
 
 
+async def _scheduled_message_loop() -> None:
+    from janus_api.core.db import session_factory
+    from janus_api.team.service import flush_scheduled
+
+    factory = session_factory()
+    logger = logging.getLogger("janus")
+    while True:
+        try:
+            await asyncio.sleep(30)
+            async with factory() as db:
+                count = await flush_scheduled(db)
+                if count:
+                    await db.commit()
+                    logger.info("Sent %d scheduled message(s)", count)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("Scheduled message flush failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger = logging.getLogger("janus")
@@ -57,7 +78,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from janus_api.portfolio.summary import start_warm_up, stop_warm_up
 
     start_warm_up()
+    scheduler_task = asyncio.create_task(_scheduled_message_loop())
     yield
+    scheduler_task.cancel()
     stop_warm_up()
 
 

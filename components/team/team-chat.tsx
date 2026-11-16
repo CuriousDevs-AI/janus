@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, BellOff, Bookmark, Check, Circle, Clock, Forward, Hash, Lock, Megaphone, MessageSquare as ThreadIcon, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, Smile, UserPlus, Users, X } from "lucide-react";
+import { ArrowLeft, BellOff, Bookmark, Check, Circle, Clock, Download, FileText, Forward, Hash, Image as ImageIcon, Info, Lock, Megaphone, MessageSquare as ThreadIcon, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, Smile, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -27,8 +27,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
-import { Composer, MessageList } from "@/components/team/team-messages";
-import type { TeamMessage, TeamPerson, TeamPresence, TeamSearchHit, TeamSpace, TypingUser } from "@/components/team/types";
+import { Composer, MessageList, fileSize } from "@/components/team/team-messages";
+import type { SpaceDetail, TeamAttachment, TeamMessage, TeamPerson, TeamPresence, TeamScheduledMessage, TeamSearchHit, TeamSpace, TypingUser } from "@/components/team/types";
 import { useSession } from "@/components/auth/session-provider";
 import { useVoiceCall } from "@/components/team/voice-call";
 import { CallBanner, CallPanel } from "@/components/team/voice-stage";
@@ -44,6 +44,12 @@ const TYPING_POLL_MS = 2000;
 
 function newKey() {
   return crypto.randomUUID();
+}
+
+function typingLabel(users: TypingUser[]): string {
+  if (users.length === 1) return `${users[0].name} is typing…`;
+  if (users.length === 2) return `${users[0].name} and ${users[1].name} are typing…`;
+  return `${users[0].name}, ${users[1].name} and ${users.length - 2} other${users.length > 3 ? "s" : ""} are typing…`;
 }
 
 export function TeamChat() {
@@ -65,9 +71,18 @@ export function TeamChat() {
   const [forwardingId, setForwardingId] = React.useState<string | null>(null);
   const [threadsOpen, setThreadsOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
+  const [schedulingBody, setSchedulingBody] = React.useState<string | null>(null);
+  const [scheduledOpen, setScheduledOpen] = React.useState(false);
+  const [detailOpen, setDetailOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [term, setTerm] = React.useState("");
-  const [typing, setTyping] = React.useState<TypingUser | null>(null);
+  const [filterUser, setFilterUser] = React.useState<number | null>(null);
+  const [filterDateFrom, setFilterDateFrom] = React.useState("");
+  const [filterDateTo, setFilterDateTo] = React.useState("");
+  const [inThisChat, setInThisChat] = React.useState(false);
+  const [typing, setTyping] = React.useState<TypingUser[]>([]);
+  const [mediaOpen, setMediaOpen] = React.useState(false);
+  const [profileUser, setProfileUser] = React.useState<number | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const channels = useApi<TeamSpace[]>(demoMode ? null : "/team/channels");
@@ -76,11 +91,16 @@ export function TeamChat() {
   const messages = useApi<TeamMessage[]>(
     demoMode || !selected ? null : `/team/spaces/${selected}/messages?limit=50`,
   );
-  const hits = useApi<TeamSearchHit[]>(
-    demoMode || !searchOpen || term.length < 2
-      ? null
-      : `/team/search?q=${encodeURIComponent(term)}&limit=30`,
-  );
+  const searchUrl = React.useMemo(() => {
+    if (demoMode || !searchOpen || term.length < 2) return null;
+    let url = `/team/search?q=${encodeURIComponent(term)}&limit=30`;
+    if (filterUser) url += `&from_user=${filterUser}`;
+    if (filterDateFrom) url += `&date_from=${filterDateFrom}T00:00:00`;
+    if (filterDateTo) url += `&date_to=${filterDateTo}T23:59:59`;
+    if (inThisChat && selected) url += `&space_id=${selected}`;
+    return url;
+  }, [searchOpen, term, filterUser, filterDateFrom, filterDateTo, inThisChat, selected]);
+  const hits = useApi<TeamSearchHit[]>(searchUrl);
   const replies = useApi<TeamMessage[]>(
     demoMode || !threadId ? null : `/team/messages/${threadId}/replies`,
   );
@@ -94,8 +114,17 @@ export function TeamChat() {
     demoMode || !savedOpen ? null : "/team/saved?limit=50",
   );
   const presence = useApi<TeamPresence[]>(demoMode ? null : "/team/presence");
+  const scheduled = useApi<TeamScheduledMessage[]>(
+    demoMode || !scheduledOpen ? null : "/team/scheduled",
+  );
+  const detail = useApi<SpaceDetail>(
+    demoMode || !detailOpen || !selected ? null : `/team/spaces/${selected}/detail`,
+  );
   const threads = useApi<TeamMessage[]>(
     demoMode || !threadsOpen ? null : "/team/threads?limit=30",
+  );
+  const media = useApi<TeamAttachment[]>(
+    demoMode || !mediaOpen || !selected ? null : `/team/spaces/${selected}/media`,
   );
 
   const reloadChannels = channels.reload;
@@ -113,6 +142,14 @@ export function TeamChat() {
     }, REFRESH_MS);
     return () => clearInterval(timer);
   }, [reloadChannels, reloadDirect, reloadMessages, reloadReplies]);
+
+  // Ensure "Your Notes" self-chat exists (auto-created, appears in conversations list).
+  const notesCreated = React.useRef(false);
+  React.useEffect(() => {
+    if (demoMode || notesCreated.current) return;
+    notesCreated.current = true;
+    void api("/team/notes", { method: "POST" }).then(() => reloadDirect()).catch(() => undefined);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Heartbeat: keeps the user online in the presence system.
   React.useEffect(() => {
@@ -133,13 +170,18 @@ export function TeamChat() {
 
   // Typing indicator: poll who is typing in the current space.
   React.useEffect(() => {
-    setTyping(null); // eslint-disable-line react-hooks/set-state-in-effect -- reset on space change
+    setTyping([]); // eslint-disable-line react-hooks/set-state-in-effect -- reset on space change
     if (demoMode || !selected) return;
     let alive = true;
     const poll = () => {
-      void api<{ typing: TypingUser | null }>(`/team/typing/${selected}`)
-        .then((res) => { if (alive) setTyping(res.typing); })
-        .catch(() => { if (alive) setTyping(null); });
+      void api<{ typing: TypingUser | TypingUser[] | null }>(`/team/typing/${selected}`)
+        .then((res) => {
+          if (!alive) return;
+          if (!res.typing) setTyping([]);
+          else if (Array.isArray(res.typing)) setTyping(res.typing);
+          else setTyping([res.typing]);
+        })
+        .catch(() => { if (alive) setTyping([]); });
     };
     poll();
     const timer = setInterval(poll, TYPING_POLL_MS);
@@ -208,6 +250,20 @@ export function TeamChat() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [threadId]);
+
+  async function scheduleSend(body: string, sendAt: string) {
+    if (!selected) return;
+    try {
+      await api("/team/spaces/" + selected + "/schedule", {
+        method: "POST",
+        body: JSON.stringify({ body, send_at: sendAt }),
+      });
+      toast.success("Message scheduled");
+      setSchedulingBody(null);
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
 
   function sendTyping() {
     if (!selected || demoMode) return;
@@ -302,6 +358,7 @@ export function TeamChat() {
         create: () => setCreating(true),
         newMessage: () => setPicking(true),
         searchMessages: () => setSearchOpen(true),
+        refresh: () => { reloadChannels(); reloadDirect(); },
       },
     });
   }, [publish, channels.data, direct.data, selected, channels.loading]);
@@ -316,6 +373,7 @@ export function TeamChat() {
       onCreate={() => setCreating(true)}
       onNewMessage={() => setPicking(true)}
       onSearchMessages={() => setSearchOpen(true)}
+      onRefresh={() => { reloadChannels(); reloadDirect(); }}
       loading={channels.loading && !channels.data}
     />
   );
@@ -401,12 +459,12 @@ export function TeamChat() {
               </Button>
             )
           ) : null}
-          {space && isChannel(space.kind) && space.joined ? (
+          {space && (isChannel(space.kind) || space.kind === "group") && space.joined ? (
             <Button variant="ghost" size="icon" aria-label="Pinned messages" aria-pressed={pinnedOpen} onClick={() => setPinnedOpen((open) => !open)}>
               <Pin className="size-4" />
             </Button>
           ) : null}
-          {space && isChannel(space.kind) && space.joined ? (
+          {space && (isChannel(space.kind) || space.kind === "group") && space.joined ? (
             <Button variant="ghost" size="icon" aria-label="Add people" onClick={() => setAddingMember(true)}>
               <UserPlus className="size-4" />
             </Button>
@@ -414,9 +472,22 @@ export function TeamChat() {
           <Button variant="ghost" size="icon" aria-label="Your threads" aria-pressed={threadsOpen} onClick={() => setThreadsOpen((open) => !open)}>
             <ThreadIcon className="size-4" />
           </Button>
+          {space && (isChannel(space.kind) || space.kind === "group") ? (
+            <Button variant="ghost" size="icon" aria-label="Channel details" onClick={() => setDetailOpen(true)}>
+              <Info className="size-4" />
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="icon" aria-label="Scheduled messages" onClick={() => setScheduledOpen(true)}>
+            <Clock className="size-4" />
+          </Button>
           <Button variant="ghost" size="icon" aria-label="Saved messages" aria-pressed={savedOpen} onClick={() => setSavedOpen((open) => !open)}>
             <Bookmark className="size-4" />
           </Button>
+          {selected ? (
+            <Button variant="ghost" size="icon" aria-label="Media gallery" aria-pressed={mediaOpen} onClick={() => setMediaOpen((open) => !open)}>
+              <ImageIcon className="size-4" />
+            </Button>
+          ) : null}
           <Button variant="ghost" size="icon" aria-label="Search team messages" aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>
             <Search className="size-4" />
           </Button>
@@ -449,9 +520,19 @@ export function TeamChat() {
             query={query}
             term={term}
             hits={hits}
+            people={people.data ?? []}
+            filterUser={filterUser}
+            filterDateFrom={filterDateFrom}
+            filterDateTo={filterDateTo}
+            inThisChat={inThisChat}
+            hasSelected={Boolean(selected)}
+            onFilterUser={setFilterUser}
+            onFilterDateFrom={setFilterDateFrom}
+            onFilterDateTo={setFilterDateTo}
+            onInThisChat={setInThisChat}
             onQuery={(value) => { setQuery(value); }}
-            onOpen={(hit) => { choose(hit.spaceId); setSearchOpen(false); setQuery(""); setTerm(""); }}
-            onClose={() => { setSearchOpen(false); setQuery(""); setTerm(""); }}
+            onOpen={(hit) => { choose(hit.spaceId); setSearchOpen(false); setQuery(""); setTerm(""); setFilterUser(null); setFilterDateFrom(""); setFilterDateTo(""); setInThisChat(false); }}
+            onClose={() => { setSearchOpen(false); setQuery(""); setTerm(""); setFilterUser(null); setFilterDateFrom(""); setFilterDateTo(""); setInThisChat(false); }}
           />
         ) : !selected ? (
           <EmptyPanel
@@ -481,6 +562,7 @@ export function TeamChat() {
                     onOpenThread={setThreadId}
                     onChanged={() => { reloadMessages(); reloadReplies(); }}
                     onForward={(id) => setForwardingId(id)}
+                    onShowProfile={setProfileUser}
                     activeThreadId={threadId}
                     showAuthors={space?.kind !== "dm"}
                     canInteract={Boolean(space?.canPost && (space.joined || !isChannel(space.kind)))}
@@ -500,14 +582,14 @@ export function TeamChat() {
                 </div>
               ) : (
                 <>
-                  {typing ? (
+                  {typing.length > 0 ? (
                     <div className="flex items-center gap-2 border-t border-border bg-surface px-4 py-1 text-xs text-muted-foreground">
                       <span className="inline-flex gap-0.5">
                         <span className="animate-bounce text-accent" style={{ animationDelay: "0ms" }}>.</span>
                         <span className="animate-bounce text-accent" style={{ animationDelay: "150ms" }}>.</span>
                         <span className="animate-bounce text-accent" style={{ animationDelay: "300ms" }}>.</span>
                       </span>
-                      {typing.name} is typing…
+                      {typingLabel(typing)}
                     </div>
                   ) : null}
                   <Composer
@@ -516,6 +598,7 @@ export function TeamChat() {
                     disabled={!space}
                     onSend={(body, file) => send(body, undefined, file)}
                     onTyping={sendTyping}
+                    onSchedule={(body) => setSchedulingBody(body)}
                     extra={space ? (
                       <PostMenu
                         spaceId={space.id}
@@ -577,13 +660,14 @@ export function TeamChat() {
         />
       ) : null}
 
-      {addingMember && space && isChannel(space.kind) ? (
+      {addingMember && space && (isChannel(space.kind) || space.kind === "group") ? (
         <AddMemberDialog
           open={addingMember}
           onOpenChange={setAddingMember}
           spaceId={space.id}
           people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
-          onAdded={() => { reloadChannels(); setAddingMember(false); }}
+          onAdded={() => { reloadChannels(); reloadDirect(); setAddingMember(false); }}
+          kind={space.kind as "channel" | "group" | "voice"}
         />
       ) : null}
 
@@ -628,6 +712,53 @@ export function TeamChat() {
           onClose={() => setStatusOpen(false)}
           currentPresence={presence.data?.find((p) => String(p.userId) === session.user.id)}
           onSaved={() => { setStatusOpen(false); reloadPresence(); }}
+        />
+      ) : null}
+
+      {detailOpen ? (
+        <ChannelDetailPanel
+          detail={detail.data}
+          loading={detail.loading && !detail.data}
+          onClose={() => setDetailOpen(false)}
+          onTopicSaved={() => { detail.reload(); reloadChannels(); }}
+        />
+      ) : null}
+
+      {schedulingBody !== null ? (
+        <ScheduleDialog
+          body={schedulingBody}
+          onClose={() => setSchedulingBody(null)}
+          onSchedule={scheduleSend}
+        />
+      ) : null}
+
+      {scheduledOpen ? (
+        <ScheduledPanel
+          messages={scheduled.data ?? []}
+          loading={scheduled.loading && !scheduled.data}
+          onClose={() => setScheduledOpen(false)}
+          onChanged={() => scheduled.reload()}
+        />
+      ) : null}
+
+      {mediaOpen && selected ? (
+        <MediaGalleryPanel
+          items={media.data ?? []}
+          loading={media.loading && !media.data}
+          onClose={() => setMediaOpen(false)}
+        />
+      ) : null}
+
+      {profileUser !== null ? (
+        <ProfileCard
+          userId={profileUser}
+          people={people.data ?? []}
+          presence={presence.data ?? []}
+          onClose={() => setProfileUser(null)}
+          onStartDm={async (uid) => {
+            setProfileUser(null);
+            await openConversation([uid]);
+          }}
         />
       ) : null}
 
@@ -751,8 +882,16 @@ function PeopleDialog({
   const [query, setQuery] = React.useState("");
   const [picked, setPicked] = React.useState<number[]>([]);
   const [busy, setBusy] = React.useState(false);
-  const shown = people.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
+
+  const statusOrder = { online: 0, away: 1, offline: 2, "": 3 } as const;
+  const sorted = [...people].sort((a, b) => {
+    const sa = statusOrder[(a.status ?? "") as keyof typeof statusOrder] ?? 3;
+    const sb = statusOrder[(b.status ?? "") as keyof typeof statusOrder] ?? 3;
+    return sa - sb || a.name.localeCompare(b.name);
+  });
+  const shown = sorted.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
   const chosen = people.filter((person) => picked.includes(person.id));
+  const onlineCount = people.filter((p) => p.status === "online").length;
 
   function toggle(id: number) {
     setPicked((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
@@ -779,17 +918,32 @@ function PeopleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New message or group</DialogTitle>
           <DialogDescription>
-            Pick one person for a direct message, or several for a group. Only the people in it can read it.
+            Pick one person for a DM, or several for a group.
+            {onlineCount > 0 ? <span className="ml-1 text-success">{onlineCount} online</span> : null}
           </DialogDescription>
         </DialogHeader>
         <Input autoFocus placeholder="Search people" aria-label="Search people" value={query} onChange={(event) => setQuery(event.target.value)} />
+
         {chosen.length > 0 ? (
-          <p className="text-xs text-muted-foreground">With: {chosen.map((person) => person.name).join(", ")}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {chosen.map((person) => (
+              <button
+                key={person.id}
+                type="button"
+                onClick={() => toggle(person.id)}
+                className="inline-flex items-center gap-1 rounded-full bg-accent-muted px-2.5 py-0.5 text-xs font-medium text-accent"
+              >
+                {person.name}
+                <X className="size-3" />
+              </button>
+            ))}
+          </div>
         ) : null}
+
         <ul className="max-h-72 space-y-0.5 overflow-y-auto">
           {shown.length === 0 ? <li className="px-2 py-3 text-sm text-muted-foreground">No one matches. Invite teammates from People &amp; Access.</li> : null}
           {shown.map((person) => {
@@ -802,10 +956,27 @@ function PeopleDialog({
                   onClick={() => toggle(person.id)}
                   className={cn("flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2", on && "bg-accent-muted")}
                 >
-                  <Avatar className="size-7">
-                    <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
-                  </Avatar>
-                  <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                  <span className="relative">
+                    <Avatar className="size-8">
+                      <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
+                    </Avatar>
+                    {person.status === "online" ? (
+                      <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-green-500" />
+                    ) : person.status === "away" ? (
+                      <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-yellow-500" />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{person.name}</span>
+                    {person.statusText ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {person.statusEmoji ? `${person.statusEmoji} ` : ""}{person.statusText}
+                      </span>
+                    ) : person.status === "offline" || !person.status ? (
+                      <span className="block text-xs text-muted-foreground">Offline</span>
+                    ) : null}
+                  </span>
+                  {person.dnd ? <BellOff className="size-3.5 shrink-0 text-muted-foreground" /> : null}
                   {on ? <Check className="size-4 text-accent" /> : null}
                 </button>
               </li>
@@ -838,6 +1009,16 @@ function SearchPanel({
   query,
   term,
   hits,
+  people,
+  filterUser,
+  filterDateFrom,
+  filterDateTo,
+  inThisChat,
+  hasSelected,
+  onFilterUser,
+  onFilterDateFrom,
+  onFilterDateTo,
+  onInThisChat,
   onQuery,
   onOpen,
   onClose,
@@ -845,10 +1026,22 @@ function SearchPanel({
   query: string;
   term: string;
   hits: { data?: TeamSearchHit[]; error?: string; loading: boolean };
+  people: TeamPerson[];
+  filterUser: number | null;
+  filterDateFrom: string;
+  filterDateTo: string;
+  inThisChat: boolean;
+  hasSelected: boolean;
+  onFilterUser: (v: number | null) => void;
+  onFilterDateFrom: (v: string) => void;
+  onFilterDateTo: (v: string) => void;
+  onInThisChat: (v: boolean) => void;
   onQuery: (value: string) => void;
   onOpen: (hit: TeamSearchHit) => void;
   onClose: () => void;
 }) {
+  const hasFilters = filterUser !== null || filterDateFrom || filterDateTo;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border p-3">
@@ -865,18 +1058,134 @@ function SearchPanel({
         />
         <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {term.length < 2 ? (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">Type at least two characters to search.</p>
-        ) : hits.error ? (
-          <p className="px-2 py-6 text-center text-sm text-destructive">{hits.error}</p>
-        ) : hits.loading && !hits.data ? (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">Searching…</p>
-        ) : !hits.data?.length ? (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">No messages match &ldquo;{term}&rdquo;.</p>
-        ) : (
-          <ul className="space-y-1">
-            {hits.data.map((hit) => (
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+        <select
+          aria-label="Filter by person"
+          value={filterUser ?? ""}
+          onChange={(e) => onFilterUser(e.target.value ? Number(e.target.value) : null)}
+          className="h-7 rounded-md border border-border bg-transparent px-2 text-xs text-foreground"
+        >
+          <option value="">Anyone</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <Input
+          type="date"
+          aria-label="From date"
+          value={filterDateFrom}
+          onChange={(e) => onFilterDateFrom(e.target.value)}
+          className="h-7 w-32 text-xs"
+          placeholder="From"
+        />
+        <Input
+          type="date"
+          aria-label="To date"
+          value={filterDateTo}
+          onChange={(e) => onFilterDateTo(e.target.value)}
+          className="h-7 w-32 text-xs"
+          placeholder="To"
+        />
+        {hasSelected ? (
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={inThisChat}
+              onChange={(e) => onInThisChat(e.target.checked)}
+              className="size-3.5 accent-accent"
+            />
+            In this chat
+          </label>
+        ) : null}
+        {hasFilters ? (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { onFilterUser(null); onFilterDateFrom(""); onFilterDateTo(""); }}>
+            <X className="mr-1 size-3" /> Clear
+          </Button>
+        ) : null}
+      </div>
+
+      <SearchResults term={term} hits={hits} onOpen={onOpen} />
+    </div>
+  );
+}
+
+type SearchTab = "all" | "messages" | "images" | "docs" | "links";
+const SEARCH_TABS: Array<{ key: SearchTab; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "messages", label: "Messages" },
+  { key: "images", label: "Images" },
+  { key: "docs", label: "Docs" },
+  { key: "links", label: "Links" },
+];
+
+const IMAGE_EXTS = /\.(png|jpg|jpeg|gif|webp)$/i;
+const DOC_EXTS = /\.(pdf|docx?|xlsx?|csv|txt|pptx?)$/i;
+const URL_RE = /https?:\/\/\S+/;
+
+function classifyHit(hit: TeamSearchHit): Set<SearchTab> {
+  const tags = new Set<SearchTab>(["all", "messages"]);
+  const hasImage = hit.message.attachments.some((a) => a.isImage || IMAGE_EXTS.test(a.filename));
+  const hasDoc = hit.message.attachments.some((a) => !a.isImage && DOC_EXTS.test(a.filename));
+  const hasLink = URL_RE.test(hit.message.body ?? "");
+  if (hasImage) tags.add("images");
+  if (hasDoc) tags.add("docs");
+  if (hasLink) tags.add("links");
+  return tags;
+}
+
+function SearchResults({ term, hits, onOpen }: {
+  term: string;
+  hits: { data?: TeamSearchHit[]; error?: string; loading: boolean };
+  onOpen: (hit: TeamSearchHit) => void;
+}) {
+  const [tab, setTab] = React.useState<SearchTab>("all");
+
+  const filtered = React.useMemo(() => {
+    if (!hits.data) return [];
+    if (tab === "all") return hits.data;
+    return hits.data.filter((h) => classifyHit(h).has(tab));
+  }, [hits.data, tab]);
+
+  const counts = React.useMemo(() => {
+    const c: Record<SearchTab, number> = { all: 0, messages: 0, images: 0, docs: 0, links: 0 };
+    for (const h of hits.data ?? []) {
+      const tags = classifyHit(h);
+      for (const t of tags) c[t]++;
+    }
+    return c;
+  }, [hits.data]);
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {term.length < 2 ? (
+        <p className="px-2 py-6 text-center text-sm text-muted-foreground">Type at least two characters to search.</p>
+      ) : hits.error ? (
+        <p className="px-2 py-6 text-center text-sm text-destructive">{hits.error}</p>
+      ) : hits.loading && !hits.data ? (
+        <p className="px-2 py-6 text-center text-sm text-muted-foreground">Searching…</p>
+      ) : !hits.data?.length ? (
+        <p className="px-2 py-6 text-center text-sm text-muted-foreground">No messages match &ldquo;{term}&rdquo;.</p>
+      ) : (
+        <>
+          <div className="flex gap-1 border-b border-border px-3 py-1.5">
+            {SEARCH_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                  tab === t.key ? "bg-accent text-white" : "text-muted-foreground hover:bg-surface-2",
+                  counts[t.key] === 0 && t.key !== "all" && "hidden",
+                )}
+              >
+                {t.label}{counts[t.key] > 0 ? ` · ${counts[t.key]}` : ""}
+              </button>
+            ))}
+          </div>
+          <ul className="space-y-1 p-3">
+            {filtered.map((hit) => (
               <li key={hit.message.id}>
                 <button
                   type="button"
@@ -889,14 +1198,29 @@ function SearchPanel({
                       {new Date(hit.message.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                     </time>
                   </div>
+                  {hit.message.attachments.length > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {hit.message.attachments.map((a) => (
+                        <span key={a.id} className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                          a.isImage ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-accent/10 text-accent",
+                        )}>
+                          {a.isImage ? "📷" : "📄"} {a.filename.length > 20 ? `${a.filename.slice(0, 17)}…` : a.filename}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <p className="mt-1 line-clamp-2 text-sm text-foreground">{highlight(hit.message.body ?? "", term)}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{hit.message.author.name}</p>
                 </button>
               </li>
             ))}
+            {filtered.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No {tab} match &ldquo;{term}&rdquo;.</p>
+            ) : null}
           </ul>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -967,26 +1291,29 @@ function AddMemberDialog({
   spaceId,
   people,
   onAdded,
+  kind = "channel",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   spaceId: string;
   people: TeamPerson[];
   onAdded: () => void;
+  kind?: "channel" | "group" | "voice";
 }) {
   const [query, setQuery] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const shown = people.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
+  const label = kind === "group" ? "group" : "channel";
 
   async function addPerson(userId: number) {
     if (busy) return;
     setBusy(true);
     try {
-      await api(`/team/channels/${spaceId}/members`, {
+      await api(`/team/spaces/${spaceId}/members`, {
         method: "POST",
         body: JSON.stringify({ user_id: userId }),
       });
-      toast.success("Person added to channel");
+      toast.success(`Person added to ${label}`);
       onAdded();
     } catch (error) {
       toast.error(errorText(error));
@@ -1000,7 +1327,7 @@ function AddMemberDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><UserPlus className="size-4" /> Add people</DialogTitle>
-          <DialogDescription>Add a teammate to this channel.</DialogDescription>
+          <DialogDescription>Add a teammate to this {label}.</DialogDescription>
         </DialogHeader>
         <Input autoFocus placeholder="Search people" aria-label="Search people" value={query} onChange={(event) => setQuery(event.target.value)} />
         <ul className="max-h-72 space-y-0.5 overflow-y-auto">
@@ -1279,6 +1606,431 @@ function StatusDialog({
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={() => void save()} disabled={busy}>Save status</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChannelDetailPanel({
+  detail,
+  loading,
+  onClose,
+  onTopicSaved,
+}: {
+  detail: SpaceDetail | undefined;
+  loading: boolean;
+  onClose: () => void;
+  onTopicSaved: () => void;
+}) {
+  const session = useSession();
+  const [editingTopic, setEditingTopic] = React.useState(false);
+  const [topic, setTopic] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [removing, setRemoving] = React.useState<number | null>(null);
+  const isCreator = detail ? String(detail.createdBy.id) === session.user.id : false;
+
+  async function saveTopic() {
+    if (!detail || saving) return;
+    setSaving(true);
+    try {
+      await api(`/team/spaces/${detail.id}/topic`, {
+        method: "PATCH",
+        body: JSON.stringify({ topic }),
+      });
+      toast.success("Topic updated");
+      setEditingTopic(false);
+      onTopicSaved();
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function leaveSpace() {
+    if (!detail || saving) return;
+    setSaving(true);
+    try {
+      await api(`/team/channels/${detail.id}/leave`, { method: "POST" });
+      toast.success(`Left ${detail.kind === "group" ? "group" : `#${detail.name}`}`);
+      onTopicSaved();
+      onClose();
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeMember(userId: number) {
+    if (!detail) return;
+    setRemoving(userId);
+    try {
+      await api(`/team/spaces/${detail.id}/members/${userId}`, { method: "DELETE" });
+      toast.success("Member removed");
+      onTopicSaved();
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[85dvh] overflow-hidden sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {detail?.kind === "group" ? <Users className="size-4" /> : detail?.private ? <Lock className="size-4" /> : <Hash className="size-4" />}
+            {detail?.kind === "group" ? "Group details" : detail?.name ?? "Channel details"}
+          </DialogTitle>
+          <DialogDescription>
+            {detail ? `${detail.memberCount} member${detail.memberCount === 1 ? "" : "s"} · Created ${new Date(detail.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : "Loading…"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && !detail ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : detail ? (
+          <div className="max-h-[60dvh] space-y-4 overflow-y-auto">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Topic</p>
+                {!editingTopic ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => { setTopic(detail.topic); setEditingTopic(true); }}
+                  >
+                    Edit
+                  </Button>
+                ) : null}
+              </div>
+              {editingTopic ? (
+                <div className="space-y-2">
+                  <Input
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="Add a topic"
+                    maxLength={200}
+                  />
+                  <div className="flex gap-1">
+                    <Button size="sm" onClick={() => void saveTopic()} disabled={saving}>Save</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingTopic(false)}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-foreground">{detail.topic || "No topic set"}</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase text-muted-foreground">Created by</p>
+              <p className="text-sm text-foreground">{detail.createdBy.name}</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Members ({detail.memberCount})
+              </p>
+              <ul className="space-y-1">
+                {detail.members.map((m) => (
+                  <li key={m.userId} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-surface-2">
+                    <span className="relative">
+                      <Avatar className="size-7">
+                        <AvatarFallback className="text-[10px]">{initials(m.name)}</AvatarFallback>
+                      </Avatar>
+                      {m.status === "online" ? (
+                        <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-green-500" />
+                      ) : m.status === "away" ? (
+                        <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-yellow-500" />
+                      ) : null}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-foreground">
+                        {m.name}
+                        {m.role === "creator" ? <span className="ml-1 text-[10px] text-muted-foreground">(creator)</span> : null}
+                      </p>
+                      {m.statusText ? (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {m.statusEmoji ? `${m.statusEmoji} ` : ""}{m.statusText}
+                        </p>
+                      ) : null}
+                    </div>
+                    {m.dnd ? <BellOff className="size-3 shrink-0 text-muted-foreground" /> : null}
+                    {isCreator && String(m.userId) !== session.user.id ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                        aria-label={`Remove ${m.name}`}
+                        disabled={removing === m.userId}
+                        onClick={() => void removeMember(m.userId)}
+                      >
+                        <X className="size-3" />
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {!detail.announcements ? (
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+                onClick={() => void leaveSpace()}
+                disabled={saving}
+              >
+                <LogOut className="size-4" /> Leave {detail.kind === "group" ? "group" : "channel"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ScheduleDialog({
+  body,
+  onClose,
+  onSchedule,
+}: {
+  body: string;
+  onClose: () => void;
+  onSchedule: (body: string, sendAt: string) => Promise<void>;
+}) {
+  const [date, setDate] = React.useState("");
+  const [time, setTime] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!date || !time || busy) return;
+    setBusy(true);
+    try {
+      const sendAt = new Date(`${date}T${time}`).toISOString();
+      await onSchedule(body, sendAt);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-sm">
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Clock className="size-4" /> Schedule message</DialogTitle>
+            <DialogDescription>Choose when to send this message.</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-border bg-surface-2 p-2 text-sm">{body.length > 100 ? `${body.slice(0, 97)}…` : body}</div>
+          <div className="flex gap-2">
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="sched-date">Date</Label>
+              <Input id="sched-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            </div>
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="sched-time">Time</Label>
+              <Input id="sched-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={!date || !time || busy}>Schedule</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ScheduledPanel({
+  messages,
+  loading,
+  onClose,
+  onChanged,
+}: {
+  messages: TeamScheduledMessage[];
+  loading: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  async function cancel(id: string) {
+    try {
+      await api(`/team/scheduled/${id}`, { method: "DELETE" });
+      onChanged();
+      toast.success("Scheduled message cancelled");
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[80dvh] overflow-hidden sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Clock className="size-4" /> Scheduled messages</DialogTitle>
+          <DialogDescription>Messages waiting to be sent.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-96 overflow-y-auto">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No scheduled messages.</p>
+          ) : (
+            <ul className="space-y-2">
+              {messages.map((msg) => (
+                <li key={msg.id} className="rounded-md border border-border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-sm text-foreground">{msg.body}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Sends {new Date(msg.sendAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="shrink-0 text-xs text-destructive" onClick={() => void cancel(msg.id)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MediaGalleryPanel({
+  items,
+  loading,
+  onClose,
+}: {
+  items: TeamAttachment[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const images = React.useMemo(() => items.filter((a) => a.contentType.startsWith("image/")), [items]);
+  const docs = React.useMemo(() => items.filter((a) => !a.contentType.startsWith("image/")), [items]);
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[85dvh] overflow-hidden sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><ImageIcon className="size-4" /> Media &amp; files</DialogTitle>
+          <DialogDescription>All shared media in this conversation.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60dvh] space-y-4 overflow-y-auto">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : items.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No media shared yet.</p>
+          ) : (
+            <>
+              {images.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Images ({images.length})</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {images.map((img) => (
+                      <a
+                        key={img.id}
+                        href={`/api/team/attachments/${img.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group/img relative aspect-square overflow-hidden rounded-md border border-border bg-surface-2"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`/api/team/attachments/${img.id}`} alt={img.filename} className="size-full object-cover" loading="lazy" />
+                        <span className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover/img:opacity-100">
+                          {img.filename}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {docs.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Documents ({docs.length})</p>
+                  <ul className="space-y-1">
+                    {docs.map((doc) => (
+                      <li key={doc.id}>
+                        <a
+                          href={`/api/team/attachments/${doc.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-surface-2"
+                        >
+                          <FileText className="size-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1 truncate text-sm">{doc.filename}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{fileSize(doc.sizeBytes)}</span>
+                          <Download className="size-3.5 shrink-0 text-muted-foreground" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProfileCard({
+  userId,
+  people,
+  presence,
+  onClose,
+  onStartDm,
+}: {
+  userId: number;
+  people: TeamPerson[];
+  presence: TeamPresence[];
+  onClose: () => void;
+  onStartDm: (userId: number) => void;
+}) {
+  const person = React.useMemo(() => people.find((x) => x.id === userId), [people, userId]);
+  const p = React.useMemo(() => presence.find((x) => x.userId === userId), [presence, userId]);
+  const statusDot = p?.status === "online" ? "bg-green-500" : p?.status === "away" ? "bg-yellow-500" : "bg-zinc-400";
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-xs">
+        <DialogHeader>
+          <DialogTitle>Profile</DialogTitle>
+          <DialogDescription className="sr-only">User profile card</DialogDescription>
+        </DialogHeader>
+        {person ? (
+          <div className="flex flex-col items-center gap-3 py-2">
+            <Avatar className="size-16">
+              <AvatarFallback className="text-xl">{initials(person.name)}</AvatarFallback>
+            </Avatar>
+            <div className="text-center">
+              <p className="text-lg font-semibold">{person.name}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn("size-2.5 rounded-full", statusDot)} />
+              <span className="text-sm text-muted-foreground capitalize">{p?.status ?? "offline"}</span>
+            </div>
+            {p?.statusText ? (
+              <p className="text-sm text-muted-foreground">
+                {p.statusEmoji ? `${p.statusEmoji} ` : ""}{p.statusText}
+              </p>
+            ) : null}
+            <Button className="mt-2 w-full" onClick={() => onStartDm(userId)}>
+              <ThreadIcon className="mr-2 size-4" /> Message
+            </Button>
+          </div>
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">Could not load profile.</p>
+        )}
       </DialogContent>
     </Dialog>
   );

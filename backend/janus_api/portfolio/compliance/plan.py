@@ -280,6 +280,8 @@ async def set_compliance_plan(
         )
         record(db, "portfolio.compliance_plan_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
+        from janus_api.portfolio.summary import invalidate_summary
+        invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return plan
@@ -347,6 +349,8 @@ async def mark_filing(
             details={"item": key},
         )
         await db.flush()
+        from janus_api.portfolio.summary import invalidate_summary
+        invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
 
@@ -381,6 +385,8 @@ async def set_registration(
         row.updated_by, row.updated_at = user_id, now()
         record(db, "portfolio.registration_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
+        from janus_api.portfolio.summary import invalidate_summary
+        invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     return data

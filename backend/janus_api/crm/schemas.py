@@ -317,3 +317,637 @@ class CustomerAccountOut(BaseModel):
     overdue: str | None = None
     lastInvoiceOn: date | None = None
     latest: list[AccountInvoiceOut] = []
+
+
+# ---------------------------------------------------------------------------
+# Activities
+# ---------------------------------------------------------------------------
+
+ActivityKind = Literal["call", "meeting", "email", "task"]
+ActivityOutcome = Literal[
+    "connected",
+    "no_answer",
+    "left_voicemail",
+    "interested",
+    "not_interested",
+    "follow_up",
+    "completed",
+    "cancelled",
+]
+
+
+class ActivityIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: ActivityKind
+    subject: str = Field(max_length=500)
+    description: str = Field(default="", max_length=5000)
+    leadId: str | None = None
+    contactId: str
+    dueAt: datetime | None = None
+    outcome: ActivityOutcome | None = None
+    durationSeconds: int | None = Field(default=None, ge=0, le=86400)
+
+
+class ActivityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=5000)
+    dueAt: datetime | None = None
+    outcome: ActivityOutcome | None = None
+    durationSeconds: int | None = Field(default=None, ge=0, le=86400)
+
+
+class ActivityCompleteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    outcome: ActivityOutcome | None = None
+    durationSeconds: int | None = Field(default=None, ge=0, le=86400)
+
+
+class ActivityOut(BaseModel):
+    id: str
+    kind: str
+    subject: str
+    description: str
+    leadId: str | None
+    contactId: str
+    ownerId: str | None
+    ownerName: str | None = None
+    dueAt: datetime | None
+    completedAt: datetime | None
+    outcome: str | None
+    durationSeconds: int | None
+    createdAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+
+
+class TagIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=50)
+    color: str = Field(default="#6b7280", pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class TagOut(BaseModel):
+    id: str
+    name: str
+    color: str
+
+
+class TagAttach(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tagId: str
+
+
+# ---------------------------------------------------------------------------
+# Products
+# ---------------------------------------------------------------------------
+
+
+class ProductIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    sku: str | None = Field(default=None, max_length=50)
+    description: str = Field(default="", max_length=5000)
+    unitPrice: Decimal = Field(default=Decimal(0), ge=0, max_digits=14, decimal_places=2)
+    unit: str = Field(default="unit", max_length=20)
+    taxPct: Decimal = Field(default=Decimal(18), ge=0, le=100, max_digits=5, decimal_places=2)
+
+
+class ProductUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    sku: str | None = Field(default=None, max_length=50)
+    description: str | None = Field(default=None, max_length=5000)
+    unitPrice: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    unit: str | None = Field(default=None, max_length=20)
+    taxPct: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    active: bool | None = None
+
+
+class ProductOut(BaseModel):
+    id: str
+    name: str
+    sku: str | None
+    description: str
+    unitPrice: str
+    unit: str
+    taxPct: str
+    active: bool
+    createdAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Deal items
+# ---------------------------------------------------------------------------
+
+
+class DealItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    productId: str | None = None
+    description: str = Field(default="", max_length=500)
+    quantity: Decimal = Field(default=Decimal(1), gt=0, max_digits=10, decimal_places=2)
+    unitPrice: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    discountPct: Decimal = Field(default=Decimal(0), ge=0, le=100, max_digits=5, decimal_places=2)
+
+
+class DealItemUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str | None = Field(default=None, max_length=500)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    unitPrice: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    discountPct: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+
+
+class DealItemOut(BaseModel):
+    id: str
+    productId: str | None
+    productName: str | None = None
+    description: str
+    quantity: str
+    unitPrice: str
+    discountPct: str
+    lineTotal: str
+    createdAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Quotes
+# ---------------------------------------------------------------------------
+
+QuoteStatus = Literal["draft", "sent", "accepted", "rejected", "expired"]
+
+
+class QuoteStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: QuoteStatus
+
+
+class QuoteCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    validUntil: date | None = None
+    notes: str = Field(default="", max_length=5000)
+
+
+class QuoteItemOut(BaseModel):
+    id: str
+    description: str
+    quantity: str
+    unitPrice: str
+    discountPct: str
+    taxPct: str
+    lineTotal: str
+
+
+class QuoteOut(BaseModel):
+    id: str
+    dealId: str
+    number: str
+    status: str
+    validUntil: date | None
+    notes: str
+    total: str
+    createdBy: str | None
+    createdByName: str | None = None
+    items: list[QuoteItemOut] = []
+    createdAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Bulk operations
+# ---------------------------------------------------------------------------
+
+
+class BulkStageIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    leadIds: list[str] = Field(min_length=1, max_length=100)
+    stage: LeadStage
+    lostCategory: LostCategory | None = None
+    lostReason: LostNote = ""
+
+    @model_validator(mode="after")
+    def loss_reason(self) -> "BulkStageIn":
+        self.lostCategory, self.lostReason = check_lost(
+            self.stage, self.lostCategory, self.lostReason
+        )
+        return self
+
+
+class BulkDeleteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    leadIds: list[str] = Field(min_length=1, max_length=100)
+
+
+class BulkResult(BaseModel):
+    affected: int
+
+
+# ---------------------------------------------------------------------------
+# Lead detail (360 view)
+# ---------------------------------------------------------------------------
+
+
+class LeadDetailOut(BaseModel):
+    lead: LeadOut
+    deal: DealOut | None = None
+    notes: list[NoteOut] = []
+    activities: list[ActivityOut] = []
+    tags: list[TagOut] = []
+
+
+# ---------------------------------------------------------------------------
+# Contact detail (360 view)
+# ---------------------------------------------------------------------------
+
+
+class ContactLeadSummary(BaseModel):
+    id: str
+    stage: str
+    source: str
+    requirement: str
+    createdAt: datetime
+    dealId: str | None = None
+    dealName: str | None = None
+    dealAmount: str | None = None
+    dealStage: str | None = None
+
+
+class ContactDetailOut(BaseModel):
+    contact: ContactOut
+    leads: list[ContactLeadSummary] = []
+    notes: list[CustomerNoteOut] = []
+    activities: list[ActivityOut] = []
+    tags: list[TagOut] = []
+    totalDealValue: str = "0.00"
+    openDealValue: str = "0.00"
+
+
+# ---------------------------------------------------------------------------
+# Dashboard & Reports
+# ---------------------------------------------------------------------------
+
+
+class DashboardStats(BaseModel):
+    totalLeads: int
+    newLeadsToday: int
+    newLeadsWeek: int
+    openDeals: int
+    pipelineValue: str
+    wonValue: str
+    wonDeals: int
+    lostDeals: int
+    conversionRate: str
+    avgCycleDays: str | None
+
+
+class FunnelData(BaseModel):
+    stage: str
+    count: int
+    value: str
+
+
+class RepPerformance(BaseModel):
+    ownerId: str | None
+    name: str
+    leads: int
+    wonDeals: int
+    wonValue: str
+    openLeads: int
+    conversionRate: str
+
+
+class SourceBreakdown(BaseModel):
+    source: str
+    leads: int
+    won: int
+    wonValue: str
+    conversionRate: str
+
+
+class DailyPoint(BaseModel):
+    date: str
+    leads: int
+    wonDeals: int
+    wonValue: str
+
+
+# ---------------------------------------------------------------------------
+# Contacts list
+# ---------------------------------------------------------------------------
+
+
+class ContactListRow(BaseModel):
+    id: str
+    name: str
+    phone: str | None
+    email: str | None
+    company: str
+    whatsappOptIn: bool
+    doNotContact: bool
+    createdAt: datetime
+    tags: list["TagOut"] = []
+
+
+# ---------------------------------------------------------------------------
+# Lead scoring
+# ---------------------------------------------------------------------------
+
+
+class LeadScoreOut(BaseModel):
+    leadId: str
+    score: int
+    factors: dict[str, int | float]
+    calculatedAt: datetime
+
+
+class BulkScoreResult(BaseModel):
+    scored: int
+
+
+# ---------------------------------------------------------------------------
+# Sales targets & forecasting
+# ---------------------------------------------------------------------------
+
+
+class TargetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ownerId: str | None = None
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    targetAmount: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+
+
+class TargetOut(BaseModel):
+    id: str
+    ownerId: str | None
+    ownerName: str | None = None
+    period: str
+    targetAmount: str
+    createdAt: datetime
+
+
+class StageBreakdownItem(BaseModel):
+    stage: str
+    count: int
+    value: str
+    weight: float
+    weightedValue: str
+
+
+class ForecastOut(BaseModel):
+    period: str
+    targetAmount: str
+    weightedPipeline: str
+    wonToDate: str
+    gap: str
+    stageBreakdown: list[StageBreakdownItem] = []
+
+
+class RepAttainmentOut(BaseModel):
+    ownerId: str | None
+    name: str
+    targetAmount: str
+    wonAmount: str
+    attainmentPct: str
+    weightedPipeline: str
+
+
+# ---------------------------------------------------------------------------
+# Custom fields
+# ---------------------------------------------------------------------------
+
+CustomFieldEntityType = Literal["lead", "contact", "deal"]
+CustomFieldType = Literal[
+    "text", "number", "date", "select", "multiselect", "email", "phone", "url"
+]
+
+
+class CustomFieldDefIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entityType: CustomFieldEntityType
+    fieldName: str = Field(min_length=1, max_length=100)
+    fieldType: CustomFieldType
+    fieldOptions: dict[str, object] | None = None
+    required: bool = False
+    sortOrder: int = Field(default=0, ge=0)
+
+
+class CustomFieldDefUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fieldName: str | None = Field(default=None, min_length=1, max_length=100)
+    fieldType: CustomFieldType | None = None
+    fieldOptions: dict[str, object] | None = None
+    required: bool | None = None
+    sortOrder: int | None = Field(default=None, ge=0)
+    active: bool | None = None
+
+
+class CustomFieldDefOut(BaseModel):
+    id: str
+    entityType: str
+    fieldName: str
+    fieldType: str
+    fieldOptions: dict[str, object] | None
+    required: bool
+    sortOrder: int
+    active: bool
+    createdAt: datetime
+
+
+class CustomFieldValueIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    valueText: str | None = None
+    valueNumber: Decimal | None = None
+    valueDate: date | None = None
+
+
+class CustomFieldValueOut(BaseModel):
+    fieldDefId: str
+    fieldName: str
+    fieldType: str
+    valueText: str | None
+    valueNumber: str | None
+    valueDate: date | None
+
+
+# ---------------------------------------------------------------------------
+# Attachments
+# ---------------------------------------------------------------------------
+
+
+class AttachmentOut(BaseModel):
+    id: str
+    entityType: str
+    entityId: str
+    filename: str
+    contentType: str
+    sizeBytes: int
+    uploadedBy: str
+    createdAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Email templates
+# ---------------------------------------------------------------------------
+
+
+class EmailTemplateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    subject: str = Field(default="", max_length=500)
+    bodyHtml: str = Field(default="", max_length=50000)
+    variables: list[str] = Field(default_factory=list)
+    category: str | None = Field(default=None, max_length=50)
+
+
+class EmailTemplateUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    subject: str | None = Field(default=None, max_length=500)
+    bodyHtml: str | None = Field(default=None, max_length=50000)
+    variables: list[str] | None = None
+    category: str | None = None
+    active: bool | None = None
+
+
+class EmailTemplateOut(BaseModel):
+    id: str
+    name: str
+    subject: str
+    bodyHtml: str
+    variables: list[str]
+    category: str | None
+    active: bool
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class TemplateRenderIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    context: dict[str, str] = Field(default_factory=dict)
+
+
+class TemplateRenderOut(BaseModel):
+    subject: str
+    bodyHtml: str
+
+
+# ---------------------------------------------------------------------------
+# Email sequences
+# ---------------------------------------------------------------------------
+
+
+class SequenceStepIn(BaseModel):
+    templateId: str
+    delayDays: int = Field(default=0, ge=0)
+    delayHours: int = Field(default=0, ge=0)
+
+
+class SequenceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    steps: list[SequenceStepIn] = Field(default_factory=list)
+
+
+class SequenceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    steps: list[SequenceStepIn] | None = None
+    active: bool | None = None
+
+
+class SequenceOut(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    steps: list[dict[str, object]]
+    active: bool
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Web forms
+# ---------------------------------------------------------------------------
+
+
+class WebFormFieldConfig(BaseModel):
+    name: str
+    label: str
+    type: str = "text"
+    required: bool = False
+    mapTo: str | None = None
+
+
+class WebFormIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    slug: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9\-]*$")
+    fieldsConfig: list[WebFormFieldConfig] = Field(default_factory=list)
+    redirectUrl: str | None = Field(default=None, max_length=500)
+    notifyEmail: EmailStr | None = None
+
+
+class WebFormUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    fieldsConfig: list[WebFormFieldConfig] | None = None
+    redirectUrl: str | None = None
+    notifyEmail: EmailStr | None = None
+    active: bool | None = None
+
+
+class WebFormOut(BaseModel):
+    id: str
+    name: str
+    slug: str
+    fieldsConfig: list[dict[str, object]]
+    redirectUrl: str | None
+    notifyEmail: str | None
+    active: bool
+    submissionCount: int
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class WebFormSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    data: dict[str, str]
+
+
+class WebFormSubmitOut(BaseModel):
+    leadId: str
+    message: str = "Thank you for your submission"
+
+
+# ---------------------------------------------------------------------------
+# Duplicate detection
+# ---------------------------------------------------------------------------
+
+
+class DuplicateGroupOut(BaseModel):
+    id: str
+    entityType: str
+    matchField: str
+    matchValue: str
+    entityIds: list[str]
+    status: str
+    mergedIntoId: str | None
+    createdAt: datetime
+    resolvedAt: datetime | None
+
+
+class MergeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    winnerId: str
+
+
+class MergeResult(BaseModel):
+    merged: int
+    winnerId: str

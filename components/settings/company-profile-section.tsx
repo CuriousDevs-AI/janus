@@ -17,6 +17,7 @@ import { demoMode } from "@/lib/demo-mode";
 import { useSession } from "@/components/auth/session-provider";
 import { useLocationsStore, type CompanyLocation } from "@/lib/stores/company-locations-store";
 import { LiveCompanyProfile } from "@/components/business/company-settings";
+import { invalidatePortfolioCache } from "@/features/portfolio/lib/use-portfolio-api";
 
 type Location = CompanyLocation;
 type CompanyProfile = {
@@ -76,6 +77,7 @@ function DemoCompanyProfile() {
         method: "PATCH",
         body: JSON.stringify({ businessName: draft.displayName, industry: draft.industry, companySize: draft.size }),
       });
+      invalidatePortfolioCache();
       setSaved(draft);
       toast.success("Core company profile saved");
     } catch (error) {

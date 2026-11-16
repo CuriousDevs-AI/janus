@@ -672,6 +672,14 @@ _summary_cache: dict[str, tuple[float, schemas.PortfolioSummary]] = {}
 _summary_locks: dict[str, asyncio.Lock] = {}
 _SUMMARY_TTL = 15
 
+
+def invalidate_summary(user_id: int) -> None:
+    """Drop every cached summary for this user so the next read is fresh."""
+    stale = [k for k in _summary_cache if k.startswith(f"{user_id}:")]
+    for k in stale:
+        _summary_cache.pop(k, None)
+        _summary_locks.pop(k, None)
+
 _warm_users: dict[int, float] = {}
 _WARM_INTERVAL = 60
 _WARM_USER_TTL = 300

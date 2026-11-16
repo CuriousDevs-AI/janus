@@ -60,9 +60,19 @@ def output(deal: Deal, lead: Lead, contact: Contact, owner: User | None = None) 
 
 
 async def list_deals(
-    db: AsyncSession, actor: Actor, after_id: int, limit: int
+    db: AsyncSession,
+    actor: Actor,
+    after_id: int,
+    limit: int,
+    stage: str | None = None,
+    owner_id: int | None = None,
 ) -> list[schemas.DealOut]:
-    query = (await query_for(db, actor)).where(Deal.id > after_id).order_by(Deal.id).limit(limit)
+    query = (await query_for(db, actor)).where(Deal.id > after_id)
+    if stage is not None:
+        query = query.where(Deal.stage == stage)
+    if owner_id is not None:
+        query = query.where(Lead.owner_id == owner_id)
+    query = query.order_by(Deal.id).limit(limit)
     return [output(*row) for row in (await db.execute(query)).all()]
 
 

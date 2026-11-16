@@ -15,14 +15,14 @@ export function MetricCard({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-1.5 rounded-lg border border-border bg-surface px-4 py-3.5", className)}>
+    <div className={cn("flex min-h-[76px] flex-col justify-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-3.5", className)}>
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
       <div className="flex items-baseline gap-2">
-        <span className="text-mono text-[22px] font-semibold leading-none text-foreground">{value}</span>
+        <span className="text-mono text-[22px] font-semibold leading-none text-foreground transition-opacity duration-150">{value}</span>
         {delta && (
           <span
             className={cn(
-              "inline-flex items-center gap-0.5 text-[11px] font-medium",
+              "inline-flex items-center gap-0.5 text-[11px] font-medium transition-opacity duration-150",
               trend === "up" ? "text-success" : trend === "down" ? "text-danger" : "text-muted-foreground"
             )}
           >
