@@ -25,7 +25,7 @@ months are final.
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, or_, select
 
 from janus_api.auth.service import Actor
 from janus_api.core.deps import Db
@@ -185,17 +185,45 @@ def _approvers(kind: str, data: dict[str, Any]) -> list[str]:
     return sorted(person for person in people if isinstance(person, str) and person)
 
 
+_DIRECTORY_KINDS = [k for k, s in SCOPES.items() if s == "directory"]
+_OPEN_KINDS = [k for k, s in SCOPES.items() if s in ("directory", "company", "run")]
+_HR_KINDS = [k for k, s in SCOPES.items() if s == "hr"]
+_PERSONAL_KINDS = [k for k, s in SCOPES.items() if s == "personal"]
+# Generous but finite: one page of every kind a normal company generates.
+_RECORD_LIMIT = 5000
+
+
 async def list_records(db: Db, actor: Actor) -> schemas.RecordsOut:
     tenant_id = actor.session.tenant_id
     pay = _has(actor, FULL)
     read_all = pay or _has(actor, READ_ALL)
     me = await _me(db, actor)
     reports = await _reports(db, actor, me)
-    rows = (
-        await db.scalars(
-            select(HrRecord).where(HrRecord.tenant_id == tenant_id).order_by(HrRecord.id)
+
+    base = select(HrRecord).where(HrRecord.tenant_id == tenant_id)
+    if read_all:
+        # HR / owner: see everything, bounded by a generous limit.
+        query = base.order_by(HrRecord.id).limit(_RECORD_LIMIT)
+    else:
+        # Non-HR: directory + company/run (everyone), personal (own + reports + approver).
+        # HR-only kinds are excluded entirely in SQL.
+        personal_filter = or_(
+            HrRecord.subject == (me or ""),
+            HrRecord.subject.in_(reports) if reports else literal(False),
+            HrRecord.approvers.any(literal(me)) if me else literal(False),
         )
-    ).all()
+        query = (
+            base.where(
+                or_(
+                    HrRecord.kind.in_(_OPEN_KINDS),
+                    HrRecord.kind.in_(_PERSONAL_KINDS) & personal_filter,
+                )
+            )
+            .order_by(HrRecord.id)
+            .limit(_RECORD_LIMIT)
+        )
+
+    rows = (await db.scalars(query)).all()
     out: dict[str, list[schemas.RecordOut]] = {kind: [] for kind in SCOPES}
     for row in rows:
         scope = SCOPES.get(row.kind)
