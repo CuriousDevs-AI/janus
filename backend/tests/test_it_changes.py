@@ -93,6 +93,43 @@ async def test_invalid_input_and_permission_are_refused(
     assert (await client.get("/v1/it/changes", headers=agent)).status_code == 403
 
 
+async def test_list_changes_respects_limit_and_after_id(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _ = await _setup(client, mailbox)
+    ids = []
+    for i in range(3):
+        r = await client.post(
+            "/v1/it/changes",
+            headers=owner.headers,
+            json={"title": f"Change number {i + 1} for pagination test", "risk": "low"},
+        )
+        assert r.status_code == 201
+        ids.append(int(r.json()["id"]))
+
+    # Default limit returns all three (newest first).
+    all_rows = (await client.get("/v1/it/changes", headers=owner.headers)).json()
+    assert len(all_rows) == 3
+    assert int(all_rows[0]["id"]) == ids[2]
+
+    # Limit to 2.
+    page1 = (
+        await client.get("/v1/it/changes", headers=owner.headers, params={"limit": 2})
+    ).json()
+    assert len(page1) == 2
+
+    # Cursor: after_id of the last row on page 1 gives page 2.
+    page2 = (
+        await client.get(
+            "/v1/it/changes",
+            headers=owner.headers,
+            params={"limit": 2, "after_id": int(page1[-1]["id"])},
+        )
+    ).json()
+    assert len(page2) == 1
+    assert int(page2[0]["id"]) == ids[0]
+
+
 async def test_another_company_cannot_see_or_decide_a_change(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:
