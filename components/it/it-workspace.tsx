@@ -279,11 +279,13 @@ function ChangesView() {
               <span><span className="font-medium">{c.number}</span> · {c.title}<span className="block text-xs text-muted-foreground">{c.risk} risk · requested by {c.requestedBy} on {c.raisedOn}{c.decidedBy ? ` · decided by ${c.decidedBy}` : ""}</span></span>
               <span className="flex flex-wrap items-center gap-2">
                 <Badge variant={c.status === "done" || c.status === "approved" ? "success" : c.status === "rejected" ? "danger" : "warning"}>{c.status}</Badge>
-                {c.status === "pending" ? (
+                {c.status === "pending" && c.requestedBy !== me ? (
                   <>
                     <Button size="sm" variant="secondary" onClick={async () => { const p = await decideITChange(c.id, true, me); if (p) toast.error(p); }}>Approve</Button>
                     <Button size="sm" variant="ghost" onClick={async () => { const p = await decideITChange(c.id, false, me); if (p) toast.error(p); }}>Reject</Button>
                   </>
+                ) : c.status === "pending" ? (
+                  <span className="text-xs text-muted-foreground">Waiting for someone else to decide</span>
                 ) : null}
                 {c.status === "approved" ? <Button size="sm" onClick={async () => { const p = await completeITChange(c.id, me); if (p) toast.error(p); }}>Mark carried out</Button> : null}
               </span>
