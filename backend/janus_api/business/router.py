@@ -358,6 +358,39 @@ TEMPLATES = [
         modules=["Customer Support & Success", "Projects & Delivery"],
         needs=["project"],
     ),
+    schemas.TemplateOut(
+        id="spend-request-alert",
+        name="Tell approvers about every spend request",
+        description="Post each spend request, with its amount and purpose, where the people who "
+        "approve spending will see it, so money is not held up or spent unchecked.",
+        trigger={"type": "spend_requested"},
+        steps=[
+            _post(
+                "Spend request {{spend.number}}: {{spend.amount}} for {{spend.purpose}}, raised by"
+                " {{spend.requested_by}}. Approve or reject it in Finance.",
+                "Post the request in Team Chat",
+            )
+        ],
+        modules=["Finance & Accounting", "Team Chat"],
+        needs=["channel"],
+    ),
+    schemas.TemplateOut(
+        id="credit-note-alert",
+        name="Flag every credit note and write-off",
+        description="Each time money owed is reduced, post the amount, customer and reason, so "
+        "discounts and write-offs are seen before they are approved.",
+        trigger={"type": "credit_note_raised"},
+        steps=[
+            _post(
+                "{{credit_note.kind}} {{credit_note.number}}: {{credit_note.amount}} off invoice"
+                " {{credit_note.invoice}} for {{credit_note.customer}}. Reason:"
+                " {{credit_note.reason}}. It waits for approval in Finance.",
+                "Post it in Team Chat",
+            )
+        ],
+        modules=["Finance & Accounting", "Team Chat"],
+        needs=["channel"],
+    ),
 ]
 
 
@@ -386,6 +419,16 @@ TRIGGERS: list[dict[str, object]] = [
         "label": "When a support ticket is opened",
         "module": "customer_support",
     },
+    {
+        "type": "spend_requested",
+        "label": "When a spend request is raised",
+        "module": "finance_accounting",
+    },
+    {
+        "type": "credit_note_raised",
+        "label": "When a credit note or write-off is raised",
+        "module": "finance_accounting",
+    },
 ]
 
 
@@ -393,7 +436,7 @@ TRIGGERS: list[dict[str, object]] = [
 async def automation_catalog(actor: CurrentActor, db: Db) -> dict[str, list[dict[str, object]]]:
     """What the workflow editor offers: the company's workspaces, how a workflow starts, its steps.
 
-    A workflow starts by hand, or when a lead is captured or a support ticket is opened. The steps
+    A workflow starts by hand, or on a new lead, support ticket, spend request or credit note. The steps
     are the core ones and those the templates use; `supported` says whether Janus carries one out.
     """
     switched_on = set(
@@ -658,30 +701,6 @@ async def workflow_runs(
     return [service.execution_out(item) for item in items]
 
 
-@router.get("/business/automations/{workflow_id}/versions", response_model=list[dict[str, Any]])
-async def workflow_versions(workflow_id: int, actor: CurrentActor, db: Db) -> list[dict[str, Any]]:
-    workflow = await db.scalar(
-        select(AutomationWorkflow).where(
-            AutomationWorkflow.id == workflow_id,
-            AutomationWorkflow.tenant_id == actor.session.tenant_id,
-            AutomationWorkflow.status != "archived",
-        )
-    )
-    if workflow is None:
-        raise ApiError("not_found", "Automation not found.", 404)
-    await service.ensure_workspace_access(
-        db, actor.session.tenant_id, actor.user.id, workflow.workspace_id
-    )
-    return [
-        {
-            "version": 1,
-            "status": workflow.status,
-            "createdAt": workflow.created_at,
-            "changeNote": "Initial workflow version",
-        }
-    ]
-
-
 @router.patch("/business/automations/{workflow_id}/draft", response_model=schemas.WorkflowOut)
 async def save_workflow_draft(
     workflow_id: int, data: schemas.WorkflowUpdate, actor: Automations, db: Db, request: Request
@@ -708,7 +727,10 @@ async def save_workflow_draft(
     ):
         if value is not None:
             setattr(item, key, value)
-    item.status = "draft"
+    # A switched-on workflow stays on with the saved changes, so its next run uses them. One the
+    # changes leave unable to run is switched off rather than left on to fail; its problems say why.
+    if item.status != "active" or engine.problems(item.trigger, item.actions or []):
+        item.status = "draft"
     from janus_api.audit.service import record
 
     record(

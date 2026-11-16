@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from janus_api.business.engine import run_once
 from tests.conftest import Mailbox
+from tests.test_finance_funds import LINE, SMALL
+from tests.test_finance_records import _invoice, _key
 from tests.test_workflow_runner import _company, _messages, _post, _runs, _workflow, worker
 
 assert worker  # The worker's restricted login, shared with the runner tests.
@@ -17,6 +19,8 @@ async def test_a_captured_lead_and_an_opened_ticket_start_their_workflows(
         "manual",
         "lead_created",
         "ticket_created",
+        "spend_requested",
+        "credit_note_raised",
     ]
     on_lead = await _workflow(
         client,
@@ -142,3 +146,98 @@ async def test_a_workflow_that_starts_on_its_own_is_switched_on_only_when_ready(
     switched = await client.post(f"/v1/business/automations/{workflow}/on", headers=owner.headers)
     assert switched.status_code == 200, switched.text
     assert switched.json()["status"] == "active" and switched.json()["problems"] == []
+
+
+async def test_a_spend_request_and_a_credit_note_start_their_workflows(
+    client: httpx.AsyncClient, mailbox: Mailbox, worker: async_sessionmaker[AsyncSession]
+) -> None:
+    owner, space = await _company(client, mailbox)
+    templates = {
+        item["id"]: item
+        for item in (
+            await client.get("/v1/business/automation-templates", headers=owner.headers)
+        ).json()
+    }
+    assert templates["spend-request-alert"]["trigger"] == {"type": "spend_requested"}
+    spend_text = "{{spend.number}}: {{spend.amount}} for {{spend.purpose}}"
+    note_text = "{{credit_note.kind}} {{credit_note.amount}}: {{credit_note.reason}}"
+    for trigger, message in (("spend_requested", spend_text), ("credit_note_raised", note_text)):
+        made = await _workflow(
+            client,
+            owner,
+            [_post(message)],
+            name=f"Alert on {trigger}",
+            trigger={"type": trigger},
+            requiresApproval=False,
+        )
+        on = await client.post(f"/v1/business/automations/{made}/on", headers=owner.headers)
+        assert on.status_code == 200, on.text
+    # A field the trigger does not give is named in words, not as a code.
+    wrong = await _workflow(
+        client,
+        owner,
+        [_post("{{spend.amount}}")],
+        name="Wrong field",
+        trigger={"type": "credit_note_raised"},
+    )
+    shown = (await client.get(f"/v1/business/automations/{wrong}", headers=owner.headers)).json()
+    assert any("does not start from a spend request" in text for text in shown["problems"])
+
+    line = await client.post("/v1/finance/budget-lines", headers=owner.headers, json=LINE)
+    assert line.status_code == 201, line.text
+    spend = await client.post(
+        "/v1/finance/fund-requests", headers={**owner.headers, **_key("fr-wf")}, json=SMALL
+    )
+    assert spend.status_code == 201, spend.text
+    invoice = await _invoice(client, owner)
+    note = await client.post(
+        f"/v1/finance/invoices/{invoice['id']}/credit-notes",
+        headers={**owner.headers, **_key("cn-wf")},
+        json={
+            "amount_paise": 50000,
+            "kind": "credit",
+            "reason": "Late delivery",
+            "noted_on": "2026-10-12",
+        },
+    )
+    assert note.status_code == 201, note.text
+
+    assert await run_once(worker) is True
+    assert await run_once(worker) is True
+    posted = await _messages(client, owner, space)
+    assert any(text.endswith(": ₹3,000 for Packing tape restock") for text in posted), posted
+    assert "Credit note ₹500: Late delivery" in posted
+
+
+async def test_saving_changes_keeps_a_ready_workflow_on_and_switches_off_a_broken_one(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner, _ = await _company(client, mailbox)
+    workflow = await _workflow(
+        client,
+        owner,
+        [_post("New lead: {{lead.name}}")],
+        trigger={"type": "lead_created"},
+        requiresApproval=False,
+    )
+    on = await client.post(f"/v1/business/automations/{workflow}/on", headers=owner.headers)
+    assert on.status_code == 200, on.text
+
+    edited = await client.patch(
+        f"/v1/business/automations/{workflow}/draft",
+        headers=owner.headers,
+        json={"actions": [_post("Fresh lead: {{lead.name}} from {{lead.source}}")]},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["status"] == "active"
+
+    broken = _post("No channel")
+    broken["config"]["channel"] = ""
+    saved = await client.patch(
+        f"/v1/business/automations/{workflow}/draft",
+        headers=owner.headers,
+        json={"actions": [broken]},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["status"] == "draft"
+    assert any("Team Chat channel" in text for text in saved.json()["problems"])

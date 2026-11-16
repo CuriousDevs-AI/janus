@@ -511,6 +511,10 @@ async def raise_credit_note(
         ip=request_ip(request),
         details={"note": note.number, "kind": data.kind, "amount_paise": data.amount_paise},
     )
+    # Workflows that start on a discount or refund (flagging it to the owner, for one) run now.
+    from janus_api.business.service import enqueue_event
+
+    await enqueue_event(db, tenant_id, "credit_note_raised", {"credit_note_id": note.id})
     return await _invoice_out(db, row)
 
 
