@@ -282,11 +282,14 @@ export function ChatAvatar({ item, label }: { item: TeamSpace; label: string }) 
     );
   }
   return (
-    <span
-      className="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-      style={{ backgroundColor: avatarColor(label) }}
-    >
-      {initials(label)}
+    <span className="relative">
+      <span
+        className="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+        style={{ backgroundColor: avatarColor(label) }}
+      >
+        {initials(label)}
+      </span>
+      {item.peer ? <PresenceDot status={item.peer.status} /> : null}
     </span>
   );
 }
@@ -341,6 +344,20 @@ function ChatRow({ item, active, onPick }: { item: TeamSpace; active: boolean; o
         </span>
       </button>
     </li>
+  );
+}
+
+export function PresenceDot({ status, className }: { status?: string; className?: string }) {
+  if (!status || status === "offline") return null;
+  return (
+    <span
+      className={cn(
+        "absolute bottom-0 right-0 size-3 rounded-full border-2 border-background",
+        status === "online" ? "bg-success" : "bg-warning",
+        className,
+      )}
+      aria-label={status === "online" ? "Online" : "Away"}
+    />
   );
 }
 

@@ -3,6 +3,10 @@ import type { CallPerson } from "@/components/team/voice-call";
 export interface TeamPerson {
   id: number;
   name: string;
+  status?: "online" | "away" | "offline" | "";
+  statusText?: string;
+  statusEmoji?: string;
+  dnd?: boolean;
 }
 
 export interface TeamSpace {
@@ -68,6 +72,7 @@ export interface TeamMessage {
   pinned: boolean;
   pinnedBy: TeamPerson | null;
   saved: boolean;
+  mentions: number[];
 }
 
 export type TeamPostKind = "announcement" | "kudos" | "poll" | "event" | "meeting";
@@ -102,6 +107,20 @@ export interface TeamCallEvent {
   userName: string;
   action: "join" | "leave" | "share_on" | "share_off";
   createdAt: string;
+}
+
+export interface TeamPresence {
+  userId: number;
+  name: string;
+  status: "online" | "away" | "offline";
+  statusText: string;
+  statusEmoji: string;
+  dnd: boolean;
+}
+
+export interface TypingUser {
+  userId: number;
+  name: string;
 }
 
 /** The largest file the team chat accepts, the same as the server. */

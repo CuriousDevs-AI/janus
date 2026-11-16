@@ -320,6 +320,38 @@ async def people(actor: CurrentActor, db: Db) -> list[schemas.PersonOut]:
     return await service.list_people(db, actor)
 
 
+@router.post("/heartbeat", status_code=204)
+async def heartbeat(actor: CurrentActor, db: Db) -> Response:
+    await service.heartbeat(db, actor)
+    return Response(status_code=204)
+
+
+@router.get("/presence", response_model=list[schemas.PresenceOut])
+async def presence(actor: CurrentActor, db: Db) -> list[schemas.PresenceOut]:
+    return await service.get_presence(db, actor)
+
+
+@router.post("/status", response_model=schemas.PresenceOut)
+async def set_status(data: schemas.StatusIn, actor: CurrentActor, db: Db) -> schemas.PresenceOut:
+    return await service.set_status(db, actor, data)
+
+
+@router.post("/typing", status_code=204)
+async def typing(data: schemas.TypingIn, actor: CurrentActor) -> Response:
+    service.start_typing(actor.session.tenant_id, actor.user.id, data.space_id)
+    return Response(status_code=204)
+
+
+@router.get("/typing/{space_id}")
+async def who_typing(space_id: int, actor: CurrentActor, db: Db) -> dict[str, object]:
+    uid = service.get_typing(actor.session.tenant_id, space_id)
+    if uid is None or uid == actor.user.id:
+        return {"typing": None}
+    people = await service.list_people(db, actor)
+    name = next((p.name for p in people if p.id == uid), None)
+    return {"typing": {"userId": uid, "name": name} if name else None}
+
+
 @router.post("/spaces/{space_id}/files", response_model=schemas.MessageOut, status_code=201)
 async def upload(
     space_id: int,

@@ -195,6 +195,22 @@ class TeamSavedMessage(Base):
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TeamPresence(Base):
+    """Online/away/offline presence and custom status for a user in team chat."""
+
+    __tablename__ = "team_presence"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_team_presence"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(10), server_default="offline")
+    status_text: Mapped[str] = mapped_column(String(100), server_default="")
+    status_emoji: Mapped[str] = mapped_column(String(16), server_default="")
+    dnd: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    last_active: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class TeamSignal(Base):
     """A WebRTC message from one person in a call to another: an offer, an answer or a candidate."""
 

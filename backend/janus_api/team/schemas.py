@@ -77,6 +77,10 @@ class ReadIn(BaseModel):
 class PersonOut(BaseModel):
     id: int
     name: str
+    status: str = ""
+    statusText: str = ""
+    statusEmoji: str = ""
+    dnd: bool = False
 
 
 class CallPersonOut(BaseModel):
@@ -184,6 +188,7 @@ class MessageOut(BaseModel):
     pinned: bool = False
     pinnedBy: "PersonOut | None" = None
     saved: bool = False
+    mentions: list[int] = []
 
 
 class KudosOut(BaseModel):
@@ -254,6 +259,27 @@ class CallEventOut(BaseModel):
 class ForwardIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     to_space_id: int = Field(gt=0)
+
+
+class StatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status_text: str = Field(default="", max_length=100)
+    status_emoji: str = Field(default="", max_length=16)
+    dnd: bool = False
+
+
+class PresenceOut(BaseModel):
+    userId: int
+    name: str
+    status: Literal["online", "away", "offline"]
+    statusText: str = ""
+    statusEmoji: str = ""
+    dnd: bool = False
+
+
+class TypingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    space_id: int = Field(gt=0)
 
 
 class IceServerOut(BaseModel):

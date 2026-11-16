@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bookmark, BookmarkCheck, Download, FileText, Forward, MessageSquare, MoreHorizontal, Paperclip, Pencil, Pin, PinOff, SmilePlus, Trash2, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, Download, FileText, Forward, MessageSquare, MoreHorizontal, Paperclip, Pencil, Pin, PinOff, SmilePlus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { cn, initials } from "@/lib/utils";
@@ -281,7 +281,7 @@ function MessageRow({
               </p>
             ) : null}
             <p className="whitespace-pre-wrap break-words">
-              {item.body}
+              <MentionBody text={item.body ?? ""} hasMentions={item.mentions?.length > 0} />
               <span className="float-right ml-3 mt-1.5 select-none text-[10px] leading-none text-muted-foreground">
                 {item.editedAt ? "edited · " : ""}
                 <time dateTime={item.createdAt}>{timeOf(item.createdAt)}</time>
@@ -325,6 +325,7 @@ function MessageRow({
             {item.replyCount} {item.replyCount === 1 ? "reply" : "replies"}
           </button>
         ) : null}
+        {item.kind !== "text" && !item.deleted ? <SeenBadge messageId={item.id} /> : null}
       </div>
 
       {!item.deleted && !editing && (canInteract || item.mine) ? (
@@ -483,12 +484,70 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
   );
 }
 
+function SeenBadge({ messageId }: { messageId: string }) {
+  const [seen, setSeen] = React.useState<{ seen: number; total: number } | null>(null);
+  const [names, setNames] = React.useState<string[] | null>(null);
+  const marked = React.useRef(false);
+
+  React.useEffect(() => {
+    if (marked.current) return;
+    marked.current = true;
+    void api<{ seen: number; total: number }>(`/team/messages/${messageId}/seen`, { method: "POST" })
+      .then(setSeen)
+      .catch(() => undefined);
+  }, [messageId]);
+
+  async function showNames() {
+    if (names) { setNames(null); return; }
+    try {
+      const list = await api<Array<{ user_name: string; seen_at: string }>>(`/team/messages/${messageId}/seen`);
+      setNames(list.map((item) => item.user_name));
+    } catch {
+      setNames([]);
+    }
+  }
+
+  if (!seen || seen.seen === 0) return null;
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => void showNames()}
+        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        <Check className="size-3" />
+        Seen by {seen.seen}{seen.total > 0 ? ` of ${seen.total}` : ""}
+      </button>
+      {names && names.length > 0 ? (
+        <p className="ml-4 text-[11px] text-muted-foreground">{names.join(", ")}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function MentionBody({ text, hasMentions }: { text: string; hasMentions: boolean }) {
+  if (!hasMentions || !text.includes("@")) return <>{text}</>;
+  const parts = text.split(/(@\w+(?:\s\w+)?)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("@") ? (
+          <span key={i} className="rounded bg-accent-muted px-0.5 font-medium text-accent">{part}</span>
+        ) : (
+          <React.Fragment key={i}>{part}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
 /** A message box: Enter sends, Shift+Enter starts a new line. The text stays if sending fails. */
 export function Composer({
   placeholder,
   disabled,
   disabledReason,
   onSend,
+  onTyping,
   allowFiles = true,
   autoFocusKey,
   extra,
@@ -499,6 +558,7 @@ export function Composer({
   disabled?: boolean;
   disabledReason?: string;
   onSend: (body: string, file: File | null) => Promise<void>;
+  onTyping?: () => void;
   allowFiles?: boolean;
   autoFocusKey?: string;
 }) {
@@ -507,9 +567,21 @@ export function Composer({
   const [busy, setBusy] = React.useState(false);
   const ref = React.useRef<HTMLTextAreaElement>(null);
   const picker = React.useRef<HTMLInputElement>(null);
+  const lastTyping = React.useRef(0);
   React.useEffect(() => {
     if (!disabled) ref.current?.focus();
   }, [autoFocusKey, disabled]);
+
+  function handleChange(value: string) {
+    setText(value);
+    if (onTyping && value.length > 0) {
+      const now = Date.now();
+      if (now - lastTyping.current > 2000) {
+        lastTyping.current = now;
+        onTyping();
+      }
+    }
+  }
 
   async function submit() {
     const body = text.trim();
@@ -580,7 +652,7 @@ export function Composer({
           rows={1}
           value={text}
           disabled={disabled || busy}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => handleChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();

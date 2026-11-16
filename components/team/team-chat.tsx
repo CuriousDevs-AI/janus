@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Bookmark, Check, Clock, Forward, Hash, Lock, Megaphone, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, UserPlus, Users, X } from "lucide-react";
+import { ArrowLeft, BellOff, Bookmark, Check, Circle, Clock, Forward, Hash, Lock, Megaphone, MessageSquare as ThreadIcon, Headphones, LogIn, LogOut, MoreVertical, Phone, PhoneOff, Pin, Plus, Search, Smile, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer, MessageList } from "@/components/team/team-messages";
-import type { TeamMessage, TeamPerson, TeamSearchHit, TeamSpace } from "@/components/team/types";
+import type { TeamMessage, TeamPerson, TeamPresence, TeamSearchHit, TeamSpace, TypingUser } from "@/components/team/types";
 import { useSession } from "@/components/auth/session-provider";
 import { useVoiceCall } from "@/components/team/voice-call";
 import { CallBanner, CallPanel } from "@/components/team/voice-stage";
@@ -39,6 +39,8 @@ import { hasPermission } from "@/lib/demo-persona";
 
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const REFRESH_MS = 4000;
+const HEARTBEAT_MS = 60_000;
+const TYPING_POLL_MS = 2000;
 
 function newKey() {
   return crypto.randomUUID();
@@ -61,8 +63,11 @@ export function TeamChat() {
   const [callHistoryOpen, setCallHistoryOpen] = React.useState(false);
   const [savedOpen, setSavedOpen] = React.useState(false);
   const [forwardingId, setForwardingId] = React.useState<string | null>(null);
+  const [threadsOpen, setThreadsOpen] = React.useState(false);
+  const [statusOpen, setStatusOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [term, setTerm] = React.useState("");
+  const [typing, setTyping] = React.useState<TypingUser | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const channels = useApi<TeamSpace[]>(demoMode ? null : "/team/channels");
@@ -88,11 +93,16 @@ export function TeamChat() {
   const saved = useApi<TeamMessage[]>(
     demoMode || !savedOpen ? null : "/team/saved?limit=50",
   );
+  const presence = useApi<TeamPresence[]>(demoMode ? null : "/team/presence");
+  const threads = useApi<TeamMessage[]>(
+    demoMode || !threadsOpen ? null : "/team/threads?limit=30",
+  );
 
   const reloadChannels = channels.reload;
   const reloadDirect = direct.reload;
   const reloadMessages = messages.reload;
   const reloadReplies = replies.reload;
+  const reloadPresence = presence.reload;
   React.useEffect(() => {
     if (demoMode) return;
     const timer = setInterval(() => {
@@ -103,6 +113,38 @@ export function TeamChat() {
     }, REFRESH_MS);
     return () => clearInterval(timer);
   }, [reloadChannels, reloadDirect, reloadMessages, reloadReplies]);
+
+  // Heartbeat: keeps the user online in the presence system.
+  React.useEffect(() => {
+    if (demoMode) return;
+    void api("/team/heartbeat", { method: "POST" }).catch(() => undefined);
+    const timer = setInterval(() => {
+      void api("/team/heartbeat", { method: "POST" }).catch(() => undefined);
+    }, HEARTBEAT_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Presence: poll less frequently.
+  React.useEffect(() => {
+    if (demoMode) return;
+    const timer = setInterval(reloadPresence, 30_000);
+    return () => clearInterval(timer);
+  }, [reloadPresence]);
+
+  // Typing indicator: poll who is typing in the current space.
+  React.useEffect(() => {
+    setTyping(null); // eslint-disable-line react-hooks/set-state-in-effect -- reset on space change
+    if (demoMode || !selected) return;
+    let alive = true;
+    const poll = () => {
+      void api<{ typing: TypingUser | null }>(`/team/typing/${selected}`)
+        .then((res) => { if (alive) setTyping(res.typing); })
+        .catch(() => { if (alive) setTyping(null); });
+    };
+    poll();
+    const timer = setInterval(poll, TYPING_POLL_MS);
+    return () => { alive = false; clearInterval(timer); };
+  }, [selected]);
 
   // Search waits for a short pause in typing, so each keystroke does not ask the server.
   React.useEffect(() => {
@@ -166,6 +208,14 @@ export function TeamChat() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [threadId]);
+
+  function sendTyping() {
+    if (!selected || demoMode) return;
+    void api("/team/typing", {
+      method: "POST",
+      body: JSON.stringify({ space_id: Number(selected) }),
+    }).catch(() => undefined);
+  }
 
   async function send(body: string, parentId?: string, file?: File | null) {
     if (!selected) return;
@@ -313,7 +363,17 @@ export function TeamChat() {
           {space ? <ConversationAvatar space={space} /> : null}
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[15px] font-semibold text-foreground">{title}</h2>
-            {space?.kind === "dm" ? <p className="truncate text-xs text-muted-foreground">Direct message</p> : null}
+            {space?.kind === "dm" ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {(() => {
+                  const peerId = space.peer?.id;
+                  const p = peerId ? presence.data?.find((item) => item.userId === peerId) : null;
+                  if (p?.status === "online") return <span className="inline-flex items-center gap-1"><Circle className="size-2 fill-success text-success" />Online</span>;
+                  if (p?.status === "away") return <span className="inline-flex items-center gap-1"><Circle className="size-2 fill-warning text-warning" />Away</span>;
+                  return "Direct message";
+                })()}
+              </p>
+            ) : null}
             {space?.kind === "group" ? (
               <p className="truncate text-xs text-muted-foreground">Group · {space.memberCount} people</p>
             ) : null}
@@ -351,6 +411,9 @@ export function TeamChat() {
               <UserPlus className="size-4" />
             </Button>
           ) : null}
+          <Button variant="ghost" size="icon" aria-label="Your threads" aria-pressed={threadsOpen} onClick={() => setThreadsOpen((open) => !open)}>
+            <ThreadIcon className="size-4" />
+          </Button>
           <Button variant="ghost" size="icon" aria-label="Saved messages" aria-pressed={savedOpen} onClick={() => setSavedOpen((open) => !open)}>
             <Bookmark className="size-4" />
           </Button>
@@ -370,6 +433,9 @@ export function TeamChat() {
                     <Clock className="size-3.5" /> Call history
                   </DropdownMenuItem>
                 ) : null}
+                <DropdownMenuItem onSelect={() => setStatusOpen(true)}>
+                  <Smile className="size-3.5" /> Set your status
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void changeMembership("leave")}>
                   <LogOut className="size-3.5" /> Leave channel
                 </DropdownMenuItem>
@@ -433,20 +499,33 @@ export function TeamChat() {
                   </Button>
                 </div>
               ) : (
-                <Composer
-                  placeholder={space?.announcements ? "Write an announcement; everyone gets it by email too" : space ? `Message ${isChannel(space.kind) ? `#${space.name}` : space.title}` : "Message"}
-                  autoFocusKey={selected}
-                  disabled={!space}
-                  onSend={(body, file) => send(body, undefined, file)}
-                  extra={space ? (
-                    <PostMenu
-                      spaceId={space.id}
-                      people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
-                      canAnnounce={isChannel(space.kind) && hasPermission(session.permissions, "announcements:post")}
-                      onPosted={() => { reloadMessages(); reloadChannels(); }}
-                    />
+                <>
+                  {typing ? (
+                    <div className="flex items-center gap-2 border-t border-border bg-surface px-4 py-1 text-xs text-muted-foreground">
+                      <span className="inline-flex gap-0.5">
+                        <span className="animate-bounce text-accent" style={{ animationDelay: "0ms" }}>.</span>
+                        <span className="animate-bounce text-accent" style={{ animationDelay: "150ms" }}>.</span>
+                        <span className="animate-bounce text-accent" style={{ animationDelay: "300ms" }}>.</span>
+                      </span>
+                      {typing.name} is typing…
+                    </div>
                   ) : null}
-                />
+                  <Composer
+                    placeholder={space?.announcements ? "Write an announcement; everyone gets it by email too" : space ? `Message ${isChannel(space.kind) ? `#${space.name}` : space.title}` : "Message"}
+                    autoFocusKey={selected}
+                    disabled={!space}
+                    onSend={(body, file) => send(body, undefined, file)}
+                    onTyping={sendTyping}
+                    extra={space ? (
+                      <PostMenu
+                        spaceId={space.id}
+                        people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
+                        canAnnounce={isChannel(space.kind) && hasPermission(session.permissions, "announcements:post")}
+                        onPosted={() => { reloadMessages(); reloadChannels(); }}
+                      />
+                    ) : null}
+                  />
+                </>
               )}
             </div>
 
@@ -532,6 +611,23 @@ export function TeamChat() {
           spaces={all}
           onClose={() => setForwardingId(null)}
           onForwarded={() => { setForwardingId(null); reloadMessages(); }}
+        />
+      ) : null}
+
+      {threadsOpen ? (
+        <ThreadsPanel
+          messages={threads.data ?? []}
+          loading={threads.loading && !threads.data}
+          onClose={() => setThreadsOpen(false)}
+          onOpen={(spaceId, msgId) => { choose(spaceId); setThreadId(msgId); setThreadsOpen(false); }}
+        />
+      ) : null}
+
+      {statusOpen ? (
+        <StatusDialog
+          onClose={() => setStatusOpen(false)}
+          currentPresence={presence.data?.find((p) => String(p.userId) === session.user.id)}
+          onSaved={() => { setStatusOpen(false); reloadPresence(); }}
         />
       ) : null}
 
@@ -1061,6 +1157,127 @@ function ForwardDialog({
         </ul>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ThreadsPanel({
+  messages,
+  loading,
+  onClose,
+  onOpen,
+}: {
+  messages: TeamMessage[];
+  loading: boolean;
+  onClose: () => void;
+  onOpen: (spaceId: string, msgId: string) => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[80dvh] overflow-hidden sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><ThreadIcon className="size-4" /> Your threads</DialogTitle>
+          <DialogDescription>Conversations you have replied in.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-96 overflow-y-auto">
+          {loading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No threads yet. Reply to a message to start a thread.</p>
+          ) : (
+            <ul className="space-y-2">
+              {messages.map((msg) => (
+                <li key={msg.id} className="rounded-md border border-border p-3">
+                  <button type="button" className="w-full text-left" onClick={() => onOpen(msg.spaceId, msg.id)}>
+                    <p className="text-xs font-medium text-foreground">{msg.author.name}</p>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-foreground">{msg.body}</p>
+                    <p className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                      {msg.replyCount > 0 ? <span className="inline-flex items-center gap-1"><ThreadIcon className="size-3" />{msg.replyCount} {msg.replyCount === 1 ? "reply" : "replies"}</span> : null}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatusDialog({
+  onClose,
+  currentPresence,
+  onSaved,
+}: {
+  onClose: () => void;
+  currentPresence?: TeamPresence;
+  onSaved: () => void;
+}) {
+  const [text, setText] = React.useState(currentPresence?.statusText ?? "");
+  const [emoji, setEmoji] = React.useState(currentPresence?.statusEmoji ?? "");
+  const [dnd, setDnd] = React.useState(currentPresence?.dnd ?? false);
+  const [busy, setBusy] = React.useState(false);
+
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api("/team/status", {
+        method: "POST",
+        body: JSON.stringify({ status_text: text.trim(), status_emoji: emoji.trim(), dnd }),
+      });
+      toast.success("Status updated");
+      onSaved();
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Smile className="size-4" /> Set your status</DialogTitle>
+          <DialogDescription>Let your team know what you are up to.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Emoji"
+              aria-label="Status emoji"
+              value={emoji}
+              onChange={(e) => setEmoji(e.target.value)}
+              className="w-16 text-center text-lg"
+              maxLength={4}
+            />
+            <Input
+              autoFocus
+              placeholder="What's your status?"
+              aria-label="Status text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              maxLength={100}
+            />
+          </div>
+          <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2.5">
+            <input type="checkbox" checked={dnd} onChange={(e) => setDnd(e.target.checked)} className="size-4 accent-accent" />
+            <div className="flex-1">
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <BellOff className="size-3.5" /> Do Not Disturb
+              </span>
+              <span className="text-xs text-muted-foreground">Pause notifications</span>
+            </div>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => void save()} disabled={busy}>Save status</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -8,6 +8,7 @@ message they answer. Sends are idempotent on the Idempotency-Key, so a retry nev
 import base64
 import hashlib
 import hmac
+import re
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -26,6 +27,7 @@ from janus_api.team.models import (
     TeamCallEvent,
     TeamMessage,
     TeamMessageSeen,
+    TeamPresence,
     TeamReaction,
     TeamResponse,
     TeamSavedMessage,
@@ -493,11 +495,13 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
             )
         ).all()
     )
+    people_names = {uid: u.name for uid, u in people.items()}
     out = []
     for row in rows:
         author = people[row.author_id]
         deleted = row.deleted_at is not None
         pinner = pinners.get(row.pinned_by) if row.pinned_by else None
+        mentions = parse_mentions(row.body, people_names) if not deleted else []
         out.append(
             schemas.MessageOut(
                 id=str(row.id),
@@ -516,6 +520,7 @@ async def _messages_out(db: Db, actor: Actor, rows: list[TeamMessage]) -> list[s
                 pinned=row.pinned_at is not None,
                 pinnedBy=schemas.PersonOut(id=pinner.id, name=pinner.name) if pinner else None,
                 saved=row.id in saved_ids,
+                mentions=mentions,
                 **posts.get(row.id, {}),
             )
         )
@@ -848,9 +853,53 @@ async def mark_read(db: Db, actor: Actor, space_id: int, data: schemas.ReadIn) -
 
 
 async def list_people(db: Db, actor: Actor) -> list[schemas.PersonOut]:
-    """Everyone in the company who can be messaged. Any member can see this list."""
-    people = await org_service.active_people(db, actor.session.tenant_id)
-    return [schemas.PersonOut(id=user_id, name=name) for user_id, name, _ in people]
+    """Everyone in the company who can be messaged, with presence."""
+    tenant_id = actor.session.tenant_id
+    people = await org_service.active_people(db, tenant_id)
+    user_ids = {uid for uid, _, _ in people}
+    presence_rows = (
+        (
+            await db.scalars(
+                select(TeamPresence).where(
+                    TeamPresence.tenant_id == tenant_id,
+                    TeamPresence.user_id.in_(user_ids),
+                )
+            )
+        ).all()
+        if user_ids
+        else []
+    )
+    presence_map = {r.user_id: r for r in presence_rows}
+    now = _now()
+    out: list[schemas.PersonOut] = []
+    for user_id, name, _ in people:
+        p = presence_map.get(user_id)
+        if p is None:
+            status = "offline"
+            text = emoji = ""
+            dnd = False
+        else:
+            age = now - p.last_active
+            if age > PRESENCE_TIMEOUT:
+                status = "offline"
+            elif age > AWAY_TIMEOUT:
+                status = "away"
+            else:
+                status = "online"
+            text = p.status_text
+            emoji = p.status_emoji
+            dnd = p.dnd
+        out.append(
+            schemas.PersonOut(
+                id=user_id,
+                name=name,
+                status=status,
+                statusText=text,
+                statusEmoji=emoji,
+                dnd=dnd,
+            )
+        )
+    return out
 
 
 def _clean_name(raw: str | None) -> str:
@@ -1826,3 +1875,152 @@ async def mail_for(db: Db, actor: Actor, message: schemas.MessageOut) -> list[tu
         )
         return [(addr, meeting_subject, text) for (addr,) in members if addr]
     return []
+
+
+# ---- Presence, typing, status, mentions -------------------------------------------------------
+
+PRESENCE_TIMEOUT = timedelta(minutes=5)
+AWAY_TIMEOUT = timedelta(minutes=2)
+MENTION_RE = re.compile(r"@(\w+(?:\s\w+)?)")
+
+_typing: dict[tuple[int, int], tuple[int, float]] = {}
+
+
+async def heartbeat(db: Db, actor: Actor) -> None:
+    """Called periodically by the frontend to keep the user online."""
+    tenant_id = actor.session.tenant_id
+    row = await db.scalar(
+        select(TeamPresence).where(
+            TeamPresence.tenant_id == tenant_id,
+            TeamPresence.user_id == actor.user.id,
+        )
+    )
+    now = _now()
+    if row is None:
+        db.add(
+            TeamPresence(
+                tenant_id=tenant_id,
+                user_id=actor.user.id,
+                status="online",
+                last_active=now,
+            )
+        )
+    else:
+        row.status = "online"
+        row.last_active = now
+    await db.flush()
+
+
+async def set_status(db: Db, actor: Actor, data: schemas.StatusIn) -> schemas.PresenceOut:
+    tenant_id = actor.session.tenant_id
+    row = await db.scalar(
+        select(TeamPresence).where(
+            TeamPresence.tenant_id == tenant_id,
+            TeamPresence.user_id == actor.user.id,
+        )
+    )
+    now = _now()
+    if row is None:
+        row = TeamPresence(
+            tenant_id=tenant_id,
+            user_id=actor.user.id,
+            status="online",
+            last_active=now,
+            status_text=data.status_text.strip(),
+            status_emoji=data.status_emoji.strip(),
+            dnd=data.dnd,
+        )
+        db.add(row)
+    else:
+        row.status_text = data.status_text.strip()
+        row.status_emoji = data.status_emoji.strip()
+        row.dnd = data.dnd
+        row.last_active = now
+        row.status = "online"
+    await db.flush()
+    return schemas.PresenceOut(
+        userId=actor.user.id,
+        name=actor.user.name,
+        status="online",
+        statusText=row.status_text,
+        statusEmoji=row.status_emoji,
+        dnd=row.dnd,
+    )
+
+
+async def get_presence(db: Db, actor: Actor) -> list[schemas.PresenceOut]:
+    """All people in the tenant with their current presence."""
+    tenant_id = actor.session.tenant_id
+    people_raw = await org_service.active_people(db, tenant_id)
+    user_ids = {uid for uid, _, _ in people_raw}
+    names = {uid: name for uid, name, _ in people_raw}
+    presence_rows = (
+        await db.scalars(
+            select(TeamPresence).where(
+                TeamPresence.tenant_id == tenant_id,
+                TeamPresence.user_id.in_(user_ids),
+            )
+        )
+    ).all()
+    presence_map = {r.user_id: r for r in presence_rows}
+    now = _now()
+    out: list[schemas.PresenceOut] = []
+    for uid in user_ids:
+        p = presence_map.get(uid)
+        if p is None:
+            status = "offline"
+            text = emoji = ""
+            dnd = False
+        else:
+            age = now - p.last_active
+            if age > PRESENCE_TIMEOUT:
+                status = "offline"
+            elif age > AWAY_TIMEOUT:
+                status = "away"
+            else:
+                status = "online"
+            text = p.status_text
+            emoji = p.status_emoji
+            dnd = p.dnd
+        out.append(
+            schemas.PresenceOut(
+                userId=uid,
+                name=names.get(uid, ""),
+                status=status,
+                statusText=text,
+                statusEmoji=emoji,
+                dnd=dnd,
+            )
+        )
+    return out
+
+
+def start_typing(tenant_id: int, user_id: int, space_id: int) -> None:
+    _typing[(tenant_id, space_id)] = (user_id, time.monotonic())
+
+
+def get_typing(tenant_id: int, space_id: int) -> int | None:
+    key = (tenant_id, space_id)
+    entry = _typing.get(key)
+    if entry is None:
+        return None
+    user_id, ts = entry
+    if time.monotonic() - ts > 5:
+        _typing.pop(key, None)
+        return None
+    return user_id
+
+
+def parse_mentions(body: str, people_names: dict[int, str]) -> list[int]:
+    """Extract @mentioned user IDs from a message body."""
+    if "@" not in body:
+        return []
+    name_to_id: dict[str, int] = {name.lower(): uid for uid, name in people_names.items()}
+    found: list[int] = []
+    for match in MENTION_RE.finditer(body):
+        mention = match.group(1).lower()
+        if mention in name_to_id:
+            uid = name_to_id[mention]
+            if uid not in found:
+                found.append(uid)
+    return found
