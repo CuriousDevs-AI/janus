@@ -8,7 +8,7 @@ import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
 import { demoSourceRows } from "@/lib/api/demo-data";
 import { demoMode } from "@/lib/demo-mode";
-import { sourceOptions } from "@/lib/lead-source-options";
+import { sourceKindLabel, sourceOptions } from "@/lib/lead-source-options";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,10 @@ export default function LeadSourcesPage() {
   );
   // Sample sources are the demo's alone: a real business never sees them, even on an error.
   const sourceRows = sources.data ?? (demoMode ? demoSourceRows : []);
-  const enabledSources = sourceRows.filter((source) => source.status === "connected");
+  // A paused source stays listed, so it can be found and switched back on.
+  const enabledSources = demoMode ? sourceRows.filter((source) => source.status === "connected") : sourceRows;
+  const pausedCount = demoMode ? 0 : sourceRows.filter((source) => source.status !== "connected").length;
+  const unverified = can(session, "sources:manage") && !session.user.email_verified_at;
   const availableSources = sourceRows.filter((source) => source.status === "available");
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col">
@@ -56,9 +59,19 @@ export default function LeadSourcesPage() {
             Ask an owner or admin to configure lead sources.
           </p>
         )}
+        {unverified && (
+          <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm">
+            Verify your email address to set up lead sources: a source receives customers&apos; details, so it needs a confirmed owner. Use the link in the email Janus sent you, or send it again from the banner at the top of the page.
+          </p>
+        )}
+        {!demoMode && sources.error && (
+          <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+            Your lead sources could not be read: {sources.error}. Refresh to try again; leads keep arriving meanwhile.
+          </p>
+        )}
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Enabled sources ({enabledSources.length})
+            {demoMode ? `Enabled sources (${enabledSources.length})` : `Your sources (${enabledSources.length})${pausedCount ? ` · ${pausedCount} paused` : ""}`}
           </h2>
           
           {allowed && sources.loading && (
@@ -66,7 +79,7 @@ export default function LeadSourcesPage() {
               Loading connections…
             </p>
           )}
-          {enabledSources.length === 0 && (
+          {enabledSources.length === 0 && !sources.loading && !sources.error && (
             <p className="text-sm text-muted-foreground">
               {after === "0"
                 ? "No enabled sources yet. Add your first lead source to begin."
@@ -83,7 +96,7 @@ export default function LeadSourcesPage() {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{source.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{source.connectionKind === "oauth" ? "WhatsApp Cloud API" : source.preset}</p>
+                      <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">{sourceKindLabel(source)}{source.status !== "connected" && <Badge variant="neutral">Paused: not taking leads</Badge>}</p>
                     </div>
                   </div>
                   <Link href={source.connectionKind === "oauth" ? "/lead-sources/whatsapp" : `/lead-sources/${source.id}`} aria-label={`Edit ${source.name}`} title="Edit source" className="rounded-md p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground">
