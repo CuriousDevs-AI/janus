@@ -166,3 +166,33 @@ async def test_description_is_persisted_and_returned(
     )
     assert no_desc.status_code == 201
     assert no_desc.json()["description"] is None
+
+
+async def test_list_tickets_is_paged(client: httpx.AsyncClient, mailbox: Mailbox) -> None:
+    owner = await signup(client, mailbox)
+    for i in range(5):
+        created = await client.post(
+            "/v1/support/tickets",
+            headers=owner.headers,
+            json={**TICKET, "external_key": f"tck-page-{i}", "number": f"#{i}"},
+        )
+        assert created.status_code == 201, created.text
+
+    # Default limit returns all five (default 50, but only 5 exist).
+    all_tickets = (await client.get("/v1/support/tickets", headers=owner.headers)).json()
+    assert len(all_tickets) == 5
+
+    # Explicit limit returns that many.
+    page1 = (
+        await client.get("/v1/support/tickets?limit=2", headers=owner.headers)
+    ).json()
+    assert len(page1) == 2
+
+    # Cursor-based pagination returns the next page.
+    last_id = page1[-1]["id"]
+    page2 = (
+        await client.get(f"/v1/support/tickets?limit=2&after_id={last_id}", headers=owner.headers)
+    ).json()
+    assert len(page2) == 2
+    assert page2[0]["id"] != page1[0]["id"]
+    assert page2[0]["id"] != page1[1]["id"]

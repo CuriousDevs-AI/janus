@@ -9,7 +9,7 @@ writes an audit row in the same transaction.
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -93,12 +93,21 @@ async def _ticket(db: Db, tenant_id: int, key: str, *, lock: bool = False) -> Su
 
 
 @router.get("/tickets", response_model=list[TicketOut])
-async def list_tickets(actor: Work, db: Db) -> list[TicketOut]:
-    rows = await db.scalars(
+async def list_tickets(
+    actor: Work,
+    db: Db,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    after_id: Annotated[int | None, Query(ge=0)] = None,
+) -> list[TicketOut]:
+    query = (
         select(SupportTicket)
         .where(SupportTicket.tenant_id == actor.session.tenant_id)
         .order_by(SupportTicket.id.desc())
+        .limit(limit)
     )
+    if after_id is not None:
+        query = query.where(SupportTicket.id < after_id)
+    rows = await db.scalars(query)
     return [_out(row) for row in rows.all()]
 
 
