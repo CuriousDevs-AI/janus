@@ -8,7 +8,6 @@ from janus_api.auth.models import User
 from janus_api.business import schemas
 from janus_api.business.engine import enqueue_event as enqueue_event
 from janus_api.business.models import (
-    AgentDefinition,
     AutomationExecution,
     AutomationWorkflow,
     BusinessWorkspace,
@@ -313,18 +312,6 @@ async def update_workspace_member(
         email=user.email,
         accessLevel=member.access_level,
         permissions=member.permissions or [],
-    )
-
-
-def agent_out(item: AgentDefinition) -> schemas.AgentOut:
-    return schemas.AgentOut(
-        id=str(item.id),
-        key=item.agent_key,
-        name=item.name,
-        department=item.department,
-        status=item.status,
-        workspaceId=str(item.workspace_id) if item.workspace_id else None,
-        configuration=item.configuration,
     )
 
 

@@ -80,37 +80,6 @@ class WorkspaceMemberUpdate(BaseModel):
     permissions: list[str] = Field(default_factory=list, max_length=50)
 
 
-class AgentOut(BaseModel):
-    id: str
-    key: str
-    name: str
-    department: str
-    status: str
-    workspaceId: str | None
-    configuration: dict[str, Any]
-
-
-class AgentCreate(BaseModel):
-    key: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
-    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
-    department: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)
-    ]
-    workspaceId: int | None = None
-    configuration: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentUpdate(BaseModel):
-    name: Annotated[
-        str | None, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)
-    ] = None
-    department: Annotated[
-        str | None, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)
-    ] = None
-    status: AgentStatus | None = None
-    configuration: dict[str, Any] | None = None
-
-
 class WorkflowOut(BaseModel):
     id: str
     name: str

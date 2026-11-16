@@ -52,7 +52,7 @@ export default function AgentsPage() {
 
 function AgentsPreview() {
   const router = useRouter(); const params = useSearchParams();
-  const agents = useApi<Agent[]>("/business/agents"); const workflows = useApi<Workflow[]>("/business/automations"); const executions = useApi<Execution[]>("/business/automations/executions"); const workspaces = useApi<Workspace[]>("/workspaces");
+  const agents = useApi<Agent[]>(null); const workflows = useApi<Workflow[]>("/business/automations"); const executions = useApi<Execution[]>("/business/automations/executions"); const workspaces = useApi<Workspace[]>("/workspaces");
   const [newAgent, setNewAgent] = React.useState(false); const [newWorkflow, setNewWorkflow] = React.useState(false); const [settings, setSettings] = React.useState(false); const [detail, setDetail] = React.useState<Agent | null>(null); const [editAgent, setEditAgent] = React.useState<Agent | null>(null); const [editWorkflow, setEditWorkflow] = React.useState<Workflow | null>(null); const [notice, setNotice] = React.useState(""); const [copyAgent, setCopyAgent] = React.useState<Agent | null>(null);
   const [demoAgentRows, setDemoAgentRows] = React.useState<Agent[]>(demoAgents);
   const [demoWorkflowRows, setDemoWorkflowRows] = React.useState<Workflow[]>(demoWorkflows);
