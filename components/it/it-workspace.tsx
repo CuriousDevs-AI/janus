@@ -15,6 +15,16 @@ import { usePeople } from "@/lib/people-directory";
 import { completeITChange, decideITChange, requestITChange, syncITChanges } from "@/lib/it-records";
 import { ACCESS_LEVELS, ASSET_KINDS, HELPDESK_CATEGORIES, HELPDESK_PRIORITIES, TODAY, renewalSoon, useITStore, type ITChange, type Incident } from "@/lib/stores/it-store";
 
+/** People from the directory, with IT-offboarded people removed. */
+function useITPeople() {
+  const people = usePeople();
+  const offboarded = useITStore((state) => state.offboarded);
+  return React.useMemo(
+    () => people.filter((p) => !offboarded.includes(p.name)),
+    [people, offboarded],
+  );
+}
+
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
 const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
 const comingSoon: Record<string, string> = {
@@ -90,7 +100,7 @@ function OverviewView() {
 
 /** IT requests from people in the company: raised, assigned, started and resolved. */
 function HelpdeskView() {
-  const people = usePeople();
+  const people = useITPeople();
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const tickets = useITStore((state) => state.helpdesk);
@@ -383,7 +393,7 @@ function MonitoringView() {
 }
 
 function AssetsView() {
-  const people = usePeople();
+  const people = useITPeople();
   const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
@@ -471,7 +481,7 @@ function AssetsView() {
 }
 
 function AccessView() {
-  const people = usePeople();
+  const people = useITPeople();
   const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
@@ -529,7 +539,7 @@ function AccessView() {
 }
 
 function LicensesView() {
-  const people = usePeople();
+  const people = useITPeople();
   const names = people.map((person) => person.name);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
