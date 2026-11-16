@@ -41,6 +41,17 @@ export function ITWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
   const titles: Record<string, string> = { overview: "IT overview", assets: "IT assets", access: "Access management", licenses: "Software & licences", helpdesk: "IT helpdesk", incidents: "Incidents", changes: "Change management", reports: "IT reports", monitoring: "Infrastructure monitoring" };
+  const descriptions: Record<string, string> = {
+    overview: "Assets, the access each person holds, and software licences. Every change is written to the log.",
+    assets: "Devices, equipment and other physical items the company owns and assigns to people.",
+    access: "Who has access to which systems, at what level. Grant and remove access in one place.",
+    licenses: "Software licences, seats and renewal dates. Track cost and who is using each licence.",
+    helpdesk: "Requests from people in the company. Each one is worked by an IT assignee until resolved.",
+    incidents: "Something that is down or wrong. Each incident keeps a timeline of what was done.",
+    changes: "Planned changes to systems or devices. Someone other than the requester approves, then it is carried out.",
+    reports: "IT in numbers: assets, requests, incidents and changes at a glance.",
+    monitoring: "Systems IT keeps an eye on. Record each check; a system marked down opens a critical incident.",
+  };
 
   if (view in comingSoon) {
     return (
@@ -53,7 +64,7 @@ export function ITWorkspace() {
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col">
-      <PageHeader title={titles[view] ?? "IT overview"} description="Assets, the access each person holds, and software licences. Every change is written to the log." />
+      <PageHeader title={titles[view] ?? "IT overview"} description={descriptions[view]} />
       <div className="flex flex-col gap-4 px-6 pb-10">
         {view === "assets" ? <AssetsView /> : view === "access" ? <AccessView /> : view === "licenses" ? <LicensesView /> : view === "helpdesk" ? <HelpdeskView /> : view === "incidents" ? <IncidentsView /> : view === "changes" ? <ChangesView /> : view === "reports" ? <ITReportsView /> : view === "monitoring" ? <MonitoringView /> : <OverviewView />}
       </div>
