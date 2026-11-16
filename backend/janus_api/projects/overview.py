@@ -31,7 +31,7 @@ async def delivery(db: AsyncSession, tenant_id: int, today: date) -> Delivery:
     """Late projects, milestones and tasks past due, and work done but not yet accepted."""
     active = await db.scalar(
         select(func.count(Project.id)).where(
-            Project.tenant_id == tenant_id, Project.status == "active"
+            Project.tenant_id == tenant_id, Project.status.in_(("active", "planned"))
         )
     )
     late = await db.scalar(

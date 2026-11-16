@@ -305,7 +305,7 @@ function OverviewView() {
   const projects = useProjectsStore((state) => state.projects);
   const milestones = useProjectsStore((state) => state.milestones);
   const tasks = useProjectsStore((state) => state.tasks);
-  const counts = { active: projects.filter((p) => p.status === "active").length, late: projects.filter((p) => projectHealth(p, milestones, tasks) === "late").length, atRisk: projects.filter((p) => projectHealth(p, milestones, tasks) === "at risk").length, openTasks: tasks.filter((t) => t.status !== "done").length, overdueTasks: tasks.filter((t) => t.status !== "done" && t.due < TODAY).length };
+  const counts = { active: projects.filter((p) => p.status !== "done").length, late: projects.filter((p) => projectHealth(p, milestones, tasks) === "late").length, atRisk: projects.filter((p) => projectHealth(p, milestones, tasks) === "at risk").length, openTasks: tasks.filter((t) => t.status !== "done").length, overdueTasks: tasks.filter((t) => t.status !== "done" && t.due < TODAY).length };
   const to = (view: string, extra: Record<string, string> = {}) => workspaceHref("projects-delivery", view, extra);
   const order = { late: 0, "at risk": 1, "on track": 2, done: 3 } as const;
   return (
