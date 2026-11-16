@@ -19,6 +19,8 @@ from janus_api.portfolio.periods import inr
 NAMES: dict[str, str] = {
     "sales-summary": "Sales summary",
     "sales-pipeline": "Pipeline",
+    "conversion-funnel": "Conversion funnel",
+    "rep-performance": "Rep performance",
     "lead-sources": "Lead sources",
     "profit-loss": "Profit & Loss",
     "cash-flow": "Cash flow",
@@ -32,6 +34,16 @@ NAMES: dict[str, str] = {
     "stock-levels": "Stock levels",
     "project-status": "Project status",
 }
+
+
+# The AI Agents: scheduled briefs that watch the business and email what they find. They are
+# emailed like reports, but are not in the library.
+AGENT_NAMES: dict[str, str] = {
+    "health-brief": "Business health brief",
+    "monthly-review": "Monthly business review",
+}
+ALL_NAMES = {**NAMES, **AGENT_NAMES}
+SEVERITY = {"high": "Needs you now", "medium": "Needs you soon", "low": "Worth a look"}
 
 
 class Row(BaseModel):
@@ -102,7 +114,151 @@ def _count(label: str, now: int, before: int, href: str | None = None) -> Row:
     )
 
 
+def _health(company: portfolio.CompanySummary) -> Figures:
+    """What needs the owner today, then the figures behind a healthy business."""
+    rows = [
+        Row(label=SEVERITY[item.severity], value=item.text, warn=item.severity == "high")
+        for item in company.attention[:6]
+    ] or [Row(label="Needs you", value="Nothing urgent today")]
+    books, owed, cash = company.books, company.money, company.cash
+    if books:
+        rows.append(
+            _money("Sales this month so far", books.current.netSales, books.previous.netSales)
+        )
+    if owed:
+        rows.append(
+            Row(
+                label="Customers owe",
+                value=inr(owed.receivable),
+                change=f"{inr(owed.overdue)} overdue on {owed.overdueInvoices} invoices",
+                warn=_n(owed.overdue) > 0,
+            )
+        )
+    if cash and cash.total is not None:
+        runway = cash.runwayMonths
+        rows.append(
+            Row(
+                label=f"Cash in the bank, {_day(cash.asOf)}",
+                value=inr(cash.total),
+                change=f"Lasts about {runway:g} months" if runway is not None else None,
+            )
+        )
+    # Filings past due or due this week are already among what needs the owner, above.
+    waiting = sum(item.count for item in company.approvals)
+    if waiting:
+        rows.append(Row(label="Waiting for a decision", value=f"{waiting} approvals"))
+    return Figures(covers="now", rows=rows)
+
+
+def _review(company: portfolio.CompanySummary) -> Figures:
+    """The last full month against the month before: sales, money, customers and people."""
+    now, before = company.period.current, company.period.previous
+    books = company.books
+    rows = [
+        _count("Leads in", now.leads, before.leads),
+        _count("Deals won", now.wonDeals, before.wonDeals),
+        _money("Won value", now.wonValue, before.wonValue),
+    ]
+    if books:
+        rows += [
+            _money("Sales before GST", books.current.netSales, books.previous.netSales),
+            _money("Collected", now.collected, before.collected),
+            _money("Supplier bills", books.current.costs, books.previous.costs),
+            _money(
+                "Profit before salaries",
+                books.current.profitBeforePayroll,
+                books.previous.profitBeforePayroll,
+            ),
+        ]
+    if company.customers:
+        top = max(company.customers, key=lambda item: _n(item.current))
+        rows.append(_money(f"Biggest customer: {top.name}", top.current, top.previous))
+    if company.people:
+        rows.append(Row(label="People", value=str(company.people.headcount)))
+    for row in rows:
+        if row.change:
+            row.change = row.change.replace("the same days before", "the month before")
+    return Figures(covers="period", rows=rows)
+
+
+def _share(part: int, whole: int) -> str:
+    return f"{part} · {_round(part * 100 / whole)}%" if whole else str(part)
+
+
+def _funnel(funnel: portfolio.FunnelCompare | None) -> Figures | None:
+    """How far this period's leads have got, beside the same days before."""
+    if not funnel:
+        return None
+    now, before = funnel.current, funnel.previous
+
+    def step(label: str, key: str) -> Row:
+        current, previous = getattr(now, key), getattr(before, key)
+        return Row(
+            label=label,
+            value=_share(current, now.leads),
+            before=_share(previous, before.leads),
+            href=_crm("/leads"),
+        )
+
+    won_rate = now.won * 100 / now.leads if now.leads else 0
+    won_before = before.won * 100 / before.leads if before.leads else 0
+    rows = [
+        _count("Leads in", now.leads, before.leads, _crm("/leads")),
+        step("Qualified or further", "qualified"),
+        step("Proposal or further", "proposal"),
+        step("Won", "won"),
+        step("Lost", "lost"),
+    ]
+    rows[3].warn = bool(before.leads and now.leads and won_rate < won_before)
+    return Figures(
+        covers="period",
+        rows=rows,
+        note="Counts the leads that came in during the period by how far each has got by today, so"
+        " a recent period has had less time to close.",
+    )
+
+
+def _reps(reps: list[portfolio.RepLine]) -> Figures | None:
+    """Each lead owner's new leads, wins and open leads; leads nobody owns are flagged."""
+    if not reps:
+        return None
+    rows = []
+    for rep in reps:
+        # An owner's figure is what they won; leads nobody owns are counted by how many wait.
+        if rep.assigned:
+            value = f"{inr(rep.wonValue)} won"
+            detail = f"{rep.leads} new · {rep.won} won · {rep.openLeads} open now"
+        else:
+            value = f"{rep.openLeads} open"
+            detail = f"{rep.leads} new · nobody follows them up"
+        rows.append(
+            Row(
+                label=rep.name,
+                value=value,
+                change=detail,
+                href=_crm("/leads"),
+                warn=not rep.assigned and rep.openLeads > 0,
+            )
+        )
+    unowned = next((rep for rep in reps if not rep.assigned and rep.openLeads), None)
+    return Figures(
+        covers="period",
+        rows=rows,
+        note=(
+            f"{unowned.openLeads} open"
+            + (" lead has" if unowned.openLeads == 1 else " leads have")
+            + " no owner, so nobody is answerable for following them up. Assign them in CRM."
+            if unowned
+            else "New leads and deals won are for the period; open leads are as of today."
+        ),
+    )
+
+
 def figures(report: str, company: portfolio.CompanySummary) -> Figures | None:  # noqa: C901
+    if report == "health-brief":
+        return _health(company)
+    if report == "monthly-review":
+        return _review(company)
     now, before = company.period.current, company.period.previous
     books, owed = company.books, company.money
     if report == "sales-summary":
@@ -132,6 +288,10 @@ def figures(report: str, company: portfolio.CompanySummary) -> Figures | None:  
                 Row(label="Lost, all time", value=str(crm.lostDeals)),
             ],
         )
+    if report == "conversion-funnel":
+        return _funnel(company.funnel)
+    if report == "rep-performance":
+        return _reps(company.reps)
     if report == "lead-sources":
         if not company.leadSources:
             return None

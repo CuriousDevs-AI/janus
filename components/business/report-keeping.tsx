@@ -108,10 +108,14 @@ export function ScheduleReportDialog({ reports, initial, onClose, onSave }: { re
   </DialogContent></Dialog>;
 }
 
-export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, demo }: { schedules: ReportSchedule[]; loading: boolean; error?: string; onNew: () => void; onChanged: (next?: ReportSchedule[]) => void; demo: boolean }) {
+/** Words for a list of schedules: Business Reports' by default, or an owner's agents. */
+export type ScheduleWords = { title: string; description: string; emptyTitle: string; emptyText: string; action: string; hidePeriod?: boolean };
+const reportWords: ScheduleWords = { title: "Scheduled", description: "Reports emailed to your team at 9 in the morning, India time.", emptyTitle: "No reports are emailed yet", emptyText: "Have the sales summary in your inbox every Monday, or receivables on the 1st, without opening Janus.", action: "Email a report" };
+
+export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, demo, words = reportWords }: { schedules: ReportSchedule[]; loading: boolean; error?: string; onNew: () => void; onChanged: (next?: ReportSchedule[]) => void; demo: boolean; words?: ScheduleWords }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   async function act(item: ReportSchedule, kind: "send" | "pause" | "delete") {
-    if (kind === "delete" && !window.confirm(`Stop emailing ${item.reportName}?`)) return;
+    if (kind === "delete" && !window.confirm(`Stop emailing ${item.reportName}? It will not be sent again.`)) return;
     if (demo) {
       onChanged(kind === "delete" ? schedules.filter((other) => other.id !== item.id) : schedules.map((other) => other.id === item.id ? { ...other, paused: kind === "pause" ? !other.paused : other.paused, lastSentAt: kind === "send" ? new Date().toISOString() : other.lastSentAt } : other));
       if (kind === "send") toast.success("In the preview nothing is emailed.");
@@ -126,15 +130,15 @@ export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, de
     } catch (failure) { toast.error(message(failure)); } finally { setBusy(null); }
   }
   const spin = (item: ReportSchedule, kind: string, icon: React.ReactNode) => busy === `${item.id}:${kind}` ? <Loader2 className="size-3.5 animate-spin" /> : icon;
-  const action = <Button size="sm" onClick={onNew}><CalendarClock className="size-3.5" />Email a report</Button>;
-  return <SectionCard title="Scheduled" description="Reports emailed to your team at 9 in the morning, India time." action={schedules.length ? action : undefined}>
+  const action = <Button size="sm" onClick={onNew}><CalendarClock className="size-3.5" />{words.action}</Button>;
+  return <SectionCard title={words.title} description={words.description} action={schedules.length ? action : undefined}>
     {loading ? <p className="text-sm text-muted-foreground">Loading schedules…</p>
       : error ? <p className="text-sm text-danger">{error}</p>
-      : schedules.length === 0 ? <Empty title="No reports are emailed yet" description="Have the sales summary in your inbox every Monday, or receivables on the 1st, without opening Janus." action={action} />
+      : schedules.length === 0 ? <Empty title={words.emptyTitle} description={words.emptyText} action={action} />
       : <ul className="divide-y divide-border">{schedules.map((item) => <li key={item.id} className="flex flex-wrap items-start gap-3 py-3">
         <div className="min-w-[220px] flex-1">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium">{item.reportName}{item.paused ? <Badge variant="warning">Paused</Badge> : <Badge variant="success">On</Badge>}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{frequencyWords[item.frequency]} · {periodWords[item.period].toLowerCase()} · to {item.recipients.map((person) => person.name).join(", ") || "nobody still in the business"}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{frequencyWords[item.frequency]}{words.hidePeriod ? "" : ` · ${periodWords[item.period].toLowerCase()}`} · to {item.recipients.map((person) => person.name).join(", ") || "nobody still in the business"}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{item.nextDueAt ? `Next: ${when(item.nextDueAt)}` : "Not sending while paused"}{item.lastSentAt ? ` · Last sent ${when(item.lastSentAt)}` : " · Not sent yet"}</p>
           {item.lastProblem && <p className="mt-1 text-xs text-warning">{item.lastProblem}</p>}
         </div>
