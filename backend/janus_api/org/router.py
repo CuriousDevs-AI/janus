@@ -40,9 +40,7 @@ async def members(
 
 
 @router.get("/members/directory", response_model=list[schemas.MemberDirectoryEntry])
-async def members_directory(
-    actor: MemberReader, db: Db
-) -> list[schemas.MemberDirectoryEntry]:
+async def members_directory(actor: MemberReader, db: Db) -> list[schemas.MemberDirectoryEntry]:
     """Lightweight list of active members for pickers (lead assignment, deal history)."""
     people = await service.active_people(db, actor.session.tenant_id)
     return [
