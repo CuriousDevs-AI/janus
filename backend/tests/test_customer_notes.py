@@ -99,6 +99,54 @@ async def test_customer_notes_crud_and_visibility(
     assert resp.status_code == 422
 
 
+async def test_customer_notes_pagination(
+    client: httpx.AsyncClient, mailbox: Mailbox
+) -> None:
+    owner = await signup(client, mailbox)
+    lead = (
+        await client.post(
+            "/v1/leads",
+            headers={**owner.headers, "Idempotency-Key": "page-test-1"},
+            json={"name": "Pagination Test", "phone": "9876500999"},
+        )
+    ).json()
+    contact_id = lead["customerId"]
+
+    # Create 3 notes (a, b, c newest-first after creation).
+    for text in ["First note", "Second note", "Third note"]:
+        resp = await client.post(
+            f"/v1/contacts/{contact_id}/notes",
+            headers=owner.headers,
+            json={"body": text},
+        )
+        assert resp.status_code == 201
+
+    # Default fetch returns all 3 (limit=50 default).
+    resp = await client.get(f"/v1/contacts/{contact_id}/notes", headers=owner.headers)
+    all_notes = resp.json()
+    assert len(all_notes) == 3
+    # Newest first.
+    assert all_notes[0]["body"] == "Third note"
+
+    # Fetch with limit=2.
+    resp = await client.get(
+        f"/v1/contacts/{contact_id}/notes?limit=2", headers=owner.headers
+    )
+    page1 = resp.json()
+    assert len(page1) == 2
+    assert page1[0]["body"] == "Third note"
+    assert page1[1]["body"] == "Second note"
+
+    # Fetch next page using after_id cursor.
+    resp = await client.get(
+        f"/v1/contacts/{contact_id}/notes?limit=2&after_id={page1[-1]['id']}",
+        headers=owner.headers,
+    )
+    page2 = resp.json()
+    assert len(page2) == 1
+    assert page2[0]["body"] == "First note"
+
+
 async def test_lead_search_matches_follow_up_note_text(
     client: httpx.AsyncClient, mailbox: Mailbox
 ) -> None:

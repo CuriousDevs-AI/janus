@@ -834,17 +834,25 @@ async def _visible_lead(
 
 
 async def list_notes(
-    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], lead_id: int
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    lead_id: int,
+    after_id: int = 0,
+    limit: int = 50,
 ) -> list[schemas.NoteOut]:
     lead = await _visible_lead(db, tenant_id, user_id, permissions, lead_id)
-    rows = (
-        await db.execute(
-            select(LeadNote, User.name)
-            .outerjoin(User, User.id == LeadNote.author_id)
-            .where(LeadNote.tenant_id == tenant_id, LeadNote.lead_id == lead.id)
-            .order_by(LeadNote.created_at.desc(), LeadNote.id.desc())
-        )
-    ).all()
+    q = (
+        select(LeadNote, User.name)
+        .outerjoin(User, User.id == LeadNote.author_id)
+        .where(LeadNote.tenant_id == tenant_id, LeadNote.lead_id == lead.id)
+        .order_by(LeadNote.created_at.desc(), LeadNote.id.desc())
+        .limit(limit)
+    )
+    if after_id:
+        q = q.where(LeadNote.id < after_id)
+    rows = (await db.execute(q)).all()
     return [
         schemas.NoteOut(
             id=str(note.id),
@@ -967,16 +975,20 @@ async def list_customer_notes(
     user_id: int,
     permissions: list[str],
     contact_id: int,
+    after_id: int = 0,
+    limit: int = 50,
 ) -> list[schemas.CustomerNoteOut]:
     contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
-    rows = (
-        await db.execute(
-            select(CustomerNote, User.name)
-            .outerjoin(User, User.id == CustomerNote.author_id)
-            .where(CustomerNote.tenant_id == tenant_id, CustomerNote.contact_id == contact.id)
-            .order_by(CustomerNote.created_at.desc(), CustomerNote.id.desc())
-        )
-    ).all()
+    q = (
+        select(CustomerNote, User.name)
+        .outerjoin(User, User.id == CustomerNote.author_id)
+        .where(CustomerNote.tenant_id == tenant_id, CustomerNote.contact_id == contact.id)
+        .order_by(CustomerNote.created_at.desc(), CustomerNote.id.desc())
+        .limit(limit)
+    )
+    if after_id:
+        q = q.where(CustomerNote.id < after_id)
+    rows = (await db.execute(q)).all()
     return [
         schemas.CustomerNoteOut(
             id=str(note.id),

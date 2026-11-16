@@ -55,6 +55,9 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const [consentSaving, setConsentSaving] = useState(false);
   const [consentError, setConsentError] = useState("");
   const notes = useApi<CustomerNote[]>(contact.data ? `/contacts/${encodeURIComponent(id)}/notes` : null);
+  const [extraNotes, setExtraNotes] = useState<CustomerNote[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const allNotes = useMemo(() => [...(notes.data ?? []), ...extraNotes], [notes.data, extraNotes]);
   const [noteText, setNoteText] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState("");
@@ -118,6 +121,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
     deals.reload();
     conversations.reload();
     notes.reload();
+    setExtraNotes([]);
   };
 
   async function saveNote() {
@@ -131,10 +135,26 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       });
       setNoteText("");
       notes.reload();
+      setExtraNotes([]);
     } catch (error) {
       setNoteError(message(error));
     } finally {
       setNoteSaving(false);
+    }
+  }
+
+  async function loadMoreNotes() {
+    if (!contact.data || loadingMore) return;
+    const lastNote = allNotes[allNotes.length - 1];
+    if (!lastNote) return;
+    setLoadingMore(true);
+    try {
+      const older = await api<CustomerNote[]>(
+        `/contacts/${encodeURIComponent(contact.data.id)}/notes?after_id=${encodeURIComponent(lastNote.id)}`,
+      );
+      setExtraNotes((prev) => [...prev, ...older]);
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -250,14 +270,14 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
                     Notes could not be loaded. Refresh to try again.
                   </p>
                 )}
-                {!notes.loading && !notes.error && (notes.data ?? []).length === 0 && (
+                {!notes.loading && !notes.error && allNotes.length === 0 && (
                   <p className="mt-4 text-sm text-muted-foreground">
                     No notes yet. Add one above to keep track of conversations, agreements, or preferences.
                   </p>
                 )}
-                {(notes.data ?? []).length > 0 && (
+                {allNotes.length > 0 && (
                   <div className="mt-4 divide-y divide-border">
-                    {(notes.data ?? []).map((note) => (
+                    {allNotes.map((note) => (
                       <div key={note.id} className="py-3 first:pt-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <p className="text-xs font-medium text-foreground">
@@ -272,6 +292,17 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
                         </p>
                       </div>
                     ))}
+                    {allNotes.length > 0 && allNotes.length % 50 === 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="mt-3 w-full"
+                        disabled={loadingMore}
+                        onClick={() => void loadMoreNotes()}
+                      >
+                        {loadingMore ? "Loading..." : "Load older notes"}
+                      </Button>
+                    )}
                   </div>
                 )}
               </section>

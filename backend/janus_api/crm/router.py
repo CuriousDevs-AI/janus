@@ -80,9 +80,11 @@ async def update_lead(
 
 
 @router.get("/leads/{lead_id}/notes", response_model=list[schemas.NoteOut])
-async def lead_notes(lead_id: Identifier, actor: Reader, db: Db) -> list[schemas.NoteOut]:
+async def lead_notes(
+    lead_id: Identifier, actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 50
+) -> list[schemas.NoteOut]:
     return await service.list_notes(
-        db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id, after_id, limit
     )
 
 
@@ -140,10 +142,10 @@ async def update_contact(
 
 @router.get("/contacts/{contact_id}/notes", response_model=list[schemas.CustomerNoteOut])
 async def contact_notes(
-    contact_id: Identifier, actor: Reader, db: Db
+    contact_id: Identifier, actor: Reader, db: Db, after_id: AfterId = 0, limit: Limit = 50
 ) -> list[schemas.CustomerNoteOut]:
     return await service.list_customer_notes(
-        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id, after_id, limit
     )
 
 
