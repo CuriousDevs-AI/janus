@@ -30,7 +30,7 @@ export function HrLeaveApplyView({ actorId }: { actorId: string }) {
   const type = (params.get("type") as LeaveType | null) ?? undefined;
   const actor = employees.find((item) => item.id === actorId);
   const mine = leaveRequests.filter((item) => item.employeeId === actorId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
-  if (!actor) return <HrPanel title="Apply for leave"><HrEmpty>This account is not linked to an employee record. Ask HR to link it.</HrEmpty></HrPanel>;
+  if (!actor) return <HrPanel title="Apply for leave"><HrEmpty>This account is not linked to an employee record. Ask HR to link your account.</HrEmpty></HrPanel>;
   return <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
     <HrPanel title="Apply for leave" description={from ? `Prefilled for ${hrDate(from)}. Change anything you need.` : "Choose the dates and tell your manager why."}>
       <div className="p-5"><LeaveRequestForm key={`${version}:${from ?? ""}:${type ?? ""}`} employeeId={actorId} initial={{ from, type }} onDone={() => setVersion((value) => value + 1)} /></div>
@@ -54,7 +54,7 @@ export function HrLeaveBalancesView({ actorId }: { actorId: string }) {
   const year = leaveYear(today, settings.yearStart);
   const mine = leaveRequests.filter((item) => item.employeeId === actorId && item.from >= year.start && item.from <= year.end && item.status !== "rejected").sort((a, b) => b.from.localeCompare(a.from));
   const adjustmentsMine = adjustments.filter((item) => item.employeeId === actorId && item.at.slice(0, 10) >= year.start && item.at.slice(0, 10) <= year.end);
-  if (!actor) return <HrPanel title="Leave balances"><HrEmpty>This account is not linked to an employee record.</HrEmpty></HrPanel>;
+  if (!actor) return <HrPanel title="Leave balances"><HrEmpty>This account is not linked to an employee record. Ask HR to link your account.</HrEmpty></HrPanel>;
   const unlimited = types.active.filter((item) => item.days === null);
   const taken = (id: string) => mine.filter((item) => item.type === id && item.status === "approved").reduce((sum, item) => sum + item.days, 0);
   return <div className="space-y-5">

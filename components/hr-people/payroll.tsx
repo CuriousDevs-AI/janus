@@ -138,7 +138,7 @@ function MyPayslips({ actorId }: { actorId: string }) {
   const { employees, payrollRuns } = useHrPeopleStore();
   const employee = employees.find((item) => item.id === actorId);
   const [open, setOpen] = React.useState<Line | null>(null);
-  if (!employee) return <HrPanel title="My payslips"><HrEmpty>This account is not linked to an employee record.</HrEmpty></HrPanel>;
+  if (!employee) return <HrPanel title="My payslips"><HrEmpty>This account is not linked to an employee record. Ask HR to link your account.</HrEmpty></HrPanel>;
   const rows = payrollRuns.flatMap((run) => { const key = runKey(run); const slip = buildPayslip(employee, key); return slip ? [{ run, key, slip, published: run.status === "locked" || key < "2026-10" }] : []; });
   return <div className="space-y-5">
     <HrPanel title="My payslips" description="A payslip appears here after payroll for that month is locked.">

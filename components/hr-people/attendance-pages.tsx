@@ -53,7 +53,7 @@ export function HrAttendanceInfoView({ actorId }: { actorId: string }) {
   const { today, year, month, move, reset, length, weeks } = useMonth();
   const { actor, info } = useDays(actorId);
   const [open, setOpen] = React.useState<DayInfo | null>(null);
-  if (!actor) return <HrPanel title="Attendance info"><HrEmpty>This account is not linked to an employee record. Ask HR to link it.</HrEmpty></HrPanel>;
+  if (!actor) return <HrPanel title="Attendance info"><HrEmpty>This account is not linked to an employee record. Ask HR to link your account.</HrEmpty></HrPanel>;
   const days = Array.from({ length }, (_, index) => info(iso(year, month, index + 1)));
   const count = (...kinds: DayKind[]) => days.filter((item) => kinds.includes(item.kind)).length;
   const worked = days.filter((item) => item.hours !== null);
@@ -102,7 +102,7 @@ export function HrRegularizationView({ actorId }: { actorId: string }) {
   const mine = regularisations.filter((item) => item.employeeId === actorId);
   const pending = mine.filter((item) => item.status === "pending");
   const history = mine.filter((item) => item.status !== "pending");
-  if (!actor) return <HrPanel title="Regularization & permission"><HrEmpty>This account is not linked to an employee record.</HrEmpty></HrPanel>;
+  if (!actor) return <HrPanel title="Regularization & permission"><HrEmpty>This account is not linked to an employee record. Ask HR to link your account.</HrEmpty></HrPanel>;
 
   const days = Array.from({ length }, (_, index) => info(iso(year, month, index + 1)));
   const eligible = (item: DayInfo) => item.date <= today && item.date >= min && item.date >= actor.joiningDate && (kind === "regularisation" ? item.kind !== "holiday" && item.kind !== "off" || Boolean(item.record) : item.kind !== "holiday" && item.kind !== "off" && item.kind !== "leave");
