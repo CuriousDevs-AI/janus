@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DocumentReader, type ReaderSource } from "@/components/hr-people/document-reader";
 import { certificateText, deviceLabel, makeReference, sha256Hex, type SignatureRecord } from "@/lib/hr-document-content";
+import { demoMode } from "@/lib/demo-mode";
 import { downloadHrFile } from "@/lib/hr-payroll";
 import type { HrDocument } from "@/lib/types";
 
@@ -100,7 +101,7 @@ export function SignDialog({ mode, document, source, signerName, onComplete, onC
             <div className="flex h-24 items-center justify-center border border-border bg-white px-4" aria-label="Signature preview"><span className="truncate text-4xl text-slate-900" style={{ fontFamily: cursive }}>{typedOk ? signerName : <span className="text-base text-slate-400" style={{ fontFamily: "inherit" }}>Your signature appears here</span>}</span></div>
             {typed !== "" && !typedOk && <p role="alert" className="text-xs text-danger">The name must match {signerName}.</p>}</div> : <SignaturePad onChange={setImage} />}
         </div></>}
-      <label className="flex items-start gap-2 border border-border bg-surface-2 p-3 text-sm"><input type="checkbox" className="mt-1" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>{signing ? "I have read this document and agree to sign it electronically." : "I have read and understood this document."} <span className="text-muted-foreground">This is a demonstration. It is not a legally valid e-signature.</span></span></label>
+      <label className="flex items-start gap-2 border border-border bg-surface-2 p-3 text-sm"><input type="checkbox" className="mt-1" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>{signing ? "I have read this document and agree to sign it electronically." : "I have read and understood this document."} {demoMode && <span className="text-muted-foreground">This is a demonstration. It is not a legally valid e-signature.</span>}</span></label>
       <div className="flex flex-wrap justify-between gap-2"><Button variant="outline" onClick={() => setStep("read")}>Back</Button><Button disabled={!ready || busy} onClick={finish}>{busy ? "Saving…" : signing ? "Sign document" : "Acknowledge"}</Button></div>
     </div>}
 
