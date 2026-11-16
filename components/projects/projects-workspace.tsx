@@ -30,6 +30,25 @@ import { message } from "@/lib/api/client";
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 text-sm";
 
+/** Load the company's team members from the directory API (real mode only). */
+function useDirectory() {
+  const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
+  React.useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api<{ user_id: string; name: string }[]>("/project-timelines/directory");
+        if (!cancelled) setPeople(list);
+      } catch {
+        /* without the directory the dropdowns stay empty */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  return people;
+}
+
 const comingSoon: Record<string, string> = {
 };
 
@@ -98,6 +117,8 @@ function TimesheetsView({ me }: { me: string }) {
   const projects = useProjectsStore((state) => state.projects);
   const timesheets = useProjectsStore((state) => state.timesheets);
   const logHours = useProjectsStore((state) => state.logHours);
+  const directory = useDirectory();
+  const people = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directory.map((u) => ({ key: u.user_id, name: u.name }));
   const [projectId, setProjectId] = React.useState("");
   const [person, setPerson] = React.useState(me);
   const [date, setDate] = React.useState(TODAY);
@@ -119,7 +140,7 @@ function TimesheetsView({ me }: { me: string }) {
           <p className="text-xs text-muted-foreground">Log the hours a person worked on a project, by day. Hours are entered, not estimated. A day cannot go over 12 hours for one person.</p>
           <div className="grid gap-3 sm:grid-cols-6">
             <select aria-label="Project" className={selectClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Project…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <select aria-label="Person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}>{people.map((u) => <option key={u.key} value={u.name}>{u.name}</option>)}</select>
             <Input aria-label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             <Input aria-label="Hours" type="number" min={0.5} max={12} step={0.5} placeholder="Hours" value={hours} onChange={(e) => setHours(e.target.value)} />
             <Input aria-label="Note" placeholder="What was done" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -158,6 +179,8 @@ function ResourcesView() {
   const setAllocation = useProjectsStore((state) => state.setAllocation);
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
+  const directory = useDirectory();
+  const people = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directory.map((u) => ({ key: u.user_id, name: u.name }));
   const [projectId, setProjectId] = React.useState("");
   const [person, setPerson] = React.useState("");
   const [percent, setPercent] = React.useState("");
@@ -177,19 +200,19 @@ function ResourcesView() {
         <CardContent className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-4">
             <select aria-label="Allocation project" className={selectClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Project…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <select aria-label="Allocation person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Allocation person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{people.map((u) => <option key={u.key} value={u.name}>{u.name}</option>)}</select>
             <Input aria-label="Share of week" type="number" min={1} max={100} placeholder="% of week" value={percent} onChange={(e) => setPercent(e.target.value)} />
             <Button disabled={!projectId || !person || !(Number(percent) > 0)} onClick={save}>Save share</Button>
           </div>
         </CardContent>
       </Card>
-      {users.map((u) => {
+      {people.map((u) => {
         const mine = allocations.filter((a) => a.person === u.name);
         const total = mine.reduce((sum, a) => sum + a.percent, 0);
         const logged = timesheets.filter((t) => t.person === u.name && t.date >= weekStart && t.date <= TODAY).reduce((sum, t) => sum + t.hours, 0);
         if (mine.length === 0 && logged === 0) return null;
         return (
-          <Card key={u.id}>
+          <Card key={u.key}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 {u.name}
@@ -216,6 +239,8 @@ function ProfitabilityView() {
   const timesheets = useProjectsStore((state) => state.timesheets);
   const rates = useProjectsStore((state) => state.rates);
   const setCostRate = useProjectsStore((state) => state.setCostRate);
+  const directoryPeople = useDirectory();
+  const costPeople = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directoryPeople.map((u) => ({ key: u.user_id, name: u.name }));
   const [person, setPerson] = React.useState("");
   const [hourly, setHourly] = React.useState("");
 
@@ -233,7 +258,7 @@ function ProfitabilityView() {
         <CardContent className="grid gap-3 text-sm">
           <p className="text-xs text-muted-foreground">Project cost is hours logged times what each person costs an hour. A person with no cost set uses ₹{DEFAULT_HOURLY_COST} an hour.</p>
           <div className="grid gap-3 sm:grid-cols-4">
-            <select aria-label="Cost person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+            <select aria-label="Cost person" className={selectClass} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">Person…</option>{costPeople.map((u) => <option key={u.key} value={u.name}>{u.name}</option>)}</select>
             <Input aria-label="Cost per hour" type="number" min={0} placeholder="₹ per hour" value={hourly} onChange={(e) => setHourly(e.target.value)} />
             <Button disabled={!person || hourly === ""} onClick={save}>Save cost</Button>
           </div>
@@ -351,22 +376,7 @@ function ProjectsView({ me }: { me: string }) {
     });
   }, []);
   // The company directory, for choosing an owner by account (real mode only).
-  const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
-  React.useEffect(() => {
-    if (demoMode) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await api<{ user_id: string; name: string }[]>("/project-timelines/directory");
-        if (!cancelled) setPeople(list);
-      } catch {
-        /* without the directory the owner is typed as before */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const people = useDirectory();
   const links = useCrmLinkOptions();
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
   const params = useSearchParams();
