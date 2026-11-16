@@ -54,7 +54,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.addHandler(handler)
     logger.propagate = False
     await check_database_role()
+    from janus_api.portfolio.summary import start_warm_up, stop_warm_up
+
+    start_warm_up()
     yield
+    stop_warm_up()
 
 
 app = FastAPI(title="Janus API", version="0.1.0", lifespan=lifespan)

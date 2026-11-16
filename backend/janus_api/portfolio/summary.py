@@ -672,6 +672,10 @@ _summary_cache: dict[str, tuple[float, schemas.PortfolioSummary]] = {}
 _summary_locks: dict[str, asyncio.Lock] = {}
 _SUMMARY_TTL = 15
 
+_warm_users: dict[int, float] = {}
+_WARM_INTERVAL = 60
+_WARM_USER_TTL = 300
+
 
 async def summary(
     db: AsyncSession,
@@ -691,6 +695,7 @@ async def summary(
 
     Results are cached for 15 seconds per user+period so concurrent requests coalesce.
     """
+    _warm_users[user_id] = time.monotonic()
     cache_key = f"{user_id}:{period_key}:{detail}"
     now = time.monotonic()
     cached = _summary_cache.get(cache_key)
@@ -714,7 +719,7 @@ async def summary(
 
 
 async def _summary_uncached(
-    db: AsyncSession,
+    db: AsyncSession | None,
     user_id: int,
     current_tenant: int | None,
     ip: str | None,
@@ -781,3 +786,46 @@ async def _summary_uncached(
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
     intercompany(companies, trade)
     return schemas.PortfolioSummary(period=period, companies=companies)
+
+
+_warm_task: asyncio.Task[None] | None = None
+
+
+async def _warm_loop() -> None:
+    """Periodically re-compute the portfolio summary for recently active users so the next
+    request hits the warm cache instead of waiting for 40+ sequential queries."""
+    import logging
+
+    log = logging.getLogger("janus")
+    while True:
+        await asyncio.sleep(_WARM_INTERVAL)
+        now = time.monotonic()
+        stale = [uid for uid, ts in _warm_users.items() if now - ts > _WARM_USER_TTL]
+        for uid in stale:
+            _warm_users.pop(uid, None)
+        for user_id in list(_warm_users):
+            for period_key in ("month",):
+                cache_key = f"{user_id}:{period_key}:True"
+                cached = _summary_cache.get(cache_key)
+                if cached and now - cached[0] < _SUMMARY_TTL:
+                    continue
+                try:
+                    result = await _summary_uncached(None, user_id, None, None, period_key)
+                    _summary_cache[cache_key] = (time.monotonic(), result)
+                except Exception:
+                    log.debug("portfolio warm-up failed for user %s", user_id, exc_info=True)
+
+
+def start_warm_up() -> None:
+    """Start the background warm-up loop. Called once from the app lifespan."""
+    global _warm_task
+    if _warm_task is None or _warm_task.done():
+        _warm_task = asyncio.get_event_loop().create_task(_warm_loop())
+
+
+def stop_warm_up() -> None:
+    """Cancel the background warm-up loop."""
+    global _warm_task
+    if _warm_task is not None and not _warm_task.done():
+        _warm_task.cancel()
+        _warm_task = None
