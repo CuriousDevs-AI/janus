@@ -24,6 +24,17 @@ import { useLoginAccount } from "@/lib/demo-persona";
 import { useSession } from "@/components/auth/session-provider";
 import { userScoped } from "@/lib/stores/user-scoped";
 
+function sinceDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return `Since ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}`;
+  } catch { return iso; }
+}
+function pl(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you run, at a glance."],
   analytics: ["Analytics", "The same measures for every company, side by side."],
@@ -115,8 +126,8 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
   return <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
     {list.map((item) => <section key={item.company.id} aria-label={item.company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3"><CompanyLogo company={item.company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.company.name}</h3><p className="truncate text-xs text-muted-foreground">{item.company.industry} · {item.company.city}</p></div></div>
-        <Badge variant={item.company.setupDone ? "neutral" : "warning"}>{item.company.setupDone ? "Active" : "Setup unfinished"}</Badge>
+        <div className="flex min-w-0 items-start gap-3"><CompanyLogo company={item.company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{item.company.name}</h3><p className="truncate text-xs text-muted-foreground">{[item.company.industry, item.company.city].filter(Boolean).join(" · ") || "No details yet"}</p></div></div>
+        <Badge variant={item.company.setupDone ? "success" : "warning"}>{item.company.setupDone ? "Active" : "Setup unfinished"}</Badge>
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div><dt className="text-[11px] text-muted-foreground">People</dt><dd className="font-semibold tabular-nums">{item.hr.people}</dd></div>
@@ -185,11 +196,11 @@ function Companies({ list }: { list: CompanySummary[] }) {
     <div className="flex justify-end"><Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button></div>
     <div className="grid gap-4 lg:grid-cols-2">
       {list.map((item) => { const company = item.company; return <section key={company.id} aria-label={company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{company.industry} · {company.city} · since {company.createdAt}</p></div></div>{company.setupDone ? <Badge variant="success">Set up</Badge> : <Link href={`/setup?finish=${company.id}`}><Badge variant="warning" className="cursor-pointer hover:opacity-80">Setup unfinished</Badge></Link>}</div>
+        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{[company.industry, company.city, sinceDate(company.createdAt)].filter(Boolean).join(" · ")}</p></div></div>{company.setupDone ? <Badge variant="success">Active</Badge> : <Link href={`/setup?finish=${company.id}`}><Badge variant="warning" className="cursor-pointer hover:opacity-80">Setup unfinished</Badge></Link>}</div>
         <div className="grid gap-1.5"><p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</p>
           <div className="flex flex-wrap gap-1.5">{SWITCHABLE_WORKSPACES.map((id) => { const on = company.workspaces.includes(id); return <Badge key={id} variant={on ? "success" : "neutral"}>{workspaceName(id)}</Badge>; })}</div>
         </div>
-        <p className="text-xs text-muted-foreground">{item.hr.people} people{item.crm ? ` · ${item.crm.leads} leads · ${item.crm.openDeals} open deals` : ""}</p>
+        <p className="text-xs text-muted-foreground">{pl(item.hr.people, "person", "people")}{item.crm ? ` · ${pl(item.crm.leads, "lead", "leads")} · ${pl(item.crm.openDeals, "open deal", "open deals")}` : ""}</p>
         <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => open(company.id)}>Open<ArrowRight className="ml-1 size-4" /></Button>{!company.setupDone && <Button size="sm" variant="secondary" asChild><Link href={`/setup?finish=${company.id}`}>Finish setup</Link></Button>}<Button size="sm" variant="outline" onClick={() => setEditing(company)}>Edit details</Button><Button size="sm" variant="ghost" aria-label={`Remove ${company.name}`} onClick={() => setRemoving(company)}><Trash2 className="size-4" /></Button></div>
       </section>; })}
     </div>
@@ -430,7 +441,7 @@ function PlanBilling({ list }: { list: CompanySummary[] }) {
     </div>
     <SectionCard title="Billing by company" description="Usage breakdown per company.">
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Company</th><th className="px-3 py-2">People</th><th className="px-3 py-2">Workspaces</th><th className="px-3 py-2">Status</th></tr></thead>
-        <tbody>{list.map((item) => <tr key={item.company.id} className="border-b border-border last:border-0"><td className="py-2.5 pr-4"><div className="flex items-center gap-2"><CompanyLogo company={item.company} size={20} className="rounded" /><span className="font-medium">{item.company.name}</span></div></td><td className="px-3 py-2.5 tabular-nums">{item.hr.people}</td><td className="px-3 py-2.5 tabular-nums">{item.company.workspaces.length}</td><td className="px-3 py-2.5"><Badge variant={item.company.setupDone ? "success" : "warning"}>{item.company.setupDone ? "Active" : "Setup pending"}</Badge></td></tr>)}</tbody></table></div>
+        <tbody>{list.map((item) => <tr key={item.company.id} className="border-b border-border last:border-0"><td className="py-2.5 pr-4"><div className="flex items-center gap-2"><CompanyLogo company={item.company} size={20} className="rounded" /><span className="font-medium">{item.company.name}</span></div></td><td className="px-3 py-2.5 tabular-nums">{item.hr.people}</td><td className="px-3 py-2.5 tabular-nums">{item.company.workspaces.length}</td><td className="px-3 py-2.5"><Badge variant={item.company.setupDone ? "success" : "warning"}>{item.company.setupDone ? "Active" : "Setup unfinished"}</Badge></td></tr>)}</tbody></table></div>
     </SectionCard>
     {upgrading && <Dialog open onOpenChange={() => setUpgrading(null)}><DialogContent><DialogHeader><DialogTitle>{rank(upgrading.id) > rank(currentPlan) ? "Upgrade" : "Move"} to {upgrading.name}</DialogTitle><DialogDescription>{upgrading.price === null ? "We will get in touch." : upgrading.price === 0 ? "Move to the free plan. Your companies and data stay." : `₹${upgrading.price.toLocaleString("en-IN")}/month + GST. ${upgrading.companies} companies, ${upgrading.logins} people.`}</DialogDescription></DialogHeader>
       <DialogFooter><Button variant="outline" onClick={() => setUpgrading(null)}>Cancel</Button><Button onClick={() => changePlan(upgrading.id)}>{rank(upgrading.id) > rank(currentPlan) ? "Confirm upgrade" : "Confirm change"}</Button></DialogFooter></DialogContent></Dialog>}

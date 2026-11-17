@@ -52,7 +52,7 @@ export function answerFor(question: string, list: CompanySummary[]): Answer {
     return { text: rows.length ? `${rows[0][0]} leads on win rate.` : "I need at least one company with CRM records to compare.", rows };
   }
   if (/setup|unfinished|workspace|connect/.test(q)) {
-    return { text: "Here is where each company stands.", rows: list.map((item): [string, string] => [name(item), `${item.company.setupDone ? "Set up" : "Setup unfinished"} · ${item.company.workspaces.map((id) => id === "crm-sales" ? "CRM & Sales" : id === "hr-people" ? "HR & People" : id).join(", ") || "no workspaces"}`]) };
+    return { text: "Here is where each company stands.", rows: list.map((item): [string, string] => [name(item), `${item.company.setupDone ? "Active" : "Setup unfinished"} · ${item.company.workspaces.map((id) => id === "crm-sales" ? "CRM & Sales" : id === "hr-people" ? "HR & People" : id).join(", ") || "no workspaces"}`]) };
   }
   return { text: `I can answer from what ${list.length} compan${list.length === 1 ? "y" : "ies"} hold today: pipeline and wins, people and payroll, what needs attention, and setup. I do not have finance ledgers connected, so I cannot speak to cash or receivables.` };
 }

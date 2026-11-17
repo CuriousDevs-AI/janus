@@ -18,9 +18,8 @@ import {
   getNavSectionsForWorkspace,
   type NavItem,
 } from "@/lib/nav-config";
-import { useSignOut, useSession } from "@/components/auth/session-provider";
+import { useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
-import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { cn } from "@/lib/utils";
 import { useDemoAccount } from "@/lib/demo-persona";
 import { OPERATIONAL_WORKSPACES, workspaceDefinitions } from "@/lib/workspace-config";
@@ -28,7 +27,7 @@ import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
 import type { HrDemoRole } from "@/lib/types";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
-import { managesBusiness, mayOpenWorkspace, PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
+import { managesBusiness, mayOpenWorkspace, PORTFOLIO_ROLES } from "@/lib/access";
 import { TeamChatSidebarList } from "@/components/team/chat-list";
 import {
   DropdownMenu,
@@ -62,12 +61,6 @@ export function SidebarNav({
   const searchParams = useSearchParams();
   const session = useSession();
   const { workspaceId, workspace } = useWorkspace();
-  const signOut = useSignOut();
-  const currentUser = {
-    ...session.user,
-    role: session.role,
-    avatarColor: "#2563eb",
-  };
   const tenant = session.tenant;
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
@@ -317,76 +310,6 @@ export function SidebarNav({
       {/* A real account sees the switcher once it can go somewhere: a second company, or a Portfolio. */}
       {!demoMode && (session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
-      {/* Footer */}
-      <div
-        className={cn(
-          "flex items-center gap-2 border-t border-border py-3",
-          collapsed ? "justify-center px-2" : "px-3",
-        )}
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                "flex flex-1 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-surface-2 transition-colors",
-                collapsed && "flex-none",
-              )}
-            >
-              <CustomerAvatar
-                name={currentUser.name}
-                color={currentUser.avatarColor}
-                size="sm"
-              />
-              {!collapsed && (
-                <span className="flex flex-1 flex-col items-start leading-none">
-                  <span className="text-[12px] font-medium text-foreground">
-                    {currentUser.name}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {roleLabel(session.role)}
-                  </span>
-                </span>
-              )}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel className="break-all normal-case tracking-normal" title={currentUser.email}>{currentUser.email}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {/* You as a person, the same in every workspace: profile, password and devices, emails. */}
-            <DropdownMenuItem asChild>
-              <Link href={`/account?tab=profile&workspace=${workspaceId}`}>My account</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={`/account?tab=security&workspace=${workspaceId}`}>Password and devices</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={`/account?tab=notifications&workspace=${workspaceId}`}>Notifications</Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {/* Settings belong to one company, so from the Portfolio each company's are reached from
-                its page. The plan belongs to the account and lives in the Portfolio. */}
-            {workspaceId === "portfolio" ? <>
-              <DropdownMenuItem asChild>
-                <Link href="/portfolio?view=billing">Plan and billing</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/portfolio?view=companies">Company settings</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/portfolio?view=people">Portfolio access</Link>
-              </DropdownMenuItem>
-            </> : <>
-              <DropdownMenuItem asChild>
-                <Link href={workspaceId === "business" ? "/settings?tab=workspace&view=settings&workspace=business" : "/settings"}>Company settings</Link>
-              </DropdownMenuItem>
-            </>}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void signOut()}>
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
     </>
   );
 }
