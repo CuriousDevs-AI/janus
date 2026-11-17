@@ -3,10 +3,7 @@
 import * as React from "react";
 import { useEffect } from "react";
 import { Building2, Inbox, LayoutGrid } from "lucide-react";
-import { demoMode } from "@/lib/demo-mode";
-import { hrNavVisible } from "@/lib/hr-nav";
-import { useDemoAccount } from "@/lib/demo-persona";
-import { activeCompanyId, businessHome, portfolioHome, readCompanies, subscribeCompanies, switchCompany, type CompanyRecord } from "@/lib/company";
+import { businessHome, portfolioHome } from "@/lib/company";
 import { useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { appendWorkspace, getNavSectionsForWorkspace } from "@/lib/nav-config";
@@ -32,14 +29,11 @@ export function CommandPalette() {
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const { workspaceId, workspace } = useWorkspace();
   const session = useSession();
-  const account = useDemoAccount();
-  const companies = React.useSyncExternalStore(subscribeCompanies, () => JSON.stringify(readCompanies()), () => "[]");
-  const owner = demoMode && account?.hrRole === "owner";
   const navSections = getNavSectionsForWorkspace(workspaceId)
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => (!item.demoOnly || demoMode) && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) && (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, account?.hrRole ?? "owner")),
+        (item) => !item.demoOnly && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)),
       ),
     }))
     .filter((section) => section.items.length > 0);
@@ -63,11 +57,7 @@ export function CommandPalette() {
           <CommandInput placeholder="Find a page…" />
           <CommandList>
             <CommandEmpty>No pages match.</CommandEmpty>
-            {owner && <CommandGroup heading="Switch company">
-              {workspaceId !== "portfolio" && <CommandItem onSelect={() => { setOpen(false); router.push(portfolioHome); }}><LayoutGrid className="size-4" />Portfolio · all companies</CommandItem>}
-              {(JSON.parse(companies) as CompanyRecord[]).filter((item) => workspaceId === "portfolio" || item.id !== activeCompanyId()).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchCompany(item.id); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
-            </CommandGroup>}
-            {!demoMode && session.tenants.length > 0 && <CommandGroup heading="Switch company">
+            {session.tenants.length > 0 && <CommandGroup heading="Switch company">
               {workspaceId !== "portfolio" && session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role)) && <CommandItem onSelect={() => { setOpen(false); router.push(portfolioHome); }}><LayoutGrid className="size-4" />Portfolio · all companies</CommandItem>}
               {session.tenants.filter((item) => item.status === "active" && item.id !== session.tenant.id).map((item) => <CommandItem key={item.id} onSelect={() => { setOpen(false); switchTenant(item.id, businessHome, item.name).catch((error) => toast.error(message(error))); }}><Building2 className="size-4" />{item.name}</CommandItem>)}
             </CommandGroup>}

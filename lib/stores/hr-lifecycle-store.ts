@@ -2,9 +2,6 @@
 
 import { create } from "zustand";
 import { scoped } from "@/lib/company";
-import { isFirstCompany } from "@/lib/companies";
-import { demoMode } from "@/lib/demo-mode";
-import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export interface HrLifecycleEvent {
@@ -66,19 +63,6 @@ export function exitChecklist(): HrExitTask[] {
   ];
 }
 
-const candidateDefaults = (): Record<string, HrCandidateDetail> => ({
-  "cand-001": { source: "Employee referral", interviewAt: "2026-10-26T11:00", notes: [{ id: "interview-meera", at: "2026-10-21T10:00:00+05:30", actor: "Shaista Khan", text: "Strong attendance and onboarding experience. Next interview will cover employee grievance handling and shift rosters." }], offer: { salaryMonthly: 45000, joiningDate: "2026-11-09", location: "Gurugram", status: "draft", version: 1 }, events: [] },
-  "cand-002": { source: "Local hiring drive", interviewAt: "2026-10-19T14:00", notes: [{ id: "interview-rohit", at: "2026-10-19T15:00:00+05:30", actor: "Neha Verma", text: "Passed stock-count exercise. Comfortable with rotating shifts. Waiting for offer response." }], offer: { salaryMonthly: 27000, joiningDate: "2026-11-02", location: "Jaipur", status: "sent", version: 1 }, events: [] },
-  "cand-004": { source: "Careers page", interviewAt: "2026-10-14T11:00", notes: [{ id: "interview-kabir", at: "2026-10-14T12:00:00+05:30", actor: "Aman Verma", text: "Completed reconciliation exercise with 92/100. Accepted the offer and confirmed availability for November." }], offer: { salaryMonthly: 48000, joiningDate: "2026-11-02", location: "Gurugram", status: "accepted", version: 1 }, events: [{ id: "offer-kabir", at: "2026-10-16T15:00:00+05:30", actor: "Kabir Singh (demo)", text: "Offer accepted in the sample signing flow." }] },
-});
-
-function seedExits(): HrExitRecord[] {
-  return [{
-    id: "exit-karan", employeeId: "emp-008", requestedAt: "2026-10-01", lastWorkingDay: "2026-10-31", reason: "Career progression; moving to a new opportunity.", status: "in_progress",
-    tasks: exitChecklist().map((task) => ["manager-review", "notice"].includes(task.id) ? { ...task, done: true, note: "Reviewed with Pankaj and HR. Handover assigned to the support team.", completedAt: "2026-10-02T11:00:00+05:30" } : task),
-    events: [{ id: "exit-karan-confirmed", at: "2026-10-02T11:00:00+05:30", actor: "Shaista Khan", text: "Notice period confirmed. Last working day: 31 October 2026." }],
-  }];
-}
 
 interface HrLifecycleState {
   candidateDetails: Record<string, HrCandidateDetail>;
@@ -96,8 +80,8 @@ interface HrLifecycleState {
 export const blankCandidateDetail = (): HrCandidateDetail => ({ source: "Direct application", interviewAt: "", notes: [], offer: { salaryMonthly: 0, joiningDate: "", location: "Gurugram", status: "draft", version: 1 }, events: [] });
 
 export const useHrLifecycleStore = create<HrLifecycleState>()(persist((set) => ({
-  candidateDetails: isFirstCompany ? candidateDefaults() : {},
-  exits: isFirstCompany ? seedExits() : [],
+  candidateDetails: {},
+  exits: [],
   onboardingNotes: {},
   setCandidateDetail: (id, patch) => set((state) => ({ candidateDetails: { ...state.candidateDetails, [id]: { ...(state.candidateDetails[id] ?? blankCandidateDetail()), ...patch } } })),
   addCandidateEvent: (id, event) => set((state) => {
@@ -118,12 +102,5 @@ export const useHrLifecycleStore = create<HrLifecycleState>()(persist((set) => (
   addOnboardingNote: (id, event) => set((state) => ({ onboardingNotes: { ...state.onboardingNotes, [id]: [event, ...(state.onboardingNotes[id] ?? [])] } })),
 }), {
   name: scoped("janus.hr-lifecycle-demo.v1"), storage: createJSONStorage(() => localStorage),
-  // A saved copy drops the demo exit and candidate notes outside demo mode; records the company made stay.
-  merge: (persisted, current) => {
-    const saved = { ...current, ...(persisted as Partial<HrLifecycleState>) } as HrLifecycleState;
-    if (demoMode) return saved;
-    const demoCandidates = candidateDefaults();
-    const candidateDetails = Object.fromEntries(Object.entries(saved.candidateDetails).filter(([id]) => !(id in demoCandidates)));
-    return withoutDemoRecords({ ...saved, candidateDetails }, { exits: seedExits() });
-  },
+  merge: (persisted, current) => ({ ...current, ...(persisted as Partial<HrLifecycleState>) }),
 }));

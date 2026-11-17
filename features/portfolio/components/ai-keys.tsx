@@ -42,7 +42,7 @@ export function AiKeys() {
   const copyOf = (row: CompanyRow) => data.portfolioKeys.some((key) => key.provider === row.key.provider && key.copiedTo.some((item) => item.id === row.company.id));
   async function test(id: string, path: string) {
     setTesting(id);
-    try { const answer = await api<PortfolioAsked>(path, { method: "POST" }); toast.success(`${answer.model} answered: “${answer.answer.slice(0, 80)}”`); }
+    try { const answer = await api<PortfolioAsked>(path, { method: "POST" }); toast.success(`${answer.model} answered: "${answer.answer.slice(0, 80)}"`); }
     catch (error) { toast.error(message(error)); }
     setTesting(null);
   }

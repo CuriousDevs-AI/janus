@@ -6,8 +6,6 @@ import { ArrowDownRight, ArrowUpRight, BarChart3, FileSpreadsheet, Globe, Indian
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
-import { demoSourceRows } from "@/lib/api/demo-data";
-import { demoMode } from "@/lib/demo-mode";
 import { sourceKindLabel, sourceOptions } from "@/lib/lead-source-options";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -35,11 +33,6 @@ interface SourcePerf {
   trend: "up" | "down" | "flat";
 }
 
-const demoPerf: SourcePerf[] = [
-  { sourceId: "src-website", name: "Website Form & Chat", kind: "Website", leads: 142, qualified: 89, converted: 34, conversionRate: 23.9, qualificationRate: 62.7, avgResponseTime: "12 min", costPerLead: 85, revenue: 1420000, roi: 11.8, qualityScore: 87, trend: "up" },
-  { sourceId: "src-whatsapp", name: "WhatsApp Business", kind: "WhatsApp", leads: 98, qualified: 71, converted: 28, conversionRate: 28.6, qualificationRate: 72.4, avgResponseTime: "4 min", costPerLead: 120, revenue: 980000, roi: 8.3, qualityScore: 92, trend: "up" },
-  { sourceId: "src-phone", name: "Phone Calls", kind: "Phone", leads: 67, qualified: 42, converted: 19, conversionRate: 28.4, qualificationRate: 62.7, avgResponseTime: "< 1 min", costPerLead: 210, revenue: 850000, roi: 6.1, qualityScore: 78, trend: "flat" },
-];
 
 function QualityBar({ score }: { score: number }) {
   const color = score >= 85 ? "bg-emerald-500" : score >= 70 ? "bg-amber-500" : "bg-red-500";
@@ -169,13 +162,13 @@ export default function LeadSourcesPage() {
   const sources = useApi<Source[]>(
     allowed ? `/sources?limit=50&after_id=${after}` : null,
   );
-  const sourceRows = sources.data ?? (demoMode ? demoSourceRows : []);
-  const enabledSources = demoMode ? sourceRows.filter((source) => source.status === "connected") : sourceRows;
-  const pausedCount = demoMode ? 0 : sourceRows.filter((source) => source.status !== "connected").length;
+  const sourceRows = sources.data ?? [];
+  const enabledSources = sourceRows;
+  const pausedCount = sourceRows.filter((source) => source.status !== "connected").length;
   const unverified = can(session, "sources:manage") && !session.user.email_verified_at;
   const availableSources = sourceRows.filter((source) => source.status === "available");
 
-  const perfData = demoMode ? demoPerf : [];
+  const perfData: SourcePerf[] = [];
   const totalLeads = perfData.reduce((s, p) => s + p.leads, 0);
   const totalConverted = perfData.reduce((s, p) => s + p.converted, 0);
   const avgConversion = totalLeads > 0 ? ((totalConverted / totalLeads) * 100).toFixed(1) : "0";
@@ -206,31 +199,6 @@ export default function LeadSourcesPage() {
         }
       />
 
-      {demoMode && perfData.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 px-6 pb-4 md:grid-cols-4">
-          <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="size-3.5" />Total Leads</div>
-            <p className="text-2xl font-bold">{totalLeads}</p>
-            <p className="flex items-center gap-1 text-[11px] text-success"><ArrowUpRight className="size-3" />+18% vs last month</p>
-          </div>
-          <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Target className="size-3.5" />Conversion Rate</div>
-            <p className="text-2xl font-bold">{avgConversion}%</p>
-            <p className="flex items-center gap-1 text-[11px] text-success"><ArrowUpRight className="size-3" />+2.3pp vs last month</p>
-          </div>
-          <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><IndianRupee className="size-3.5" />Avg Cost/Lead</div>
-            <p className="text-2xl font-bold">₹{avgCPL}</p>
-            <p className="flex items-center gap-1 text-[11px] text-danger"><ArrowDownRight className="size-3" />+₹12 vs last month</p>
-          </div>
-          <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Star className="size-3.5" />Best Source</div>
-            <p className="truncate text-lg font-bold">{bestSource?.name ?? "—"}</p>
-            <p className="text-[11px] text-muted-foreground">Quality score: {bestSource?.qualityScore ?? 0}/100</p>
-          </div>
-        </div>
-      )}
-
       <div className="border-b border-border px-6">
         <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as ViewTab)}>
           <TabsList>
@@ -254,14 +222,14 @@ export default function LeadSourcesPage() {
             Verify your email address to set up lead sources: a source receives customers&apos; details, so it needs a confirmed owner. Use the link in the email Janus sent you, or send it again from the banner at the top of the page.
           </p>
         )}
-        {!demoMode && sources.error && (
+        {sources.error && (
           <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
             Your lead sources could not be read: {sources.error}. Refresh to try again; leads keep arriving meanwhile.
           </p>
         )}
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {demoMode ? `Enabled sources (${enabledSources.length})` : `Your sources (${enabledSources.length})${pausedCount ? ` · ${pausedCount} paused` : ""}`}
+            {`Your sources (${enabledSources.length})${pausedCount ? ` · ${pausedCount} paused` : ""}`}
           </h2>
 
           {allowed && sources.loading && (
@@ -337,12 +305,11 @@ export default function LeadSourcesPage() {
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {demoMode ? `Available sources (${availableSources.length})` : "Add another source"}
+              Add another source
             </h2>
             <p className="text-xs text-muted-foreground">Connect when you are ready to capture more enquiries.</p>
           </div>
-          {!demoMode ? (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {sourceOptions.map(([name, description, Icon, href]) =>
                 allowed ? (
                   <Link key={name} href={href} className="group flex min-h-[120px] gap-3 border border-border bg-surface p-5 shadow-sm transition hover:border-accent">
@@ -358,29 +325,6 @@ export default function LeadSourcesPage() {
                 ),
               )}
             </div>
-          ) : availableSources.length === 0 ? (
-            <p className="text-sm text-muted-foreground">All currently supported sources are connected.</p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {availableSources.map((source) => (
-                <article key={source.id} className="flex min-h-[150px] flex-col gap-3 border border-border bg-surface p-5 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2">
-                        {source.source === "api" ? <Key className="size-5 text-accent" /> : source.source === "csv_import" ? <FileSpreadsheet className="size-5 text-accent" /> : <Webhook className="size-5 text-accent" />}
-                      </span>
-                      <p className="text-sm font-semibold">{source.name}</p>
-                    </div>
-                    <Badge variant="neutral">Available</Badge>
-                  </div>
-                  <p className="text-sm leading-6 text-muted-foreground">{source.description}</p>
-                  <Button size="sm" variant="secondary" className="mt-auto w-fit" disabled={!allowed}>
-                    Configure source
-                  </Button>
-                </article>
-              ))}
-            </div>
-          )}
         </section>
       </div>
       )}

@@ -1,7 +1,6 @@
 "use client";
 
 import { api, APIError } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { type DirectoryPerson, matchPeople, type PersonRef, type TeamMatch } from "@/lib/timeline-team";
 
 /**
@@ -13,7 +12,6 @@ export async function syncProjectTimeline(
   project: { id: string; name: string },
   people: PersonRef[],
 ): Promise<{ added: number; unmatched: TeamMatch["unmatched"]; links: Record<string, string> } | null> {
-  if (demoMode) return null;
   const key = encodeURIComponent(project.id);
   await api("/project-timelines", {
     method: "POST",
@@ -53,7 +51,6 @@ export function describeUnmatched(unmatched: TeamMatch["unmatched"]): string {
 
 /** Closes a project's timeline on the server. A project that never had a timeline is not an error. */
 export async function archiveProjectTimeline(projectId: string): Promise<void> {
-  if (demoMode) return;
   try {
     await api(`/project-timelines/${encodeURIComponent(projectId)}/archive`, { method: "POST" });
   } catch (error) {

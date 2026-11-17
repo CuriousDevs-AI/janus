@@ -5,13 +5,12 @@ import { LifeBuoy } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { demoMode } from "@/lib/demo-mode";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 
 /** Tickets are worked by people who can open Customer Support; the API checks the same permission. */
 export function useCanWorkTickets() {
   const session = useSession();
-  return demoMode || hasPermission(session.permissions, "leads:read_team");
+  return can(session, "leads:read_team");
 }
 
 export function TicketsNotAvailable() {

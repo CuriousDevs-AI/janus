@@ -3,7 +3,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 
 /**
@@ -19,13 +18,7 @@ interface RenewalsState {
   setContractEnd: (id: string, contractEnd: string) => string | null;
 }
 
-const seed = (): Renewal[] => {
-  if (!isFirstCompany) return [];
-  return [
-    { id: "ren-1", customerId: "cus-1", customerName: "Kavita Rao", contractEnd: "2026-12-15", value: 120000, owner: "Arjun Mehta" },
-    { id: "ren-2", customerId: "cus-7", customerName: "Suresh Nair", contractEnd: "2027-03-31", value: 85000, owner: "Meera Singh" },
-  ];
-};
+const seed = (): Renewal[] => [];
 
 export const useRenewalsStore = create<RenewalsState>()(
   persist(

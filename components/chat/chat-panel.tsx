@@ -8,8 +8,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { WhatsAppConversation, WhatsAppMessage } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { Button } from "@/components/ui/button";
 import { CustomerCallButton } from "@/components/calls/customer-call";
@@ -37,8 +36,8 @@ export function ChatPanel() {
   const setChatTarget = useUIStore((state) => state.setChatTarget);
   // A conversation opened from a lead or deal wins over the list choice.
   const activeId = chatTarget ?? selectedId;
-  const canChat = hasPermission(session.permissions, "leads:read_own");
-  const live = open && canChat && !demoMode;
+  const canChat = can(session, "leads:read_own");
+  const live = open && canChat;
 
   const list = useApi<WhatsAppConversation[]>(
     live ? "/whatsapp/conversations?limit=50&before_id=0" : null,
@@ -101,7 +100,7 @@ export function ChatPanel() {
                 </Button>
               ) : null}
               <SheetTitle className="min-w-0 flex-1 truncate">{conversation?.name ?? "Chat"}</SheetTitle>
-              {conversation && !demoMode ? (
+              {conversation ? (
                 <CustomerCallButton
                   contactId={conversation.contactId}
                   name={conversation.name || conversation.phone || "this customer"}
@@ -120,11 +119,7 @@ export function ChatPanel() {
             </SheetDescription>
           </SheetHeader>
 
-          {demoMode ? (
-            <p className="p-4 text-sm text-muted-foreground">
-              Chat sends on real accounts. In demo mode, open Chats to see the sample conversations.
-            </p>
-          ) : activeId ? (
+          {activeId ? (
             <ThreadView
               conversation={conversation}
               messages={thread.data}

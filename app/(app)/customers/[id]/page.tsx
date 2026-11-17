@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Building2, CalendarClock, ChevronRight, CircleDollarSign, Mail, MessageSquareText, Pencil, Phone, RefreshCw, UserRound } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
 import { CustomerAccount } from "@/components/crm/customer-account";
-import { demoMode } from "@/lib/demo-mode";
 import { useAllRows } from "@/lib/api/use-all-rows";
 import { api, message } from "@/lib/api/client";
 import type { Contact, Deal, Lead, WhatsAppConversation } from "@/lib/api/types";
@@ -219,7 +218,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             <main className="flex min-w-0 flex-col gap-5">
-              {!demoMode && <CustomerAccount contactId={contact.data.id} />}
+              <CustomerAccount contactId={contact.data.id} />
 
               <section className="rounded-lg border border-border bg-surface p-5">
                 <div className="flex items-center justify-between gap-3">

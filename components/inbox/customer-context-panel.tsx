@@ -5,13 +5,14 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Sparkles, ListChecks, ArrowRight } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
-import { getMemoryForCustomer } from "@/lib/mock-data";
+import { useApi } from "@/lib/api/use-api";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { HealthBadge, TicketStatusBadge } from "@/components/shared/status-badge";
 import { formatCurrencyINR, formatRelativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import type { MemoryItem } from "@/lib/types";
 
 export function CustomerContextPanel({ customerId, className }: { customerId: string | undefined; className?: string }) {
   const customer = useAppStore((s) => s.customers.find((c) => c.id === customerId));
@@ -25,11 +26,12 @@ export function CustomerContextPanel({ customerId, className }: { customerId: st
   const tickets = allTickets.filter((t) => t.customerId === customerId && t.status !== "closed");
   const activities = allActivities.filter((a) => a.customerId === customerId);
   const company = useCompany(customer?.companyId);
+  const { data: memoryData } = useApi<MemoryItem[]>(customerId ? `/customers/${customerId}/memory` : null);
 
   if (!customer) return <div className={cn("w-[300px] shrink-0 border-l border-border bg-surface", className)} />;
 
   const openDeal = deals.find((d) => !["won", "lost"].includes(d.stage));
-  const memory = getMemoryForCustomer(customer.id).filter((m) => m.kind === "derived_insight").slice(0, 3);
+  const memory = (memoryData ?? []).filter((m) => m.kind === "derived_insight").slice(0, 3);
   const recent = [...activities].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 4);
 
   return (

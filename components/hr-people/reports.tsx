@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { demoMode } from "@/lib/demo-mode";
 import { Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,7 +130,7 @@ export function HrReportsView({ role }: { role: HrDemoRole }) {
   const tabs = [["overview", "Overview"], ["attendance", "Attendance"], ["leave", "Leave"], ["recruitment", "Recruitment"], ...(showPay ? [["payroll", "Payroll & Cost"]] : [])] as const;
 
   return <div className="space-y-5">
-    <HrStats items={[{ label: "Headcount", value: people.length, hint: `${joined} joined this quarter` }, { label: "Attendance, last 30 days", value: pct(recent.filter((item) => item.status !== "absent").length, recent.length), hint: recent.length ? `${recent.length} records` : "No attendance records yet" }, ...(showPay ? [{ label: `Gross payroll, ${monthLabel}`, value: hrMoney(gross), hint: demoMode ? "Before approval. Illustrative figures" : "Before approval" }] : []), { label: "Open candidates", value: candidates.filter((item) => !["accepted", "rejected"].includes(item.stage)).length, hint: "Screening to offer" }, { label: "Onboarding now", value: onboarding.length, hint: onboarding.length ? `${Math.round(onboarding.reduce((sum, item) => sum + item.onboardingPercent, 0) / onboarding.length)}% average progress` : "Nobody onboarding" }, { label: "Exits", value: `${openExits} open`, hint: `${doneExits} completed` }]} />
+    <HrStats items={[{ label: "Headcount", value: people.length, hint: `${joined} joined this quarter` }, { label: "Attendance, last 30 days", value: pct(recent.filter((item) => item.status !== "absent").length, recent.length), hint: recent.length ? `${recent.length} records` : "No attendance records yet" }, ...(showPay ? [{ label: `Gross payroll, ${monthLabel}`, value: hrMoney(gross), hint: "Before approval" }] : []), { label: "Open candidates", value: candidates.filter((item) => !["accepted", "rejected"].includes(item.stage)).length, hint: "Screening to offer" }, { label: "Onboarding now", value: onboarding.length, hint: onboarding.length ? `${Math.round(onboarding.reduce((sum, item) => sum + item.onboardingPercent, 0) / onboarding.length)}% average progress` : "Nobody onboarding" }, { label: "Exits", value: `${openExits} open`, hint: `${doneExits} completed` }]} />
 
     <div role="tablist" aria-label="Reports" className="flex w-fit gap-1 border border-border bg-surface-2 p-1">
       {tabs.map(([key, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key as typeof tab)} className={`px-5 py-2 text-sm ${tab === key ? "bg-accent text-white" : "text-muted-foreground"}`}>{label}</button>)}

@@ -3,14 +3,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { moveBudget } from "@/lib/finance-records";
 import { createInvoice } from "@/lib/invoice-records";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
-import { mergeServerOwned, withoutDemoRecords } from "@/lib/stores/server-owned";
+import { mergeServerOwned } from "@/lib/stores/server-owned";
 import { todayIso } from "@/lib/today";
 
 /**
@@ -77,33 +76,7 @@ interface ProjectsState {
   closeProject: (id: string, by: string) => Promise<string | null>;
 }
 
-const demoSeed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => {
-  return {
-    projects: [
-      { id: "prj-1", name: "Rajasthan distributor onboarding", client: "Rajputana Wholesale Co-op", type: "Fixed price", owner: "Arjun Mehta", start: "2026-10-01", end: "2026-12-15", budget: 42000, budgetLineId: "line-sales", status: "active", createdBy: "Arjun Mehta" },
-      { id: "prj-2", name: "Jaipur dock layout", client: "Internal", type: "Internal", owner: "Neha Verma", start: "2026-10-10", end: "2026-11-20", budget: 78000, budgetLineId: "line-ops", status: "active", createdBy: "Neha Verma" },
-    ],
-    milestones: [
-      { id: "ms-1", projectId: "prj-1", name: "Distributor agreement signed", due: "2026-10-20", amount: 15000, status: "done", completedBy: "Arjun Mehta" },
-      { id: "ms-2", projectId: "prj-1", name: "First festive dispatch", due: "2026-11-05", amount: 27000, status: "planned" },
-      { id: "ms-3", projectId: "prj-2", name: "Racking installed", due: "2026-11-15", amount: 0, status: "planned" },
-    ],
-    tasks: [
-      { id: "tk-1", projectId: "prj-1", milestoneId: "ms-2", title: "Confirm festive order split by store", assignee: "Arjun Mehta", due: "2026-10-25", status: "doing" },
-      { id: "tk-2", projectId: "prj-1", milestoneId: "ms-2", title: "Prepare delivery schedule", assignee: "Neha Verma", due: "2026-10-22", status: "todo" },
-      { id: "tk-3", projectId: "prj-2", milestoneId: "ms-3", title: "Order racking from vendor", assignee: "Neha Verma", due: "2026-10-30", status: "todo" },
-    ],
-    changes: [],
-    timesheets: [],
-    allocations: [
-      { id: "al-1", projectId: "prj-1", person: "Arjun Mehta", percent: 60 },
-      { id: "al-2", projectId: "prj-2", person: "Arjun Mehta", percent: 50 },
-      { id: "al-3", projectId: "prj-2", person: "Neha Verma", percent: 40 },
-    ],
-  };
-};
-
-const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => (isFirstCompany ? demoSeed() : { projects: [], milestones: [], tasks: [], changes: [], timesheets: [], allocations: [] });
+const seed = (): Pick<ProjectsState, "projects" | "milestones" | "tasks" | "changes" | "timesheets" | "allocations"> => ({ projects: [], milestones: [], tasks: [], changes: [], timesheets: [], allocations: [] });
 
 /** Delivery health from dates and open work, never typed in by hand. */
 /** Profit on a project to date: milestones accepted and billed, against the cost of the hours logged on it. */
@@ -335,6 +308,6 @@ export const useProjectsStore = create<ProjectsState>()(
         return null;
       },
     }),
-    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage), merge: (persisted, current) => withoutDemoRecords(mergeServerOwned<ProjectsState>(["trail"])(persisted, current), demoSeed()) },
+    { name: scoped("janus.projects.v1"), storage: createJSONStorage(() => workspaceStorage), merge: mergeServerOwned<ProjectsState>(["trail"]) },
   ),
 );

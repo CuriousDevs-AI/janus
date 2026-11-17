@@ -7,8 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useSession } from "@/components/auth/session-provider";
 import { api, APIError, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 import { useProjectsStore } from "@/lib/stores/projects-store";
 import { syncProjectTimeline, describeUnmatched } from "@/lib/timeline-sync";
 import { type DirectoryPerson, projectPersonRefs } from "@/lib/timeline-team";
@@ -29,7 +28,7 @@ const kindLabel: Record<Entry["kind"], string> = { event: "Event", message: "Mes
 export function TimelineView() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
-  const canManage = hasPermission(session.permissions, "projects:manage");
+  const canManage = can(session, "projects:manage");
   const projects = useProjectsStore((state) => state.projects);
   const tasks = useProjectsStore((state) => state.tasks);
   const linkPeople = useProjectsStore((state) => state.linkPeople);
@@ -52,7 +51,7 @@ export function TimelineView() {
 
   // Load the timeline for the chosen project. A 404 means the project has no timeline yet, or that this person is not on it.
   React.useEffect(() => {
-    if (demoMode || !key) return;
+    if (!key) return;
     let cancelled = false;
     (async () => {
       try {
@@ -76,7 +75,7 @@ export function TimelineView() {
   // added once, by id, so the stream and a catch-up read can overlap safely. Polling runs only while
   // the stream is down, and the stream is reopened after a short wait; a closed stream means no access.
   React.useEffect(() => {
-    if (demoMode || !key || !timeline) return;
+    if (!key || !timeline) return;
     let stopped = false;
     let source: EventSource | undefined;
     let poll: number | undefined;
@@ -132,7 +131,7 @@ export function TimelineView() {
 
   // The team on this timeline, and (for managers) the company directory to add people from.
   React.useEffect(() => {
-    if (demoMode || !key || !timeline) return;
+    if (!key || !timeline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -218,9 +217,6 @@ export function TimelineView() {
     }
   }
 
-  if (demoMode) {
-    return <Card><CardContent className="p-6 text-sm text-muted-foreground">Timelines are shared on the server. The preview runs without a server, so there is no timeline to show here.</CardContent></Card>;
-  }
   if (projects.length === 0) {
     return <Card><CardContent className="p-6 text-sm text-muted-foreground">Create a project first. Its timeline starts from there.</CardContent></Card>;
   }

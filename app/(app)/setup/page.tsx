@@ -2,13 +2,12 @@
 
 import * as React from "react";
 import { scoped } from "@/lib/company";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { CompanyWizard } from "@/components/setup/company-wizard";
 import { InviteTeam } from "@/components/setup/invite-team";
 import { ArrowRight, Building2, Check, CircleHelp, SkipForward, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { workspaceDefinitions } from "@/lib/workspace-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,7 +65,6 @@ function LegacySetupPage() {
       })
       .catch((reason) => {
         if (!mounted) return;
-        if (demoMode) { setSetup(defaultSetup); setName(defaultSetup.businessName); setIndustry(defaultSetup.industry); setCompanySize(defaultSetup.companySize); setTimezone(defaultSetup.timezone); setLoading(false); return; }
         setError(message(reason)); setLoading(false);
       });
     return () => { mounted = false; };
@@ -85,7 +83,6 @@ function LegacySetupPage() {
     const completedSteps = [...new Set([...setup.completedSteps, apiId])];
     const next = { ...setup, ...values, completedSteps, nextStep: steps.find((item) => !completedSteps.includes(item.apiId))?.apiId ?? null, setupCompleted: steps.every((item) => completedSteps.includes(item.apiId)) };
     setSetup(next);
-    if (demoMode) return true;
     try {
       const updated = await api<Setup>("/business/setup", { method: "PATCH", body: JSON.stringify({ businessName: name.trim(), industry: industry.trim(), companySize, timezone, completedSteps }) });
       setSetup(updated); return true;
@@ -105,7 +102,7 @@ function LegacySetupPage() {
     setSaving(true);
     try {
       const existing = workspaces.find((item) => item.type === type);
-      if (!existing && !demoMode) {
+      if (!existing) {
         const definition = workspaceDefinitions.find((item) => item.id.replaceAll("-", "_") === type);
         const created = await api<Workspace>("/workspaces", { method: "POST", body: JSON.stringify({ type, name: definition?.name }) });
         setWorkspaces((items) => [...items, created]);
@@ -165,9 +162,6 @@ function ConnectionsStep({ onConnect, onSkip }: { onConnect: () => void; onSkip:
   return <div className="grid gap-4"><div className="flex items-start gap-3 rounded-lg border border-border bg-surface-2 p-4"><Waypoints className="mt-0.5 size-4 text-accent" /><div><p className="text-sm font-medium">Connect your first source</p><p className="mt-1 text-xs text-muted-foreground">Website forms, WhatsApp, phone calls, webhooks, API and CSV imports are available from Lead Sources.</p></div></div><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onConnect}>Open Lead Sources <ArrowRight className="size-3.5" /></Button><Button variant="ghost" onClick={onSkip}><SkipForward className="size-3.5" />Skip for now</Button></div></div>;
 }
 
-/** The preview adds and finishes companies with its own wizard. The live product keeps the API-driven setup. */
 export default function SetupPage() {
-  const params = useSearchParams();
-  if (demoMode) return <CompanyWizard key={params.get("finish") ?? "new"} finishId={params.get("finish") ?? undefined} />;
   return <LegacySetupPage />;
 }

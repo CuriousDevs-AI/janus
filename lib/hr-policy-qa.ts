@@ -62,7 +62,7 @@ export function answerQuestion(question: string, sources: PolicySource[], people
   const mentioned = people.filter((person) => person.name !== actorName && person.name.split(" ").some((part) => part.length > 2 && new RegExp(`\\b${part.toLowerCase()}\\b`).test(lower)));
   if (mentioned.length && sensitive.test(q)) return { kind: "refused", reason: `This tool explains company policy. It can't share details about an individual such as ${mentioned[0].name}. Ask HR directly.` };
   const queryWords = [...new Set(words(q).map(stem))];
-  if (!queryWords.length) return { kind: "none", reason: "Try asking a fuller question, like “How many sick days do I get?”" };
+  if (!queryWords.length) return { kind: "none", reason: 'Try asking a fuller question, like "How many sick days do I get?"' };
   const all = sources.flatMap((source) => source.paragraphs.map((paragraph, index) => ({ source, paragraph, index, set: new Set(stems(paragraph.text)), title: new Set(stems(source.title)) })));
   const df = (word: string) => all.filter((item) => item.set.has(word) || synonymStems(word).some((syn) => item.set.has(syn))).length;
   const idf = (word: string) => Math.log(1 + all.length / (1 + df(word)));

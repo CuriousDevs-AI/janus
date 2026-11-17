@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { agents } from "@/lib/mock-data";
+import { useAppStore } from "@/lib/stores/app-store";
 import { channelMeta } from "@/lib/status-meta";
 import { SectionCard, SettingRow, FieldRow } from "@/components/settings/section-ui";
 import { Switch } from "@/components/ui/switch";
@@ -16,6 +16,7 @@ const allowedChannelOptions: ChannelType[] = ["website_chat", "email", "whatsapp
 const models = ["Claude Sonnet 5", "Claude Opus 5", "Claude Haiku 4.5"];
 
 export function AISection() {
+  const agents = useAppStore((s) => s.agents);
   const [handoffEnabled, setHandoffEnabled] = React.useState(true);
   const [respectHours, setRespectHours] = React.useState(true);
   const [channels, setChannels] = React.useState<ChannelType[]>(["website_chat", "email", "whatsapp"]);

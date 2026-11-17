@@ -88,7 +88,7 @@ export function HrPolicyQaView({ role, actorId }: { role: HrDemoRole; actorId: s
       </HrPanel>
     </>}
 
-    {tab === "mine" && <HrPanel title="My questions to HR" description="Questions you sent to HR and their replies.">{mine.length ? <ul className="divide-y divide-border">{mine.map((item) => <QuestionRow key={item.id} item={item} />)}</ul> : <HrEmpty>You haven&apos;t asked HR anything yet. Use “Ask HR” under an answer.</HrEmpty>}</HrPanel>}
+    {tab === "mine" && <HrPanel title="My questions to HR" description="Questions you sent to HR and their replies.">{mine.length ? <ul className="divide-y divide-border">{mine.map((item) => <QuestionRow key={item.id} item={item} />)}</ul> : <HrEmpty>You haven&apos;t asked HR anything yet. Use "Ask HR" under an answer.</HrEmpty>}</HrPanel>}
 
     {tab === "inbox" && manager && <>
       <HrPanel title="Employee questions" description="Reply to questions the policy search couldn't settle.">{policyQuestions.length ? <ul className="divide-y divide-border">{policyQuestions.map((item) => <QuestionRow key={item.id} item={item} name={employees.find((person) => person.id === item.employeeId)?.name} onReply={(reply) => { replyPolicyQuestion(item.id, reply, actorId); toast.success("Reply sent"); }} />)}</ul> : <HrEmpty>No questions yet.</HrEmpty>}</HrPanel>

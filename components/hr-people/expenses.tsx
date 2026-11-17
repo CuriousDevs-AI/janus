@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore, type HrPolicySettings } from "@/lib/stores/hr-operations-store";
-import { demoMode } from "@/lib/demo-mode";
 import { canManageHr } from "@/lib/hr-people-access";
 import { isTeamOf } from "@/lib/hr-leave";
 import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, HrTable, hrCell, hrDate, hrInputClass, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
@@ -112,7 +111,7 @@ function SubmitDialog({ actor, onClose }: { actor: HrEmployee; onClose: () => vo
     toast.success(`Claim submitted. ${manager ? `${manager.name} will review it.` : "HR will review it."}`);
     onClose();
   }
-  return <HrModal open onOpenChange={(open) => !open && !busy && onClose()} title="Submit an expense" description={`Goes to ${manager?.name ?? "HR"}.${demoMode ? " Receipts stay in this browser in the demo." : ""}`}>
+  return <HrModal open onOpenChange={(open) => !open && !busy && onClose()} title="Submit an expense" description={`Goes to ${manager?.name ?? "HR"}.`}>
     <form className="space-y-4" onSubmit={submit}>
       <div className="grid gap-4 sm:grid-cols-3">
         <HrField label="Category"><select className={hrInputClass} value={category} onChange={(event) => setCategory(event.target.value as HrExpenseClaim["category"])}>{(Object.keys(expenseLabels) as HrExpenseClaim["category"][]).map((item) => <option key={item} value={item}>{expenseLabels[item]}</option>)}</select></HrField>
@@ -143,7 +142,7 @@ function DetailDialog({ claim, evidence, entries, nameOf, onClose }: { claim: Hr
     <div className="space-y-4 text-sm">
       <div className="flex items-center justify-between"><span className="text-muted-foreground">Approver: {claim.approverName}</span><HrStatus status={statusText[claim.status].replaceAll(" ", "_")} /></div>
       {evidence ? <div className="space-y-1 border border-border p-3"><p>{evidence.description}</p><p className="text-xs text-muted-foreground">Expense date {hrDate(evidence.date)}</p></div> : <p className="text-xs text-muted-foreground">No purpose was recorded for this older claim.</p>}
-      {evidence?.dataUrl ? <a className="inline-block text-sm text-accent underline" href={evidence.dataUrl} download={evidence.filename ?? "receipt"}>Download receipt{evidence.filename ? ` (${evidence.filename})` : ""}</a> : <p className="text-xs text-muted-foreground">{claim.receiptAttached ? `A receipt was attached but isn't stored${demoMode ? " in this demo" : ""}.` : "No receipt attached."}</p>}
+      {evidence?.dataUrl ? <a className="inline-block text-sm text-accent underline" href={evidence.dataUrl} download={evidence.filename ?? "receipt"}>Download receipt{evidence.filename ? ` (${evidence.filename})` : ""}</a> : <p className="text-xs text-muted-foreground">{claim.receiptAttached ? `A receipt was attached but isn't stored.` : "No receipt attached."}</p>}
       <div><h3 className="mb-2 text-sm font-semibold">History</h3>{entries.length ? <ol className="divide-y divide-border border border-border">{entries.map((item) => <li key={item.id} className="px-3 py-2"><p className="capitalize">{item.action.replaceAll("_", " ")}{item.reason ? ` — ${item.reason}` : ""}</p><p className="text-xs text-muted-foreground">{nameOf(item.actorId)} · {when(item.at)}</p></li>)}</ol> : <HrEmpty>No actions recorded yet.</HrEmpty>}</div>
     </div>
   </HrModal>;

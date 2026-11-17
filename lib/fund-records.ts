@@ -1,14 +1,13 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { syncBudgetLines, toPaise } from "@/lib/finance-records";
 import { trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { type FundRequest, useFinanceStore } from "@/lib/stores/finance-store";
 
 /**
  * Fund requests are approved on the server. An approval that puts money on a budget line allocates it in
- * the same step, so the balances the screen shows are the server's. Demo mode keeps the local path.
+ * the same step, so the balances the screen shows are the server's.
  */
 
 interface ServerFundRequest {
@@ -52,7 +51,6 @@ function keep(row: ServerFundRequest) {
 
 /** Loads the company's fund requests from the server. */
 export async function syncFundRequests(): Promise<void> {
-  if (demoMode) return;
   const rows = await api<ServerFundRequest[]>("/finance/fund-requests");
   useFinanceStore.setState({ fundRequests: rows.map(toFundRequest) });
 }
@@ -61,7 +59,6 @@ export async function addFundRequest(
   input: { purpose: string; amount: number; lineId: string; date: string },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().addFundRequest(input, by) ?? null;
   try {
     const row = await api<ServerFundRequest>("/finance/fund-requests", {
       method: "POST",
@@ -85,7 +82,6 @@ export async function addFundRequest(
 
 /** Approves as the owner (step "owner") or as finance (step "finance"). Money is allocated on the server. */
 export async function approveFundRequest(id: string, step: "owner" | "finance", by: string): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().approveFundRequest(id, step, by);
   try {
     const row = await api<ServerFundRequest>(`/finance/fund-requests/${encodeURIComponent(id)}/${step === "owner" ? "owner-approve" : "finance-approve"}`, {
       method: "POST",
@@ -102,10 +98,6 @@ export async function approveFundRequest(id: string, step: "owner" | "finance", 
 }
 
 export async function rejectFundRequest(id: string, reason: string, by: string): Promise<string | null> {
-  if (demoMode) {
-    useFinanceStore.getState().rejectFundRequest(id, reason, by);
-    return null;
-  }
   try {
     const row = await api<ServerFundRequest>(`/finance/fund-requests/${encodeURIComponent(id)}/reject`, {
       method: "POST",

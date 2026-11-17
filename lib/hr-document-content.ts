@@ -1,7 +1,7 @@
-import { activeSpec } from "@/lib/companies";
+import { activeCompany } from "@/lib/company";
 import type { HrDocument, HrEmployee } from "@/lib/types";
 
-export const COMPANY_NAME = activeSpec.company.name;
+export const COMPANY_NAME = activeCompany().name;
 
 export type Block =
   | { type: "title" | "h2" | "p" | "note"; text: string }

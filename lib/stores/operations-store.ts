@@ -4,12 +4,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { mergeServerOwned } from "@/lib/stores/server-owned";
-import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
-import { demoMode } from "@/lib/demo-mode";
+
 import { todayIso } from "@/lib/today";
 
 /**
@@ -81,29 +80,7 @@ interface OperationsState {
 }
 
 const seed = (): Pick<OperationsState, "items" | "batches" | "movements" | "dispatches" | "adjustments" | "purchaseOrders" | "requisitions" | "counts" | "transfers" | "returns"> => {
-  // Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
-  if (!isFirstCompany || !demoMode) return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [], returns: [] };
-  const items: Item[] = [
-    { id: "itm-1", name: "Corrugated box 12 x 9 in", sku: "PK-1209", unit: "piece", hsn: "4819", rate: 28, gstRate: 12, reorderLevel: 500, trackBatch: false },
-    { id: "itm-2", name: "Stretch film 500 mm", sku: "PK-FILM5", unit: "roll", hsn: "3920", rate: 410, gstRate: 18, reorderLevel: 40, trackBatch: false },
-    { id: "itm-3", name: "Pedestal fan 400 mm", sku: "FN-400", unit: "piece", hsn: "8414", rate: 1850, gstRate: 18, reorderLevel: 30, trackBatch: false },
-    { id: "itm-4", name: "Floor cleaner 5 L", sku: "HC-FC5", unit: "carton", hsn: "3402", rate: 380, gstRate: 18, reorderLevel: 25, trackBatch: true },
-  ];
-  const batches: Batch[] = [
-    { id: "bat-1", itemId: "itm-4", batchNo: "FC-2609-A", expiry: "2027-09-30" },
-    { id: "bat-2", itemId: "itm-4", batchNo: "FC-2507-B", expiry: "2026-11-10" },
-  ];
-  const movements: Movement[] = [
-    { id: "mv-1", date: "2026-10-01", type: "receipt", itemId: "itm-1", locationId: 2, batchNo: null, qty: 2400, reason: "Opening stock", by: "Neha Verma" },
-    { id: "mv-2", date: "2026-10-01", type: "receipt", itemId: "itm-2", locationId: 2, batchNo: null, qty: 120, reason: "Opening stock", by: "Neha Verma" },
-    { id: "mv-3", date: "2026-10-01", type: "receipt", itemId: "itm-3", locationId: 1, batchNo: null, qty: 22, reason: "Opening stock", by: "Neha Verma" },
-    { id: "mv-4", date: "2026-10-02", type: "receipt", itemId: "itm-4", locationId: 2, batchNo: "FC-2609-A", qty: 180, reason: "Goods received", by: "Neha Verma" },
-    { id: "mv-5", date: "2026-10-02", type: "receipt", itemId: "itm-4", locationId: 2, batchNo: "FC-2507-B", qty: 30, reason: "Goods received", by: "Neha Verma" },
-  ];
-  const purchaseOrders: PurchaseOrder[] = [
-    { id: "po-1", number: "PO-2026-0101", vendor: "Gurugram Packaging Co", date: "2026-10-15", locationId: 2, lines: [{ itemId: "itm-1", qty: 1000, rate: 45, received: 0 }], createdBy: "Neha Verma" },
-  ];
-  return { items, batches, movements, dispatches: [], adjustments: [], purchaseOrders, requisitions: [], counts: [], transfers: [], returns: [] };
+  return { items: [], batches: [], movements: [], dispatches: [], adjustments: [], purchaseOrders: [], requisitions: [], counts: [], transfers: [], returns: [] };
 };
 
 /** Stock on hand for an item at a location (and batch, when the item tracks batches). */
@@ -126,7 +103,6 @@ export const useOperationsStore = create<OperationsState>()(
       trail: [],
       purchaseOrders: seed().purchaseOrders,
       addItem: (input) => {
-        if (!demoMode) return "Stock changes are recorded on the server.";
         if (input.name.trim().length < 2) return "Enter the item name.";
         if (!/^\d{4,8}$/.test(input.hsn.trim())) return "HSN code must be 4 to 8 digits.";
         if (get().items.some((item) => item.sku.toLowerCase() === input.sku.trim().toLowerCase())) return "This SKU already exists.";
@@ -134,7 +110,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       addRequisition: (input, by) => {
-        if (!demoMode) return "Requisitions are recorded on the server.";
         if (!get().items.some((i) => i.id === input.itemId)) return "Choose an item.";
         if (!(input.qty > 0)) return "Enter a quantity above zero.";
         if (!(input.estimatedRate >= 0)) return "The estimated rate cannot be negative.";
@@ -149,7 +124,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       approveRequisition: (id, availableBudget, by) => {
-        if (!demoMode) return "Requisitions are recorded on the server.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "pending") return "Only a pending requisition can be approved.";
@@ -163,7 +137,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       rejectRequisition: (id, reason, by) => {
-        if (!demoMode) return "Requisitions are recorded on the server.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "pending") return "Only a pending requisition can be rejected.";
@@ -176,7 +149,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       orderRequisition: (id, vendor, by) => {
-        if (!demoMode) return "Requisitions are recorded on the server.";
         const req = get().requisitions.find((r) => r.id === id);
         if (!req) return "Requisition not found.";
         if (req.status !== "approved") return "Only an approved requisition can be turned into an order.";
@@ -189,7 +161,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       addPurchaseOrder: (input, by) => {
-        if (!demoMode) return "Purchase orders are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         if (input.vendor.trim().length < 2) return "Enter the vendor name.";
@@ -238,7 +209,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       receive: (input, by) => {
-        if (!demoMode) return "Stock changes are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
@@ -291,7 +261,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       checkpointDispatch: (id, stage, by) => {
-        if (!demoMode) return "Dispatch steps are recorded on the server.";
         const dispatch = get().dispatches.find((d) => d.id === id);
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
@@ -307,7 +276,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       markDelivered: (id, proof, by) => {
-        if (!demoMode) return "Dispatch steps are recorded on the server.";
         const dispatch = get().dispatches.find((d) => d.id === id);
         if (!dispatch) return "Dispatch not found.";
         if (dispatch.status === "delivered") return "This dispatch is already delivered.";
@@ -412,7 +380,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       requestAdjustment: (input, by) => {
-        if (!demoMode) return "Stock changes are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const item = get().items.find((i) => i.id === input.itemId);
@@ -433,7 +400,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       rejectAdjustment: (id, reason, by) => {
-        if (!demoMode) return "Stock changes are recorded on the server.";
         const adjustment = get().adjustments.find((a) => a.id === id);
         if (!adjustment) return "Adjustment not found.";
         if (adjustment.status !== "pending") return "Only a pending adjustment can be rejected.";
@@ -446,7 +412,6 @@ export const useOperationsStore = create<OperationsState>()(
         return null;
       },
       approveAdjustment: (id, by) => {
-        if (!demoMode) return "Stock changes are recorded on the server.";
         const locked = periodLockProblem(TODAY);
         if (locked) return locked;
         const adjustment = get().adjustments.find((a) => a.id === id);

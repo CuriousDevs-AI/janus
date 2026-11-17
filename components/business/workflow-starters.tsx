@@ -97,7 +97,7 @@ export function StarterSetup({ starter, onClose, onDone }: { starter: WorkflowSt
       // An alert or a task for each lead is no use if each one first waits for an approval.
       const created = await api<{ id: string }>("/business/automations", { method: "POST", body: JSON.stringify({ name: starter.name, description: starter.description, trigger: starter.trigger ?? { type: "manual" }, actions: steps, requiresApproval: false }) });
       if (switchOn) await api(`/business/automations/${created.id}/on`, { method: "POST" });
-      toast.success(switchOn ? `“${starter.name}” is on. It runs for the next ${nextOne[String(starter.trigger?.type)] ?? "event"}.` : `“${starter.name}” saved, switched off.`);
+      toast.success(switchOn ? `"${starter.name}" is on. It runs for the next ${nextOne[String(starter.trigger?.type)] ?? "event"}.` : `"${starter.name}" saved, switched off.`);
       onDone();
     } catch (error) { toast.error(message(error)); setSaving(null); }
   };
@@ -121,7 +121,7 @@ export function StarterSetup({ starter, onClose, onDone }: { starter: WorkflowSt
             : <p className="text-xs text-muted-foreground">There is no open project to add tasks to. Create one in Projects &amp; Delivery first, for example &quot;Sales follow-ups&quot;.</p>}
           <p className="text-[11px] text-muted-foreground">Each task is due the next day.</p>
         </div>}
-        <ul className="grid gap-1 rounded-md bg-surface-2 p-3 text-xs">{(starter.steps ?? []).map((step, index) => { const raw = step as { title?: string; config?: Record<string, unknown> }; const text = String(raw.config?.message ?? raw.config?.title ?? "").replace(/\{\{\s*([a-z_]+)\.([a-z_]+)\s*\}\}/g, (_, record: string, field: string) => `[${record.replaceAll("_", " ")}'s ${field.replaceAll("_", " ")}]`); return <li key={index}><span className="font-medium">{raw.title ?? `Step ${index + 1}`}</span>{text && <span className="text-muted-foreground">: “{text}”</span>}</li>; })}</ul>
+        <ul className="grid gap-1 rounded-md bg-surface-2 p-3 text-xs">{(starter.steps ?? []).map((step, index) => { const raw = step as { title?: string; config?: Record<string, unknown> }; const text = String(raw.config?.message ?? raw.config?.title ?? "").replace(/\{\{\s*([a-z_]+)\.([a-z_]+)\s*\}\}/g, (_, record: string, field: string) => `[${record.replaceAll("_", " ")}'s ${field.replaceAll("_", " ")}]`); return <li key={index}><span className="font-medium">{raw.title ?? `Step ${index + 1}`}</span>{text && <span className="text-muted-foreground">: "{text}"</span>}</li>; })}</ul>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>

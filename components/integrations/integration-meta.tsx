@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { activeSpec } from "@/lib/companies";
+import { activeCompany } from "@/lib/company";
 import type { VariantProps } from "class-variance-authority";
 import { MessageCircle, Building2, CalendarClock, ShoppingBag, LayoutGrid, LifeBuoy, Code2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -67,7 +67,7 @@ export const integrationPermissions: Record<Integration["category"], string[]> =
  * integration that has never been connected before (no seeded connectedAccount).
  */
 /** The company's handle on those services, like "acmetraders". */
-const handle = activeSpec.company.domain.split(".")[0];
+const handle = (activeCompany().name ?? "company").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20) || "company";
 export const mockAccountLabel: Record<string, string> = {
   "int-hubspot": `${handle}.hubspot.com`,
   "int-salesforce": `${handle}.my.salesforce.com`,

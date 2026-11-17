@@ -6,7 +6,6 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowUpFromLine, CheckCircle2, RotateCcw, Bot, Layers, Sparkles } from "lucide-react";
 import { useAppStore } from "@/lib/stores/app-store";
-import { agents } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -39,9 +38,10 @@ export default function KnowledgeDetailPage({ params }: { params: Promise<{ id: 
   const statusMeta = knowledgeStatusMeta[status];
   const TypeIcon = knowledgeTypeMeta[doc.type].icon;
   const sortedVersions = [...doc.versions].sort((a, b) => b.version - a.version);
+  const agents = useAppStore((s) => s.agents);
   const usedByAgents = doc.usedByAgentIds
     .map((agentId) => agents.find((a) => a.id === agentId))
-    .filter((a): a is (typeof agents)[number] => Boolean(a));
+    .filter((a): a is NonNullable<typeof a> => Boolean(a));
   const chunkPreviews = buildChunkPreviews(doc.excerpt);
   const canPublish = status === "draft" || status === "processing";
 

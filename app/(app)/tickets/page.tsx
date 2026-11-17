@@ -14,9 +14,7 @@ import { createSupportTicket, syncSupportTickets } from "@/lib/ticket-records";
 import { message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { Lead } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
 import { customersFromLeads } from "@/lib/customers-from-leads";
-import { getUserById, getCompanyById } from "@/lib/mock-data";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -57,15 +55,12 @@ function TicketsPageContent() {
   const access = useCrmAccess();
   const tickets = React.useMemo(() => access.tickets(allTickets), [access, allTickets]);
   const storeCustomers = useAppStore((s) => s.customers);
-  // A real account's customers are the people its leads came from; the demo list is the demo's own.
-  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
-  // Everyone in the company, names only: used to resolve assignee names.
-  const membersApi = useApi<{ id: number; name: string }[]>(demoMode ? null : "/team/people");
-  const customers = React.useMemo(() => demoMode ? storeCustomers : customersFromLeads(leadsApi.data ?? []), [storeCustomers, leadsApi.data]);
-  // A real account's people are its members on the server; the demo team is the demo's own.
+  const leadsApi = useApi<Lead[]>("/leads?limit=100&after_id=0");
+  const membersApi = useApi<{ id: number; name: string }[]>("/team/people");
+  const customers = React.useMemo(() => customersFromLeads(leadsApi.data ?? []), [leadsApi.data]);
   const membersByServerId = React.useMemo(() => {
     const map = new Map<string, string>();
-    if (!demoMode) for (const m of membersApi.data ?? []) map.set(String(m.id), m.name);
+    for (const m of membersApi.data ?? []) map.set(String(m.id), m.name);
     return map;
   }, [membersApi.data]);
   const router = useRouter();
@@ -210,18 +205,14 @@ function TicketsPageContent() {
           </TableHeader>
           <TableBody>
             {rows.map(({ ticket, customer }) => {
-              const assigneeName = demoMode ? getUserById(ticket.assigneeId)?.name : membersByServerId.get(ticket.assigneeId ?? "");
-              const company = getCompanyById(customer!.companyId);
+              const assigneeName = membersByServerId.get(ticket.assigneeId ?? "");
               return (
                 <TableRow key={ticket.id} className="cursor-pointer" onClick={() => router.push(`/tickets/${ticket.id}`)}>
                   <TableCell className="text-mono text-foreground">{ticket.number}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <CustomerAvatar name={customer!.name} color={customer!.avatarColor} size="sm" />
-                      <div>
-                        <p className="font-medium text-foreground leading-tight">{customer!.name}</p>
-                        <p className="text-[11px] leading-tight text-muted-foreground">{company?.name}</p>
-                      </div>
+                      <p className="font-medium text-foreground leading-tight">{customer!.name}</p>
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[240px] truncate text-muted-foreground">{ticket.subject}</TableCell>
@@ -266,7 +257,7 @@ function TicketsPageContent() {
                 <SelectContent>
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.name} — {getCompanyById(c.companyId)?.name}
+                      {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

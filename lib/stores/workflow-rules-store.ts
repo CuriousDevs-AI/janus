@@ -5,7 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { mergeServerOwned } from "@/lib/stores/server-owned";
 import { scoped } from "@/lib/company";
-import { demoMode } from "@/lib/demo-mode";
+
 
 /**
  * Operations workflow rules (research: cycle-count approval thresholds, three-way match tolerance). The owner sets
@@ -30,7 +30,6 @@ export const useWorkflowRulesStore = create<WorkflowRulesState>()(
     (set) => ({
       ...DEFAULT_WORKFLOW_RULES,
       setRule: (key, value, isOwner) => {
-        if (!demoMode) return "Workflow rules are set on the server.";
         if (!isOwner) return "Only the owner can change workflow rules.";
         if (key === "adjustmentApprovalValue" && !(value >= 0 && value <= 10000000)) return "Enter a value between 0 and 1,00,00,000.";
         if (key === "matchTolerancePercent" && !(value >= 0 && value <= 10)) return "The tolerance must be between 0% and 10%.";

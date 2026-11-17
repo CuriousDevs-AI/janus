@@ -10,7 +10,6 @@ import { leadStageMeta } from "@/lib/status-meta";
 import type { LeadStage } from "@/lib/types";
 import { useSession } from "@/components/auth/session-provider";
 import { can } from "@/lib/permissions";
-import { demoMode } from "@/lib/demo-mode";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
@@ -39,7 +38,7 @@ export function LeadsBoard({
   onLeadClick?: (lead: Lead) => void;
 }) {
   const session = useSession();
-  const canWrite = can(session, "leads:write") && !demoMode;
+  const canWrite = can(session, "leads:write");
   const [dragOverStage, setDragOverStage] = useState<LeadStage | null>(null);
   const [busy, setBusy] = useState(false);
 

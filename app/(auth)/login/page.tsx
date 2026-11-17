@@ -12,13 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
-import { checkLogin } from "@/lib/demo-accounts";
-import { homeFor, signIn } from "@/lib/demo-persona";
 import { useSessionStore } from "@/lib/stores/session-store";
 import { useAuditLog } from "@/lib/stores/audit-log-store";
-import { newCompanyId, readCompanies, saveCompanies, seedCompanies, switchCompany } from "@/lib/company";
-import type { CompanyRecord } from "@/lib/company";
 import type { Me } from "@/lib/api/types";
 import { PORTFOLIO_ROLES, homeForPermissions, managesBusiness } from "@/lib/access";
 
@@ -43,26 +38,6 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: FormValues) {
-    if (demoMode) {
-      const account = checkLogin(values.email, values.password);
-      if (!account) { toast.error("No match. Use the email or full name with the right password."); return; }
-      signIn(account.id);
-      ensureSession(account.id);
-      appendLog({ action: "session.signed_in", actor: { name: account.name, email: account.email, role: "owner" }, companyId: null, companyName: null, target: account.email, detail: null, before: null, after: null });
-      if (account.registered) {
-        let companies = readCompanies();
-        let own = companies.find((c) => c.template === "blank");
-        if (!own) {
-          const id = newCompanyId(account.name, seedCompanies);
-          own = { id, name: `${account.name}'s Company`, industry: "", city: "", template: "blank", workspaces: [], setupDone: false, createdAt: new Date().toISOString() };
-          saveCompanies([own]);
-        }
-        switchCompany(own.id, own.setupDone ? "/portfolio?view=overview" : "/setup");
-      } else {
-        router.replace(homeFor(account));
-      }
-      return;
-    }
     try {
       await api("/auth/login", {
         method: "POST",
@@ -111,11 +86,11 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">{demoMode ? "Email or name" : "Email or username"}</Label>
+          <Label htmlFor="email">Email or username</Label>
           <Input
             id="email"
             autoComplete="username"
-            placeholder={demoMode ? "you@company.com or full name" : "you@company.com or your username"}
+            placeholder="you@company.com or your username"
             {...register("email")}
           />
           {errors.email && (

@@ -3,8 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePersistedState } from "@/lib/use-persisted-state";
-import { isFirstCompany } from "@/lib/companies";
-import { demoMode } from "@/lib/demo-mode";
 import { GRANTABLE_WORKSPACES, PORTFOLIO_ROLES, roleLabel, WORKSPACE_PERMISSION } from "@/lib/access";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { scoped } from "@/lib/company";
@@ -13,7 +11,6 @@ import { StatTile } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/settings/section-ui";
 import { roleMeta, roleOrder } from "@/components/settings/role-meta";
-import { users } from "@/lib/mock-data";
 import type { Role } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,20 +79,6 @@ const rolePermissions: Record<Role, PermissionKey[]> = {
   read_only: ["records:view"],
 };
 
-const initialMembers: AccessMember[] = [...users.map((user, index) => ({
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  role: user.role,
-  department: user.role === "finance" ? "Finance" : user.role === "support_agent" ? "Support" : user.role === "admin" ? "People" : user.role === "owner" ? "Management" : "Sales",
-  status: "Active" as const,
-  businessAccess: user.role === "owner" || (isManagementRole(user.role) && user.role !== "admin"),
-  workspaces: (index === 0 ? workspaceOptions.map(([key]) => key as WorkspaceKey) : user.role === "support_agent" ? ["crm-sales", "customer-support"] : user.role === "admin" || user.role === "finance" ? ["hr-people"] : ["crm-sales"]) as WorkspaceKey[],
-  permissions: rolePermissions[user.role],
-  lastActive: user.online ? "Online now" : "Yesterday",
-})),
-];
-
 type ServerMember = { id: string; user_id: string; name: string; email: string; role: string; status: string; extra_permissions?: string[] };
 
 /** A member as the server lists it. The server does not hold departments or workspace access yet. */
@@ -115,19 +98,8 @@ function isManagementRole(role: Role) {
 
 export function BusinessPeopleAccess({ initialSection = "members" }: { initialSection?: string }) {
   const [section, setSection] = React.useState<string>(initialSection);
-  const [demoMembers, setMembers] = usePersistedState<AccessMember[]>("janus.business-members.v1", () => {
-    if (!demoMode) return [];
-    // Everyone in the HR directory belongs here too, so people added while setting a company up are not missing.
-    const known = new Set(initialMembers.flatMap((item) => [item.email.toLowerCase(), item.name.toLowerCase()]));
-    const fromHr = useHrPeopleStore.getState().employees
-      .filter((item) => item.status !== "archived" && !known.has(item.email.toLowerCase()) && !known.has(item.name.toLowerCase()))
-      .map((item): AccessMember => ({ id: item.id, name: item.name, email: item.email, role: "read_only", department: item.department, status: "Active", businessAccess: false, workspaces: ["hr-people"], permissions: rolePermissions.read_only, lastActive: "Not yet" }));
-    return [...initialMembers, ...fromHr];
-  });
-  // Real accounts list the people the server knows about. Demo people never show on them.
-  const membersApi = useApi<ServerMember[]>(demoMode ? null : "/members");
-  const serverMembers = React.useMemo(() => (membersApi.data ?? []).map(toAccessMember), [membersApi.data]);
-  const members = demoMode ? demoMembers : serverMembers;
+  const membersApi = useApi<ServerMember[]>("/members");
+  const members = React.useMemo(() => (membersApi.data ?? []).map(toAccessMember), [membersApi.data]);
   const workspacesApi = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const [storedWorkspace, setStoredWorkspace] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -144,11 +116,8 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     return workspaceOptions.filter(([key]) => active.has(key));
   }, [storedWorkspace, workspacesApi.data]);
   const activeWorkspaceKeys = React.useMemo(() => new Set(activeWorkspaceOptions.map(([key]) => key)), [activeWorkspaceOptions]);
-  const [savedInvites, setInvites] = usePersistedState<PendingInvite[]>("janus.business-invites.v1", isFirstCompany ? [
-    { id: "invite-1", name: "Tarun Sethi", email: "tarun@acmetraders.in", role: "sales_agent", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Today, 10:20", status: "Pending" },
-    { id: "invite-2", name: "Priya Shah", email: "priya@acmetraders.in", role: "analyst", businessAccess: false, workspaces: ["crm-sales"], invitedAt: "Yesterday", status: "Pending" },
-  ] : []);
-  const invites = demoMode ? savedInvites : [];
+  const [savedInvites, setInvites] = usePersistedState<PendingInvite[]>("janus.business-invites.v1", []);
+  const invites = savedInvites;
   const [roles, setRoles] = usePersistedState<RoleRecord[]>("janus.business-roles.v1", initialRoles);
   const [departments, setDepartments] = usePersistedState<string[]>("janus.business-departments.v1", () => [...new Set(useHrPeopleStore.getState().employees.filter((item) => item.status !== "archived").map((item) => item.department))]);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -167,7 +136,6 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
 
   /** Real accounts cannot change people or access yet, so the change is refused with a notice. */
   function serverOnly(): boolean {
-    if (demoMode) return false;
     setNotice("People and access changes are not saved on the server yet, so nothing was changed.");
     return true;
   }
@@ -196,7 +164,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
   /** A real account changes a member's system role on the server. Name and email are not changed here. */
   async function saveRoleOnServer(memberId: string, role: Role, workspaces: WorkspaceKey[]) {
     const systemRole = role === "owner" || role === "admin" || isManagementRole(role) ? (role === "owner" ? "owner" : "admin") : role.includes("manager") ? "manager" : "agent";
-    const current = serverMembers.find((member) => member.id === memberId);
+    const current = members.find((member) => member.id === memberId);
     try {
       if (current && systemRole !== current.role && role !== current.role) await api(`/members/${encodeURIComponent(memberId)}`, { method: "PATCH", body: JSON.stringify({ role: systemRole }) });
       // Finance, Operations, Projects and IT are given on top of the role, one workspace at a time.
@@ -226,32 +194,23 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     if (!memberForm.name.trim() || !memberForm.email.trim() || !memberForm.email.includes("@")) { setMemberError("Add a valid name and email address."); return; }
     const assignedWorkspaces = memberForm.workspaces.filter((workspace) => activeWorkspaceKeys.has(workspace));
     if (assignedWorkspaces.length === 0 && !isManagementRole(memberForm.role)) { setMemberError("Select at least one workspace for a department member."); return; }
-    if (memberDialog === "invite" && !demoMode) { void sendInvitation(); return; }
-    if (memberDialog === "invite" && memberForm.password.length < 8) { setMemberError("Set a temporary password with at least 8 characters."); return; }
-    if (memberDialog === "invite") {
-      const id = `member-${Date.now()}`;
-      setMembers((current) => [...current, { id, name: memberForm.name.trim(), email: memberForm.email.trim(), role: memberForm.role, department: memberForm.department, status: "Invited", businessAccess: memberForm.businessAccess, workspaces: assignedWorkspaces, permissions: memberForm.permissions, lastActive: "Pending invite" }]);
-      setInvites((current) => [{ id: `invite-${Date.now()}`, name: memberForm.name.trim(), email: memberForm.email.trim(), role: memberForm.role, businessAccess: memberForm.businessAccess, workspaces: assignedWorkspaces, invitedAt: "Just now", status: "Pending" }, ...current]);
-      setNotice(`${memberForm.name.trim()} was added with a pending invitation. Demo password is not sent anywhere.`);
-    } else if (editingMemberId && !demoMode) {
+    if (memberDialog === "invite") { void sendInvitation(); return; }
+    if (editingMemberId) {
       void saveRoleOnServer(editingMemberId, memberForm.role, assignedWorkspaces);
       return;
-    } else if (editingMemberId) {
-      setMembers((current) => current.map((member) => member.id === editingMemberId ? { ...member, name: memberForm.name.trim(), email: memberForm.email.trim(), role: memberForm.role, department: memberForm.department, businessAccess: member.role === "owner" ? true : memberForm.businessAccess, workspaces: assignedWorkspaces, permissions: memberForm.permissions } : member));
-      setNotice(`${memberForm.name.trim()} access and permissions were updated.`);
     }
     closeMemberDialog();
   }
   function removeMember(member: AccessMember) { if (serverOnly()) return; if (member.role === "owner") return; setRemoveTarget(member); }
-  function confirmRemoveMember() { if (serverOnly()) return; if (!removeTarget || removeTarget.role === "owner") return; setMembers((current) => current.filter((item) => item.id !== removeTarget.id)); setNotice(`${removeTarget.name} was removed from this demo business.`); setRemoveTarget(null); }
+  function confirmRemoveMember() { if (serverOnly()) return; if (!removeTarget || removeTarget.role === "owner") return; setNotice(`${removeTarget.name} was removed.`); setRemoveTarget(null); }
   function openOwnerSwitch() { if (serverOnly()) return; const candidate = members.find((member) => member.role !== "owner" && member.status === "Active"); setOwnerCandidateId(candidate?.id ?? ""); setOwnerSwitchOpen(true); }
-  function confirmOwnerSwitch() { if (serverOnly()) return; const candidate = members.find((member) => member.id === ownerCandidateId && member.role !== "owner" && member.status === "Active"); if (!candidate) return; setMembers((current) => current.map((member) => member.role === "owner" ? { ...member, role: "admin", department: "Management", businessAccess: true, permissions: rolePermissions.admin } : member.id === candidate.id ? { ...member, role: "owner", department: "Management", businessAccess: true, permissions: rolePermissions.owner } : member)); setNotice(`${candidate.name} is now the Owner. The previous Owner is now an Admin.`); setOwnerSwitchOpen(false); }
+  function confirmOwnerSwitch() { if (serverOnly()) return; }
   function openRoleEdit(role: RoleRecord) { if (serverOnly()) return; setEditingRoleId(role.id); setRoleForm({ name: role.label, summary: role.summary, permissions: role.permissions }); setRoleDialog("edit"); }
   function openRoleNew() { if (serverOnly()) return; setEditingRoleId(null); setRoleForm({ name: "", summary: "", permissions: ["records:view"] }); setRoleDialog("new"); }
   function saveRole(event: React.FormEvent) { if (serverOnly()) return; event.preventDefault(); if (!roleForm.name.trim() || roleForm.permissions.length === 0) return; if (roleDialog === "new") { setRoles((current) => [...current, { id: `custom-${Date.now()}`, label: roleForm.name.trim(), summary: roleForm.summary.trim() || "Custom business role", tone: "neutral", permissions: roleForm.permissions, builtIn: false }]); setNotice(`${roleForm.name.trim()} role created.`); } else if (editingRoleId) { setRoles((current) => current.map((role) => role.id === editingRoleId ? { ...role, label: roleForm.name.trim(), summary: roleForm.summary.trim(), permissions: roleForm.permissions } : role)); setNotice(`${roleForm.name.trim()} permissions were updated.`); } setRoleDialog(null); }
   function deleteRole() { if (serverOnly()) return; if (!editingRoleId || roles.find((role) => role.id === editingRoleId)?.builtIn) return; setRoles((current) => current.filter((role) => role.id !== editingRoleId)); setRoleDialog(null); setNotice("Custom role removed."); }
-  function toggleMemberWorkspace(memberId: string, workspace: WorkspaceKey) { if (serverOnly()) return; setMembers((current) => current.map((member) => member.id === memberId ? { ...member, workspaces: member.workspaces.includes(workspace) ? member.workspaces.filter((item) => item !== workspace) : [...member.workspaces, workspace] } : member)); setNotice("Workspace access updated."); }
-  function toggleMemberBusinessAccess(memberId: string) { if (serverOnly()) return; setMembers((current) => current.map((member) => member.id === memberId && member.role !== "owner" ? { ...member, businessAccess: !member.businessAccess } : member)); setNotice("Business Management access updated."); }
+  function toggleMemberWorkspace(_memberId: string, _workspace: WorkspaceKey) { if (serverOnly()) return; }
+  function toggleMemberBusinessAccess(_memberId: string) { if (serverOnly()) return; }
   function saveDepartment(event: React.FormEvent) { if (serverOnly()) return; event.preventDefault(); if (!departmentName.trim()) return; setDepartments((current) => [...current, departmentName.trim()]); setDepartmentName(""); setDepartmentDialog(false); setNotice("Department added."); }
 
   return <div className="flex flex-col gap-5">
@@ -267,7 +226,7 @@ export function BusinessPeopleAccess({ initialSection = "members" }: { initialSe
     {section === "requests" && <RequestsSection onNotice={setNotice} />}
     {section === "audit" && <AuditSection />}
 
-    <Dialog open={memberDialog !== null} onOpenChange={(open) => !open && closeMemberDialog()}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><form onSubmit={saveMember}><DialogHeader><DialogTitle>{memberDialog === "invite" ? "Add person" : "Edit member access"}</DialogTitle><DialogDescription>{memberDialog === "invite" ? "Create the person’s profile, temporary login and initial access." : "Update this member’s role, Business Management access and workspace access."}</DialogDescription></DialogHeader>{memberError && <p ref={memberErrorRef} role="alert" className="mb-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{memberError}{/plan/i.test(memberError) && <> <a href="/portfolio?view=billing" className="font-medium underline underline-offset-2">Open Plan and billing</a></>}</p>}<div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="member-name">Full name</Label><Input id="member-name" disabled={!demoMode && memberDialog === "edit"} value={memberForm.name} onChange={(event) => setMemberField("name", event.target.value)} placeholder="e.g. Aditi Sharma" className="mt-1" autoFocus /></div><div><Label htmlFor="member-email">Email / username</Label><Input id="member-email" type="email" disabled={!demoMode && memberDialog === "edit"} value={memberForm.email} onChange={(event) => setMemberField("email", event.target.value)} placeholder="name@company.com" className="mt-1" /></div>{demoMode ? <div><Label htmlFor="member-password">Temporary password {memberDialog === "edit" && <span className="normal-case tracking-normal">(optional)</span>}</Label><Input id="member-password" type="password" value={memberForm.password} onChange={(event) => setMemberField("password", event.target.value)} placeholder="At least 8 characters" className="mt-1" /></div> : null}<div><Label htmlFor="member-department">Department</Label><select id="member-department" value={memberForm.department} onChange={(event) => setMemberField("department", event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm">{departments.map((department) => <option key={department}>{department}</option>)}</select></div><div className="sm:col-span-2"><Label htmlFor="member-role">Role</Label><select id="member-role" value={memberForm.role} onChange={(event) => changeMemberRole(event.target.value as Role)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm">{roleOrder.map((role) => <option key={role} value={role}>{roleMeta[role].label}</option>)}</select><p className="mt-1 text-[11px] text-muted-foreground">Management roles work in Business Management. Department roles need explicit workspace access.</p></div><div className="sm:col-span-2 rounded-md border border-border bg-surface-2 p-3"><label className="flex items-start gap-3"><Checkbox checked={memberForm.businessAccess} disabled={memberForm.role === "owner"} onCheckedChange={toggleBusinessAccess} /><span><span className="block text-sm font-medium">Business Management access</span><span className="mt-0.5 block text-[11px] text-muted-foreground">Allows access to company overview, people, reports, agents and business settings. Owner access is always enabled.</span></span></label></div><div className="sm:col-span-2"><div className="flex items-center justify-between gap-3"><Label>Active workspace access</Label>{memberForm.workspaces.length === 0 && <Badge variant="neutral">No department workspace</Badge>}</div><p className="mt-1 text-[11px] text-muted-foreground">Only active workspaces are shown. Select the department areas this person should use.</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{activeWorkspaceOptions.map(([key, name]) => <label key={key} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs"><Checkbox checked={memberForm.workspaces.includes(key)} onCheckedChange={() => toggleWorkspace(key)} /><span>{name}</span></label>)}</div></div><div className="sm:col-span-2"><Label>Permissions</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{permissionOptions.map(([key, label, detail]) => <label key={key} className="flex items-start gap-2 rounded-md border border-border px-3 py-2"><Checkbox checked={memberForm.permissions.includes(key)} onCheckedChange={() => togglePermission(key)} /><span><span className="block text-xs font-medium">{label}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail}</span></span></label>)}</div></div></div><DialogFooter><Button type="button" variant="secondary" onClick={closeMemberDialog}>Cancel</Button><Button type="submit">{memberDialog === "invite" ? "Add and invite" : "Save access"}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={memberDialog !== null} onOpenChange={(open) => !open && closeMemberDialog()}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><form onSubmit={saveMember}><DialogHeader><DialogTitle>{memberDialog === "invite" ? "Add person" : "Edit member access"}</DialogTitle><DialogDescription>{memberDialog === "invite" ? "Create the person's profile, temporary login and initial access." : "Update this member's role, Business Management access and workspace access."}</DialogDescription></DialogHeader>{memberError && <p ref={memberErrorRef} role="alert" className="mb-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{memberError}{/plan/i.test(memberError) && <> <a href="/portfolio?view=billing" className="font-medium underline underline-offset-2">Open Plan and billing</a></>}</p>}<div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="member-name">Full name</Label><Input id="member-name" disabled={memberDialog === "edit"} value={memberForm.name} onChange={(event) => setMemberField("name", event.target.value)} placeholder="e.g. Aditi Sharma" className="mt-1" autoFocus /></div><div><Label htmlFor="member-email">Email / username</Label><Input id="member-email" type="email" disabled={memberDialog === "edit"} value={memberForm.email} onChange={(event) => setMemberField("email", event.target.value)} placeholder="name@company.com" className="mt-1" /></div><div><Label htmlFor="member-department">Department</Label><select id="member-department" value={memberForm.department} onChange={(event) => setMemberField("department", event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm">{departments.map((department) => <option key={department}>{department}</option>)}</select></div><div className="sm:col-span-2"><Label htmlFor="member-role">Role</Label><select id="member-role" value={memberForm.role} onChange={(event) => changeMemberRole(event.target.value as Role)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm">{roleOrder.map((role) => <option key={role} value={role}>{roleMeta[role].label}</option>)}</select><p className="mt-1 text-[11px] text-muted-foreground">Management roles work in Business Management. Department roles need explicit workspace access.</p></div><div className="sm:col-span-2 rounded-md border border-border bg-surface-2 p-3"><label className="flex items-start gap-3"><Checkbox checked={memberForm.businessAccess} disabled={memberForm.role === "owner"} onCheckedChange={toggleBusinessAccess} /><span><span className="block text-sm font-medium">Business Management access</span><span className="mt-0.5 block text-[11px] text-muted-foreground">Allows access to company overview, people, reports, agents and business settings. Owner access is always enabled.</span></span></label></div><div className="sm:col-span-2"><div className="flex items-center justify-between gap-3"><Label>Active workspace access</Label>{memberForm.workspaces.length === 0 && <Badge variant="neutral">No department workspace</Badge>}</div><p className="mt-1 text-[11px] text-muted-foreground">Only active workspaces are shown. Select the department areas this person should use.</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{activeWorkspaceOptions.map(([key, name]) => <label key={key} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs"><Checkbox checked={memberForm.workspaces.includes(key)} onCheckedChange={() => toggleWorkspace(key)} /><span>{name}</span></label>)}</div></div><div className="sm:col-span-2"><Label>Permissions</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{permissionOptions.map(([key, label, detail]) => <label key={key} className="flex items-start gap-2 rounded-md border border-border px-3 py-2"><Checkbox checked={memberForm.permissions.includes(key)} onCheckedChange={() => togglePermission(key)} /><span><span className="block text-xs font-medium">{label}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail}</span></span></label>)}</div></div></div><DialogFooter><Button type="button" variant="secondary" onClick={closeMemberDialog}>Cancel</Button><Button type="submit">{memberDialog === "invite" ? "Add and invite" : "Save access"}</Button></DialogFooter></form></DialogContent></Dialog>
     <Dialog open={ownerSwitchOpen} onOpenChange={(open) => !open && setOwnerSwitchOpen(false)}><DialogContent><DialogHeader><DialogTitle>Switch Owner</DialogTitle><DialogDescription>Choose an active member to become the new Owner. The current Owner will become an Admin, so the business always has exactly one Owner.</DialogDescription></DialogHeader><Label htmlFor="owner-candidate">New Owner</Label><select id="owner-candidate" value={ownerCandidateId} onChange={(event) => setOwnerCandidateId(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option value="">Select a member</option>{members.filter((member) => member.role !== "owner" && member.status === "Active").map((member) => <option key={member.id} value={member.id}>{member.name} · {roleMeta[member.role].label}</option>)}</select><DialogFooter><Button type="button" variant="secondary" onClick={() => setOwnerSwitchOpen(false)}>Cancel</Button><Button type="button" onClick={confirmOwnerSwitch} disabled={!ownerCandidateId}>Switch Owner</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={removeTarget !== null} onOpenChange={(open) => !open && setRemoveTarget(null)}><DialogContent><DialogHeader><DialogTitle>Remove {removeTarget?.name}?</DialogTitle><DialogDescription>This removes the person from the business and clears their Business Management and workspace access.</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="secondary" onClick={() => setRemoveTarget(null)}>Cancel</Button><Button type="button" className="bg-danger text-white hover:bg-danger/90" onClick={confirmRemoveMember}>Remove person</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={roleDialog !== null} onOpenChange={(open) => !open && setRoleDialog(null)}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><form onSubmit={saveRole}><DialogHeader><DialogTitle>{roleDialog === "new" ? "Create role" : "Edit role and permissions"}</DialogTitle><DialogDescription>Define exactly what this role can view, edit, send and approve.</DialogDescription></DialogHeader><div className="flex flex-col gap-4"><div><Label htmlFor="role-name">Role name</Label><Input id="role-name" value={roleForm.name} onChange={(event) => setRoleForm((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Operations Manager" className="mt-1" autoFocus /></div><div><Label htmlFor="role-summary">Description</Label><Textarea id="role-summary" value={roleForm.summary} onChange={(event) => setRoleForm((current) => ({ ...current, summary: event.target.value }))} placeholder="What this role is responsible for" className="mt-1 min-h-16" /></div><div><Label>Permissions</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{permissionOptions.map(([key, label, detail]) => <label key={key} className="flex items-start gap-2 rounded-md border border-border px-3 py-2"><Checkbox checked={roleForm.permissions.includes(key)} onCheckedChange={() => setRoleForm((current) => ({ ...current, permissions: current.permissions.includes(key) ? current.permissions.filter((item) => item !== key) : [...current.permissions, key] }))} /><span><span className="block text-xs font-medium">{label}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{detail}</span></span></label>)}</div></div></div><DialogFooter>{roleDialog === "edit" && !roles.find((role) => role.id === editingRoleId)?.builtIn && <Button type="button" variant="secondary" onClick={deleteRole}><Trash2 className="size-3.5" />Delete role</Button>}<Button type="button" variant="secondary" onClick={() => setRoleDialog(null)}>Cancel</Button><Button type="submit">Save role</Button></DialogFooter></form></DialogContent></Dialog>
@@ -283,7 +242,7 @@ function MembersSection({ members, activeWorkspaceKeys, onInvite, onEdit, onRemo
   const managementMembers = members.filter((member) => member.businessAccess && matches(member));
   const workspaceMembers = members.filter((member) => !member.businessAccess && matches(member));
   const pick = (value: typeof show) => setShow(show === value ? "all" : value);
-  const empty = (none: string) => term ? `Nobody matches “${find.trim()}”.` : none;
+  const empty = (none: string) => term ? `Nobody matches "${find.trim()}".` : none;
 
   return <div className="flex flex-col gap-4">
     <div className="grid gap-3 sm:grid-cols-3">
@@ -340,11 +299,11 @@ function DepartmentsSection({ departments, onAdd }: { departments: string[]; onA
 }
 
 function RequestsSection({ onNotice }: { onNotice: (message: string) => void }) {
-  const requests = isFirstCompany ? [["Aman Verma", "Finance & Accounting", "Needs read access to invoices", "Today"]] : [];
-  return <SectionCard title="Access requests" description="Review requests before a member receives access to another workspace."><div className="flex flex-col divide-y divide-border">{requests.map(([name, workspace, reason, date]) => <div key={name} className="flex flex-wrap items-center gap-3 py-4 first:pt-0 last:pb-0"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{name} · {workspace}</p><p className="mt-1 text-xs text-muted-foreground">{reason} · {date}</p></div><Button size="sm" variant="secondary" onClick={() => onNotice(`${name} request approved in the demo.`)}>Approve</Button><Button size="sm" variant="ghost" onClick={() => onNotice(`${name} request declined in the demo.`)}>Decline</Button></div>)}</div></SectionCard>;
+  const requests: string[][] = [];
+  return <SectionCard title="Access requests" description="Review requests before a member receives access to another workspace."><div className="flex flex-col divide-y divide-border">{requests.map(([name, workspace, reason, date]) => <div key={name} className="flex flex-wrap items-center gap-3 py-4 first:pt-0 last:pb-0"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{name} · {workspace}</p><p className="mt-1 text-xs text-muted-foreground">{reason} · {date}</p></div><Button size="sm" variant="secondary" onClick={() => onNotice(`${name} request approved.`)}>Approve</Button><Button size="sm" variant="ghost" onClick={() => onNotice(`${name} request declined.`)}>Decline</Button></div>)}</div></SectionCard>;
 }
 
 function AuditSection() {
-  const logs = isFirstCompany ? [["Pankaj Neema updated Meera Singh’s workspace access", "Today, 09:32", "Access"], ["Arjun Mehta’s role changed to Sales Manager", "Yesterday, 16:10", "Role"], ["Invite sent to tarun@acmetraders.in", "Today, 10:20", "Invitation"]] : [];
+  const logs: string[][] = [];
   return <SectionCard title="Audit logs" description="A clear record of people, role and workspace changes for owner review."><div className="flex flex-col divide-y divide-border">{logs.map(([event, date, type]) => <div key={event} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="flex size-7 items-center justify-center rounded-md bg-accent-muted text-accent"><ShieldCheck className="size-3.5" /></span><div className="min-w-0 flex-1"><p className="text-sm">{event}</p><p className="mt-1 text-[11px] text-muted-foreground">{date}</p></div><Badge variant="neutral">{type}</Badge></div>)}</div></SectionCard>;
 }

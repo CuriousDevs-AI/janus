@@ -1,9 +1,6 @@
 "use client";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { can } from "@/lib/permissions";
-import { buyers } from "@/lib/demo-universe";
-import { useCrmAccess } from "@/lib/use-crm-access";
-import { demoMode } from "@/lib/demo-mode";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -14,10 +11,8 @@ import {
   Minimize2,
   Mail,
   MessageCircle,
-  Paperclip,
   Phone,
   RefreshCw,
-  Smile,
   Send,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,16 +32,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { selectClass } from "@/components/lead-sources/connection-form";
 import { cn, formatDateTime } from "@/lib/utils";
-import {
-  demoConversations,
-  demoConversationTimeline,
-  demoDealRows,
-  demoLeadRows,
-  demoMessagesByConversation,
-  demoWhatsAppTemplates,
-} from "@/lib/api/demo-data";
-import type { DemoTimelineItem } from "@/lib/api/demo-data";
 import { CustomerCallButton, callSummary, type CustomerCall } from "@/components/calls/customer-call";
+
+type TimelineItem = {
+  id: string;
+  channel: "whatsapp" | "email" | "call";
+  direction: "inbound" | "outbound" | "internal";
+  title: string;
+  body: string;
+  status?: string;
+  createdAt: string;
+};
 
 export default function InboxPage() {
   return (
@@ -63,26 +59,23 @@ function Inbox() {
   const [fullscreen, setFullscreen] = useState(false);
   const [listView, setListView] = useState<"mine" | "unassigned" | "all">("mine");
   const [channelFilter, setChannelFilter] = useState<"all" | "whatsapp" | "email" | "call">("all");
-  // The preview keeps its chats in the browser, so it never asks a server for them.
   const list = useApi<WhatsAppConversation[]>(
-    demoMode ? null : `/whatsapp/conversations?limit=50&before_id=${before}`,
+    `/whatsapp/conversations?limit=50&before_id=${before}`,
   );
-  const usingDemo = demoMode;
-  const access = useCrmAccess();
   const reload = list.reload;
   useEffect(() => {
     const timer = setInterval(reload, 5000);
     return () => clearInterval(timer);
   }, [reload]);
   const allRows =
-    (list.data ?? (usingDemo ? access.conversations(demoConversations) : [])).filter((c) =>
+    (list.data ?? []).filter((c) =>
       [c.name, c.phone, c.company].some((v) =>
         v?.toLowerCase().includes(query.toLowerCase()),
       ),
     ) || [];
   const rows = allRows.filter(() => {
     const matchesOwner = listView !== "unassigned";
-    const matchesChannel = channelFilter === "all" || usingDemo;
+    const matchesChannel = channelFilter === "all";
     return matchesOwner && matchesChannel;
   });
   return (
@@ -206,7 +199,6 @@ function Inbox() {
             <div className="flex min-w-0 flex-1 flex-col">
               <Conversation key={selected} id={selected} onChanged={reload} />
             </div>
-            {isPreviewChat(selected) && <DemoContextPanel conversationId={selected} />}
           </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -222,30 +214,6 @@ function Inbox() {
   );
 }
 
-/** The preview keeps its chats in the browser. Their ids come from the shared demo company, not from a prefix. */
-const isPreviewChat = (id: string) => demoConversations.some((item) => item.id === id);
-
-function DemoContextPanel({ conversationId }: { conversationId: string }) {
-  const conversation = demoConversations.find((item) => item.id === conversationId);
-  if (!conversation) return null;
-  const lead = demoLeadRows.find((item) => item.customerId === conversation.contactId);
-  const deal = demoDealRows.find((item) => item.customerId === conversation.contactId);
-  return (
-    <aside className="hidden w-[240px] shrink-0 overflow-y-auto border-l border-border bg-surface lg:flex lg:flex-col">
-      <div className="border-b border-border p-4">
-        <div className="flex items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">{conversation.name || conversation.phone}</h2><p className="text-xs text-muted-foreground">{conversation.company || "Customer"}</p></div></div>
-        <dl className="mt-4 grid gap-2 text-xs"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Phone</dt><dd>{conversation.phone}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Email</dt><dd>{buyers.find((item) => item.id === conversation.contactId)?.email ?? ""}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd>WhatsApp</dd></div></dl>
-      </div>
-      <div className="flex flex-col gap-4 p-4">
-        <section><p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Janus summary</p><p className="text-xs leading-relaxed">{lead?.requirement || "Customer conversation is ready for qualification."}</p><p className="mt-2 text-xs"><span className="font-medium">Next step:</span> confirm requirements and schedule the review.</p></section>
-        {deal && <section className="border-t border-border pt-4"><div className="flex items-center justify-between"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Deal</p><span className="text-[10px] text-accent">Open</span></div><p className="mt-2 text-sm font-semibold">{deal.name}</p><p className="mt-1 text-sm font-medium">₹{Number(deal.amount).toLocaleString("en-IN")}</p><div className="mt-2 h-1 bg-surface-2"><div className="h-1 w-2/3 bg-accent" /></div><p className="mt-1 text-[10px] text-muted-foreground">{deal.stage} · closes {deal.expectedCloseAt ? new Date(deal.expectedCloseAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "TBD"}</p></section>}
-        <section className="border-t border-border pt-4"><div className="flex items-center justify-between"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tasks</p><button type="button" className="text-[11px] font-medium text-accent" onClick={() => toast.success("Task created")}>+ Add</button></div><label className="mt-3 flex items-start gap-2 text-xs"><input type="checkbox" /> <span>Send updated proposal<span className="block text-[10px] text-danger">Due today</span></span></label><label className="mt-2 flex items-start gap-2 text-xs"><input type="checkbox" /> <span>Schedule review call<span className="block text-[10px] text-muted-foreground">Tomorrow, 11:00 am</span></span></label><button type="button" className="mt-3 w-full border border-accent-border bg-accent-muted px-2.5 py-2 text-left text-[11px] font-medium text-accent" onClick={() => toast.success("Automated follow-up scheduled", { description: "Janus will create a task after the next customer reply." })}>Schedule automated task<span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">Create a follow-up rule for this conversation</span></button></section>
-        <Button size="sm" variant="secondary" asChild><Link href={`/customers/${conversation.contactId}`}>Open customer record</Link></Button>
-      </div>
-    </aside>
-  );
-}
-
 function Conversation({
   id,
   onChanged,
@@ -253,27 +221,21 @@ function Conversation({
   id: string;
   onChanged: () => void;
 }) {
-  const previewChat = isPreviewChat(id);
   const liveThread = useApi<WhatsAppConversation>(
-    previewChat ? null : `/whatsapp/conversations/${encodeURIComponent(id)}`,
+    `/whatsapp/conversations/${encodeURIComponent(id)}`,
   );
   const [before, setBefore] = useState("0");
   const liveMessages = useApi<WhatsAppMessage[]>(
-    previewChat
-      ? null
-      : `/whatsapp/conversations/${encodeURIComponent(id)}/messages?limit=50&before_id=${before}`,
+    `/whatsapp/conversations/${encodeURIComponent(id)}/messages?limit=50&before_id=${before}`,
   );
   const [channel, setChannel] = useState<"all" | "whatsapp" | "email" | "call">("all");
-  const [timelineOverride, setTimelineOverride] = useState<DemoTimelineItem[] | undefined>();
-  const demoThread = demoConversations.find((conversation) => conversation.id === id);
-  const thread = liveThread.data ?? (previewChat ? demoThread : undefined);
-  const messageRows =
-    liveMessages.data ?? (previewChat ? demoMessagesByConversation[id] ?? [] : undefined);
+  const thread = liveThread.data;
+  const messageRows = liveMessages.data;
   const calls = useApi<CustomerCall[]>(
-    previewChat || !thread?.contactId ? null : `/contacts/${encodeURIComponent(thread.contactId)}/calls`,
+    !thread?.contactId ? null : `/contacts/${encodeURIComponent(thread.contactId)}/calls`,
   );
   // Calls with the customer sit in the same timeline as their messages, by time.
-  const callRows: DemoTimelineItem[] = (calls.data ?? []).map((call) => ({
+  const callRows: TimelineItem[] = (calls.data ?? []).map((call) => ({
     id: `call-${call.id}`,
     channel: "call" as const,
     direction: call.direction === "inbound" ? "inbound" as const : "outbound" as const,
@@ -281,9 +243,7 @@ function Conversation({
     body: call.notes || "No notes.",
     createdAt: call.createdAt,
   }));
-  const timeline = previewChat
-    ? timelineOverride ?? demoConversationTimeline[id] ?? []
-    : [...(messageRows?.map((message) => ({
+  const timeline = [...(messageRows?.map((message) => ({
         id: message.id,
         channel: "whatsapp" as const,
         direction: message.direction === "inbound" ? "inbound" as const : "outbound" as const,
@@ -295,13 +255,12 @@ function Conversation({
   const reloadThread = liveThread.reload;
   const reloadMessages = liveMessages.reload;
   useEffect(() => {
-    if (previewChat) return;
     const timer = setInterval(() => {
       reloadThread();
       if (before === "0") reloadMessages();
     }, 5000);
     return () => clearInterval(timer);
-  }, [previewChat, reloadThread, reloadMessages, before]);
+  }, [reloadThread, reloadMessages, before]);
   const bottom = useRef<HTMLDivElement>(null);
   const lastId = messageRows?.at(-1)?.id;
   useEffect(() => {
@@ -329,7 +288,7 @@ function Conversation({
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span>{thread.phone}</span>
                   <span aria-hidden="true" className="hidden sm:inline">·</span>
-                  <span>{previewChat ? "Conversation" : "Connected channel"}</span>
+                  <span>Connected channel</span>
                   <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", thread.doNotContact ? "bg-warning-muted text-warning" : thread.whatsappOptIn ? "bg-success-muted text-success" : "bg-surface-2 text-muted-foreground")}>
                     {thread.doNotContact ? "Outbound suppressed" : thread.whatsappOptIn ? "WhatsApp opt-in" : "Opt-in not recorded"}
                   </span>
@@ -342,7 +301,7 @@ function Conversation({
             </p>
           )}
         </div>
-        {thread && !previewChat && liveThread.data ? (
+        {thread && liveThread.data ? (
           <CustomerCallButton
             contactId={liveThread.data.contactId}
             name={liveThread.data.name || liveThread.data.phone || "this customer"}
@@ -466,24 +425,13 @@ function Conversation({
           <div ref={bottom} />
           </div>
         </div>
-      ) : channel === "call" && !previewChat ? (
+      ) : channel === "call" ? (
         // On a real account the Calls tab is the call log; the Call button above makes and logs calls.
         <UnifiedTimeline timeline={callRows} loading={calls.loading && !calls.data} />
       ) : thread ? (
-        <ChannelPanel channel={channel} thread={thread} previewChat={previewChat} />
+        <ChannelPanel channel={channel} thread={thread} />
       ) : null}
-      {thread && (channel === "all" || channel === "whatsapp") &&
-        (previewChat ? (
-          <DemoUnifiedComposer
-            thread={thread}
-            onAdded={(item) =>
-              setTimelineOverride((items) => [
-                ...(items ?? demoConversationTimeline[id] ?? []),
-                item,
-              ])
-            }
-          />
-        ) : (
+      {thread && (channel === "all" || channel === "whatsapp") && (
           <Composer
             thread={thread}
             onSent={() => {
@@ -493,7 +441,7 @@ function Conversation({
               onChanged();
             }}
           />
-        ))}
+        )}
     </>
   );
 }
@@ -502,7 +450,7 @@ function UnifiedTimeline({
   timeline,
   loading,
 }: {
-  timeline: DemoTimelineItem[];
+  timeline: TimelineItem[];
   loading: boolean;
 }) {
   return (
@@ -541,11 +489,9 @@ function UnifiedTimeline({
 function ChannelPanel({
   channel,
   thread,
-  previewChat,
 }: {
   channel: "email" | "call";
   thread: WhatsAppConversation;
-  previewChat: boolean;
 }) {
   const [subject, setSubject] = useState("Following up on your Janus enquiry");
   const [body, setBody] = useState(
@@ -554,7 +500,7 @@ function ChannelPanel({
   const [outcome, setOutcome] = useState("Connected");
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
-  const email = buyers.find((item) => item.id === thread.contactId)?.email ?? "";
+  const email = "";
   if (channel === "email") {
     return (
       <form
@@ -562,7 +508,7 @@ function ChannelPanel({
         onSubmit={(event) => {
           event.preventDefault();
           setSaved(true);
-          toast.success(previewChat ? "Email draft saved." : "Email draft prepared. Connect an email provider to send it.");
+          toast.success("Email draft prepared. Connect an email provider to send it.");
         }}
       >
         <div className="mx-auto flex max-w-2xl flex-col gap-3 rounded-md border border-border bg-surface p-4">
@@ -583,75 +529,15 @@ function ChannelPanel({
     <div className="flex-1 overflow-y-auto p-4">
       <div className="mx-auto flex max-w-2xl flex-col gap-4 rounded-md border border-border bg-surface p-4">
         <div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold">Call workspace</h3><p className="text-xs text-muted-foreground">Start a call, capture the outcome and keep the next step on the timeline.</p></div><Phone className="size-4 text-accent" /></div>
-        <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-3"><span className="text-sm font-medium">{thread.phone}</span><span className="text-xs text-muted-foreground">{previewChat ? "Call handoff" : "Connected phone provider"}</span><Button type="button" size="sm" onClick={() => toast.success(previewChat ? "Demo call started." : "Call handoff opened.")}><Phone className="size-3.5" /> Start call</Button></div>
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-3"><span className="text-sm font-medium">{thread.phone}</span><span className="text-xs text-muted-foreground">Connected phone provider</span><Button type="button" size="sm" onClick={() => toast.success("Call handoff opened.")}><Phone className="size-3.5" /> Start call</Button></div>
         <div className="grid gap-1"><Label htmlFor="call-outcome">Call outcome</Label><select id="call-outcome" className={selectClass} value={outcome} onChange={(event) => setOutcome(event.target.value)}><option>Connected</option><option>No answer</option><option>Callback requested</option><option>Qualified</option></select></div>
         <div className="grid gap-1"><Label htmlFor="call-notes">Call notes</Label><Textarea id="call-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Capture the requirement, objections and next step…" className="min-h-24" /></div>
-        <Button type="button" className="self-end" onClick={() => toast.success(`${outcome} call note saved${previewChat ? "" : ""}.`)}><CalendarClock className="size-3.5" /> Save call note</Button>
+        <Button type="button" className="self-end" onClick={() => toast.success(`${outcome} call note saved.`)}><CalendarClock className="size-3.5" /> Save call note</Button>
       </div>
     </div>
   );
 }
 
-function DemoUnifiedComposer({
-  thread,
-  onAdded,
-}: {
-  thread: WhatsAppConversation;
-  onAdded: (item: DemoTimelineItem) => void;
-}) {
-  type WhatsAppMode = "text" | "template";
-  type AttachmentType = "image" | "video" | "document" | "audio" | "location" | "contact";
-  const [sendChannel, setSendChannel] = useState<"whatsapp" | "email" | "call">("whatsapp");
-  const [mode, setMode] = useState<WhatsAppMode>("text");
-  const [body, setBody] = useState("");
-  const [mediaUrl, setMediaUrl] = useState("");
-  const [attachmentType, setAttachmentType] = useState<AttachmentType | null>(null);
-  const [attachmentOpen, setAttachmentOpen] = useState(false);
-  const [selected, setSelected] = useState(demoWhatsAppTemplates[0].name);
-  const [parameters, setParameters] = useState([thread.name || "there", thread.company || "your requirement"]);
-  const [subject, setSubject] = useState("Following up on your Janus enquiry");
-  const [emailBody, setEmailBody] = useState("Hi,\n\nThanks for reaching out. I have a few options that should fit your requirement. Would you like to review them together?\n\nRegards,\nJanus team");
-  const [outcome, setOutcome] = useState("Connected");
-  const [notes, setNotes] = useState("");
-  const template = demoWhatsAppTemplates.find((item) => item.name === selected) ?? demoWhatsAppTemplates[0];
-  const preview = template.body.replace(/\{\{(\d+)\}\}/g, (match, number) => parameters[Number(number) - 1] || match);
-  const email = buyers.find((item) => item.id === thread.contactId)?.email ?? "";
-  const addTimelineItem = (item: Omit<DemoTimelineItem, "id" | "createdAt">) => onAdded({ ...item, id: `demo-timeline-${Date.now()}`, createdAt: new Date().toISOString() });
-  if (sendChannel === "whatsapp" && thread.doNotContact) return <p className="border-t border-border bg-amber-50 p-4 text-sm text-amber-800">Outbound communication is suppressed for this customer.</p>;
-  return (
-    <form className="max-h-[40%] shrink-0 overflow-y-auto border-t border-border bg-surface p-3" onSubmit={(event) => {
-      event.preventDefault();
-      if (sendChannel === "whatsapp") {
-        const messageBody = `${mode === "text" ? body : preview}${attachmentType ? `\n\n${attachmentType} attachment: ${mediaUrl || "attachment"}` : ""}`;
-        addTimelineItem({ channel: "whatsapp", direction: "outbound", title: attachmentType ? `WhatsApp ${attachmentType}` : mode === "text" ? "WhatsApp message" : "WhatsApp template sent", body: messageBody, status: "Preview · not sent" });
-        toast.success("WhatsApp message added to the conversation preview.");
-        setBody("");
-        setMediaUrl("");
-        setAttachmentType(null);
-      } else if (sendChannel === "email") {
-        addTimelineItem({ channel: "email", direction: "outbound", title: "Email sent", body: `${subject}\n\n${emailBody}`, status: `To ${email} · Preview · not delivered` });
-        toast.success("Email added to the conversation preview.");
-      } else {
-        addTimelineItem({ channel: "call", direction: "outbound", title: "Call note logged", body: notes || "Call completed with no additional notes.", status: `${outcome} · Demo preview` });
-        toast.success("Call note added to the conversation preview.");
-        setNotes("");
-      }
-    }}>
-      <div className="mx-auto flex max-w-2xl flex-col gap-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-xs font-semibold">WhatsApp reply</h3><p className="text-[11px] text-muted-foreground">Send from this chat. WhatsApp is selected by default.</p></div><span className="text-[10px] text-warning">Preview · nothing is sent outside Janus</span></div>
-        <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Label htmlFor="demo-send-channel" className="text-[11px]">Send via</Label><select id="demo-send-channel" className={cn(selectClass, "h-8 w-auto rounded-none text-xs")} value={sendChannel} onChange={(event) => setSendChannel(event.target.value as "whatsapp" | "email" | "call")}><option value="whatsapp">WhatsApp</option><option value="email">Email</option><option value="call">Call note</option></select></div>{sendChannel === "whatsapp" && <div className="flex items-center gap-2"><Label htmlFor="demo-message-mode" className="text-[11px]">Message type</Label><select id="demo-message-mode" className={cn(selectClass, "h-8 w-auto rounded-none text-xs")} value={mode} onChange={(event) => setMode(event.target.value as WhatsAppMode)}><option value="text">Text reply</option><option value="template">Approved template</option></select></div>}</div>
-        {sendChannel === "whatsapp" && <>
-          {mode === "text" && <div className="relative flex items-end gap-1.5 rounded-none border border-border bg-surface-2 px-2 py-1.5 shadow-sm"><div className="relative"><Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 rounded-none" aria-label="Add WhatsApp attachment" onClick={() => setAttachmentOpen((open) => !open)}><Paperclip className="size-4" /></Button>{attachmentOpen && <div className="absolute bottom-10 left-0 z-20 grid w-40 gap-1 border border-border bg-surface p-1 shadow-lg">{(["image", "video", "document", "audio", "location", "contact"] as AttachmentType[]).map((type) => <button key={type} type="button" className="px-2 py-1.5 text-left text-xs hover:bg-surface-2" onClick={() => { setAttachmentType(type); setAttachmentOpen(false); }}>{type[0].toUpperCase() + type.slice(1)}</button>)}</div>}</div><Textarea aria-label="WhatsApp reply" placeholder="Write a WhatsApp reply…" value={body} onChange={(event) => setBody(event.target.value)} className="min-h-9 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0" required /><Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 rounded-none" aria-label="Add emoji" onClick={() => setBody((value) => `${value}${value ? " " : ""}🙂`)}><Smile className="size-4" /></Button><Button type="submit" size="icon" className="size-8 shrink-0 rounded-none" aria-label="Send WhatsApp message"><Send className="size-3.5" /></Button></div>}
-          {mode === "template" && <><select aria-label="Approved template" className={selectClass} value={selected} onChange={(event) => setSelected(event.target.value)}>{demoWhatsAppTemplates.map((item) => <option key={item.name} value={item.name}>{item.name} · {item.language}</option>)}</select>{parameters.map((value, index) => <Input key={index} aria-label={`Template parameter ${index + 1}`} placeholder={`Parameter ${index + 1}`} value={value} onChange={(event) => setParameters((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required />)}<p className="whitespace-pre-wrap rounded-md border border-border bg-surface-2 p-2 text-xs">{preview}</p></>}
-          {attachmentType && <div className="flex items-center gap-2 border border-border bg-surface-2 p-2"><span className="text-xs font-medium">{attachmentType[0].toUpperCase() + attachmentType.slice(1)} attachment</span><Input aria-label={`${attachmentType} attachment`} className="h-8 text-xs" placeholder={attachmentType === "location" ? "Paste a map link or location" : attachmentType === "contact" ? "Enter a contact name or phone" : `Paste ${attachmentType} URL`} value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} required /></div>}
-        </>}
-        {sendChannel === "email" && <><div className="grid gap-1"><Label htmlFor="demo-email-to" className="text-[11px]">To</Label><Input id="demo-email-to" className="h-8 text-xs" value={email} readOnly /></div><div className="grid gap-1"><Label htmlFor="demo-email-subject" className="text-[11px]">Subject</Label><Input id="demo-email-subject" className="h-8 text-xs" value={subject} onChange={(event) => setSubject(event.target.value)} /></div><Textarea aria-label="Email message" value={emailBody} onChange={(event) => setEmailBody(event.target.value)} className="min-h-20" /></>}
-        {sendChannel === "call" && <><div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 p-2"><span className="text-xs font-medium">{thread.phone}</span><span className="text-[11px] text-muted-foreground">Log a call without leaving the chat</span></div><select aria-label="Call outcome" className={selectClass} value={outcome} onChange={(event) => setOutcome(event.target.value)}><option>Connected</option><option>No answer</option><option>Callback requested</option><option>Qualified</option></select><Textarea aria-label="Call notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Capture the requirement and next step…" className="min-h-14" /></>}
-        {!(sendChannel === "whatsapp" && mode === "text") && <Button type="submit" size="sm" className="self-end">{sendChannel === "whatsapp" ? <Send className="size-3.5" /> : sendChannel === "email" ? <Mail className="size-3.5" /> : <CalendarClock className="size-3.5" />} {sendChannel === "whatsapp" ? "Add WhatsApp message" : sendChannel === "email" ? "Add email" : "Save call note"}</Button>}
-      </div>
-    </form>
-  );
-}
 function Composer({
   thread,
   onSent,

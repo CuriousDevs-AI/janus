@@ -3,7 +3,7 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { redirect, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, Copy, Download, FlaskConical, Lock, MoreHorizontal, Pause, Pencil, Play, RotateCcw, ShieldAlert, Sparkles, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,9 +15,6 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import { toast } from "sonner";
-import { demoMode } from "@/lib/demo-mode";
-import { agents } from "@/lib/mock-data";
-import type { Agent as AssistantAgent } from "@/lib/types";
 import { WorkspaceCopyDialog, workspaceCopyOptions } from "@/components/workspace-copy-dialog";
 
 type Agent = { id: string; key: string; name: string; department: string; status: string; workspaceId: string | null; configuration: Record<string, unknown> };
@@ -26,53 +23,31 @@ type Tab = "overview" | "job" | "triggers" | "permissions" | "activity" | "appro
 const tabLabels: Array<[Tab, string]> = [["overview", "Overview"], ["job", "Job"], ["triggers", "Triggers"], ["permissions", "Permissions & limits"], ["activity", "Activity"], ["approvals", "Approvals"], ["settings", "Settings"], ["versions", "Versions"]];
 const workspaceNames: Record<string, string> = { crm_sales: "CRM & Sales", finance_accounting: "Finance & Accounting", customer_support: "Customer Support & Success", operations_inventory: "Operations & Inventory", hr_people: "HR & People", projects_delivery: "Projects & Delivery", it_infrastructure: "IT & Infrastructure", business: "Business" };
 
-/** The AI agents the evaluations and knowledge pages mention, shown with the same detail layout. */
-const fromAssistant = (agent: AssistantAgent): Agent => ({
-  id: agent.id, key: agent.id, name: agent.name, department: agent.type === "support" ? "customer_support" : "crm_sales", status: agent.status === "paused" ? "paused" : "active", workspaceId: null,
-  configuration: { description: agent.purpose, ownerName: "Pankaj Neema", approvalMode: agent.tools.some((tool) => tool.requiresApproval) ? "Ask before sensitive actions" : "Act and report", lastRunAt: "Today", "Success rate": `${agent.successRate}%`, "Actions taken": String(agent.conversationsHandled), instructions: agent.instructions, goal: agent.purpose, readPermissions: true, knowledgeCollectionIds: agent.knowledgeDocIds, approvers: ["owner"], readScopes: ["customers", "pipeline"], actions: agent.tools.filter((tool) => tool.allowed).map((tool) => tool.name.replace("()", "")), triggers: agent.channels.map((channel) => `New ${channel.replace("_", " ")} message`), limits: { dailyRuns: 200, dailyActions: 800, workingHours: "09:00–18:00" }, model: agent.model },
-});
-
-const demoAgentRecords: Agent[] = [
-  { id: "demo-agent-health", key: "business-health", name: "Business Health Monitor", department: "business", status: "active", workspaceId: null, configuration: { description: "Prepares a daily owner brief from connected CRM activity.", ownerName: "Pankaj Neema", approvalMode: "Ask before sensitive actions", lastRunAt: "Today · 09:00", "Runs · 7d": "18", "Actions taken": "18", "Waiting approval": "2", Failed: "0", "Success rate": "96%", "Avg run time": "4.2s", instructions: "Review verified business signals and highlight the next best action.", readPermissions: true, knowledgeCollectionIds: ["business-faq"], approvers: ["owner"], readScopes: ["pipeline", "customers"], actions: ["create_task", "assign_owner"], triggers: ["Every morning at 09:00"], limits: { dailyRuns: 100, dailyActions: 500, workingHours: "09:00–18:00" } } },
-  { id: "demo-agent-lead", key: "lead-follow-up", name: "Lead Follow-up Agent", department: "crm_sales", status: "active", workspaceId: null, configuration: { description: "Qualifies new enquiries and prepares follow-ups for approval.", ownerName: "Sales team", approvalMode: "Ask before every action", lastRunAt: "Today · 08:42", "Runs · 7d": "34", "Actions taken": "34", "Waiting approval": "4", Failed: "1", "Success rate": "92%", "Avg run time": "3.8s", instructions: "Summarise new leads, recommend the next action and draft a reply.", readPermissions: true, knowledgeCollectionIds: ["sales-playbook"], approvers: ["owner"], readScopes: ["leads", "conversations"], actions: ["draft_reply", "create_task"], triggers: ["New lead captured"], limits: { dailyRuns: 150, dailyActions: 400, workingHours: "09:00–18:00" } } },
-  { id: "demo-agent-support", key: "support-triage", name: "Support Triage Agent", department: "customer_support", status: "paused", workspaceId: null, configuration: { description: "Classifies incoming support requests and routes urgent issues.", ownerName: "Support team", approvalMode: "Ask before every action", lastRunAt: "Yesterday · 17:20", "Runs · 7d": "11", "Actions taken": "11", "Waiting approval": "0", Failed: "0", "Success rate": "98%", "Avg run time": "2.9s", instructions: "Classify customer issues and escalate anything requiring a human.", readPermissions: true, knowledgeCollectionIds: ["support-knowledge"], approvers: ["owner"], readScopes: ["tickets", "customers"], actions: ["assign_owner", "create_task"], triggers: ["New support ticket"], limits: { dailyRuns: 100, dailyActions: 250, workingHours: "09:00–18:00" } } },
-];
-
-/**
- * A real business's agents are the scheduled briefs on AI Agents, which have no page of their own;
- * this detail page is the demo's preview only.
- */
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  if (!demoMode) redirect("/agents?workspace=business");
-  return <DemoAgentDetail params={params} />;
+  return <AgentDetail params={params} />;
 }
 
-function DemoAgentDetail({ params }: { params: Promise<{ id: string }> }) {
+function AgentDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const search = useSearchParams();
-  const assistant = agents.find((item) => item.id === id);
-  const isDemoAgent = demoMode && (id.startsWith("demo-agent-") || Boolean(assistant));
   const rawTab = search.get("tab") as Tab | null;
   const tab: Tab = tabLabels.some(([key]) => key === rawTab) ? (rawTab as Tab) : "overview";
   const [editing, setEditing] = React.useState(search.get("mode") === "edit");
   const [menu, setMenu] = React.useState(false);
   const [copyOpen, setCopyOpen] = React.useState(false);
   const [testOutput, setTestOutput] = React.useState<Record<string, unknown> | null>(null);
-  const agent = useApi<Agent>(null);
-  const [demoItem, setDemoItem] = React.useState<Agent | null>(() => isDemoAgent ? demoAgentRecords.find((record) => record.id === id) ?? (assistant ? fromAssistant(assistant) : null) : null);
-  const item = agent.data ?? demoItem;
+  const agent = useApi<Agent>(`/business/agents/${id}`);
+  const item = agent.data;
 
   function selectTab(value: Tab) { router.replace(`/agents/${id}?workspace=business&tab=${value}`); }
   async function archive() {
-    if (!item || !window.confirm(`Archive “${item.name}”? Run history will be retained.`)) return;
-    if (isDemoAgent) { toast.success("Agent archived"); router.push("/agents?workspace=business&tab=agents"); return; }
+    if (!item || !window.confirm(`Archive "${item.name}"? Run history will be retained.`)) return;
     try { await api(`/business/agents/${id}`, { method: "DELETE" }); toast.success("Agent archived"); router.push("/agents?workspace=business&tab=agents"); }
     catch (error) { toast.error(message(error)); }
   }
 
   async function testRun() {
-    if (isDemoAgent) { setTestOutput({ dryRun: true, status: "passed", preview: `Reviewed ${item?.name ?? "agent"} against your records`, side_effects: false }); toast.success("Agent dry run completed"); return; }
     try {
       const result = await api<Record<string, unknown>>(`/business/agents/${id}/test`, { method: "POST", body: JSON.stringify({ dryRun: true }) });
       setTestOutput(result);
@@ -83,7 +58,6 @@ function DemoAgentDetail({ params }: { params: Promise<{ id: string }> }) {
   async function toggleStatus() {
     if (!item) return;
     const status = item.status === "active" ? "paused" : "active";
-    if (isDemoAgent) { setDemoItem({ ...item, status }); toast.success(status === "active" ? "Agent activated" : "Agent paused"); return; }
     try {
       await api(`/business/agents/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
       toast.success(status === "active" ? "Agent activated" : "Agent paused");
@@ -94,7 +68,7 @@ function DemoAgentDetail({ params }: { params: Promise<{ id: string }> }) {
   if (agent.loading && !item) return <div className="px-6 py-8 text-sm text-muted-foreground">Loading verified agent…</div>;
   if (agent.error || !item) return <Unavailable title="Agent details unavailable" text={agent.error ?? "The agent could not be found in this workspace."} />;
   if (!item) return null;
-  if (editing) return <AgentEditor agent={item} onCancel={() => setEditing(false)} onSaved={(updated) => { setEditing(false); if (isDemoAgent && updated) setDemoItem(updated); else agent.reload(); }} onTest={testRun} testOutput={testOutput} />;
+  if (editing) return <AgentEditor agent={item} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); agent.reload(); }} onTest={testRun} testOutput={testOutput} />;
 
   const config = item.configuration ?? {};
   const status = item.status.replaceAll("_", " ");
@@ -125,7 +99,7 @@ function AgentJob({ config }: { config: Record<string, unknown> }) { return <div
 function AgentTriggers({ config }: { config: Record<string, unknown> }) { const triggers = Array.isArray(config.triggers) ? config.triggers : []; return <section className="border border-border bg-surface p-4"><h2 className="text-sm font-semibold">When this agent runs</h2>{triggers.length ? <div className="mt-3 grid gap-2">{triggers.map((trigger, index) => <div key={index} className="border border-border p-3 text-sm">{typeof trigger === "string" ? trigger : JSON.stringify(trigger)}</div>)}</div> : <EmptyState icon={Play} title="No triggers returned" description="Add triggers in Edit, or connect the agent configuration endpoint to load saved triggers." />}</section>; }
 function AgentPermissions({ config }: { config: Record<string, unknown> }) { const scopes = Array.isArray(config.readScopes) ? config.readScopes : []; const actions = Array.isArray(config.actions) ? config.actions : []; return <div className="grid gap-4 lg:grid-cols-2"><section className="overflow-hidden border border-border bg-surface"><div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Read scope</h2></div>{scopes.length ? <div className="divide-y divide-border">{scopes.map((scope, index) => <div key={index} className="grid gap-1 p-3 text-xs sm:grid-cols-3"><span>{typeof scope === "string" ? scope : JSON.stringify(scope)}</span><span className="text-muted-foreground">Record types returned</span><span className="text-muted-foreground">Hidden fields returned</span></div>)}</div> : <p className="p-4 text-xs text-muted-foreground">No read scopes returned.</p>}</section><section className="overflow-hidden border border-border bg-surface"><div className="border-b border-border p-4"><h2 className="text-sm font-semibold">Actions and limits</h2></div>{actions.length ? <div className="divide-y divide-border">{actions.map((action, index) => <div key={index} className="flex items-center gap-2 p-3 text-xs"><Lock className="size-3.5 text-amber-700" /><span className="flex-1">{typeof action === "string" ? action : JSON.stringify(action)}</span><Badge variant="warning">Approval check</Badge></div>)}</div> : <p className="p-4 text-xs text-muted-foreground">No actions returned.</p>}</section><InfoCard title="Global limits" value={config.limits ? JSON.stringify(config.limits) : "Limits are unavailable until the agent configuration endpoint is connected."} /></div>; }
 function AgentSettings({ agent, onNotice }: { agent: Agent; onNotice: (text: string) => void }) { return <div className="grid gap-4 lg:grid-cols-2"><InfoCard title="Owner and approvers" value="Owner and approver records are not returned by the current API." action="Owner endpoint missing" /><InfoCard title="Notifications" value="Approval, failure and daily summary recipients will appear here when configured." action="Notification settings unavailable" /><InfoCard title="Model and limits" value="Model, message limits and working hours are read-only until the settings endpoint is connected." action="Settings endpoint missing" /><section className="border border-amber-300/70 bg-amber-50 p-4"><h2 className="text-sm font-semibold text-amber-900">Danger zone</h2><p className="mt-2 text-xs text-amber-800">Archive keeps the run history for audit. Permanent deletion is restricted to archived agents.</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => onNotice(`Archive ${agent.name} from the detail menu.`)}>Archive</Button><Button size="sm" variant="ghost" disabled>Delete after archive</Button></div></section></div>; }
-function AgentEditor({ agent, onCancel, onSaved, onTest, testOutput }: { agent: Agent; onCancel: () => void; onSaved: (updated?: Agent) => void; onTest: () => void; testOutput: Record<string, unknown> | null }) {
+function AgentEditor({ agent, onCancel, onSaved, onTest, testOutput }: { agent: Agent; onCancel: () => void; onSaved: () => void; onTest: () => void; testOutput: Record<string, unknown> | null }) {
   const c = agent.configuration ?? {};
   const [name, setName] = React.useState(agent.name);
   const [department, setDepartment] = React.useState(agent.department);
@@ -153,10 +127,8 @@ function AgentEditor({ agent, onCancel, onSaved, onTest, testOutput }: { agent: 
 
   async function save() {
     if (!name.trim()) return;
-    const next = { ...agent, name: name.trim(), department, status, configuration: config };
-    if (agent.id.startsWith("demo-")) { toast.success("Agent updated"); onSaved(next); return; }
     setSaving(true);
-    try { await api("/business/agents/" + agent.id, { method: "PATCH", body: JSON.stringify({ name: next.name, department, status, configuration: config }) }); toast.success("Agent changes saved"); onSaved(); }
+    try { await api("/business/agents/" + agent.id, { method: "PATCH", body: JSON.stringify({ name: name.trim(), department, status, configuration: config }) }); toast.success("Agent changes saved"); onSaved(); }
     catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   }
 

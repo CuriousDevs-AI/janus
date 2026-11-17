@@ -10,9 +10,6 @@ import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { MobileSidebar } from "@/components/layout/mobile-sidebar";
 import { usePathname, useRouter } from "next/navigation";
-import { demoMode } from "@/lib/demo-mode";
-import { homeFor, personaMayOpen, useDemoAccount } from "@/lib/demo-persona";
-import { businessHome, readCompanies } from "@/lib/company";
 import { WorkspaceProvider, useWorkspace } from "@/components/layout/workspace-context";
 import { homeForPermissions, mayOpenWorkspace } from "@/lib/access";
 import { VoiceCallProvider, useVoiceCall } from "@/components/team/voice-call";
@@ -35,21 +32,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function AppShellContent({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const [sending, setSending] = React.useState(false);
-  const account = useDemoAccount();
   const pathname = usePathname();
   const router = useRouter();
-  const allowed = !demoMode || !account || personaMayOpen(account, pathname);
+  const allowed = true;
   const { workspaceId } = useWorkspace();
   // A workspace the role cannot open (Business Management is for owners and admins) sends the
   // person to the workspace they work in, rather than showing its menu with nothing behind it.
-  const blocked = !demoMode && workspaceId !== "portfolio" && !mayOpenWorkspace(workspaceId, session.permissions);
+  const blocked = workspaceId !== "portfolio" && !mayOpenWorkspace(workspaceId, session.permissions);
   React.useEffect(() => {
     if (blocked) router.replace(homeForPermissions(session.permissions));
   }, [blocked, router, session.permissions]);
   // An Owner whose account has not chosen a plan chooses one first, then goes on where they were.
   const [needsPlan, setNeedsPlan] = React.useState(false);
   React.useEffect(() => {
-    if (demoMode || session.role !== "owner") return;
+    if (session.role !== "owner") return;
     let live = true;
     api<{ owner: boolean; chosen: boolean }>("/billing")
       .then((billing) => { if (live && billing.owner && !billing.chosen) setNeedsPlan(true); })
@@ -59,12 +55,6 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (needsPlan && pathname !== "/choose-plan") router.replace(`/choose-plan?next=${encodeURIComponent(pathname)}`);
   }, [needsPlan, pathname, router]);
-  // HR, Finance and Employee previews have no business in CRM or Business Management. Send them home.
-  React.useEffect(() => {
-    if (allowed || !account) return;
-    // The Owner who has companies goes back to the company they are in; with none, to the Portfolio.
-    router.replace(account.hrRole === "owner" && readCompanies().length > 0 && !pathname.startsWith("/portfolio") ? businessHome : homeFor(account));
-  }, [allowed, account, router, pathname]);
   // Choosing a plan fills the screen, before any workspace.
   if (pathname === "/choose-plan") return <main className="h-dvh overflow-y-auto">{children}</main>;
   return (

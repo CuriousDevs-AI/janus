@@ -5,7 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
 import { mergeServerOwned } from "@/lib/stores/server-owned";
 import { scoped } from "@/lib/company";
-import { demoMode } from "@/lib/demo-mode";
+
 
 /**
  * Period locks (plan §8.6): once a period is closed, money and stock entries dated on or before the
@@ -22,7 +22,6 @@ export const usePeriodLockStore = create<PeriodLockState>()(
     (set) => ({
       lockedThrough: null,
       setLockedThrough: (date, isOwner) => {
-        if (!demoMode) return "The period lock is set on the server.";
         if (!isOwner) return "Only the owner can change the period lock.";
         if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return "Enter a valid date.";
         set({ lockedThrough: date });

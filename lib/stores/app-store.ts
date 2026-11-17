@@ -3,7 +3,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { demoMode } from "@/lib/demo-mode";
 import { scoped } from "@/lib/company";
 import type {
   Lead,
@@ -28,29 +27,7 @@ import type {
   Customer,
   Company,
 } from "@/lib/types";
-import {
-  leads as initialLeads,
-  deals as initialDeals,
-  tickets as initialTickets,
-  approvals as initialApprovals,
-  automations as initialAutomations,
-  notifications as initialNotifications,
-  conversations as initialConversations,
-  messages as initialMessages,
-  activities as initialActivities,
-  agents as initialAgents,
-  knowledgeDocuments as initialKnowledge,
-  demoKnowledgeDocuments,
-  demoTickets,
-  demoApprovals,
-  demoNotifications,
-  demoConversations,
-  demoMessages,
-  demoActivities,
-  customers as initialCustomers,
-  companies as initialCompanies,
-  currentUser,
-} from "@/lib/mock-data";
+const currentUser = { id: "user-me", name: "You", email: "me@company.com", role: "admin" as const, avatarColor: "#2563eb", online: true };
 
 let idCounter = 1000;
 /**
@@ -59,9 +36,7 @@ let idCounter = 1000;
  * short readable ids, since its data never leaves the browser.
  */
 function nextId(prefix: string) {
-  if (!demoMode) return `${prefix}-${crypto.randomUUID()}`;
-  idCounter += 1;
-  return `${prefix}-${idCounter}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 /**
@@ -114,7 +89,6 @@ interface AppState {
   sidebarCollapsed: boolean;
   commandPaletteOpen: boolean;
   mobileNavOpen: boolean;
-  demoBannerDismissed: boolean;
 
   // ui actions
   setSidebarCollapsed: (v: boolean) => void;
@@ -163,49 +137,26 @@ interface AppState {
   createTicket: (input: { customerId: string; subject: string; description: string; priority: TicketPriority }) => string;
   createAutomation: (input: { name: string; description: string; trigger: AutomationTriggerKind }) => string;
 
-  // demo
-  resetDemoData: () => void;
 }
 
-/** Demo records are seeded only in demo mode. A real company starts with none and creates its own. */
-const demoOnly = <T,>(items: T[]): T[] => (demoMode ? items : []);
-
-/** The demo records each collection starts with, so a saved copy of them can be told apart from real records. */
-const demoSeeds = {
-  leads: initialLeads,
-  deals: initialDeals,
-  tickets: demoTickets,
-  approvals: demoApprovals,
-  automations: initialAutomations,
-  notifications: demoNotifications,
-  conversations: demoConversations,
-  messages: demoMessages,
-  activities: demoActivities,
-  agents: initialAgents,
-  knowledgeDocuments: demoKnowledgeDocuments,
-  customers: initialCustomers,
-  companies: initialCompanies,
-} as const;
-
 export const useAppStore = create<AppState>()(persist((set, get) => ({
-  leads: demoOnly(initialLeads),
-  deals: demoOnly(initialDeals),
-  tickets: demoOnly(initialTickets),
-  approvals: demoOnly(initialApprovals),
-  automations: demoOnly(initialAutomations),
-  notifications: demoOnly(initialNotifications),
-  conversations: demoOnly(initialConversations),
-  messages: demoOnly(initialMessages),
-  activities: demoOnly(initialActivities),
-  agents: demoOnly(initialAgents),
-  knowledgeDocuments: demoOnly(initialKnowledge),
-  customers: demoOnly(initialCustomers),
-  companies: demoOnly(initialCompanies),
+  leads: [],
+  deals: [],
+  tickets: [],
+  approvals: [],
+  automations: [],
+  notifications: [],
+  conversations: [],
+  messages: [],
+  activities: [],
+  agents: [],
+  knowledgeDocuments: [],
+  customers: [],
+  companies: [],
 
   sidebarCollapsed: false,
   commandPaletteOpen: false,
   mobileNavOpen: false,
-  demoBannerDismissed: false,
 
   setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
   setCommandPaletteOpen: (v) => set({ commandPaletteOpen: v }),
@@ -615,7 +566,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 
   createTicket: ({ customerId, subject, description, priority }) => {
     // The id is the server's key for the ticket, so it must be unique per company, not just on this screen.
-    const ticketId = demoMode ? nextId("tck") : `tck-${crypto.randomUUID()}`;
+    const ticketId = `tck-${crypto.randomUUID()}`;
     const conversationId = nextId("conv");
     const now = new Date().toISOString();
     const conversation: Conversation = {
@@ -672,30 +623,11 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     return id;
   },
 
-  resetDemoData: () => {
-    set({
-      leads: initialLeads,
-      deals: initialDeals,
-      tickets: initialTickets,
-      approvals: initialApprovals,
-      automations: initialAutomations,
-      notifications: initialNotifications,
-      conversations: initialConversations,
-      messages: initialMessages,
-      activities: initialActivities,
-      agents: initialAgents,
-      knowledgeDocuments: initialKnowledge,
-      customers: initialCustomers,
-      companies: initialCompanies,
-    });
-  },
 }), {
   // Tickets, approvals, notifications and the rest survive a reload, like leads and HR records do.
   name: scoped("janus.crm-records.v1"), version: 1, storage: createJSONStorage(() => workspaceStorage),
-  // A saved copy from an earlier demo drops its demo records outside demo mode; records the company made stay.
   merge: (persisted, current) => {
     const saved = { ...current, ...(persisted as Partial<AppState>) } as AppState;
-    if (demoMode) return saved;
     const next = { ...saved } as Record<string, unknown>;
     let repaired = false;
     for (const [key, value] of Object.entries(next)) {
@@ -705,13 +637,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         repaired ||= result.changed;
       }
     }
-    // Save the repaired copy once, so the server's copy is cleaned too (only by people who may save it).
     if (repaired) setTimeout(() => useAppStore.setState({}), 0);
-    for (const key of Object.keys(demoSeeds) as (keyof typeof demoSeeds)[]) {
-      const seeded = new Set((demoSeeds[key] as { id: string }[]).map((item) => item.id));
-      const kept = ((next[key] as { id: string }[] | undefined) ?? []).filter((item) => !seeded.has(item.id));
-      next[key] = kept;
-    }
     return next as unknown as AppState;
   },
   partialize: (state) => ({ leads: state.leads, deals: state.deals, tickets: state.tickets, approvals: state.approvals, automations: state.automations, notifications: state.notifications, conversations: state.conversations, messages: state.messages, activities: state.activities, agents: state.agents, knowledgeDocuments: state.knowledgeDocuments, customers: state.customers, companies: state.companies }),

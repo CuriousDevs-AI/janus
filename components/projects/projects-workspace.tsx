@@ -5,7 +5,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { demoMode } from "@/lib/demo-mode";
 import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
@@ -18,7 +17,6 @@ import { useSession } from "@/components/auth/session-provider";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { DEFAULT_HOURLY_COST, PROJECT_TYPES, TODAY, addDays, projectHealth, projectProfitability, useProjectsStore, type Project } from "@/lib/stores/projects-store";
-import { users } from "@/lib/mock-data";
 import { useCrmLinkOptions } from "@/lib/record-links";
 import { TimelineView } from "@/components/projects/project-timeline";
 import { archiveProjectTimeline, describeUnmatched, syncProjectTimeline } from "@/lib/timeline-sync";
@@ -34,7 +32,6 @@ const selectClass = "h-9 w-full rounded-md border border-input bg-surface px-3 t
 function useDirectory() {
   const [people, setPeople] = React.useState<{ user_id: string; name: string }[]>([]);
   React.useEffect(() => {
-    if (demoMode) return;
     let cancelled = false;
     (async () => {
       try {
@@ -58,9 +55,8 @@ export function ProjectsWorkspace() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   // Before any view asks the server for a project's milestones or timeline, every project is on the server.
-  const [checked, setChecked] = React.useState(demoMode);
+  const [checked, setChecked] = React.useState(false);
   React.useEffect(() => {
-    if (demoMode) return;
     repairMissingProjects()
       .then((copied) => { if (copied) toast.success(`${copied} ${copied === 1 ? "project was" : "projects were"} saved to the server.`); })
       .catch((error: unknown) => toast.warning(`Some projects are not on the server yet: ${message(error)}`))
@@ -118,7 +114,7 @@ function TimesheetsView({ me }: { me: string }) {
   const timesheets = useProjectsStore((state) => state.timesheets);
   const logHours = useProjectsStore((state) => state.logHours);
   const directory = useDirectory();
-  const people = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directory.map((u) => ({ key: u.user_id, name: u.name }));
+  const people = directory.map((u) => ({ key: u.user_id, name: u.name }));
   const [projectId, setProjectId] = React.useState("");
   const [person, setPerson] = React.useState(me);
   const [date, setDate] = React.useState(TODAY);
@@ -180,7 +176,7 @@ function ResourcesView() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const directory = useDirectory();
-  const people = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directory.map((u) => ({ key: u.user_id, name: u.name }));
+  const people = directory.map((u) => ({ key: u.user_id, name: u.name }));
   const [projectId, setProjectId] = React.useState("");
   const [person, setPerson] = React.useState("");
   const [percent, setPercent] = React.useState("");
@@ -240,7 +236,7 @@ function ProfitabilityView() {
   const rates = useProjectsStore((state) => state.rates);
   const setCostRate = useProjectsStore((state) => state.setCostRate);
   const directoryPeople = useDirectory();
-  const costPeople = demoMode ? users.map((u) => ({ key: u.id, name: u.name })) : directoryPeople.map((u) => ({ key: u.user_id, name: u.name }));
+  const costPeople = directoryPeople.map((u) => ({ key: u.user_id, name: u.name }));
   const [person, setPerson] = React.useState("");
   const [hourly, setHourly] = React.useState("");
 
@@ -366,7 +362,6 @@ function ProjectsView({ me }: { me: string }) {
   const [saving, setSaving] = React.useState(false);
   // The server's copy of each project's core fields is loaded when the screen opens (real mode only).
   React.useEffect(() => {
-    if (demoMode) return;
     refreshProjectRecords().catch(() => {
       /* the screen keeps its own copy if the server cannot be reached */
     });
@@ -425,7 +420,7 @@ function ProjectsView({ me }: { me: string }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-client">Client (blank for internal)</Label><Input id="pj-client" value={form.client} onChange={(e) => set({ client: e.target.value, customerId: "" })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-customer">CRM customer (optional)</Label><select id="pj-customer" className="h-8 rounded-md border border-input bg-surface px-2 text-xs" value={form.customerId} onChange={(e) => { const picked = links.customers.find((c) => c.id === e.target.value); set({ customerId: e.target.value, client: picked?.label ?? form.client }); }}><option value="">None</option>{links.customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-type">Type</Label><select id="pj-type" className={selectClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>{PROJECT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-owner">Owner</Label>{demoMode || people.length === 0 ? <Input id="pj-owner" value={form.owner} onChange={(e) => set({ owner: e.target.value, ownerId: "" })} /> : <select id="pj-owner" className={selectClass} value={form.ownerId} onChange={(e) => { const person = people.find((p) => p.user_id === e.target.value); set({ owner: person?.name ?? "", ownerId: e.target.value }); }}><option value="">Choose a person…</option>{people.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}</select>}</div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="pj-owner">Owner</Label>{people.length === 0 ? <Input id="pj-owner" value={form.owner} onChange={(e) => set({ owner: e.target.value, ownerId: "" })} /> : <select id="pj-owner" className={selectClass} value={form.ownerId} onChange={(e) => { const person = people.find((p) => p.user_id === e.target.value); set({ owner: person?.name ?? "", ownerId: e.target.value }); }}><option value="">Choose a person…</option>{people.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}</select>}</div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-start">Start</Label><Input id="pj-start" type="date" value={form.start} onChange={(e) => set({ start: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-end">End</Label><Input id="pj-end" type="date" value={form.end} onChange={(e) => set({ end: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="pj-budget">Budget (₹)</Label><Input id="pj-budget" type="number" min={0} value={form.budget} onChange={(e) => set({ budget: e.target.value })} /></div>
@@ -469,7 +464,6 @@ function ProjectsView({ me }: { me: string }) {
 
 function MilestonesView({ me }: { me: string }) {
   React.useEffect(() => {
-    if (demoMode) return;
     const ids = [...new Set(useProjectsStore.getState().milestones.map((m) => m.projectId))];
     for (const id of ids) refreshMilestones(id).catch(() => { /* keep the screen's copy */ });
   }, []);
@@ -557,7 +551,6 @@ function MilestonesView({ me }: { me: string }) {
 
 function TasksView() {
   React.useEffect(() => {
-    if (demoMode) return;
     const ids = [...new Set(useProjectsStore.getState().tasks.map((t) => t.projectId))];
     for (const id of ids) refreshTasks(id).catch(() => { /* keep the screen's copy */ });
   }, []);

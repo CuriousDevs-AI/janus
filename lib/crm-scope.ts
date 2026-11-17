@@ -1,5 +1,11 @@
-import { demoAccounts, type DemoAccount } from "@/lib/demo-accounts";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
+
+/** CRM access scope for a user account. */
+export interface CrmAccount {
+  crm: "all" | "own" | "team" | "support";
+  crmUserId: string;
+  employeeId: string;
+}
 
 /** Every employee who reports to this person, directly or further down. */
 function reportsOf(employeeId: string) {
@@ -11,19 +17,20 @@ function reportsOf(employeeId: string) {
 }
 
 /** The CRM user ids whose records this person may see. Null means everyone's. */
-export function visibleOwners(account: DemoAccount | undefined): Set<string> | null {
-  if (!account) return new Set();
+export function visibleOwners(account: CrmAccount | undefined): Set<string> | null {
+  if (!account) return null;
   if (account.crm === "all") return null;
   if (account.crm === "own") return new Set([account.crmUserId]);
   if (account.crm === "team") {
     const team = reportsOf(account.employeeId);
-    return new Set([account.crmUserId, ...demoAccounts.filter((item) => team.has(item.employeeId)).map((item) => item.crmUserId)]);
+    const employees = useHrPeopleStore.getState().employees;
+    return new Set([account.crmUserId, ...employees.filter((item) => team.has(item.id)).map((item) => item.id)]);
   }
   return new Set();
 }
 
 /** Can this person see a record owned by `ownerId`? Unowned records are only for people who see everything. */
-export function canSeeOwner(account: DemoAccount | undefined, ownerId: string | null | undefined) {
+export function canSeeOwner(account: CrmAccount | undefined, ownerId: string | null | undefined) {
   const owners = visibleOwners(account);
   return owners === null || Boolean(ownerId && owners.has(ownerId));
 }

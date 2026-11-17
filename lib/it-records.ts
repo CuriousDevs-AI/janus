@@ -1,12 +1,11 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { TODAY, type ITChange, useITStore } from "@/lib/stores/it-store";
 
 /**
  * IT change requests are recorded on the server: the server numbers them, checks who may decide, and
- * writes the audit row. The screen keeps a copy of what the server returned. Demo mode keeps the local path.
+ * writes the audit row. The screen keeps a copy of what the server returned.
  */
 
 interface ServerChange {
@@ -44,13 +43,11 @@ function keep(change: ITChange, logText?: string, by?: string) {
 
 /** Loads the company's IT changes from the server, newest first. */
 export async function syncITChanges(): Promise<void> {
-  if (demoMode) return;
   const rows = await api<ServerChange[]>("/it/changes");
   useITStore.setState({ changes: rows.map(toLocal) });
 }
 
 export async function requestITChange(input: { title: string; risk: ITChange["risk"] }, by: string): Promise<string | null> {
-  if (demoMode) return useITStore.getState().requestChange(input, by);
   try {
     const change = toLocal(await api<ServerChange>("/it/changes", { method: "POST", body: JSON.stringify(input) }));
     keep(change, `Requested ${change.number}: ${change.title}`, by);
@@ -61,7 +58,6 @@ export async function requestITChange(input: { title: string; risk: ITChange["ri
 }
 
 export async function decideITChange(id: string, approve: boolean, by: string): Promise<string | null> {
-  if (demoMode) return useITStore.getState().decideChange(id, approve, by);
   try {
     const change = toLocal(await api<ServerChange>(`/it/changes/${encodeURIComponent(id)}/decision`, { method: "POST", body: JSON.stringify({ approve }) }));
     keep(change, `${approve ? "Approved" : "Rejected"} ${change.number}`, by);
@@ -72,7 +68,6 @@ export async function decideITChange(id: string, approve: boolean, by: string): 
 }
 
 export async function completeITChange(id: string, by: string): Promise<string | null> {
-  if (demoMode) return useITStore.getState().completeChange(id, by);
   try {
     const change = toLocal(await api<ServerChange>(`/it/changes/${encodeURIComponent(id)}/complete`, { method: "POST" }));
     keep(change, `${change.number} carried out`, by);

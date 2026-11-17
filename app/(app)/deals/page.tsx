@@ -8,7 +8,6 @@ import {
   Eye, MoreHorizontal, Pencil, Trash2, ChevronUp, ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { demoMode } from "@/lib/demo-mode";
 import { can } from "@/lib/permissions";
 import { useApi } from "@/lib/api/use-api";
 import { useAllRows } from "@/lib/api/use-all-rows";
@@ -28,7 +27,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { demoDealRows } from "@/lib/api/demo-data";
 import { usePipelineConfig, barColor, AVAILABLE_COLORS, toSlug, DEFAULT_STAGES, type PipelineStage } from "@/lib/hooks/use-pipeline-config";
 
 const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -49,8 +47,7 @@ export default function DealsPage() {
   const session = useSession();
   const canWrite = can(session, "leads:write");
   const canAdmin = can(session, "settings:manage");
-  const usingDemo = demoMode;
-  const writable = canWrite && !usingDemo;
+  const writable = canWrite;
 
   const pipeline = usePipelineConfig();
   const { stages, stageMap } = pipeline;
@@ -58,8 +55,8 @@ export default function DealsPage() {
 
   const [cursors, setCursors] = useState(["0"]);
   const result = useApi<Deal[]>(`/deals?after_id=${cursors.at(-1)}&limit=100`);
-  const deals = result.data ?? (usingDemo ? demoDealRows : []);
-  const everyDeal = useAllRows<Deal>(usingDemo ? null : "/deals");
+  const deals = result.data ?? [];
+  const everyDeal = useAllRows<Deal>("/deals");
   const allDeals = everyDeal.data ?? deals;
 
   const [view, setView] = useLocalView();
@@ -146,7 +143,7 @@ export default function DealsPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Deal Pipeline"
-        description={result.data ? `${filtered.length} deal${filtered.length === 1 ? "" : "s"} · ${formatCurrencyINR(openValue)} open · ${formatCurrencyINR(weightedValue)} weighted` : usingDemo ? "Sales pipeline" : "Your sales pipeline"}
+        description={result.data ? `${filtered.length} deal${filtered.length === 1 ? "" : "s"} · ${formatCurrencyINR(openValue)} open · ${formatCurrencyINR(weightedValue)} weighted` : "Your sales pipeline"}
         actions={<>
           <Button size="sm" variant="secondary" onClick={reload} aria-label="Refresh"><RefreshCw className="size-3.5" /></Button>
           {canAdmin && <Button size="sm" variant="outline" onClick={() => setStageSettingsOpen(true)}><Settings2 className="size-3.5" /> Stages</Button>}
@@ -154,7 +151,7 @@ export default function DealsPage() {
         </>}
       />
 
-      {!demoMode && result.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{result.error}</p>}
+      {result.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{result.error}</p>}
 
       {/* Pipeline value bar */}
       <div className="px-6 pb-3">
@@ -222,7 +219,7 @@ export default function DealsPage() {
       {!result.data && !result.error && <p role="status" className="px-6 py-4 text-sm">Loading deals…</p>}
 
       {/* Board View */}
-      {(result.data || usingDemo) && view === "board" && (
+      {result.data && view === "board" && (
         <>
           {filtered.length === 0 && <p className="px-6 pt-4 text-sm text-muted-foreground">No deals match your filters.</p>}
           <div className="flex-1 overflow-auto px-6 py-4">
@@ -250,7 +247,7 @@ export default function DealsPage() {
                     </div>
                     <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
                       {items.map((deal) => (
-                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} usingDemo={usingDemo} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} onEdit={() => setEditing(deal)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} stageMeta={stageMeta} />
+                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} onEdit={() => setEditing(deal)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} stageMeta={stageMeta} />
                       ))}
                       {items.length === 0 && (
                         <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border text-center text-xs text-muted-foreground py-8">Drop deals here</div>
@@ -265,7 +262,7 @@ export default function DealsPage() {
       )}
 
       {/* Table View */}
-      {(result.data || usingDemo) && view === "table" && (
+      {result.data && view === "table" && (
         <div className="flex-1 overflow-auto px-6 py-4">
           {sorted.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
@@ -295,7 +292,7 @@ export default function DealsPage() {
                     return (
                       <TableRow key={deal.id} className={cn("group", selectedIds.has(deal.id) && "bg-accent-muted/30")}>
                         <TableCell><Checkbox checked={selectedIds.has(deal.id)} onCheckedChange={() => toggleSelect(deal.id)} /></TableCell>
-                        <TableCell>{usingDemo ? <span className="text-sm font-medium">{deal.name}</span> : <Link href={`/deals/${deal.id}`} className="text-sm font-medium hover:text-accent hover:underline">{deal.name}</Link>}</TableCell>
+                        <TableCell><Link href={`/deals/${deal.id}`} className="text-sm font-medium hover:text-accent hover:underline">{deal.name}</Link></TableCell>
                         <TableCell><div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Building2 className="size-3 shrink-0" /><span className="truncate max-w-[140px]">{deal.customerName || deal.company || "—"}</span></div></TableCell>
                         <TableCell className="text-right font-semibold tabular-nums text-sm">{formatCurrencyINR(Number(deal.amount), false)}</TableCell>
                         <TableCell>
@@ -315,7 +312,7 @@ export default function DealsPage() {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="size-7 p-0 opacity-0 group-hover:opacity-100"><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {!usingDemo && <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" /> View</Link></DropdownMenuItem>}
+                              <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" /> View</Link></DropdownMenuItem>
                               {writable && <DropdownMenuItem onClick={() => setEditing(deal)}><Pencil className="size-3.5 mr-2" /> Edit</DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -507,8 +504,8 @@ function StageSettingsDialog({ open, onOpenChange, pipeline, allDeals }: {
 }
 
 /* ── Deal Card ── */
-function DealCard({ deal, writable, busy, usingDemo, today, sessionUserId, sessionUserName, onEdit, onDragStart, onDragEnd, stageMeta }: {
-  deal: Deal; writable: boolean; busy: boolean; usingDemo: boolean; today: string;
+function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, onEdit, onDragStart, onDragEnd, stageMeta }: {
+  deal: Deal; writable: boolean; busy: boolean; today: string;
   sessionUserId: string; sessionUserName: string;
   onEdit: () => void; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
   stageMeta: (key: string) => PipelineStage;
@@ -523,9 +520,7 @@ function DealCard({ deal, writable, busy, usingDemo, today, sessionUserId, sessi
       onClick={onEdit}
     >
       <div className="flex items-start justify-between gap-2">
-        {usingDemo
-          ? <span className="text-[13px] font-semibold leading-tight line-clamp-2">{deal.name}</span>
-          : <Link className="text-[13px] font-semibold leading-tight line-clamp-2 hover:text-accent" href={`/deals/${deal.id}`} onClick={(e) => e.stopPropagation()}>{deal.name}</Link>}
+        <Link className="text-[13px] font-semibold leading-tight line-clamp-2 hover:text-accent" href={`/deals/${deal.id}`} onClick={(e) => e.stopPropagation()}>{deal.name}</Link>
         {writable && <GripVertical aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />}
       </div>
       {(deal.customerName || deal.company) && (

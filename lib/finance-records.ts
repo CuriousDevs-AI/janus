@@ -1,7 +1,6 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { type BudgetLine, useFinanceStore } from "@/lib/stores/finance-store";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
@@ -9,7 +8,7 @@ import { periodLockProblem } from "@/lib/stores/period-lock-store";
 /**
  * Budget money moves on the server. A draw or release is sent once with an Idempotency-Key; the balance
  * the screen shows is replaced by the balance the server returns, so a failed request changes nothing.
- * The local store only holds a copy for display. Demo mode has no server and keeps the local path.
+ * The local store only holds a copy for display.
  */
 
 interface ServerBudgetLine {
@@ -46,7 +45,6 @@ function applyLine(line: ServerBudgetLine) {
 
 /** Loads the server's balances into the screen. Lines that exist only on this screen are created on the server first. */
 export async function syncBudgetLines(): Promise<void> {
-  if (demoMode) return;
   const server = await api<ServerBudgetLine[]>("/finance/budget-lines");
   const known = new Set(server.map((line) => line.external_key));
   const missing = useFinanceStore.getState().budgetLines.filter((line) => !known.has(line.id));
@@ -92,10 +90,6 @@ export async function moveBudget(
   by: string,
   date: string,
 ): Promise<string | null> {
-  if (demoMode) {
-    const store = useFinanceStore.getState();
-    return kind === "draw" ? store.drawBudget(lineId, rupees, note, by, date) : store.releaseBudget(lineId, rupees, note, by, date);
-  }
   const line: BudgetLine | undefined = useFinanceStore.getState().budgetLines.find((item) => item.id === lineId);
   if (!line) return "Budget line not found.";
   if (!(rupees > 0)) return kind === "draw" ? "Enter an amount above zero." : "Nothing to release.";

@@ -7,7 +7,6 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeft, ScrollText, TrendingUp, Sparkles, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
 import { useAppStore } from "@/lib/stores/app-store";
-import { getCustomerById, getCompanyById, getUserById, currentUser } from "@/lib/mock-data";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { ApprovalRiskBadge } from "@/components/shared/status-badge";
 import { ActionKindBadge } from "@/components/approvals/action-kind-badge";
@@ -22,7 +21,8 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
   const foundApproval = useAppStore((s) => s.approvals.find((a) => a.id === id));
   const approval = foundApproval && access.approvalVisible(foundApproval) ? foundApproval : undefined;
   const decideApproval = useAppStore((s) => s.decideApproval);
-
+  const customers = useAppStore((s) => s.customers);
+  const companies = useAppStore((s) => s.companies ?? []);
   if (!approval) {
     return (
       <div className="mx-auto flex max-w-[1100px] flex-col items-center gap-2 px-6 py-16 text-center">
@@ -34,9 +34,10 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
     );
   }
 
-  const customer = getCustomerById(approval.customerId);
-  const company = customer ? getCompanyById(customer.companyId) : undefined;
-  const decider = approval.decidedById ? (getUserById(approval.decidedById) ?? currentUser) : undefined;
+  const customer = customers.find((c) => c.id === approval.customerId);
+  const company = customer ? companies.find((c: { id: string }) => c.id === customer.companyId) : undefined;
+  const sessionUser = { id: "user-me", name: "You" };
+  const decider = approval.decidedById ? sessionUser : undefined;
   const isPending = approval.status === "pending";
 
   function handleDecision(decision: "approved" | "rejected") {
@@ -56,7 +57,6 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
         All approvals
       </Link>
 
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border bg-surface p-5">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -90,7 +90,7 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
               </Badge>
               {approval.decidedAt && (
                 <span className="text-[11px] text-muted-foreground">
-                  Decided by {decider?.name ?? currentUser.name} · {formatRelativeTime(approval.decidedAt)}
+                  Decided by {decider?.name ?? sessionUser.name} · {formatRelativeTime(approval.decidedAt)}
                 </span>
               )}
             </div>
@@ -99,7 +99,6 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
-        {/* LEFT */}
         <div className="flex flex-col gap-4">
           <InfoBlock title="Policy">
             <p className="flex items-start gap-2 text-[13px] leading-relaxed text-foreground">
@@ -161,7 +160,6 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
           )}
         </div>
 
-        {/* RIGHT */}
         <div className="flex flex-col gap-4">
           {customer && (
             <InfoBlock title="Customer">

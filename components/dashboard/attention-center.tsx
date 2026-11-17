@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { AlertTriangle, ShieldCheck, LifeBuoy, Clock, ArrowRight } from "lucide-react";
 import { useAppStore } from "@/lib/stores/app-store";
-import { getCustomerById, getCompanyById } from "@/lib/mock-data";
 import { formatCurrencyINR, formatRelativeTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,11 +26,16 @@ export function AttentionCenter() {
   const approvals = useAppStore((s) => s.approvals);
   const tickets = useAppStore((s) => s.tickets);
   const deals = useAppStore((s) => s.deals);
+  const customers = useAppStore((s) => s.customers);
+  const companies = useAppStore((s) => s.companies ?? []);
+
+  const findCustomer = (id: string | undefined) => customers.find((c) => c.id === id);
+  const findCompany = (id: string | undefined) => companies.find((c: { id: string }) => c.id === id);
 
   const items: AttentionItem[] = [];
 
   for (const t of tickets.filter((t) => t.status === "escalated")) {
-    const customer = getCustomerById(t.customerId);
+    const customer = findCustomer(t.customerId);
     if (!customer) continue;
     items.push({
       id: `ticket-${t.id}`,
@@ -41,7 +45,7 @@ export function AttentionCenter() {
       customerName: customer.name,
       customerId: customer.id,
       avatarColor: customer.avatarColor,
-      description: `${getCompanyById(customer.companyId)?.name} — ${t.subject}`,
+      description: `${findCompany(customer.companyId)?.name ?? ""} — ${t.subject}`,
       timestamp: t.updatedAt,
       href: `/tickets/${t.id}`,
       actionLabel: "Review",
@@ -49,7 +53,7 @@ export function AttentionCenter() {
   }
 
   for (const a of approvals.filter((a) => a.status === "pending").sort((x) => (x.risk === "high" ? -1 : 1))) {
-    const customer = getCustomerById(a.customerId);
+    const customer = findCustomer(a.customerId);
     if (!customer) continue;
     items.push({
       id: `approval-${a.id}`,
@@ -70,7 +74,7 @@ export function AttentionCenter() {
     .filter((d) => !["won", "lost"].includes(d.stage))
     .sort((a, b) => b.amount - a.amount)[0];
   if (highValueDeal) {
-    const customer = getCustomerById(highValueDeal.customerId);
+    const customer = findCustomer(highValueDeal.customerId);
     if (customer) {
       items.push({
         id: `deal-${highValueDeal.id}`,
@@ -80,7 +84,7 @@ export function AttentionCenter() {
         customerName: customer.name,
         customerId: customer.id,
         avatarColor: customer.avatarColor,
-        description: `${getCompanyById(customer.companyId)?.name} — ${formatCurrencyINR(highValueDeal.amount)} opportunity waiting`,
+        description: `${findCompany(customer.companyId)?.name ?? ""} — ${formatCurrencyINR(highValueDeal.amount)} opportunity waiting`,
         timestamp: highValueDeal.lastActivityAt,
         href: `/deals/${highValueDeal.id}`,
         actionLabel: "Open deal",
@@ -89,7 +93,7 @@ export function AttentionCenter() {
   }
 
   for (const d of deals.filter((d) => !["won", "lost"].includes(d.stage) && d.nextAction?.toLowerCase().includes("follow up"))) {
-    const customer = getCustomerById(d.customerId);
+    const customer = findCustomer(d.customerId);
     if (!customer) continue;
     items.push({
       id: `followup-${d.id}`,

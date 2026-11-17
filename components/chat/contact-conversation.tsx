@@ -4,8 +4,7 @@ import { MessageCircle } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
 import { useApi } from "@/lib/api/use-api";
 import type { WhatsAppConversation } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
@@ -17,12 +16,13 @@ import { formatDateTime } from "@/lib/utils";
 export function ContactConversation({ contactId }: { contactId: string }) {
   const session = useSession();
   const openChat = useUIStore((state) => state.openChat);
+  const allowed = can(session, "leads:read_own");
   const conversation = useApi<WhatsAppConversation | null>(
-    demoMode || !hasPermission(session.permissions, "leads:read_own")
-      ? null
-      : `/whatsapp/contacts/${encodeURIComponent(contactId)}/conversation`,
+    allowed
+      ? `/whatsapp/contacts/${encodeURIComponent(contactId)}/conversation`
+      : null,
   );
-  if (demoMode || !hasPermission(session.permissions, "leads:read_own")) return null;
+  if (!allowed) return null;
 
   const row = conversation.data;
   const windowOpen = Boolean(row?.replyWindowEndsAt) && new Date(row!.replyWindowEndsAt as string) > new Date();

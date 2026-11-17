@@ -3,11 +3,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { addDays } from "@/lib/stores/projects-store";
-import { demoMode } from "@/lib/demo-mode";
-import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { todayIso } from "@/lib/today";
 
 /**
@@ -136,79 +133,7 @@ interface ITState {
   linkIncidentToProblem: (problemId: string, incidentId: string, by: string) => string | null;
 }
 
-const demoSeed = (): Pick<ITState, SeedKeys> => {
-  return {
-    assets: [
-      { id: "ast-1", name: "Dell Latitude 5440", kind: "Laptop", serial: "DL-5440-2231", purchaseDate: "2025-08-14", cost: 78000, status: "assigned", assignedTo: "Arjun Mehta", warrantyExpiry: "2028-08-14", amcVendor: null, amcExpiry: null, maintenanceLog: [], location: "Head office" },
-      { id: "ast-2", name: "Lenovo ThinkPad E14", kind: "Laptop", serial: "TP-E14-7781", purchaseDate: "2025-11-02", cost: 62000, status: "in stock", assignedTo: null, warrantyExpiry: "2028-11-02", amcVendor: null, amcExpiry: null, maintenanceLog: [], location: "Head office" },
-      { id: "ast-3", name: "HP LaserJet M111w", kind: "Printer", serial: "HP-M111-0093", purchaseDate: "2024-06-20", cost: 14500, status: "assigned", assignedTo: "Karan Bhatt", warrantyExpiry: "2025-06-20", amcVendor: "HP India Care", amcExpiry: "2027-06-20", maintenanceLog: [{ date: "2026-09-10", note: "Toner replaced", by: "Karan Bhatt" }], location: "Warehouse" },
-    ],
-    access: [
-      { id: "acc-1", system: "Tally Prime", person: "Aman Verma", level: "admin", status: "active", grantedBy: "Pankaj Neema" },
-      { id: "acc-2", system: "Zoho CRM", person: "Meera Singh", level: "edit", status: "active", grantedBy: "Pankaj Neema" },
-      { id: "acc-3", system: "Biometric attendance", person: "Karan Bhatt", level: "view", status: "active", grantedBy: "Shaista Khan" },
-    ],
-    licences: [
-      { id: "lic-1", name: "Microsoft 365 Business", vendor: "Microsoft", seats: 25, assigned: ["Pankaj Neema", "Arjun Mehta", "Meera Singh", "Riya Kapoor", "Karan Bhatt", "Aman Verma"], annualCost: 150000, renewal: "2026-11-20" },
-      { id: "lic-2", name: "Tally Prime", vendor: "Tally Solutions", seats: 2, assigned: ["Aman Verma"], annualCost: 22500, renewal: "2027-03-31" },
-    ],
-    log: [],
-    monitors: [
-      { id: "mon-1", name: "Head office network", kind: "Network", status: "up", lastChecked: "2026-10-23", note: "" },
-      { id: "mon-2", name: "Payroll server", kind: "Server", status: "up", lastChecked: "2026-10-23", note: "" },
-    ],
-    incidents: [
-      { id: "inc-1", number: "INC-1001", title: "Warehouse printer offline", severity: "minor", status: "investigating", reportedBy: "Vikas Jain", assetId: "ast-3", raisedOn: "2026-10-22", updates: ["Printer reported offline; checking the network cable."] },
-    ],
-    changes: [
-      { id: "chg-1", number: "CHG-1001", title: "Move the payroll server to the new backup schedule", risk: "medium", requestedBy: "Aman Verma", status: "pending", decidedBy: null, raisedOn: "2026-10-23" },
-    ],
-    helpdesk: [
-      { id: "hd-1", number: "IT-1001", requester: "Vikas Jain", category: "Network or printer", priority: "medium", subject: "Warehouse printer shows offline", status: "open", assignee: null, raisedOn: "2026-10-22", dueOn: "2026-10-23", comments: [], description: "The HP printer on the warehouse floor is not reachable from any PC. The power light is on but the network light is off. Tried restarting it twice.", firstResponseAt: null, resolvedAt: null, satisfaction: null, escalatedTo: null, customValues: { "cf-1": "Warehouse", "cf-2": "HP LaserJet M111w" } },
-    ],
-    offboarded: [],
-    kbArticles: [
-      { id: "kb-1", title: "How to reset your password", category: "Getting Started", body: "Go to Settings → Security → Change Password. Enter your current password, then your new password twice. If locked out, ask IT to send a reset link to your email.", createdBy: "Pankaj Neema", createdAt: "2026-08-01", views: 24 },
-      { id: "kb-2", title: "Connect to office VPN", category: "Network", body: "Install the FortiClient VPN app. Server: vpn.curiousdevs.in, port 443. Use your office email and password. Enable 2FA in the authenticator app. Contact IT if you see certificate errors.", createdBy: "Arjun Mehta", createdAt: "2026-08-15", views: 18 },
-      { id: "kb-3", title: "Set up the network printer", category: "Hardware", body: "Open Settings → Printers → Add. The office printer is at IP 192.168.1.50 (HP LaserJet). Select the HP Universal driver. Print a test page to confirm.", createdBy: "Karan Bhatt", createdAt: "2026-09-01", views: 11 },
-    ],
-    softwareRequests: [
-      { id: "sw-1", number: "SW-1001", requester: "Riya Kapoor", software: "Figma Professional", reason: "Need full prototyping features for the new product designs", status: "pending", requestedAt: "2026-11-10", decidedBy: null },
-    ],
-    vendorContracts: [
-      { id: "vc-1", vendor: "Airtel Business", type: "ISP", contactPerson: "Suresh Nair", phone: "9876543210", email: "suresh.nair@example.com", contractStart: "2026-04-01", contractEnd: "2027-03-31", annualCost: 180000, notes: "100 Mbps leased line, head office. SLA: 99.5% uptime, 4-hour restore." },
-      { id: "vc-2", vendor: "Dell India Support", type: "AMC", contactPerson: "Pradeep Kulkarni", phone: "9123456789", email: "pradeep.k@example.com", contractStart: "2025-08-14", contractEnd: "2028-08-14", annualCost: 24000, notes: "On-site next-business-day for all Dell laptops. Covers hardware only." },
-      { id: "vc-3", vendor: "SecureEye Systems", type: "AMC", contactPerson: "Ajay Thakur", phone: "9988776655", email: "ajay.t@example.com", contractStart: "2026-01-01", contractEnd: "2026-12-31", annualCost: 36000, notes: "CCTV maintenance, 16 cameras across 2 floors. Quarterly inspection." },
-    ],
-    networkItems: [
-      { id: "net-1", name: "Company domain", type: "Domain", value: "curiousdevs.in", expiry: "2027-09-15", notes: "Registered with GoDaddy India" },
-      { id: "net-2", name: "SSL certificate", type: "SSL", value: "*.curiousdevs.in (wildcard)", expiry: "2027-03-01", notes: "Let's Encrypt auto-renewal via Certbot" },
-      { id: "net-3", name: "Office Wi-Fi", type: "Wi-Fi", value: "CuriousDevs-5G / CuriousDevs-Guest", expiry: null, notes: "WPA3, guest network isolated. Router: TP-Link Archer AX73" },
-      { id: "net-4", name: "Office LAN", type: "IP Range", value: "192.168.1.0/24", expiry: null, notes: "DHCP .100–.200, static .1–.50 for servers and printers" },
-    ],
-    onboardingChecklists: [
-      { id: "onb-1", employeeName: "Vikram Singh", joiningDate: "2026-11-18", items: ONBOARDING_ITEMS.map((label) => ({ label, done: false, doneBy: null, doneAt: null })), createdBy: "Pankaj Neema" },
-    ],
-    itPolicies: [
-      { id: "pol-1", name: "Acceptable Use Policy", version: "1.2", effectiveDate: "2026-04-01", body: "Company devices and accounts are for business use. Personal use is allowed within reason but must not interfere with work, violate any law, or put company data at risk. All data on company devices belongs to the company. IT may audit device usage. Violations may lead to disciplinary action.", acknowledgedBy: ["Arjun Mehta", "Meera Singh", "Karan Bhatt"] },
-      { id: "pol-2", name: "Password Policy", version: "1.0", effectiveDate: "2026-04-01", body: "Minimum 12 characters, at least one uppercase, one number and one special character. Change every 90 days. Never reuse the last 5 passwords. Enable 2FA on all systems that support it. Never share your password with anyone, including IT (we will never ask for it).", acknowledgedBy: ["Arjun Mehta", "Meera Singh"] },
-    ],
-    problems: [
-      { id: "prb-1", number: "PRB-1001", title: "Recurring warehouse network drops", description: "The warehouse network has gone down three times this month. Each time it recovers after a switch restart but the root cause is unknown.", status: "open", incidentIds: ["inc-1"], rootCause: "", workaround: "Restart the network switch in the warehouse server rack.", createdBy: "Pankaj Neema", createdAt: "2026-10-25" },
-    ],
-    customFields: [
-      { id: "cf-1", label: "Affected area", type: "dropdown", required: false, options: ["Head office", "Warehouse", "Branch office", "Remote / WFH"], categories: ["Network or printer", "Other"], visibleToRequester: true },
-      { id: "cf-2", label: "Device / asset name", type: "text", required: false, options: [], categories: ["Laptop or phone", "Network or printer"], visibleToRequester: true },
-      { id: "cf-3", label: "Business justification", type: "text", required: true, options: [], categories: ["Software"], visibleToRequester: true },
-      { id: "cf-4", label: "Manager approved", type: "checkbox", required: false, options: [], categories: ["Access", "Software"], visibleToRequester: false },
-      { id: "cf-5", label: "Urgency reason", type: "text", required: false, options: [], categories: ["Laptop or phone"], visibleToRequester: true },
-    ],
-  };
-};
-
-const emptySeed: Pick<ITState, SeedKeys> = { assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [], offboarded: [], kbArticles: [], softwareRequests: [], vendorContracts: [], networkItems: [], onboardingChecklists: [], itPolicies: [], problems: [], customFields: [] };
-
-const seed = (): Pick<ITState, SeedKeys> => (isFirstCompany ? demoSeed() : emptySeed);
+const seed = (): Pick<ITState, SeedKeys> => ({ assets: [], access: [], licences: [], log: [], helpdesk: [], incidents: [], changes: [], monitors: [], offboarded: [], kbArticles: [], softwareRequests: [], vendorContracts: [], networkItems: [], onboardingChecklists: [], itPolicies: [], problems: [], customFields: [] });
 
 /** Renewal due inside the next 30 days. */
 export function renewalSoon(licence: Licence) {
@@ -286,7 +211,6 @@ export const useITStore = create<ITState>()(
           return null;
         },
         requestChange: (input, by) => {
-        if (!demoMode) return "IT changes are recorded on the server.";
           if (input.title.trim().length < 5) return "Describe the change.";
           const number = `CHG-${1002 + get().changes.length}`;
           const change: ITChange = { id: `chg-${Date.now()}`, number, title: input.title.trim(), risk: input.risk, requestedBy: by, status: "pending", decidedBy: null, raisedOn: TODAY };
@@ -294,7 +218,6 @@ export const useITStore = create<ITState>()(
           return null;
         },
         decideChange: (id, approve, by) => {
-        if (!demoMode) return "IT changes are recorded on the server.";
           const change = get().changes.find((c) => c.id === id);
           if (!change) return "Change not found.";
           if (change.status !== "pending") return "Only a pending change can be decided.";
@@ -306,7 +229,6 @@ export const useITStore = create<ITState>()(
           return null;
         },
         completeChange: (id, by) => {
-        if (!demoMode) return "IT changes are recorded on the server.";
           const change = get().changes.find((c) => c.id === id);
           if (!change) return "Change not found.";
           if (change.status !== "approved") return "Only an approved change can be carried out.";
@@ -665,6 +587,7 @@ export const useITStore = create<ITState>()(
       };
     },
     { name: scoped("janus.it.v1"), storage: createJSONStorage(() => workspaceStorage),
-      merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<ITState>) } as ITState, demoSeed()) },
+      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<ITState>) }),
+    },
   ),
 );

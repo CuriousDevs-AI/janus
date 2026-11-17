@@ -32,8 +32,6 @@ import { AutomationSection } from "@/components/settings/automation-section";
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { SecuritySection } from "@/components/settings/security-section";
 import { useWorkspace } from "@/components/layout/workspace-context";
-import { BusinessPeopleAccess } from "@/components/business/people-access";
-import { demoMode } from "@/lib/demo-mode";
 import { LivePeopleAccess } from "@/components/business/people-access-live";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -271,8 +269,8 @@ function SettingsPageInner() {
           <div className={activeTab === "workspace" ? "" : "hidden"}>
             <WorkspaceSection key={`${searchParams.get("view") ?? "default"}-${searchParams.get("section") ?? ""}`} />
           </div>
-          <div className={activeTab === "team" ? "" : "hidden"}>{businessMode ? (demoMode ? <BusinessPeopleAccess /> : <LivePeopleAccess />) : <TeamSection />}</div>
-          <div className={activeTab === "roles" ? "" : "hidden"}>{businessMode ? (demoMode ? <BusinessPeopleAccess initialSection="roles" /> : <LivePeopleAccess initialSection="roles" />) : <RolesSection />}</div>
+          <div className={activeTab === "team" ? "" : "hidden"}>{businessMode ? <LivePeopleAccess /> : <TeamSection />}</div>
+          <div className={activeTab === "roles" ? "" : "hidden"}>{businessMode ? <LivePeopleAccess initialSection="roles" /> : <RolesSection />}</div>
           <div className={activeTab === "channels" ? "" : "hidden"}><ChannelsSection /></div>
           <div className={activeTab === "ai" ? "" : "hidden"}><AISection /></div>
           <div className={activeTab === "knowledge" ? "" : "hidden"}><KnowledgeSection /></div>

@@ -1,12 +1,8 @@
 "use client";
-import { demoMode } from "@/lib/demo-mode";
-
 import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { TeamToday } from "@/components/crm/team-today";
 import { LostReasonsCard } from "@/components/crm/lost-reasons-card";
-import { demoConnectedSources, demoDealRows, demoLeadRows } from "@/lib/api/demo-data";
-import { lakh, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSession } from "@/components/auth/session-provider";
@@ -23,15 +19,12 @@ function sourceLabel(source: string) {
   return source.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-/** Leads per month and the pipeline those leads carry, from the shared demo company. */
-const demoGrowthTrend = monthlyLeads.map((item) => ({ month: item.label, leads: item.leads, pipeline: Math.round(item.leads * (crm.pipeline / Math.max(1, crm.leads)) * (item.label === "Oct" ? 1 : 0.8)) }));
-
 export default function DashboardPage() {
   const session = useSession();
-  const stats = useApi<DashboardStats>(!demoMode ? "/dashboard/stats" : null);
-  const daily = useApi<DailyPoint[]>(!demoMode ? "/dashboard/daily?days=180" : null);
-  const funnel = useApi<FunnelData[]>(!demoMode ? "/dashboard/funnel?days=30" : null);
-  const reps = useApi<RepData[]>(!demoMode ? "/dashboard/reps?days=30" : null);
+  const stats = useApi<DashboardStats>("/dashboard/stats");
+  const daily = useApi<DailyPoint[]>("/dashboard/daily?days=180");
+  const funnel = useApi<FunnelData[]>("/dashboard/funnel?days=30");
+  const reps = useApi<RepData[]>("/dashboard/reps?days=30");
   const leads = useAllRows<Lead>("/leads");
   const deals = useAllRows<Deal>("/deals");
   const canViewSources =
@@ -41,17 +34,13 @@ export default function DashboardPage() {
     canViewSources ? "/sources?limit=50&after_id=0" : null,
   );
 
-  const usingDemoLeads = demoMode;
-  const usingDemoDeals = demoMode;
-  const usingDemoSources = demoMode;
-  const usingDemo = demoMode;
-  const leadRows = leads.data ?? (usingDemoLeads ? demoLeadRows : []);
-  const dealRows = deals.data ?? (usingDemoDeals ? demoDealRows : []);
+  const leadRows = leads.data ?? [];
+  const dealRows = deals.data ?? [];
   const openDeals = dealRows.filter((deal) => !["won", "lost"].includes(deal.stage));
   const openValue = openDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
   const biggest = [...openDeals].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
   const unanswered = [...leadRows].filter((lead) => lead.stage === "new" && lead.lastActivityAt === lead.createdAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).sort((a, b) => Number(b.source === "phone_call") - Number(a.source === "phone_call"))[0];
-  const connectedSources = (sources.data ?? (usingDemoSources ? demoConnectedSources : [])).filter(
+  const connectedSources = (sources.data ?? []).filter(
     (source) => source.status === "connected",
   );
   const refresh = () => {
@@ -64,7 +53,7 @@ export default function DashboardPage() {
     sources.reload();
   };
   const loading = stats.loading || leads.loading || deals.loading || sources.loading;
-  const growthTrend = usingDemo ? demoGrowthTrend : daily.data ? daily.data.map((d) => ({ month: d.date.slice(5), leads: d.leads, pipeline: Number(d.wonValue) })) : sixMonths(leadRows, dealRows);
+  const growthTrend = daily.data ? daily.data.map((d) => ({ month: d.date.slice(5), leads: d.leads, pipeline: Number(d.wonValue) })) : sixMonths(leadRows, dealRows);
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-6 py-6">
@@ -121,7 +110,7 @@ export default function DashboardPage() {
                   </div>
                 );
                 const row = <>{content}<span className="shrink-0 text-xs text-muted-foreground">{formatRelativeTime(lead.lastActivityAt)}</span></>;
-                return usingDemoLeads ? <div key={lead.id} className="flex items-center justify-between gap-4 px-4 py-3">{row}</div> : <Link key={lead.id} href={`/leads/${lead.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">{row}</Link>;
+                return <Link key={lead.id} href={`/leads/${lead.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">{row}</Link>;
               })}
             </div>
           )}
@@ -155,7 +144,7 @@ export default function DashboardPage() {
                     </div>
                   </>
                 );
-                return usingDemoDeals ? <div key={deal.id} className="flex items-center justify-between gap-4 px-4 py-3">{row}</div> : <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">{row}</Link>;
+                return <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-2">{row}</Link>;
               })}
             </div>
           )}
@@ -200,13 +189,13 @@ export default function DashboardPage() {
                 <ul className="mt-1.5 flex flex-col gap-1">{due.slice(0, 4).map((lead) => <li key={lead.id}><Link href={`/leads/${lead.id}`} className="flex items-center justify-between gap-2 text-[11px] hover:text-accent"><span className="truncate">{lead.contactName || lead.phone || `Lead #${lead.id}`}</span><span className="shrink-0 text-muted-foreground">{followUpWords(String(lead.nextFollowUpOn))}</span></Link></li>)}</ul>
               </div> : null;
             })()}
-            {biggest ? <div className="rounded-md border border-accent/20 bg-accent-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Follow up with {biggest.customerName}</p><ArrowUpRight className="size-3.5 text-accent" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{biggest.company} has {lakh(Number(biggest.amount))} in play ({biggest.name}, {biggest.stage}). Next best action: send the approved WhatsApp follow-up.</p></div> : null}
+            {biggest ? <div className="rounded-md border border-accent/20 bg-accent-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Follow up with {biggest.customerName}</p><ArrowUpRight className="size-3.5 text-accent" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{biggest.company} has {formatCurrencyINR(Number(biggest.amount))} in play ({biggest.name}, {biggest.stage}). Next best action: send the approved WhatsApp follow-up.</p></div> : null}
             {unanswered ? <div className="rounded-md border border-warning/30 bg-warning-muted/30 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{unanswered.source === "phone_call" ? "Return the missed call" : "Send a first reply"}</p><AlertTriangle className="size-3.5 text-warning" /></div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{unanswered.contactName}{unanswered.company ? ` (${unanswered.company})` : ""} is a new {unanswered.source.replace("_", " ")} lead with no first response recorded yet.</p></div> : null}
-            <div className="rounded-md border border-border bg-surface-2 p-3"><p className="text-xs font-semibold">Pipeline focus</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{openDeals.length === 0 ? "There are no open deals yet. New enquiries will show up here as they become deals." : `${openDeals.length} open deal${openDeals.length === 1 ? "" : "s"} total ${lakh(openValue)}. Keep proposal follow-ups within two business days.`}</p></div>
+            <div className="rounded-md border border-border bg-surface-2 p-3"><p className="text-xs font-semibold">Pipeline focus</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{openDeals.length === 0 ? "There are no open deals yet. New enquiries will show up here as they become deals." : `${openDeals.length} open deal${openDeals.length === 1 ? "" : "s"} total ${formatCurrencyINR(openValue)}. Keep proposal follow-ups within two business days.`}</p></div>
           </div>
         </section>
       </div>
-      {!demoMode && funnel.data && funnel.data.length > 0 && (
+      {funnel.data && funnel.data.length > 0 && (
         <section className="rounded-lg border border-border bg-surface p-5">
           <div className="flex items-center gap-2"><TrendingUp className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Pipeline funnel</h2></div>
           <p className="mt-1 text-[11px] text-muted-foreground">Lead distribution across stages (last 30 days).</p>
@@ -228,7 +217,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {!demoMode && reps.data && reps.data.length > 0 && (
+      {reps.data && reps.data.length > 0 && (
         <section className="rounded-lg border border-border bg-surface">
           <div className="border-b border-border px-4 py-3">
             <h2 className="text-[13px] font-semibold">Rep leaderboard</h2>
@@ -348,7 +337,7 @@ export default function DashboardPage() {
 
       {(session.permissions.includes("*") || can(session, "leads:assign")) && <>
         <TeamToday leads={leadRows} deals={dealRows} />
-        {!demoMode && <LostReasonsCard />}
+        <LostReasonsCard />
       </>}
     </div>
   );

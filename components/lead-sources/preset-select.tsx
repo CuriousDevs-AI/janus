@@ -1,4 +1,19 @@
-import { webhookPresets } from "@/lib/mock-data/lead-sources";
+const webhookPresets = [
+  { group: "Calls", value: "exotel", label: "Exotel" },
+  { group: "Calls", value: "knowlarity", label: "Knowlarity" },
+  { group: "Calls", value: "ozonetel", label: "Ozonetel" },
+  { group: "Calls", value: "servetel", label: "Servetel" },
+  { group: "Forms/ads", value: "facebook_leads", label: "Facebook Lead Ads" },
+  { group: "Forms/ads", value: "google_ads", label: "Google Ads" },
+  { group: "Forms/ads", value: "indiamart", label: "IndiaMART" },
+  { group: "Forms/ads", value: "justdial", label: "JustDial" },
+  { group: "Forms/ads", value: "tradeindia", label: "TradeIndia" },
+  { group: "Automation", value: "zapier", label: "Zapier" },
+  { group: "Automation", value: "make", label: "Make (Integromat)" },
+  { group: "Automation", value: "pabbly", label: "Pabbly Connect" },
+  { group: "Custom", value: "custom_webhook", label: "Custom Webhook" },
+  { group: "Custom", value: "custom_api", label: "Custom API" },
+];
 
 export function PresetSelect({ value, onChange, callsOnly = false, id }: {
   value: string;

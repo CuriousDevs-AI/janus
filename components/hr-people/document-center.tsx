@@ -10,7 +10,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrDocumentStore } from "@/lib/stores/hr-document-store";
 import { useHrOperationsStore, type HrLetterRequest } from "@/lib/stores/hr-operations-store";
-import { demoMode } from "@/lib/demo-mode";
 import { canManageHr } from "@/lib/hr-people-access";
 import { parseBlocks, plainText, sampleMarkup } from "@/lib/hr-document-content";
 import { downloadHrFile } from "@/lib/hr-payroll";
@@ -26,7 +25,7 @@ const forms: { title: string; fields: string[] }[] = [
   { title: "Nomination form (PF and insurance)", fields: ["Nominee name", "Relationship", "Date of birth", "Share (%)"] },
   { title: "Reimbursement claim form", fields: ["Expense date", "Category", "Amount", "Business purpose", "Receipt attached (yes or no)"] },
 ];
-const formText = (form: { title: string; fields: string[] }, name: string) => plainText(parseBlocks(`# ${form.title}\n${demoMode ? "> Sample form for demonstration.\n\n" : "\n"}**Employee:** ${name}\n**Date:** ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}\n\n## Details\n${form.fields.map((field) => `- ${field}: ______________________`).join("\n")}\n\n## Declaration\nI confirm the details above are correct.\n\nSignature: ______________________`));
+const formText = (form: { title: string; fields: string[] }, name: string) => plainText(parseBlocks(`# ${form.title}\n${"\n"}**Employee:** ${name}\n**Date:** ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}\n\n## Details\n${form.fields.map((field) => `- ${field}: ______________________`).join("\n")}\n\n## Declaration\nI confirm the details above are correct.\n\nSignature: ______________________`));
 
 function Tile({ icon, title, count, hint, href, action }: { icon: React.ReactNode; title: string; count?: number | string; hint: string; href?: string; action?: React.ReactNode }) {
   return <li className="flex flex-col justify-between gap-3 border border-border bg-surface p-4">

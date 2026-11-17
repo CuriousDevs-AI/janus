@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, AlertTriangle, Loader2, Zap, ArrowUpRight, Copy, RefreshCcw } from "lucide-react";
-import { getIntegrationById } from "@/lib/mock-data";
+import { useApi } from "@/lib/api/use-api";
 import type { Integration } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { formatRelativeTime, formatDateTime, formatNumber, cn } from "@/lib/utils";
@@ -38,7 +38,8 @@ function buildSyncEvents(integration: Integration): SyncEvent[] {
 export default function IntegrationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const seed = getIntegrationById(id);
+  const { data: integrations } = useApi<Integration[]>("/integrations");
+  const seed = (integrations ?? []).find((i) => i.id === id);
   const [integration, setIntegration] = React.useState<Integration | undefined>(seed);
   const [testing, setTesting] = React.useState(false);
 

@@ -137,7 +137,7 @@ export function VerifyWaiting({ email }: { email: string }) {
       {!verified && (
         <div className="flex flex-col gap-2">
           <Button type="button" className="w-full" onClick={() => void check(true)} disabled={checking}>
-            {checking ? <><Loader2 className="size-3.5 animate-spin" aria-hidden />Checking…</> : "I’ve verified my email"}
+            {checking ? <><Loader2 className="size-3.5 animate-spin" aria-hidden />Checking…</> : "I've verified my email"}
           </Button>
           <Button type="button" variant="secondary" className="w-full tabular-nums" onClick={() => void resend()} disabled={!email || sending || wait > 0}>
             {sending ? <><Loader2 className="size-3.5 animate-spin" aria-hidden />Sending…</> : wait > 0 ? `Resend email in ${clock}` : "Resend verification email"}
@@ -148,7 +148,7 @@ export function VerifyWaiting({ email }: { email: string }) {
       {!verified && (
         <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 text-[12px] leading-5 text-muted-foreground">
           <p className="font-medium text-foreground">Not in your inbox?</p>
-          <p>Look in Spam or Promotions, and search your mail for “Janus”. The link works for 24 hours.</p>
+          <p>Look in Spam or Promotions, and search your mail for "Janus". The link works for 24 hours.</p>
         </div>
       )}
 

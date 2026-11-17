@@ -28,7 +28,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/settings/section-ui";
-import { demoMode } from "@/lib/demo-mode";
 import { HrPerformanceView } from "@/components/hr-people/performance";
 import { HrReportsView } from "@/components/hr-people/reports";
 import { HrExpensesView } from "@/components/hr-people/expenses";
@@ -36,7 +35,6 @@ import { HrApprovalsView } from "@/components/hr-people/approvals";
 import { ArchiveEmployeeDialog, CareerHistory, EmployeeFormDialog } from "@/components/hr-people/employee-forms";
 import { applyDueChanges } from "@/lib/hr-career";
 import { HrCareerView } from "@/components/hr-people/career";
-import { useDemoAccount, useLoginAccount, usePersona } from "@/lib/demo-persona";
 import { useCan } from "@/lib/hr-org-hooks";
 import { HrOrganizationView } from "@/components/hr-people/organization";
 import { HrEmployeeImport } from "@/components/hr-people/employee-import";
@@ -64,7 +62,7 @@ import { HrShiftsView } from "@/components/hr-people/shifts";
 import { HrDocumentsView, HrSignaturesView } from "@/components/hr-people/documents";
 import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, setSignedInEmployee, setSignedInName, visibleEmployees } from "@/lib/hr-people-access";
 import { useSession } from "@/components/auth/session-provider";
-import { hasPermission } from "@/lib/demo-persona";
+import { can as checkPermission } from "@/lib/permissions";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrServerSync } from "@/lib/stores/hr-server-sync";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
@@ -90,17 +88,15 @@ export function HrPeopleWorkspace() {
   const params = useSearchParams();
   const router = useRouter();
   const view = params.get("view") ?? "overview";
-  const demoRole = useHrPeopleStore((state) => state.demoRole);
   const session = useSession();
   // A real person's HR access comes from their account's permissions, never from a shared browser setting.
   // Everyone holds hr:self with their membership, so every member gets their own HR without anyone granting it.
-  const can = (permission: string) => hasPermission(session.permissions, permission);
-  const signedInRole: HrDemoRole = can("billing:manage") && can("hr:manage") ? "owner"
+  const can = (permission: string) => checkPermission(session, permission);
+  const role: HrDemoRole = can("billing:manage") && can("hr:manage") ? "owner"
     : can("hr:manage") || can("members:manage") ? "hr_manager"
+    : can("hr:payroll") ? "payroll_admin"
     : can("hr:team") || can("hr:approve") ? "reporting_manager"
     : "employee";
-  const role = demoMode ? demoRole : signedInRole;
-  const setDemoRole = useHrPeopleStore((state) => state.setDemoRole);
   const employees = useHrPeopleStore((state) => state.employees);
   // The person signed in acts as the employee record with their email; a real account's owner adds that record first.
   setSignedInEmployee(employees.find((item) => item.email.toLowerCase() === (session.user.email ?? "").toLowerCase())?.id ?? "");
@@ -112,15 +108,9 @@ export function HrPeopleWorkspace() {
   React.useEffect(() => { if (landing && view === "overview") router.replace(`/workspace/hr-people?view=${landing}&workspace=hr-people`); }, [landing, view, router]);
   const title = viewTitle(shown);
 
-  const persona = usePersona();
-  const viewer = useDemoAccount();
-  const loginAccount = useLoginAccount();
-  const viewingOther = Boolean(viewer && loginAccount && viewer.id !== loginAccount.id);
-  React.useEffect(() => { if (demoMode && persona !== role) setDemoRole(persona); }, [persona, role, setDemoRole]);
-
   const blocked = !canOpenHrView(role, view);
   // Engage (announcements, kudos, polls and events) is part of Team Chat on real accounts.
-  React.useEffect(() => { if (!demoMode && view === "engage") router.replace("/team?workspace=team-chat"); }, [view, router]);
+  React.useEffect(() => { if (view === "engage") router.replace("/team?workspace=team-chat"); }, [view, router]);
   // Approved changes start on their date, so catch up whenever someone opens the workspace.
   React.useEffect(() => { applyDueChanges(demoActorId(role)); }, [role]);
 
@@ -132,7 +122,6 @@ export function HrPeopleWorkspace() {
         actions={<div className="flex flex-wrap items-center gap-2"></div>}
       />
       <div className="px-6 pb-10">
-        {demoMode && viewingOther && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-muted px-3 py-2 text-xs text-info"><ShieldCheck className="size-3.5" />You are viewing as {viewer?.name}. Everything on screen is what they can see. Pick Myself in the top bar to go back.</div>}
         {!synced ? <p className="py-10 text-center text-sm text-muted-foreground" role="status">Loading HR records…</p> : blocked ? <AccessNotice role={role} /> : (
           <>
             {shown === "my-home" && <HrHomeView role={role} actorId={demoActorId(role)} />}
@@ -320,7 +309,7 @@ function ComplianceView({ role }: { role: HrDemoRole }) {
   const items = useHrPeopleStore((state) => state.complianceItems);
   const updateCompliance = useHrPeopleStore((state) => state.updateCompliance);
   const canAct = ["owner", "hr_manager", "payroll_admin"].includes(role as string);
-  return <div className="flex flex-col gap-4"><SectionCard title="HR compliance calendar" description="Statutory checklist for PF, ESI, Professional Tax and TDS. Dates are review prompts until connected to a filing provider." action={<Badge variant="info">FY 2026–27 · India</Badge>}><div className="grid gap-3 sm:grid-cols-2">{items.map((item) => <div key={item.id} className="rounded-lg border border-border bg-surface-2 p-4"><div className="flex items-start gap-3"><span className={`flex size-8 shrink-0 items-center justify-center rounded-md ${item.status === "attention" ? "bg-danger/10 text-danger" : item.status === "due" ? "bg-warning-muted text-warning" : "bg-success-muted text-success"}`}><ShieldCheck className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold">{item.title}</p><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{item.jurisdiction} · due {dateLabel(item.dueAt)}</p><p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p><div className="mt-3 flex items-center justify-between"><span className="text-[11px] text-muted-foreground">Owner: {item.ownerName}</span>{canAct && item.status !== "filed" && <Button size="sm" variant="secondary" onClick={() => { updateCompliance(item.id, "filed"); toast.success(`${item.title} marked as filed${demoMode ? " for demo" : ""}`); }}>Mark filed</Button>}</div></div></div></div>)}</div></SectionCard><SectionCard title="Compliance controls" description="Permissions and evidence are kept with each filing record."><div className="grid gap-2 sm:grid-cols-3"><Detail label="Financial year" value="1 Apr – 31 Mar" /><Detail label="Payroll review" value="Human approval required" /><Detail label="Data retention" value="7 years · configurable" /></div></SectionCard></div>;
+  return <div className="flex flex-col gap-4"><SectionCard title="HR compliance calendar" description="Statutory checklist for PF, ESI, Professional Tax and TDS. Dates are review prompts until connected to a filing provider." action={<Badge variant="info">FY 2026–27 · India</Badge>}><div className="grid gap-3 sm:grid-cols-2">{items.map((item) => <div key={item.id} className="rounded-lg border border-border bg-surface-2 p-4"><div className="flex items-start gap-3"><span className={`flex size-8 shrink-0 items-center justify-center rounded-md ${item.status === "attention" ? "bg-danger/10 text-danger" : item.status === "due" ? "bg-warning-muted text-warning" : "bg-success-muted text-success"}`}><ShieldCheck className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold">{item.title}</p><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{item.jurisdiction} · due {dateLabel(item.dueAt)}</p><p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p><div className="mt-3 flex items-center justify-between"><span className="text-[11px] text-muted-foreground">Owner: {item.ownerName}</span>{canAct && item.status !== "filed" && <Button size="sm" variant="secondary" onClick={() => { updateCompliance(item.id, "filed"); toast.success(`${item.title} marked as filed`); }}>Mark filed</Button>}</div></div></div></div>)}</div></SectionCard><SectionCard title="Compliance controls" description="Permissions and evidence are kept with each filing record."><div className="grid gap-2 sm:grid-cols-3"><Detail label="Financial year" value="1 Apr – 31 Mar" /><Detail label="Payroll review" value="Human approval required" /><Detail label="Data retention" value="7 years · configurable" /></div></SectionCard></div>;
 }
 
 function HrSettingsView({ role }: { role: HrDemoRole }) {

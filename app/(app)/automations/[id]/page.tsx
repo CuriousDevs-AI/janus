@@ -1,8 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useAppStore } from "@/lib/stores/app-store";
-import type { Automation } from "@/lib/types";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,7 +17,6 @@ import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { BusinessAutomationCatalog, BusinessWorkflowRun, BusinessWorkflowStep } from "@/lib/types";
 import { toast } from "sonner";
-import { demoMode } from "@/lib/demo-mode";
 import { WorkspaceCopyDialog, workspaceCopyOptions } from "@/components/workspace-copy-dialog";
 import { StepConfigForm } from "@/components/business/step-config-form";
 
@@ -59,42 +56,19 @@ const emptyWorkflow: WorkflowRecord = {
   modulesUsed: [],
 };
 
-/** Turns one of the CRM automations into the workflow shape this page edits. */
-function fromAutomation(item: Automation): WorkflowRecord {
-  const kinds: Record<string, string> = { action: "action", ai_decision: "action", condition: "condition", branch: "condition", wait: "wait" };
-  return {
-    id: item.id, name: item.name, description: item.description, status: item.status === "active" ? "active" : item.status === "disabled" ? "paused" : "draft", scope: "business", ownerId: "Sales team",
-    trigger: { type: item.trigger }, actions: [], modulesUsed: ["crm_sales"], updatedAt: item.lastRunAt ?? item.createdAt,
-    settings: { runWindow: "any_time", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} },
-    steps: item.nodes.filter((node) => node.kind !== "trigger").map((node, index) => ({ id: `${item.id}-step-${index + 1}`, type: kinds[node.kind] ?? "action", title: node.label, note: node.detail, config: {} })),
-  };
-}
-
-const demoWorkflowRecords: WorkflowRecord[] = [
-  { id: "demo-workflow-lead-follow-up", name: "New lead follow-up", description: "Qualify a new lead, draft a reply and create a follow-up task.", status: "active", scope: "business", ownerId: "Sales team", liveVersion: 3, draftVersion: 4, trigger: { type: "lead_created", module: "crm_sales", reEnrollment: false, enrollExisting: false }, steps: [{ id: "lead-qualify", type: "action", module: "crm_sales", action: "qualify_lead", title: "Qualify lead", config: {}, disabled: false }, { id: "lead-reply", type: "action", module: "whatsapp", action: "draft_reply", title: "Draft WhatsApp reply", config: { approvalRequired: true }, disabled: false }, { id: "lead-task", type: "action", module: "crm_sales", action: "create_task", title: "Create follow-up task", config: {}, disabled: false }], actions: [], goal: { type: "stage_changed", value: "qualified" }, settings: { runWindow: "business_hours", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["crm_sales", "whatsapp"], requiresApproval: true, updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-  { id: "demo-workflow-lead", name: "New lead follow-up", description: "Qualify a new lead, draft a reply and create a follow-up task.", status: "active", scope: "business", ownerId: "Sales team", liveVersion: 3, draftVersion: 4, trigger: { type: "lead_created", module: "crm_sales", reEnrollment: false, enrollExisting: false }, steps: [{ id: "lead-qualify", type: "action", module: "crm_sales", action: "qualify_lead", title: "Qualify lead", config: {}, disabled: false }, { id: "lead-reply", type: "action", module: "whatsapp", action: "draft_reply", title: "Draft WhatsApp reply", config: { approvalRequired: true }, disabled: false }, { id: "lead-task", type: "action", module: "crm_sales", action: "create_task", title: "Create follow-up task", config: {}, disabled: false }], actions: [], goal: { type: "stage_changed", value: "qualified" }, settings: { runWindow: "business_hours", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["crm_sales", "whatsapp"], requiresApproval: true, updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-  { id: "demo-workflow-missed-call", name: "Missed call callback", description: "Create a callback task when a new missed call is captured.", status: "draft", scope: "business", ownerId: "Sales team", draftVersion: 1, trigger: { type: "missed_call", module: "crm_sales", reEnrollment: false, enrollExisting: false }, steps: [{ id: "call-task", type: "action", module: "crm_sales", action: "create_task", title: "Create callback task", config: { dueIn: "2h" }, disabled: false }, { id: "call-owner", type: "action", module: "crm_sales", action: "assign_owner", title: "Assign sales owner", config: {}, disabled: false }], actions: [], settings: { runWindow: "any_time", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["crm_sales"], requiresApproval: false, updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
-  { id: "demo-workflow-call", name: "Missed call callback", description: "Create a callback task when a new missed call is captured.", status: "draft", scope: "business", ownerId: "Sales team", draftVersion: 1, trigger: { type: "missed_call", module: "crm_sales", reEnrollment: false, enrollExisting: false }, steps: [{ id: "call-task", type: "action", module: "crm_sales", action: "create_task", title: "Create callback task", config: { dueIn: "2h" }, disabled: false }, { id: "call-owner", type: "action", module: "crm_sales", action: "assign_owner", title: "Assign sales owner", config: {}, disabled: false }], actions: [], settings: { runWindow: "any_time", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["crm_sales"], requiresApproval: false, updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
-  { id: "demo-workflow-overdue", name: "Payment overdue reminder", description: "Review overdue invoices and prepare a reminder for owner approval.", status: "paused", scope: "business", ownerId: "Finance team", liveVersion: 2, trigger: { type: "invoice_overdue", module: "finance_accounting", reEnrollment: false, enrollExisting: false }, steps: [{ id: "overdue-risk", type: "action", module: "finance_accounting", action: "find_risk", title: "Find overdue invoices", config: {}, disabled: false }, { id: "overdue-reply", type: "action", module: "whatsapp", action: "draft_reply", title: "Draft payment reminder", config: { approvalRequired: true }, disabled: false }], actions: [], goal: { type: "invoice_status", value: "paid" }, settings: { runWindow: "business_hours", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["finance_accounting", "whatsapp"], requiresApproval: true, updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
-  { id: "demo-workflow-collections", name: "Payment overdue reminder", description: "Review overdue invoices and prepare a reminder for owner approval.", status: "paused", scope: "business", ownerId: "Finance team", liveVersion: 2, trigger: { type: "invoice_overdue", module: "finance_accounting", reEnrollment: false, enrollExisting: false }, steps: [{ id: "overdue-risk", type: "action", module: "finance_accounting", action: "find_risk", title: "Find overdue invoices", config: {}, disabled: false }, { id: "overdue-reply", type: "action", module: "whatsapp", action: "draft_reply", title: "Draft payment reminder", config: { approvalRequired: true }, disabled: false }], actions: [], goal: { type: "invoice_status", value: "paid" }, settings: { runWindow: "business_hours", timezone: "Asia/Kolkata", throttling: {}, errorHandling: {}, notifications: {} }, modulesUsed: ["finance_accounting", "whatsapp"], requiresApproval: true, updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
-];
-
 export default function AutomationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const search = useSearchParams();
   const isNew = id === "new";
-  const crmAutomation = useAppStore((state) => state.automations.find((item) => item.id === id));
-  const isDemoWorkflow = demoMode && (id.startsWith("demo-workflow-") || Boolean(crmAutomation));
   const rawTab = search.get("tab") as PageTab | null;
   const tab: PageTab = pageTabs.some(([key]) => key === rawTab) ? (rawTab as PageTab) : "editor";
-  const workflowApi = useApi<WorkflowRecord>(isNew || isDemoWorkflow ? null : "/business/automations/" + id);
-  const workflowListApi = useApi<WorkflowRecord[]>(isNew || isDemoWorkflow ? null : "/business/automations");
-  const runsApi = useApi<BusinessWorkflowRun[]>(isNew || isDemoWorkflow ? null : "/business/automations/" + id + "/runs");
+  const workflowApi = useApi<WorkflowRecord>(isNew ? null : "/business/automations/" + id);
+  const workflowListApi = useApi<WorkflowRecord[]>(isNew ? null : "/business/automations");
+  const runsApi = useApi<BusinessWorkflowRun[]>(isNew ? null : "/business/automations/" + id + "/runs");
   const catalogApi = useApi<BusinessAutomationCatalog>("/business/automation-catalog");
-  const demoRecord = isDemoWorkflow ? demoWorkflowRecords.find((record) => record.id === id) ?? (crmAutomation ? fromAutomation(crmAutomation) : undefined) : undefined;
-  const [draft, setDraft] = React.useState<WorkflowRecord>(() => demoRecord ? normalizeWorkflow(demoRecord) : emptyWorkflow);
-  const [hydrated, setHydrated] = React.useState(isNew || Boolean(demoRecord));
+  const [draft, setDraft] = React.useState<WorkflowRecord>(() => emptyWorkflow);
+  const [hydrated, setHydrated] = React.useState(isNew);
   const [editing, setEditing] = React.useState(isNew || search.get("mode") === "edit");
   const [selectedStepId, setSelectedStepId] = React.useState("trigger");
   const [panelTab, setPanelTab] = React.useState<"setup" | "configure" | "test">("setup");
@@ -110,12 +84,12 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   const lastSavedRef = React.useRef<string>("");
 
   React.useEffect(() => {
-    const record = workflowApi.data ?? workflowListApi.data?.find((item) => String(item.id) === id) ?? demoRecord;
+    const record = workflowApi.data ?? workflowListApi.data?.find((item) => String(item.id) === id);
     if (!record || hydrated) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(normalizeWorkflow(record));
     setHydrated(true);
-  }, [id, workflowApi.data, workflowListApi.data, hydrated, demoRecord]);
+  }, [id, workflowApi.data, workflowListApi.data, hydrated]);
 
   const selectedStep = draft.steps.find((step) => step.id === selectedStepId);
   const catalog = catalogApi.data;
@@ -140,7 +114,6 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   async function saveDraft(next = draft, silent = false) {
     if (isNew || !next.name.trim()) return false;
-    if (isDemoWorkflow) { setSaveState("Saved · demo"); lastSavedRef.current = JSON.stringify(next); if (!silent) toast.success("Workflow draft saved"); return true; }
     setSaveState("Saving…");
     const payload = { name: next.name, description: next.description, scope: "business", trigger: next.trigger, steps: next.steps, actions: next.steps.map((step) => ({ id: step.id, type: step.type, module: step.module, action: step.action, title: step.title, config: step.config, disabled: step.disabled })), goal: next.goal, settings: next.settings, folderId: next.folderId, requiresApproval: hasApproval(next) };
     try {
@@ -178,7 +151,6 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   async function publish() {
     if (isNew) { toast.info("Save the workflow draft before publishing."); return; }
     if (!draft.steps.length && !draft.trigger.type) { toast.error("Add a trigger before publishing."); return; }
-    if (isDemoWorkflow) { setDraft((current) => ({ ...current, status: "active", liveVersion: (current.liveVersion ?? 0) + 1 })); setSaveState("Published · demo"); setReviewOpen(false); setEditing(false); toast.success("Workflow published"); return; }
     try {
       await saveDraft(draft, true);
       await api("/business/automations/" + id + "/publish", { method: "POST", body: JSON.stringify({ changeNote: changeNote.trim() || "Published from Janus workflow editor" }) });
@@ -191,7 +163,6 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   async function testWorkflow(stepId?: string) {
     if (isNew) { toast.info("Save the workflow before testing it."); return; }
-    if (isDemoWorkflow) { setTestOutput({ dryRun: true, status: "passed", workflow: draft.name, stepId: stepId ?? "all", preview: "No messages sent and no records changed.", side_effects: false }); toast.success("Demo dry run completed"); return; }
     try {
       const result = await api<Record<string, unknown>>("/business/automations/" + id + "/test", { method: "POST", body: JSON.stringify({ stepId, dryRun: true }) });
       setTestOutput(result);
@@ -203,7 +174,6 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
     if (isNew) return;
     const next = live ? "off" : "on";
     if (next === "on" && hasOutboundMessage(draft) && !window.confirm("This workflow can send customer messages. Turn it on?")) return;
-    if (isDemoWorkflow) { setDraft((current) => ({ ...current, status: next === "on" ? "active" : "paused" })); setSaveState("Saved · demo"); toast.success(next === "on" ? "Workflow turned on" : "Workflow turned off"); return; }
     try {
       await api("/business/automations/" + id + "/" + next, { method: "POST" });
       workflowApi.reload();
@@ -216,13 +186,11 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   async function archive() {
     if (isNew || !window.confirm("Archive this workflow? Run history will be kept for audit.")) return;
-    if (isDemoWorkflow) { toast.success("Workflow archived"); router.push("/automations?workspace=business"); return; }
     try { await api("/business/automations/" + id, { method: "DELETE" }); toast.success("Workflow archived"); router.push("/automations?workspace=business"); }
     catch (error) { toast.error(message(error)); }
   }
 
   async function duplicate() {
-    if (isDemoWorkflow) { toast.success("Workflow duplicated as a draft"); router.push("/automations?workspace=business"); return; }
     try {
       const created = await api<WorkflowRecord>("/business/automations", { method: "POST", body: JSON.stringify({ name: draft.name + " copy", description: draft.description, scope: "business", trigger: draft.trigger, steps: draft.steps, actions: draft.steps, requiresApproval: hasApproval(draft) }) });
       toast.success("Workflow duplicated");
@@ -251,13 +219,13 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   }
 
   if ((workflowApi.loading || workflowListApi.loading) && !hydrated) return <div className="px-6 py-8 text-sm text-muted-foreground">Loading workflow…</div>;
-  if (workflowApi.error && !isNew && !isDemoWorkflow && !workflowApi.data && !workflowListApi.data?.some((item) => String(item.id) === id)) return <Unavailable title="Workflow details unavailable" text={workflowApi.error} action="GET /business/automations/:id or GET /business/automations" />;
+  if (workflowApi.error && !isNew && !workflowApi.data && !workflowListApi.data?.some((item) => String(item.id) === id)) return <Unavailable title="Workflow details unavailable" text={workflowApi.error} action="GET /business/automations/:id or GET /business/automations" />;
   if (!hydrated) return null;
 
   return <div className="mx-auto flex max-w-[1500px] flex-col">
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 px-5 py-4 backdrop-blur sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><Link href="/automations?workspace=business" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Business Management / Workflows{draft.folderId ? " / " + draft.folderId : ""}</Link>{editing ? <div className="flex items-center gap-2"><Input value={draft.name} onChange={(e) => updateDraft({ ...draft, name: e.target.value })} className="h-9 max-w-[420px] text-lg font-semibold" aria-label="Workflow name" /><Badge variant="outline">Draft</Badge></div> : <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{draft.name}</h1><StatusBadge status={draft.status} /></div>}<p className="mt-1 text-xs text-muted-foreground">{draft.liveVersion ? "v" + draft.liveVersion : "Unpublished draft"}{draft.updatedAt ? " · Updated " + formatDate(draft.updatedAt) : ""}</p></div><div className="flex flex-wrap items-center gap-2">{editing && <><Button size="icon" variant="ghost" aria-label="Undo draft change" title="Undo draft change" disabled={!draftHistory.length} onClick={undoDraft}><Undo2 className="size-4" /></Button><Button size="icon" variant="ghost" aria-label="Redo draft change" title="Redo draft change" disabled={!draftFuture.length} onClick={redoDraft}><Redo2 className="size-4" /></Button></>}{!isNew && <Button size="sm" variant="secondary" onClick={() => void testWorkflow()}><FlaskConical className="size-3.5" />Test workflow</Button>}{!editing && <Button size="sm" variant="secondary" onClick={() => setCopyOpen(true)}><Copy className="size-3.5" />Copy to workspace</Button>}{!editing && <Button size="sm" variant="secondary" onClick={enterEdit}><Pencil className="size-3.5" />Edit</Button>}{editing && <Button size="sm" variant="secondary" onClick={() => void saveDraft()} disabled={saveState === "Saving…"}><Save className="size-3.5" />Save draft</Button>}{editing ? <Button size="sm" onClick={() => setReviewOpen(true)} disabled={isNew}><Check className="size-3.5" />Review & publish</Button> : <Button size="sm" variant={live ? "secondary" : "default"} onClick={() => void toggle()} disabled={isNew}>{live ? "Turn off" : "Turn on"}</Button>}<Button size="icon" variant="ghost" aria-label="Workflow actions" onClick={() => setMoreOpen((value) => !value)}><MoreHorizontal className="size-4" /></Button></div></div>
-      {moreOpen && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">{demoMode && <Button size="sm" variant="ghost" onClick={() => setCopyOpen(true)}><Copy className="size-3.5" />Copy to workspace</Button>}<Button size="sm" variant="ghost" onClick={duplicate}><Copy className="size-3.5" />Duplicate</Button><Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(JSON.stringify(draft, null, 2)).then(() => toast.success("Workflow JSON copied"))}><Download className="size-3.5" />Export JSON</Button><Button size="sm" variant="ghost" onClick={archive}><Trash2 className="size-3.5" />Archive</Button><Button size="sm" variant="ghost" disabled><X className="size-3.5" />Delete after archive</Button></div>}
+      {moreOpen && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3"><Button size="sm" variant="ghost" onClick={duplicate}><Copy className="size-3.5" />Duplicate</Button><Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(JSON.stringify(draft, null, 2)).then(() => toast.success("Workflow JSON copied"))}><Download className="size-3.5" />Export JSON</Button><Button size="sm" variant="ghost" onClick={archive}><Trash2 className="size-3.5" />Archive</Button><Button size="sm" variant="ghost" disabled><X className="size-3.5" />Delete after archive</Button></div>}
     </header>
     {editing && !isNew && <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:mx-6"><span><strong>Editing.</strong> {live ? "This workflow is on: saved changes apply from its next run. If a change leaves it unable to run, saving switches it off and says why." : "This workflow is off. Save your changes, then publish to switch it on."}</span><Button size="sm" variant="secondary" onClick={() => { workflowApi.reload(); setEditing(false); }}>Undo unsaved changes</Button></div>}
     {!editing && live && <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 border border-sky-300/70 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:mx-6"><span>This workflow is on. Changes you save apply from its next run.</span><Button size="sm" variant="secondary" onClick={enterEdit}>Edit workflow</Button></div>}
@@ -413,7 +381,7 @@ function SettingsTab({ workflow, onChange, onSave, onArchive }: { workflow: Work
       <label className="flex items-start gap-2 text-sm"><Checkbox checked={workflow.requiresApproval === true} onCheckedChange={(value) => onChange({ ...workflow, requiresApproval: value === true })} /><span>Ask for approval before each run<span className="block text-xs text-muted-foreground">Each run waits on the Workflows page until someone approves it. Leave it off for alerts that should go out at once.</span></span></label>
       <Button size="sm" className="w-fit" onClick={onSave}><Save className="size-3.5" />Save settings</Button>
     </div></section>
-    <section className="border border-border bg-surface p-5"><h2 className="text-sm font-semibold">Archive</h2><p className="mt-2 text-xs text-muted-foreground">An archived workflow stops running and leaves the list. Its run history is kept.</p><Button size="sm" variant="secondary" className="mt-3" onClick={() => { if (window.confirm(`Archive “${workflow.name}”? It stops running.`)) onArchive(); }}>Archive workflow</Button></section>
+    <section className="border border-border bg-surface p-5"><h2 className="text-sm font-semibold">Archive</h2><p className="mt-2 text-xs text-muted-foreground">An archived workflow stops running and leaves the list. Its run history is kept.</p><Button size="sm" variant="secondary" className="mt-3" onClick={() => { if (window.confirm(`Archive "${workflow.name}"? It stops running.`)) onArchive(); }}>Archive workflow</Button></section>
   </div>;
 }
 

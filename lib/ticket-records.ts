@@ -1,7 +1,6 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { useAppStore } from "@/lib/stores/app-store";
 import type { Ticket, TicketPriority, TicketStatus } from "@/lib/types";
 
@@ -9,7 +8,6 @@ import type { Ticket, TicketPriority, TicketStatus } from "@/lib/types";
  * Support ticket number, status, assignee and resolution are recorded on the server, which checks who
  * may change them and writes the audit row. Conversations, handoffs and SLA timers stay on the screen.
  * Each change goes to the server first and reaches the screen only when the server accepts it.
- * Demo mode keeps the local path.
  */
 
 interface ServerTicket {
@@ -60,7 +58,6 @@ function bookTicket(ticket: Ticket): Promise<ServerTicket> {
  * never kept only in this browser. Tickets opened in another browser appear once they exist on screen here.
  */
 export function syncSupportTickets(): Promise<void> {
-  if (demoMode) return Promise.resolve();
   // A second caller while a sync runs waits for it, so the same tickets are not sent twice.
   if (!syncing) {
     syncing = loadSupportTickets().finally(() => {
@@ -97,7 +94,6 @@ async function loadSupportTickets(): Promise<void> {
  */
 export async function createSupportTicket(input: NewTicket): Promise<{ id: string; error: string | null }> {
   const id = useAppStore.getState().createTicket(input);
-  if (demoMode) return { id, error: null };
   const ticket = useAppStore.getState().tickets.find((item) => item.id === id);
   if (!ticket) return { id, error: null };
   try {
@@ -110,12 +106,10 @@ export async function createSupportTicket(input: NewTicket): Promise<{ id: strin
 
 /** Sends one change to the server, then applies it on the screen. Returns the refusal message, or null. */
 async function record(id: string, step: string, data: unknown, apply: () => void): Promise<string | null> {
-  if (!demoMode) {
-    try {
-      await api<ServerTicket>(pathFor(id, step), { method: "POST", body: JSON.stringify(data) });
-    } catch (error: unknown) {
-      return message(error);
-    }
+  try {
+    await api<ServerTicket>(pathFor(id, step), { method: "POST", body: JSON.stringify(data) });
+  } catch (error: unknown) {
+    return message(error);
   }
   apply();
   return null;

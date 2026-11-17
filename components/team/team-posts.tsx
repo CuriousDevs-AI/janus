@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { enablePush } from "@/lib/push";
 import { api, message as errorText } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -123,7 +122,7 @@ export function PostCard({ item, onChanged }: { item: TeamMessage; onChanged: ()
           <span className="relative mt-1.5 inline-block rounded-full bg-warning px-3 py-0.5 text-[11px] font-semibold text-white shadow-sm">{item.kudos.value}</span>
         ) : null}
         <blockquote className="relative mx-auto mt-3 max-w-sm whitespace-pre-wrap break-words text-[15px] italic leading-relaxed text-foreground/90">
-          “{item.body}”
+          "{item.body}"
         </blockquote>
         <p className="relative mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
           <Face name={item.author.name} /> from <span className="font-medium text-foreground">{item.mine ? "you" : item.author.name}</span> · {when(item.createdAt)}
@@ -569,7 +568,6 @@ export function AnnouncementWatcher() {
   const session = useSession();
   const router = useRouter();
   React.useEffect(() => {
-    if (demoMode) return;
     const key = `${SEEN_KEY}.${session.tenant.id}.${session.user.id}`;
     let stopped = false;
     async function check() {

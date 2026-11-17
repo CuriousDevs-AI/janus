@@ -7,8 +7,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { Contact, WhatsAppConversation } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,7 +100,7 @@ export function CustomerCallButton({
   const session = useSession();
   const [logging, setLogging] = React.useState<"outbound" | "inbound" | null>(null);
   const [browser, setBrowser] = React.useState(false);
-  if (demoMode || !hasPermission(session.permissions, "leads:write")) return null;
+  if (!can(session, "leads:write")) return null;
 
   return (
     <>
@@ -601,7 +600,7 @@ function useAgentCall(contactId: string, audioRef: React.RefObject<HTMLAudioElem
 /** The calls with a contact, newest first, with a way to call them. Used on lead and deal pages. */
 export function CustomerCalls({ contactId }: { contactId: string }) {
   const session = useSession();
-  const allowed = !demoMode && hasPermission(session.permissions, "leads:read_own");
+  const allowed = can(session, "leads:read_own");
   const contact = useApi<Contact>(allowed ? `/contacts/${encodeURIComponent(contactId)}` : null);
   const conversation = useApi<WhatsAppConversation | null>(
     allowed ? `/whatsapp/contacts/${encodeURIComponent(contactId)}/conversation` : null,

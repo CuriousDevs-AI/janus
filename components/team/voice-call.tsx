@@ -4,7 +4,6 @@ import * as React from "react";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
 import { api, message as errorText } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 
 /**
  * Voice calls for Team Chat: one browser-to-browser connection per person in the call (a mesh),
@@ -340,10 +339,6 @@ export function VoiceCallProvider({ children }: { children: React.ReactNode }) {
 
   const join = React.useCallback(
     async (id: string, name: string) => {
-      if (demoMode) {
-        toast.message("Voice calls run on real accounts.");
-        return;
-      }
       if (current.current === id) return;
       if (current.current) await leave();
       setJoining(true);

@@ -11,7 +11,6 @@ import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import { useSession } from "@/components/auth/session-provider";
 import { PORTFOLIO_ROLES } from "@/lib/access";
-import { demoMode } from "@/lib/demo-mode";
 import { enablePush } from "@/lib/push";
 
 type Digest = { enabled: boolean; eligible: boolean; nextDueAt: string | null; lastSentAt: string | null };
@@ -26,20 +25,14 @@ function Row({ icon: Icon, title, text, children }: { icon: React.ComponentType<
   </div>;
 }
 
-/**
- * What Janus actually sends you, each with its own switch: the Monday summary, the alert when a
- * company turns red, and notifications in this browser. Every switch is saved for you on the server.
- */
 export function NotificationsSection() {
   const session = useSession();
-  const hasPortfolio = !demoMode && session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
-  const digest = useApi<Digest>(demoMode ? null : hasPortfolio ? "/portfolio/digest" : null);
-  const alerts = useApi<Alerts>(demoMode ? null : hasPortfolio ? "/portfolio/alerts" : null);
-  const [demo, setDemo] = React.useState({ digest: true, alerts: true });
+  const hasPortfolio = session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
+  const digest = useApi<Digest>(hasPortfolio ? "/portfolio/digest" : null);
+  const alerts = useApi<Alerts>(hasPortfolio ? "/portfolio/alerts" : null);
   const [saving, setSaving] = React.useState<string | null>(null);
 
   async function save(kind: "digest" | "alerts", enabled: boolean) {
-    if (demoMode) { setDemo((current) => ({ ...current, [kind]: enabled })); return; }
     setSaving(kind);
     try {
       await api(`/portfolio/${kind}`, { method: "PUT", body: JSON.stringify({ enabled }) });
@@ -48,9 +41,9 @@ export function NotificationsSection() {
     } catch (error) { toast.error(message(error)); } finally { setSaving(null); }
   }
 
-  const digestOn = demoMode ? demo.digest : Boolean(digest.data?.enabled);
-  const eligible = demoMode || (hasPortfolio && digest.data?.eligible !== false);
-  const alertsOn = demoMode ? demo.alerts : Boolean(alerts.data?.enabled);
+  const digestOn = Boolean(digest.data?.enabled);
+  const eligible = hasPortfolio && digest.data?.eligible !== false;
+  const alertsOn = Boolean(alerts.data?.enabled);
 
   return <div className="flex flex-col gap-4">
     <SectionCard title="Emails and alerts" description="What Janus sends you. Each switch is yours alone and works on every device.">
@@ -78,9 +71,7 @@ export function NotificationsSection() {
   </div>;
 }
 
-/** Notifications in this browser: asked for here, so the browser's own permission prompt makes sense. */
 function BrowserCard() {
-  // Read from the browser after it renders; the server cannot know it.
   const seen = React.useSyncExternalStore(() => () => {}, () => "Notification" in window && "serviceWorker" in navigator && "PushManager" in window ? Notification.permission : "unsupported", () => "unsupported" as const);
   const [answered, setPermission] = React.useState<NotificationPermission | null>(null);
   const permission = answered ?? seen;
@@ -91,7 +82,6 @@ function BrowserCard() {
       const answer = await Notification.requestPermission();
       setPermission(answer);
       if (answer !== "granted") { toast.message("The browser was not allowed to show notifications."); return; }
-      if (demoMode) { toast.success("In the preview nothing is sent."); return; }
       const ok = await enablePush();
       if (ok) toast.success("This browser will show Janus notifications, even with Janus closed.");
       else toast.error("This server cannot send browser notifications yet. Emails still arrive.");

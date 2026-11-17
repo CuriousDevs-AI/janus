@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { sessionChanged, useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { roleLabel } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import { useProfileStore, type UserStatus, avatarColorFor } from "@/lib/stores/profile-store";
@@ -103,9 +102,9 @@ export function ProfileCard() {
     if (!dirty || phoneProblem || !name.trim()) return;
     setSaving(true);
     try {
-      if (!demoMode) await api("/me", { method: "PATCH", body: JSON.stringify({ name: name.trim(), phone: phone.trim() || null }) });
+      await api("/me", { method: "PATCH", body: JSON.stringify({ name: name.trim(), phone: phone.trim() || null }) });
       toast.success("Profile saved.");
-      if (!demoMode) window.dispatchEvent(new Event(sessionChanged));
+      window.dispatchEvent(new Event(sessionChanged));
     } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   }
 
@@ -304,8 +303,8 @@ function EmailDialog({ current, onClose }: { current: string; onClose: () => voi
     if (!valid || !password) return;
     setSaving(true);
     try {
-      if (!demoMode) await api("/me/change-email", { method: "POST", body: JSON.stringify({ new_email: email.trim(), password }) });
-      toast.success(demoMode ? "In the preview nothing is changed." : `We emailed a link to ${email.trim()}. Your sign-in email changes when you open it.`);
+      await api("/me/change-email", { method: "POST", body: JSON.stringify({ new_email: email.trim(), password }) });
+      toast.success(`We emailed a link to ${email.trim()}. Your sign-in email changes when you open it.`);
       onClose();
     } catch (error) { toast.error(message(error)); setSaving(false); }
   }

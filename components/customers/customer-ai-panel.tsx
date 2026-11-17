@@ -3,11 +3,12 @@
 import * as React from "react";
 import { Sparkles, Send, User } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
-import { getMemoryForCustomer } from "@/lib/mock-data";
+import { useApi } from "@/lib/api/use-api";
 import { answerAboutCustomer, SUGGESTED_QUESTIONS } from "@/lib/services/customer-ai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import type { MemoryItem } from "@/lib/types";
 
 export function CustomerAIPanel({ customerId }: { customerId: string }) {
   const customer = useAppStore((s) => s.customers.find((c) => c.id === customerId))!;
@@ -20,6 +21,7 @@ export function CustomerAIPanel({ customerId }: { customerId: string }) {
   const activities = allActivities.filter((a) => a.customerId === customerId);
   const conversations = allConversations.filter((c) => c.customerId === customerId);
   const company = useCompany(customer.companyId);
+  const { data: memory } = useApi<MemoryItem[]>(`/customers/${customerId}/memory`);
 
   const [input, setInput] = React.useState("");
   const [turns, setTurns] = React.useState<{ question: string; text: string; sources: string[] }[]>([]);
@@ -37,7 +39,7 @@ export function CustomerAIPanel({ customerId }: { customerId: string }) {
         companyName: company?.name ?? "their company",
         deals,
         tickets,
-        memory: getMemoryForCustomer(customerId),
+        memory: memory ?? [],
         activities: sorted,
         conversationCount: conversations.length,
       });
@@ -94,7 +96,7 @@ export function CustomerAIPanel({ customerId }: { customerId: string }) {
           {thinking && (
             <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
               <Sparkles className="size-3.5 text-accent" />
-              Thinking…
+              Thinking...
             </div>
           )}
           <div ref={bottomRef} />
@@ -107,7 +109,7 @@ export function CustomerAIPanel({ customerId }: { customerId: string }) {
           }}
           className="mt-3 flex items-center gap-2"
         >
-          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything about this customer…" />
+          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything about this customer..." />
           <Button type="submit" size="icon" disabled={!input.trim()}>
             <Send className="size-3.5" />
           </Button>

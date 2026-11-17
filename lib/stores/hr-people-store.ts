@@ -2,34 +2,7 @@
 
 import { create } from "zustand";
 import { scoped } from "@/lib/company";
-import { withoutDemoRecords } from "@/lib/stores/server-owned";
 import { createJSONStorage, persist } from "zustand/middleware";
-import {
-  acmeEmployees,
-  demoHrCandidates,
-  demoHrDocuments,
-  demoHrExpenseClaims,
-  demoHrLeaveRequests,
-  demoHrOnboardingTasks,
-  demoHrPayrollIssues,
-  demoHrSignatureAudits,
-  demoHrWhatsAppActions,
-  demoPayrollRuns,
-  hrAttendance,
-  hrAttendanceTrend,
-  hrCandidates,
-  hrDepartmentCounts,
-  hrDocuments,
-  hrComplianceItems,
-  hrExpenseClaims,
-  hrSignatureAudits,
-  hrEmployees,
-  hrLeaveRequests,
-  hrOnboardingTasks,
-  hrPayrollIssues,
-  hrPayrollRuns,
-  hrWhatsAppActions,
-} from "@/lib/mock-data/hr-people";
 import type {
   ApprovalStatus,
   HrAttendanceRecord,
@@ -91,19 +64,19 @@ interface HrPeopleState {
   reset: () => void;
 }
 
-const seed = () => ({
-  employees: hrEmployees,
-  candidates: hrCandidates,
-  attendance: hrAttendance,
-  leaveRequests: hrLeaveRequests,
-  documents: hrDocuments,
-  onboardingTasks: hrOnboardingTasks,
-  payrollIssues: hrPayrollIssues,
-  payrollRuns: hrPayrollRuns,
-  whatsAppActions: hrWhatsAppActions,
-  expenseClaims: hrExpenseClaims,
-  signatureAudits: hrSignatureAudits,
-  complianceItems: hrComplianceItems,
+const seed = (): Pick<HrPeopleState, "employees" | "candidates" | "attendance" | "leaveRequests" | "documents" | "onboardingTasks" | "payrollIssues" | "payrollRuns" | "whatsAppActions" | "expenseClaims" | "signatureAudits" | "complianceItems"> => ({
+  employees: [],
+  candidates: [],
+  attendance: [],
+  leaveRequests: [],
+  documents: [],
+  onboardingTasks: [],
+  payrollIssues: [],
+  payrollRuns: [],
+  whatsAppActions: [],
+  expenseClaims: [],
+  signatureAudits: [],
+  complianceItems: [],
 });
 
 let counter = 100;
@@ -170,29 +143,8 @@ export const useHrPeopleStore = create<HrPeopleState>()(
       name: scoped("janus.hr-people-demo"),
       version: 3,
       storage: createJSONStorage(() => localStorage),
-      // A saved copy drops the demo people and HR records outside demo mode; records the company made stay.
-      merge: (persisted, current) => withoutDemoRecords({ ...current, ...(persisted as Partial<HrPeopleState>) } as HrPeopleState, {
-        employees: acmeEmployees, payrollRuns: demoPayrollRuns, candidates: demoHrCandidates, leaveRequests: demoHrLeaveRequests,
-        documents: demoHrDocuments, onboardingTasks: demoHrOnboardingTasks, payrollIssues: demoHrPayrollIssues,
-        whatsAppActions: demoHrWhatsAppActions, expenseClaims: demoHrExpenseClaims, signatureAudits: demoHrSignatureAudits,
-      }),
-      // Version 2 added birthdays and October attendance history. Older saved data gets both without losing edits.
-      migrate: (persisted, version) => {
-        const state = persisted as Partial<HrPeopleState>;
-        if (version < 2) {
-          const have = new Set((state.attendance ?? []).map((item) => item.id));
-          state.attendance = [...(state.attendance ?? []), ...hrAttendance.filter((item) => !have.has(item.id))];
-          state.employees = (state.employees ?? []).map((item) => ({ ...item, birthDate: item.birthDate ?? hrEmployees.find((seedItem) => seedItem.id === item.id)?.birthDate }));
-        }
-        if (version < 3) {
-          // Version 3 added Meera Singh to the seed. Bring her (and her records) in without touching anything saved.
-          const ids = new Set((state.employees ?? []).map((item) => item.id));
-          state.employees = [...(state.employees ?? []), ...hrEmployees.filter((item) => !ids.has(item.id))];
-          const have = new Set((state.attendance ?? []).map((item) => item.id));
-          state.attendance = [...(state.attendance ?? []), ...hrAttendance.filter((item) => !have.has(item.id))];
-        }
-        return state as HrPeopleState;
-      },
+      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<HrPeopleState>) }),
+      migrate: (persisted) => persisted as HrPeopleState,
       partialize: (state) => ({
         demoRole: state.demoRole,
         employees: state.employees,
@@ -212,4 +164,4 @@ export const useHrPeopleStore = create<HrPeopleState>()(
   ),
 );
 
-export const hrCharts = { attendanceTrend: hrAttendanceTrend, departmentCounts: hrDepartmentCounts };
+export const hrCharts = { attendanceTrend: [] as { date: string; present: number; absent: number; leave: number }[], departmentCounts: [] as { name: string; count: number }[] };

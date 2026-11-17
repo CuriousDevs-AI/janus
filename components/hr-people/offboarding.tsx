@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { exitChecklist, lifecycleEvent, lifecycleId, useHrLifecycleStore, type HrClearanceOwner, type HrExitRecord } from "@/lib/stores/hr-lifecycle-store";
-import { demoMode } from "@/lib/demo-mode";
 import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
 import { downloadHrCsv, HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
@@ -78,7 +77,7 @@ function ExitDetail({ exit, role, actorName, manager, onTask, onFinish, onCancel
       {manager && !closed && <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={onCancel}>Cancel exit</Button><Button onClick={onFinish} disabled={!allDone}>{allDone ? "Complete exit and archive" : "Finish all tasks to complete"}</Button></div>}
       {manager && !closed && employee && <FnfSettlement employee={employee} exit={exit} />}
       {manager && !closed && <ExitInterviewPanel exitId={exit.id} onSave={() => toast.success("Exit interview saved")} />}
-      <div><h3 className="mb-2 text-sm font-semibold">Activity</h3><ol className="divide-y divide-border border border-border text-sm">{exit.events.map((event) => <li key={event.id} className="px-4 py-2"><p>{event.text}</p><p className="text-xs text-muted-foreground">{event.actor} · {dateTime(event.at)}</p></li>)}{!exit.events.length && <li className="px-4 py-3 text-xs text-muted-foreground">No activity yet.</li>}</ol><p className="mt-2 text-[11px] text-muted-foreground">Acting as {actorName}.{demoMode ? " Demo records stay in this browser." : ""}</p></div>
+      <div><h3 className="mb-2 text-sm font-semibold">Activity</h3><ol className="divide-y divide-border border border-border text-sm">{exit.events.map((event) => <li key={event.id} className="px-4 py-2"><p>{event.text}</p><p className="text-xs text-muted-foreground">{event.actor} · {dateTime(event.at)}</p></li>)}{!exit.events.length && <li className="px-4 py-3 text-xs text-muted-foreground">No activity yet.</li>}</ol><p className="mt-2 text-[11px] text-muted-foreground">Acting as {actorName}.</p></div>
     </div>
   </HrPanel>;
 }

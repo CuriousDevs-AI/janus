@@ -1,7 +1,6 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { toPaise } from "@/lib/finance-records";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
@@ -23,7 +22,7 @@ import {
 /**
  * The stock ledger is kept on the server: the item master, batches, goods received and adjustments.
  * Stock on hand is worked out from the server's movements, and the screen reloads the ledger after each
- * change, so it never shows a balance the server did not write. Demo mode keeps the local path.
+ * change, so it never shows a balance the server did not write.
  */
 
 interface ServerItem {
@@ -312,7 +311,6 @@ let syncing: Promise<void> | null = null;
  * and goods received are loaded once, so the balances the screen had are the balances the server holds.
  */
 export function syncOperations(): Promise<void> {
-  if (demoMode) return Promise.resolve();
   if (!syncing) {
     syncing = loadLedger().finally(() => {
       syncing = null;
@@ -360,7 +358,6 @@ async function loadLedger(): Promise<void> {
 
 /** Adds an item to the item master on the server. The screen keeps it once the server accepts it. */
 export async function addItemRecord(input: Omit<Item, "id">): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().addItem(input);
   const key = `itm-${Date.now()}`;
   try {
     await api("/operations/items", {
@@ -389,7 +386,6 @@ export async function receiveStock(
   input: { itemId: string; locationId: number; batchNo: string | null; expiry: string | null; qty: number; reason: string },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().receive(input, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   const item = useOperationsStore.getState().items.find((row) => row.id === input.itemId);
@@ -419,7 +415,6 @@ export async function requestAdjustment(
   input: { itemId: string; locationId: number; batchNo: string | null; qty: number; reason: string },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().requestAdjustment(input, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   const item = useOperationsStore.getState().items.find((row) => row.id === input.itemId);
@@ -449,7 +444,6 @@ export async function requestAdjustment(
 
 /** Applies a pending adjustment. The server checks stock again, because it may have moved since. */
 export async function approveAdjustment(id: string, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().approveAdjustment(id, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -462,7 +456,6 @@ export async function approveAdjustment(id: string, by: string): Promise<string 
 }
 
 export async function rejectAdjustment(id: string, reason: string, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().rejectAdjustment(id, reason, by);
   try {
     await api(`/operations/adjustments/${encodeURIComponent(id)}/reject`, {
       method: "POST",
@@ -481,7 +474,6 @@ function addTrail(entry: TrailEntry) {
 
 /** Books a dispatch on the server. Its lines leave stock in the same step; the screen then reloads the ledger. */
 export async function createDispatch(input: DispatchInput, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().createDispatch(input, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -509,7 +501,6 @@ export async function createDispatch(input: DispatchInput, by: string): Promise<
 
 /** Marks the goods picked, packed or shipped, in that order. */
 export async function checkpointDispatch(id: string, stage: "picked" | "packed" | "shipped", by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().checkpointDispatch(id, stage, by);
   const number = useOperationsStore.getState().dispatches.find((item) => item.id === id)?.number ?? id;
   try {
     await api(`/operations/dispatches/${encodeURIComponent(id)}/checkpoints/${stage}`, { method: "POST" });
@@ -523,7 +514,6 @@ export async function checkpointDispatch(id: string, stage: "picked" | "packed" 
 
 /** Records proof of delivery. The goods must be shipped first. */
 export async function markDelivered(id: string, proof: string, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().markDelivered(id, proof, by);
   const number = useOperationsStore.getState().dispatches.find((item) => item.id === id)?.number ?? id;
   try {
     await api(`/operations/dispatches/${encodeURIComponent(id)}/deliver`, {
@@ -543,7 +533,6 @@ export async function authoriseReturn(
   input: { dispatchId: string; itemId: string; qty: number; reason: string },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().authoriseReturn(input, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -562,7 +551,6 @@ export async function authoriseReturn(
 
 /** Records the condition of returned goods. Good goods go back into stock. */
 export async function inspectReturn(id: string, condition: "good" | "damaged", by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().inspectReturn(id, condition, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -583,7 +571,6 @@ export async function sendTransfer(
   input: Omit<Transfer, "id" | "number" | "date" | "status" | "by" | "batchNo"> & { batchNo?: string | null },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().sendTransfer(input, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -610,7 +597,6 @@ export async function sendTransfer(
 
 /** Marks a transfer received. The stock arrives at the receiving location. */
 export async function receiveTransfer(id: string, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().receiveTransfer(id, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   const number = useOperationsStore.getState().transfers.find((item) => item.id === id)?.number ?? id;
@@ -633,7 +619,6 @@ export async function recordCount(
   counts: { itemId: string; batchNo?: string | null; counted: number }[],
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().recordCount(locationId, counts, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -659,7 +644,6 @@ export async function addPurchaseOrder(
   input: { vendor: string; locationId: number; lines: { itemId: string; qty: number; rate: number }[] },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().addPurchaseOrder(input, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   try {
@@ -687,7 +671,6 @@ export async function receiveAgainstPO(
   receipts: { itemId: string; qty: number }[],
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().receiveAgainstPO(poId, receipts, by);
   const locked = periodLockProblem(TODAY);
   if (locked) return locked;
   const order = useOperationsStore.getState().purchaseOrders.find((item) => item.id === poId);
@@ -711,7 +694,6 @@ export async function addRequisition(
   input: { itemId: string; qty: number; estimatedRate: number; locationId: number; budgetLineId: string; reason: string },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().addRequisition(input, by);
   try {
     const row = await api<ServerRequisition>("/operations/requisitions", {
       method: "POST",
@@ -739,7 +721,6 @@ export async function addRequisition(
  * not used here; the server refuses when the line no longer has the money.
  */
 export async function approveRequisition(id: string, _availableBudget: number, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().approveRequisition(id, _availableBudget, by);
   const number = useOperationsStore.getState().requisitions.find((item) => item.id === id)?.number ?? id;
   try {
     await api(`/operations/requisitions/${encodeURIComponent(id)}/approve`, { method: "POST" });
@@ -752,7 +733,6 @@ export async function approveRequisition(id: string, _availableBudget: number, b
 }
 
 export async function rejectRequisition(id: string, reason: string, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().rejectRequisition(id, reason, by);
   const number = useOperationsStore.getState().requisitions.find((item) => item.id === id)?.number ?? id;
   try {
     await api(`/operations/requisitions/${encodeURIComponent(id)}/reject`, {
@@ -769,7 +749,6 @@ export async function rejectRequisition(id: string, reason: string, by: string):
 
 /** Turns an approved requisition into a purchase order to the vendor, once. */
 export async function orderRequisition(id: string, vendor: string, by: string): Promise<string | null> {
-  if (demoMode) return useOperationsStore.getState().orderRequisition(id, vendor, by);
   try {
     const row = await api<ServerRequisition>(`/operations/requisitions/${encodeURIComponent(id)}/order`, {
       method: "POST",

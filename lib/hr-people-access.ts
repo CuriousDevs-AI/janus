@@ -1,8 +1,6 @@
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 import { useHrOrgStore } from "@/lib/stores/hr-org-store";
 import { hasPermission } from "@/lib/hr-org";
-import { actorEmployeeId } from "@/lib/demo-persona";
-import { demoMode } from "@/lib/demo-mode";
 
 export const hrRoleLabels: Record<HrDemoRole, string> = {
   owner: "Owner",
@@ -69,21 +67,8 @@ export function actorDisplayName(employeeName: string | undefined): string {
   return employeeName ?? (signedInName || "HR");
 }
 
-export function demoActorId(role: HrDemoRole) {
-  // A real account acts as its own employee record; only the demo acts as one of its demo people.
-  if (!demoMode) return signedInEmployee;
-  const signedIn = actorEmployeeId(role);
-  if (signedIn) return signedIn;
-  const actors: Record<HrDemoRole, string> = {
-    owner: "emp-001",
-    hr_manager: "emp-002",
-    business_manager: "emp-003",
-    reporting_manager: "emp-005",
-    payroll_admin: "emp-007",
-    finance_viewer: "emp-010",
-    employee: "emp-006",
-  };
-  return actors[role];
+export function demoActorId(_role: HrDemoRole) {
+  return signedInEmployee;
 }
 
 const everyone: HrDemoRole[] = ["owner", "business_manager", "hr_manager", "reporting_manager", "payroll_admin", "employee"];

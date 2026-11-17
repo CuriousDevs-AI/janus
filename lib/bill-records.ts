@@ -1,7 +1,6 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { toPaise } from "@/lib/finance-records";
 import { trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { type Bill, type Payment, useFinanceStore } from "@/lib/stores/finance-store";
@@ -11,7 +10,7 @@ import { todayIso } from "@/lib/today";
 /**
  * Vendor bills are recorded on the server, in paise. The server checks each bill against the goods
  * received on its purchase order, holds a payment until the bill matches, and refuses more than is owed.
- * The screen shows what the server returned. Demo mode keeps the local path.
+ * The screen shows what the server returned.
  */
 
 interface ServerPayment { id: string; amount_paise: number; method: Payment["method"]; reference: string; paid_on: string; recorded_by: string }
@@ -71,7 +70,6 @@ function keep(row: ServerBill) {
 
 /** Loads the company's bills from the server. Each bill's match and what is still owed come from the server. */
 export async function syncBills(): Promise<void> {
-  if (demoMode) return;
   const rows = await api<ServerBill[]>("/finance/bills");
   useFinanceStore.setState({ bills: rows.map(toBill) });
 }
@@ -80,7 +78,6 @@ export async function addBill(
   input: { vendor: string; vendorBillNo: string; date: string; dueDate: string; amount: number; gst?: number; tds?: number; tdsSection?: string; poId?: string; itcBlocked?: boolean },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().addBill(input, by);
   const locked = periodLockProblem(input.date);
   if (locked) return locked;
   try {
@@ -112,7 +109,6 @@ export async function addBill(
 
 /** Marks whether a bill's GST is blocked credit (Section 17(5)), which changes GST to pay. */
 export async function setBlockedCredit(billId: string, blocked: boolean): Promise<string | null> {
-  if (demoMode) return "Blocked credit is recorded on a real account.";
   try {
     keep(await api<ServerBill>(`/finance/bills/${encodeURIComponent(billId)}/blocked-credit`, { method: "PUT", body: JSON.stringify({ blocked }) }));
     return null;
@@ -122,7 +118,6 @@ export async function setBlockedCredit(billId: string, blocked: boolean): Promis
 }
 
 export async function recordBillPayment(billId: string, payment: Omit<Payment, "id">, by: string): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().recordBillPayment(billId, payment, by);
   const locked = periodLockProblem(payment.date);
   if (locked) return locked;
   try {

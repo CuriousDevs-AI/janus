@@ -14,8 +14,7 @@ import {
   RefreshCcw,
   Check,
 } from "lucide-react";
-import { useAppStore } from "@/lib/stores/app-store";
-import { getCompanyById } from "@/lib/mock-data";
+import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { generateAIReply, generateDraft } from "@/lib/services/ai-responder";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { ChannelBadge } from "@/components/shared/channel-badge";
@@ -44,6 +43,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
   const sendMessage = useAppStore((s) => s.sendMessage);
   const simulateAIReply = useAppStore((s) => s.simulateAIReply);
   const markConversationRead = useAppStore((s) => s.markConversationRead);
+  const company = useCompany(customer?.companyId);
 
   const [draftText, setDraftText] = React.useState("");
   const [aiDraft, setAiDraft] = React.useState<string | null>(null);
@@ -71,8 +71,6 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
     );
   }
 
-  const company = getCompanyById(customer.companyId);
-
   function handleSend() {
     if (!draftText.trim() || !conversation) return;
     sendMessage(conversation.id, draftText.trim());
@@ -80,7 +78,6 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
     setAiDraft(null);
     setSending(true);
     window.setTimeout(() => {
-      // The assistant only answers chats it is handling. A person's reply, or a chat that is already resolved, stays with the person.
       if (conversation.aiActive && conversation.status !== "resolved") {
         const reply = generateAIReply(conversation);
         simulateAIReply(conversation.id, reply.content, { confidence: reply.confidence, knowledgeUsed: reply.knowledgeUsed });
@@ -135,7 +132,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
                 <span className="size-1 animate-bounce rounded-full bg-accent [animation-delay:-0.1s]" />
                 <span className="size-1 animate-bounce rounded-full bg-accent" />
               </span>
-              AI is drafting a reply…
+              AI is drafting a reply...
             </div>
           )}
           <div ref={bottomRef} />
@@ -181,7 +178,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
                 handleSend();
               }
             }}
-            placeholder="Message…"
+            placeholder="Message..."
             className="min-h-16 border-none bg-transparent px-1 focus-visible:ring-0"
           />
           <div className="flex items-center justify-between">
@@ -193,7 +190,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
                 <Sparkles className="size-3.5 text-accent" />
                 AI Draft
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => toast.success("Meeting scheduled", { description: "Technical Demo · Tomorrow 3:00 PM" })}>
+              <Button variant="ghost" size="sm" onClick={() => toast.success("Meeting scheduled", { description: "Technical Demo - Tomorrow 3:00 PM" })}>
                 <CalendarClock className="size-3.5" />
                 Schedule
               </Button>

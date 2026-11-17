@@ -6,7 +6,6 @@ import { ArrowLeft, BellOff, Bookmark, Check, Circle, Clock, Download, FileText,
 import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
-import { demoMode } from "@/lib/demo-mode";
 import { cn } from "@/lib/utils";
 import { TeamAvatar } from "@/components/team/team-avatar";
 import { Button } from "@/components/ui/button";
@@ -35,7 +34,7 @@ import { CallBanner, CallPanel } from "@/components/team/voice-stage";
 import { ChatAvatar, ChatList, isChannel } from "@/components/team/chat-list";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
 import { PostMenu } from "@/components/team/team-posts";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const REFRESH_MS = 4000;
@@ -85,14 +84,14 @@ export function TeamChat() {
   const [profileUser, setProfileUser] = React.useState<number | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  const channels = useApi<TeamSpace[]>(demoMode ? null : "/team/channels");
-  const direct = useApi<TeamSpace[]>(demoMode ? null : "/team/conversations");
-  const people = useApi<TeamPerson[]>(demoMode ? null : "/team/people");
+  const channels = useApi<TeamSpace[]>("/team/channels");
+  const direct = useApi<TeamSpace[]>("/team/conversations");
+  const people = useApi<TeamPerson[]>("/team/people");
   const messages = useApi<TeamMessage[]>(
-    demoMode || !selected ? null : `/team/spaces/${selected}/messages?limit=50`,
+    !selected ? null : `/team/spaces/${selected}/messages?limit=50`,
   );
   const searchUrl = React.useMemo(() => {
-    if (demoMode || !searchOpen || term.length < 2) return null;
+    if (!searchOpen || term.length < 2) return null;
     let url = `/team/search?q=${encodeURIComponent(term)}&limit=30`;
     if (filterUser) url += `&from_user=${filterUser}`;
     if (filterDateFrom) url += `&date_from=${filterDateFrom}T00:00:00`;
@@ -102,29 +101,29 @@ export function TeamChat() {
   }, [searchOpen, term, filterUser, filterDateFrom, filterDateTo, inThisChat, selected]);
   const hits = useApi<TeamSearchHit[]>(searchUrl);
   const replies = useApi<TeamMessage[]>(
-    demoMode || !threadId ? null : `/team/messages/${threadId}/replies`,
+    !threadId ? null : `/team/messages/${threadId}/replies`,
   );
   const pinned = useApi<TeamMessage[]>(
-    demoMode || !pinnedOpen || !selected ? null : `/team/spaces/${selected}/pinned`,
+    !pinnedOpen || !selected ? null : `/team/spaces/${selected}/pinned`,
   );
   const callHistory = useApi<Array<{ id: string; userId: number; userName: string; action: string; createdAt: string }>>(
-    demoMode || !callHistoryOpen || !selected ? null : `/team/voice/${selected}/history?limit=50`,
+    !callHistoryOpen || !selected ? null : `/team/voice/${selected}/history?limit=50`,
   );
   const saved = useApi<TeamMessage[]>(
-    demoMode || !savedOpen ? null : "/team/saved?limit=50",
+    !savedOpen ? null : "/team/saved?limit=50",
   );
-  const presence = useApi<TeamPresence[]>(demoMode ? null : "/team/presence");
+  const presence = useApi<TeamPresence[]>("/team/presence");
   const scheduled = useApi<TeamScheduledMessage[]>(
-    demoMode || !scheduledOpen ? null : "/team/scheduled",
+    !scheduledOpen ? null : "/team/scheduled",
   );
   const detail = useApi<SpaceDetail>(
-    demoMode || !detailOpen || !selected ? null : `/team/spaces/${selected}/detail`,
+    !detailOpen || !selected ? null : `/team/spaces/${selected}/detail`,
   );
   const threads = useApi<TeamMessage[]>(
-    demoMode || !threadsOpen ? null : "/team/threads?limit=30",
+    !threadsOpen ? null : "/team/threads?limit=30",
   );
   const media = useApi<TeamAttachment[]>(
-    demoMode || !mediaOpen || !selected ? null : `/team/spaces/${selected}/media`,
+    !mediaOpen || !selected ? null : `/team/spaces/${selected}/media`,
   );
 
   const reloadChannels = channels.reload;
@@ -133,7 +132,6 @@ export function TeamChat() {
   const reloadReplies = replies.reload;
   const reloadPresence = presence.reload;
   React.useEffect(() => {
-    if (demoMode) return;
     const timer = setInterval(() => {
       reloadChannels();
       reloadDirect();
@@ -146,14 +144,13 @@ export function TeamChat() {
   // Ensure "Your Notes" self-chat exists (auto-created, appears in conversations list).
   const notesCreated = React.useRef(false);
   React.useEffect(() => {
-    if (demoMode || notesCreated.current) return;
+    if (notesCreated.current) return;
     notesCreated.current = true;
     void api("/team/notes", { method: "POST" }).then(() => reloadDirect()).catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Heartbeat: keeps the user online in the presence system.
   React.useEffect(() => {
-    if (demoMode) return;
     void api("/team/heartbeat", { method: "POST" }).catch(() => undefined);
     const timer = setInterval(() => {
       void api("/team/heartbeat", { method: "POST" }).catch(() => undefined);
@@ -163,7 +160,6 @@ export function TeamChat() {
 
   // Presence: poll less frequently.
   React.useEffect(() => {
-    if (demoMode) return;
     const timer = setInterval(reloadPresence, 30_000);
     return () => clearInterval(timer);
   }, [reloadPresence]);
@@ -171,7 +167,7 @@ export function TeamChat() {
   // Typing indicator: poll who is typing in the current space.
   React.useEffect(() => {
     setTyping([]); // eslint-disable-line react-hooks/set-state-in-effect -- reset on space change
-    if (demoMode || !selected) return;
+    if (!selected) return;
     let alive = true;
     const poll = () => {
       void api<{ typing: TypingUser | TypingUser[] | null }>(`/team/typing/${selected}`)
@@ -200,7 +196,7 @@ export function TeamChat() {
 
   // Opening a space, or getting a new message in it, marks it read.
   React.useEffect(() => {
-    if (demoMode || !space || !newestId) return;
+    if (!space || !newestId) return;
     if (isChannel(space.kind) && !space.joined) return;
     void api(`/team/spaces/${space.id}/read`, {
       method: "POST",
@@ -266,7 +262,7 @@ export function TeamChat() {
   }
 
   function sendTyping() {
-    if (!selected || demoMode) return;
+    if (!selected) return;
     void api("/team/typing", {
       method: "POST",
       body: JSON.stringify({ space_id: Number(selected) }),
@@ -379,14 +375,6 @@ export function TeamChat() {
   );
   // On a phone, as in WhatsApp, the list and the open chat take turns filling the screen.
   const showConversation = Boolean(selected) || searchOpen;
-
-  if (demoMode) {
-    return (
-      <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-8 text-center text-sm text-muted-foreground">
-        Team chat runs on real accounts. The preview has no server to hold the messages.
-      </div>
-    );
-  }
 
   const threadRoot = threadId ? messages.data?.find((item) => item.id === threadId) ?? null : null;
   const title = space ? (isChannel(space.kind) ? `${space.private ? "🔒" : "#"}${space.name}` : space.title) : "Team chat";
@@ -603,7 +591,7 @@ export function TeamChat() {
                       <PostMenu
                         spaceId={space.id}
                         people={(people.data ?? []).filter((person) => String(person.id) !== session.user.id)}
-                        canAnnounce={isChannel(space.kind) && hasPermission(session.permissions, "announcements:post")}
+                        canAnnounce={isChannel(space.kind) && can(session, "announcements:post")}
                         onPosted={() => { reloadMessages(); reloadChannels(); }}
                       />
                     ) : null}

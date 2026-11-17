@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { Deal as ApiDeal } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
+import { can } from "@/lib/permissions";
 import * as books from "@/lib/finance-books-records";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips, StatTile as Kpi, rowClick, workspaceHref } from "@/components/shared/stat-tile";
@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "@/components/auth/session-provider";
-import { hasPermission } from "@/lib/demo-persona";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
 import { MoneyApprovalsQueue } from "@/components/approvals/money-approvals-queue";
 import { PeriodLockView } from "@/components/finance/period-lock-view";
@@ -77,11 +76,11 @@ export function FinanceWorkspace() {
     syncBills().catch((error: unknown) => toast.warning(`Bills not loaded from the server: ${message(error)}`));
     syncFundRequests().catch((error: unknown) => toast.warning(`Fund requests not loaded from the server: ${message(error)}`));
     syncBudgetLines().catch((error: unknown) => toast.warning(`Budget not loaded from the server: ${message(error)}`));
-    if (!demoMode) books.syncBooks().catch((error: unknown) => toast.warning(`Expenses, bank lines and cash not loaded from the server: ${message(error)}`));
+    books.syncBooks().catch((error: unknown) => toast.warning(`Expenses, bank lines and cash not loaded from the server: ${message(error)}`));
     // The bill form matches a bill to a purchase order, so the orders load here too.
     // Only load operations data when the user has the stock:adjust permission; accountants
     // without it would get a 403 toast on every page load.
-    if (hasPermission(session.permissions, "stock:adjust")) {
+    if (can(session, "stock:adjust")) {
       syncOperations().catch(() => {/* PO data is optional for Finance */});
     }
   }, [session.permissions]);
@@ -293,7 +292,6 @@ function BudgetsView({ me }: { me: string }) {
   const lines = useFinanceStore((state) => state.budgetLines);
   const draws = useFinanceStore((state) => state.draws);
   const plans = useFinanceStore((state) => state.plans);
-  const setBudgetPlan = useFinanceStore((state) => state.setBudgetPlan);
   const current = fiscalPeriod(todayIso());
   const [fiscalYear] = React.useState(current.fiscalYear);
   const [quarter, setQuarter] = React.useState<1 | 2 | 3 | 4>(current.quarter);
@@ -301,7 +299,7 @@ function BudgetsView({ me }: { me: string }) {
 
   async function save(lineId: string) {
     const planned = Number(drafts[lineId] ?? "");
-    const problem = demoMode ? setBudgetPlan(lineId, fiscalYear, quarter, planned, me) : await books.setBudgetPlan(lineId, fiscalYear, quarter, planned);
+    const problem = await books.setBudgetPlan(lineId, fiscalYear, quarter, planned);
     if (problem) return toast.error(problem);
     toast.success("Plan saved");
     setDrafts((current) => ({ ...current, [lineId]: "" }));
@@ -348,13 +346,12 @@ function BudgetsView({ me }: { me: string }) {
 /** Month-end close: the checks for one month, the sign-offs still needed, and the period lock that closes the books. */
 function MonthEndView({ me }: { me: string }) {
   const session = useSession();
-  const isOwner = hasPermission(session.permissions, "billing:manage");
+  const isOwner = can(session, "billing:manage");
   const invoices = useFinanceStore((state) => state.invoices);
   const bills = useFinanceStore((state) => state.bills);
   const bankLines = useFinanceStore((state) => state.bankLines);
   const creditNotes = useFinanceStore((state) => state.creditNotes);
   const closeReviews = useFinanceStore((state) => state.closeReviews);
-  const markCloseReviewed = useFinanceStore((state) => state.markCloseReviewed);
   const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
   const matchExpenses = useFinanceStore((state) => state.expenses);
   const months = dataMonths(invoices, bills, matchExpenses);
@@ -368,7 +365,7 @@ function MonthEndView({ me }: { me: string }) {
   const end = monthEnd(month);
 
   async function signOff(item: string) {
-    const problem = demoMode ? markCloseReviewed(month, item, me) : await books.markCloseReviewed(month, item);
+    const problem = await books.markCloseReviewed(month, item);
     if (problem) return toast.error(problem);
     toast.success("Signed off");
   }
@@ -416,8 +413,6 @@ function MonthEndView({ me }: { me: string }) {
 function ExpensesView({ me }: { me: string }) {
   const expenses = useFinanceStore((state) => state.expenses);
   const topUps = useFinanceStore((state) => state.pettyCashTopUps);
-  const addExpense = useFinanceStore((state) => state.addExpense);
-  const topUpPettyCash = useFinanceStore((state) => state.topUpPettyCash);
   const balance = pettyCashBalance(topUps, expenses);
   const [date, setDate] = React.useState(todayIso());
   const [category, setCategory] = React.useState<(typeof EXPENSE_CATEGORIES)[number]>("Travel");
@@ -428,14 +423,14 @@ function ExpensesView({ me }: { me: string }) {
   const [topUp, setTopUp] = React.useState("");
 
   async function save() {
-    const problem = demoMode ? addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom }, me) : await books.addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom });
+    const problem = await books.addExpense({ date, category, payee, amount: Number(amount), gstRate: Number(gstRate), paidFrom });
     if (problem) return toast.error(problem);
     toast.success("Expense recorded");
     setPayee(""); setAmount("");
   }
 
   async function topUpCash() {
-    const problem = demoMode ? topUpPettyCash({ date, amount: Number(topUp) }, me) : await books.topUpPettyCash({ date, amount: Number(topUp) });
+    const problem = await books.topUpPettyCash({ date, amount: Number(topUp) });
     if (problem) return toast.error(problem);
     toast.success("Petty cash topped up");
     setTopUp("");
@@ -585,7 +580,6 @@ function BalanceSheetView() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const shareCapital = useFinanceStore((state) => state.shareCapital);
-  const setShareCapital = useFinanceStore((state) => state.setShareCapital);
   const [capitalInput, setCapitalInput] = React.useState(String(shareCapital));
 
   const flow = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
@@ -635,7 +629,7 @@ function BalanceSheetView() {
         <CardHeader><CardTitle className="text-base">Balance Sheet — Schedule III (Vertical)</CardTitle></CardHeader>
         <CardContent className="max-w-xl">
           <p className="mb-4 text-xs text-muted-foreground">Laid out per the Companies Act 2013, Schedule III. Enter share capital from the company&apos;s records. A non-zero difference means entries are still missing.</p>
-          <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={async (e) => { e.preventDefault(); const p = demoMode ? setShareCapital(Number(capitalInput) || 0, me) : await books.setShareCapital(Number(capitalInput) || 0); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
+          <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={async (e) => { e.preventDefault(); const p = await books.setShareCapital(Number(capitalInput) || 0); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
             <Label htmlFor="share-capital-bs" className="grid gap-1 text-xs">Share capital (₹)<Input id="share-capital-bs" type="number" min={0} value={capitalInput} onChange={(e) => setCapitalInput(e.target.value)} className="w-40" /></Label>
             <Button type="submit" size="sm" variant="secondary">Save</Button>
           </form>
@@ -691,8 +685,6 @@ function ReconciliationView({ me }: { me: string }) {
   const invoices = useFinanceStore((state) => state.invoices);
   const bills = useFinanceStore((state) => state.bills);
   const bankLines = useFinanceStore((state) => state.bankLines);
-  const importBankStatement = useFinanceStore((state) => state.importBankStatement);
-  const matchBankLine = useFinanceStore((state) => state.matchBankLine);
   const [text, setText] = React.useState("");
   const [errors, setErrors] = React.useState<string[]>([]);
   const matchExpenses = useFinanceStore((state) => state.expenses);
@@ -704,7 +696,7 @@ function ReconciliationView({ me }: { me: string }) {
   const unmatchedLines = bankLines.filter((l) => !l.matchedKey).length;
 
   async function save() {
-    const result = demoMode ? importBankStatement(text, me) : await books.importBankStatement(text);
+    const result = await books.importBankStatement(text);
     setErrors(result.errors);
     if (result.imported > 0) {
       toast.success(`${result.imported} line${result.imported === 1 ? "" : "s"} imported`);
@@ -737,7 +729,7 @@ function ReconciliationView({ me }: { me: string }) {
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={line.matchedKey ? "success" : "warning"}>{line.matchedKey ? "matched" : "not matched"}</Badge>
-                  <select aria-label={`Match ${line.description}`} className={selectClass} value={line.matchedKey ?? ""} onChange={async (e) => { const key = e.target.value || null; const p = demoMode ? matchBankLine(line.id, key, me) : await books.matchBankLine(line.id, key); if (p) toast.error(p); }}>
+                  <select aria-label={`Match ${line.description}`} className={selectClass} value={line.matchedKey ?? ""} onChange={async (e) => { const key = e.target.value || null; const p = await books.matchBankLine(line.id, key); if (p) toast.error(p); }}>
                     <option value="">{line.matchedKey ? "Unmatch…" : "Match to a payment…"}</option>
                     {options.map((o) => <option key={o.key} value={o.key}>{o.label} · {money(o.amount)} · {o.date}</option>)}
                   </select>
@@ -766,8 +758,6 @@ function CashFlowView({ me }: { me: string }) {
   const expenses = useFinanceStore((state) => state.expenses);
   const pettyCashTopUps = useFinanceStore((state) => state.pettyCashTopUps);
   const openingCash = useFinanceStore((state) => state.openingCash);
-  const setOpeningCash = useFinanceStore((state) => state.setOpeningCash);
-  const addBankEntry = useFinanceStore((state) => state.addBankEntry);
   const [opening, setOpening] = React.useState(String(openingCash));
   const [description, setDescription] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -777,14 +767,14 @@ function CashFlowView({ me }: { me: string }) {
   const lastClosing = months.length > 0 ? months[months.length - 1].closing : openingCash;
 
   async function saveOpening() {
-    const problem = demoMode ? setOpeningCash(Number(opening), me) : await books.setOpeningCash(Number(opening));
+    const problem = await books.setOpeningCash(Number(opening));
     if (problem) return toast.error(problem);
     toast.success("Opening cash saved");
   }
 
   async function saveEntry() {
     const sign = direction === "in" ? 1 : -1;
-    const problem = demoMode ? addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) }, me) : await books.addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) });
+    const problem = await books.addBankEntry({ date, description, amount: sign * Math.abs(Number(amount)) });
     if (problem) return toast.error(problem);
     toast.success("Bank movement recorded");
     setDescription(""); setAmount("");
@@ -926,7 +916,6 @@ function BalanceSheetCard() {
   const session = useSession();
   const me = session.user.name ?? session.user.email ?? "You";
   const shareCapital = useFinanceStore((state) => state.shareCapital);
-  const setShareCapital = useFinanceStore((state) => state.setShareCapital);
   const [capitalInput, setCapitalInput] = React.useState(String(shareCapital));
   const flow = cashFlowByMonth(invoices, bills, bankEntries, openingCash, expenses, topUps);
   const cash = flow.length > 0 ? flow[flow.length - 1].closing : openingCash;
@@ -956,7 +945,7 @@ function BalanceSheetCard() {
       <CardHeader><CardTitle className="text-base">Balance sheet to date</CardTitle></CardHeader>
       <CardContent className="grid gap-3 text-sm">
         <p className="text-xs text-muted-foreground">Laid out as Schedule III requires: equity and liabilities, then assets. Enter the share capital from the company&apos;s records. A difference other than zero means some entries are still missing, such as opening balances or fixed assets, and is shown rather than hidden.</p>
-        <form className="flex flex-wrap items-end gap-2" onSubmit={async (e) => { e.preventDefault(); const p = demoMode ? setShareCapital(Number(capitalInput) || 0, me) : await books.setShareCapital(Number(capitalInput) || 0); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
+        <form className="flex flex-wrap items-end gap-2" onSubmit={async (e) => { e.preventDefault(); const p = await books.setShareCapital(Number(capitalInput) || 0); if (p) toast.error(p); else toast.success("Share capital saved"); }}>
           <Label htmlFor="share-capital" className="grid gap-1 text-xs">Share capital (₹)<Input id="share-capital" type="number" min={0} value={capitalInput} onChange={(e) => setCapitalInput(e.target.value)} className="w-40" /></Label>
           <Button type="submit" size="sm" variant="secondary">Save share capital</Button>
         </form>
@@ -3344,7 +3333,7 @@ function InvoicesView({ me }: { me: string }) {
 
 function NewInvoiceDialog({ me, initialDeal = "", onClose }: { me: string; initialDeal?: string; onClose: () => void }) {
   const session = useSession();
-  const canCreate = hasPermission(session.permissions, "billing:manage");
+  const canCreate = can(session, "billing:manage");
   const [customer, setCustomer] = React.useState("");
   const [customerCompany, setCustomerCompany] = React.useState("");
   const [dealId, setDealId] = React.useState("");
@@ -3354,8 +3343,8 @@ function NewInvoiceDialog({ me, initialDeal = "", onClose }: { me: string; initi
   const [lines, setLines] = React.useState<InvoiceLine[]>([{ item: "", hsn: "", qty: 1, rate: 0, gstRate: 18 }]);
   const [error, setError] = React.useState("");
   // The company's deals with their figures, won first: choosing one fills in who and what is invoiced.
-  const crmDeals = useApi<ApiDeal[]>(demoMode ? null : "/deals?limit=100&after_id=0");
-  const dealChoices = demoMode ? links.deals.map((d) => ({ id: d.id, label: d.label })) : [...(crmDeals.data ?? [])].sort((a, b) => Number(b.stage === "won") - Number(a.stage === "won")).map((d) => ({ id: d.id, label: `${d.name} · ${d.customerName}${d.stage === "won" ? " · won" : ` · ${d.stage}`}` }));
+  const crmDeals = useApi<ApiDeal[]>("/deals?limit=100&after_id=0");
+  const dealChoices = [...(crmDeals.data ?? [])].sort((a, b) => Number(b.stage === "won") - Number(a.stage === "won")).map((d) => ({ id: d.id, label: `${d.name} · ${d.customerName}${d.stage === "won" ? " · won" : ` · ${d.stage}`}` }));
   const chooseDeal = React.useCallback((id: string) => {
     setDealId(id);
     const deal = crmDeals.data?.find((item) => item.id === id);

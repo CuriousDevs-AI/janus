@@ -1,17 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import { useDemoCrmStore } from "@/lib/demo-backend/crm-store";
 import { useAppStore } from "@/lib/stores/app-store";
 import { canSeeOwner } from "@/lib/crm-scope";
 import { useCrmAccess } from "@/lib/use-crm-access";
-import { buildCrmStats } from "@/lib/mock-data/stats";
+import { buildCrmStats } from "@/lib/crm-stats";
 
-/** Analytics for the slice of the CRM the signed-in person may see. Same numbers the lists show, never more. */
 export function useCrmStats() {
   const access = useCrmAccess();
-  const leads = useDemoCrmStore((state) => state.leads);
-  const deals = useDemoCrmStore((state) => state.deals);
+  const leads = useAppStore((state) => state.leads);
+  const deals = useAppStore((state) => state.deals);
   const customers = useAppStore((state) => state.customers);
   const tickets = useAppStore((state) => state.tickets);
   return useMemo(() => {

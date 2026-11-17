@@ -3,7 +3,6 @@
 import { toast } from "sonner";
 import type { StateStorage } from "zustand/middleware";
 import { api, APIError } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 
 /**
  * Saves the operational stores on the server, one document per store and company (the backend's
@@ -12,8 +11,7 @@ import { demoMode } from "@/lib/demo-mode";
  *
  * Every save names the version it was based on. If someone else saved first, the server refuses it
  * with a version conflict, and this browser keeps its own edits and asks the user what to do, rather
- * than overwriting newer data or quietly dropping its own. In the preview (demo accounts) nothing
- * reaches a server, so the stores stay in localStorage as before.
+ * than overwriting newer data or quietly dropping its own.
  */
 
 /** The stores that sync. Each name must match the backend's STORE_PERMISSIONS keys. */
@@ -65,7 +63,7 @@ const sameAsServer = (name: string, value: string) => {
 };
 const dirtyKey = (name: string) => `${name}:unsaved`;
 
-const synced = (name: string) => !demoMode && SYNCED_STORES.has(name);
+const synced = (name: string) => SYNCED_STORES.has(name);
 
 /**
  * Who may read and change each store, as the server decides (backend state/router.py:

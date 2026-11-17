@@ -13,8 +13,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { rememberVerificationSent } from "@/components/auth/verify-waiting";
-import { demoMode } from "@/lib/demo-mode";
-import { registerAccount } from "@/lib/demo-accounts";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter your full name"),
@@ -34,13 +32,6 @@ export default function SignupPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   async function onSubmit(values: FormValues) {
-    if (demoMode) {
-      const problem = registerAccount({ name: values.name, username: values.username, email: values.email, password: values.password });
-      if (problem) { toast.error(problem); return; }
-      toast.success("Account created. Sign in to get started.");
-      router.replace("/login");
-      return;
-    }
     try {
       await api("/auth/signup", {
         method: "POST",

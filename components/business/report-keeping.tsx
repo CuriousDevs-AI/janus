@@ -68,7 +68,7 @@ export function SavedReportsPanel({ saved, loading, error, names, onNew, onOpen,
           <span className="mt-0.5 block text-xs text-muted-foreground">{names.get(item.report) ?? item.report} · {periodWords[item.period]} · saved by {item.mine ? "you" : item.createdByName}{item.note ? ` · ${item.note}` : ""}</span>
         </button>
         <Button size="sm" variant="secondary" onClick={() => onOpen(item)}>Open</Button>
-        <Button size="icon" variant="ghost" aria-label={`Delete ${item.name}`} disabled={busy !== null} onClick={async () => { if (!window.confirm(`Delete “${item.name}”? The report itself stays in the Library.`)) return; setBusy(item.id); try { await onDelete(item); } catch (failure) { toast.error(message(failure)); } finally { setBusy(null); } }}>{busy === item.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5 text-danger" />}</Button>
+        <Button size="icon" variant="ghost" aria-label={`Delete ${item.name}`} disabled={busy !== null} onClick={async () => { if (!window.confirm(`Delete "${item.name}"? The report itself stays in the Library.`)) return; setBusy(item.id); try { await onDelete(item); } catch (failure) { toast.error(message(failure)); } finally { setBusy(null); } }}>{busy === item.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5 text-danger" />}</Button>
       </li>)}</ul>}
   </SectionCard>;
 }
@@ -112,15 +112,10 @@ export function ScheduleReportDialog({ reports, initial, onClose, onSave }: { re
 export type ScheduleWords = { title: string; description: string; emptyTitle: string; emptyText: string; action: string; hidePeriod?: boolean };
 const reportWords: ScheduleWords = { title: "Scheduled", description: "Reports emailed to your team at 9 in the morning, India time.", emptyTitle: "No reports are emailed yet", emptyText: "Have the sales summary in your inbox every Monday, or receivables on the 1st, without opening Janus.", action: "Email a report" };
 
-export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, demo, words = reportWords }: { schedules: ReportSchedule[]; loading: boolean; error?: string; onNew: () => void; onChanged: (next?: ReportSchedule[]) => void; demo: boolean; words?: ScheduleWords }) {
+export function SchedulesPanel({ schedules, loading, error, onNew, onChanged, demo: _demo, words = reportWords }: { schedules: ReportSchedule[]; loading: boolean; error?: string; onNew: () => void; onChanged: (next?: ReportSchedule[]) => void; demo?: boolean; words?: ScheduleWords }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   async function act(item: ReportSchedule, kind: "send" | "pause" | "delete") {
     if (kind === "delete" && !window.confirm(`Stop emailing ${item.reportName}? It will not be sent again.`)) return;
-    if (demo) {
-      onChanged(kind === "delete" ? schedules.filter((other) => other.id !== item.id) : schedules.map((other) => other.id === item.id ? { ...other, paused: kind === "pause" ? !other.paused : other.paused, lastSentAt: kind === "send" ? new Date().toISOString() : other.lastSentAt } : other));
-      if (kind === "send") toast.success("In the preview nothing is emailed.");
-      return;
-    }
     setBusy(`${item.id}:${kind}`);
     try {
       if (kind === "send") { const done = await api<ReportSchedule>(`/business/reports/schedules/${item.id}/send`, { method: "POST" }); toast[done.lastProblem ? "warning" : "success"](done.lastProblem ?? `Sent to ${item.recipients.length} ${item.recipients.length === 1 ? "person" : "people"}.`); }

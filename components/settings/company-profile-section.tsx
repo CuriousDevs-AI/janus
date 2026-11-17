@@ -1,134 +1,23 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
-import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
-import { companyProfile } from "@/lib/company-profile";
-import { MapPin, Plus, ShieldCheck, Upload, X } from "lucide-react";
+import { MapPin, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { SectionCard, FieldRow } from "@/components/settings/section-ui";
-import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
-import { useSession } from "@/components/auth/session-provider";
+import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useLocationsStore, type CompanyLocation } from "@/lib/stores/company-locations-store";
 import { LiveCompanyProfile } from "@/components/business/company-settings";
-import { invalidatePortfolioCache } from "@/features/portfolio/lib/use-portfolio-api";
 
 type Location = CompanyLocation;
-type CompanyProfile = {
-  displayName: string; legalName: string; industry: string; size: string; founded: string; website: string;
-  description: string; email: string; phone: string; whatsapp: string; address1: string; address2: string;
-  city: string; state: string; pin: string; billingSame: boolean;
-};
 
-const profile = companyProfile();
-const initialProfile: CompanyProfile = {
-  displayName: profile.short, legalName: profile.legalName, industry: profile.industry,
-  size: profile.size, founded: profile.founded, website: profile.website,
-  description: profile.description,
-  email: profile.email, phone: profile.phone, whatsapp: profile.whatsapp,
-  address1: profile.address1, address2: profile.address2, city: profile.city, state: profile.state, pin: profile.pin, billingSame: true,
-};
-
-
-/** The company's profile: its real record on a live account, the made-up one in the preview. */
 export function CompanyProfileSection() {
-  return demoMode ? <DemoCompanyProfile /> : <LiveCompanyProfile locations={<LocationsCard />} />;
+  return <LiveCompanyProfile locations={<LocationsCard />} />;
 }
 
-function DemoCompanyProfile() {
-  const session = useSession();
-  const connectedProfile = React.useMemo(() => ({
-    ...initialProfile,
-    displayName: session.tenant.name,
-    legalName: "",
-    industry: "",
-    size: "",
-    founded: "",
-    website: "",
-    description: "",
-    email: "",
-    phone: "",
-    whatsapp: "",
-    address1: "",
-    address2: "",
-    city: "",
-    state: "",
-    pin: "",
-  }), [session.tenant.name]);
-  const initial = demoMode ? initialProfile : connectedProfile;
-  const [draft, setDraft] = React.useState(initial);
-  const [saved, setSaved] = React.useState(initial);
-  const [logo, setLogo] = React.useState<string | null>(null);
-  const [revealed, setRevealed] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const set = (key: keyof CompanyProfile, value: string | boolean) => setDraft((current) => ({ ...current, [key]: value }));
-
-  async function save() {
-    setSaving(true);
-    try {
-      await api("/business/setup", {
-        method: "PATCH",
-        body: JSON.stringify({ businessName: draft.displayName, industry: draft.industry, companySize: draft.size }),
-      });
-      invalidatePortfolioCache();
-      setSaved(draft);
-      toast.success("Core company profile saved");
-    } catch (error) {
-      toast.error(message(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-  function discard() {
-    setDraft(saved);
-    toast.message("Unsaved company changes discarded");
-  }
-  function upload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.includes("png") && !file.type.includes("svg")) { toast.error("Upload a PNG or SVG logo"); return; }
-    if (file.size > 2 * 1024 * 1024) { toast.error("Logo must be smaller than 2 MB"); return; }
-    setLogo(URL.createObjectURL(file));
-    toast.success("Logo added to this draft");
-  }
-
-  const taxRecords = demoMode
-    ? [["GSTIN", profile.gstin, profile.gstin ? "Verified" : "Not added"], ["PAN", profile.pan, profile.pan ? "Verified" : "Not added"], ["CIN", profile.cin, profile.cin ? "Added" : "Not added"], ["Udyam (MSME)", "", "Not added"]]
-    : [["GSTIN", "", "Not connected"], ["PAN", "", "Not connected"], ["CIN", "", "Not connected"], ["Udyam (MSME)", "", "Not connected"]];
-
-  return <div className="flex flex-col gap-5">
-    <div><p className="text-[11px] font-medium uppercase tracking-wide text-accent">Company</p><div className="mt-1 flex flex-wrap items-center gap-2"><h2 className="text-2xl font-semibold tracking-tight">Company Profile</h2><Badge variant={demoMode ? "success" : "warning"}>{demoMode ? "Your records" : "Needs setup"}</Badge></div><p className="mt-1 text-sm text-muted-foreground">How your company appears on invoices, emails, reports and to Janus. Only Owner and Admins can change this.</p></div>
-
-    <SectionCard title="Company details" description="Basic information about your business.">
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-4 border-b border-border pb-5"><div className="relative flex size-16 items-center justify-center overflow-hidden rounded-xl bg-foreground text-xl font-semibold text-background">{logo ? <Image src={logo} alt="Company logo" fill unoptimized sizes="64px" className="object-cover" /> : "AT"}</div><div><p className="text-sm font-semibold">Company logo</p><p className="mt-1 text-xs text-muted-foreground">PNG or SVG, at least 256 × 256 px. Used on invoices and reports.</p><div className="mt-2 flex gap-2"><label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface-2"><Upload className="size-3.5" />Upload new<input type="file" accept="image/png,image/svg+xml" className="sr-only" onChange={upload} /></label>{logo && <Button size="sm" variant="ghost" onClick={() => setLogo(null)}><X className="size-3.5" />Remove</Button>}</div></div></div>
-        <div className="grid gap-4 sm:grid-cols-3"><FieldRow label="Display name"><Input value={draft.displayName} onChange={(e) => set("displayName", e.target.value)} /></FieldRow><FieldRow label="Legal name"><Input value={draft.legalName} onChange={(e) => set("legalName", e.target.value)} /></FieldRow><FieldRow label="Industry"><Input value={draft.industry} onChange={(e) => set("industry", e.target.value)} /></FieldRow><FieldRow label="Company size"><Input value={draft.size} onChange={(e) => set("size", e.target.value)} /></FieldRow><FieldRow label="Founded"><Input value={draft.founded} onChange={(e) => set("founded", e.target.value)} inputMode="numeric" /></FieldRow><FieldRow label="Website"><Input value={draft.website} onChange={(e) => set("website", e.target.value)} type="url" /></FieldRow></div>
-        <FieldRow label="Short description"><Textarea value={draft.description} onChange={(e) => set("description", e.target.value)} className="min-h-24" /><span className="text-[11px] text-muted-foreground">Janus uses this to understand your business when answering questions.</span></FieldRow>
-      </div>
-    </SectionCard>
-
-    <SectionCard title="Contact & address" description="Shown on invoices and customer messages.">
-      <div className="grid gap-4"><div className="grid gap-4 sm:grid-cols-3"><FieldRow label="Business email"><Input value={draft.email} onChange={(e) => set("email", e.target.value)} type="email" /></FieldRow><FieldRow label="Phone"><Input value={draft.phone} onChange={(e) => set("phone", e.target.value)} /></FieldRow><FieldRow label="WhatsApp Business number"><Input value={draft.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} /></FieldRow></div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Registered address</p><div className="grid gap-4 sm:grid-cols-4"><FieldRow label="Address line 1"><Input value={draft.address1} onChange={(e) => set("address1", e.target.value)} /></FieldRow><FieldRow label="Address line 2"><Input value={draft.address2} onChange={(e) => set("address2", e.target.value)} /></FieldRow><FieldRow label="City"><Input value={draft.city} onChange={(e) => set("city", e.target.value)} /></FieldRow><FieldRow label="State"><Input value={draft.state} onChange={(e) => set("state", e.target.value)} /></FieldRow><FieldRow label="PIN code"><Input value={draft.pin} onChange={(e) => set("pin", e.target.value)} inputMode="numeric" /></FieldRow></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.billingSame} onChange={(e) => set("billingSame", e.target.checked)} className="size-4 accent-[hsl(var(--accent))]" />Billing address is the same as registered address</label></div>
-    </SectionCard>
-
-    <SectionCard title="Tax & legal" description="Masked after saving. Only Owner and Admins can reveal them." action={<Button size="sm" variant="secondary" onClick={() => setRevealed((value) => !value)}>{revealed ? "Hide values" : "Reveal all"}</Button>}>
-      <div className="divide-y divide-border">{taxRecords.map(([label, value, status]) => <div key={label} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-[170px] flex-1"><p className="text-sm font-semibold">{label}</p><p className="mt-0.5 text-xs text-muted-foreground">{label === "GSTIN" && draft.state ? `State: ${draft.state} (06)` : label === "PAN" ? "Company PAN" : label === "CIN" ? "Corporate Identification Number" : "Optional"}</p></div><span className="font-mono text-xs text-muted-foreground">{value ? (revealed ? value : value.slice(0, 3) + "••••••" + value.slice(-2)) : "Not connected"}</span><Badge variant={status === "Verified" ? "success" : status === "Added" ? "neutral" : status === "Not added" ? "accent" : "warning"}>{status}</Badge>{(status === "Not added" || status === "Not connected") && <Button size="sm" variant="link" onClick={() => toast.success("Tax registration setup opened")}>Set up</Button>}</div>)}</div>
-    </SectionCard>
-
-    <LocationsCard />
-
-    {dirty && <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-foreground px-4 py-3 text-sm text-background shadow-xl"><span className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-300" />Core company details sync to Janus. Contact, tax and location fields remain local until their storage API is connected.</span><span className="flex gap-2"><Button size="sm" variant="ghost" className="text-background hover:bg-white/10 hover:text-background" onClick={discard}>Discard</Button><Button size="sm" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</Button></span></div>}
-  </div>;
-}
-
-/** Offices, warehouses and branches, saved with the company. Operations stocks them. */
 function LocationsCard() {
   const storedLocations = useLocationsStore((state) => state.locations);
   const saveLocationToStore = useLocationsStore((state) => state.saveLocation);
@@ -155,7 +44,6 @@ function LocationDialog({ open, location, onClose, onSave }: { open: boolean; lo
   const [name, setName] = React.useState(""); const [kind, setKind] = React.useState("Office"); const [address, setAddress] = React.useState(""); const [gst, setGst] = React.useState("");
   const existing = useLocationsStore((state) => state.locations);
   const nameTaken = name.trim() !== "" && existing.some((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase() && item.id !== (location?.id ?? -1));
-  // The dialog is intentionally reset when its selected location changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => { setName(location?.name ?? ""); setKind(location?.kind ?? "Office"); setAddress(location?.address ?? ""); setGst(location?.gst ?? ""); }, [location, open]);
   return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>{location ? "Edit location" : "Add location"}</DialogTitle><DialogDescription>People count here when their branch is part of the address. Operations keeps stock at each location.</DialogDescription></DialogHeader><div className="grid gap-4"><FieldRow label="Location name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Delhi office" />{nameTaken && <p className="mt-1 text-xs text-danger">A location with this name already exists.</p>}</FieldRow><FieldRow label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 w-full rounded-md border border-input bg-surface px-3 text-sm"><option>Office</option><option>Warehouse</option><option>Branch</option></select></FieldRow><FieldRow label="Address"><Input value={address} onChange={(e) => setAddress(e.target.value)} /></FieldRow><FieldRow label="GSTIN note"><Input value={gst} onChange={(e) => setGst(e.target.value)} placeholder="Optional" /></FieldRow></div><DialogFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={!name.trim() || !address.trim() || nameTaken} onClick={() => onSave({ id: location?.id ?? Date.now(), name: name.trim(), kind, address: address.trim(), people: location?.people ?? 0, gst })}>Save location</Button></DialogFooter></DialogContent></Dialog>;

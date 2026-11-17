@@ -29,9 +29,7 @@ import { assignSupportTicket, createSupportTicket, syncSupportTickets } from "@/
 import { useApi } from "@/lib/api/use-api";
 import { api, message } from "@/lib/api/client";
 import type { Lead } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
 import { customersFromLeads } from "@/lib/customers-from-leads";
-import { getUserById, getCompanyById } from "@/lib/mock-data";
 import { useRenewalsStore } from "@/lib/stores/renewals-store";
 import { useFeedbackStore } from "@/lib/stores/feedback-store";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
@@ -415,13 +413,12 @@ type TicketFormValues = z.infer<typeof ticketSchema>;
 function TicketsView() {
   const allTickets = useAppStore((s) => s.tickets);
   const tickets = allTickets;
-  const storeCustomers = useAppStore((s) => s.customers);
-  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
-  const membersApi = useApi<{ id: number; name: string }[]>(demoMode ? null : "/team/people");
-  const customers = React.useMemo(() => demoMode ? storeCustomers : customersFromLeads(leadsApi.data ?? []), [storeCustomers, leadsApi.data]);
+  const leadsApi = useApi<Lead[]>("/leads?limit=100&after_id=0");
+  const membersApi = useApi<{ id: number; name: string }[]>("/team/people");
+  const customers = React.useMemo(() => customersFromLeads(leadsApi.data ?? []), [leadsApi.data]);
   const membersByServerId = React.useMemo(() => {
     const map = new Map<string, string>();
-    if (!demoMode) for (const m of membersApi.data ?? []) map.set(String(m.id), m.name);
+    for (const m of membersApi.data ?? []) map.set(String(m.id), m.name);
     return map;
   }, [membersApi.data]);
   const router = useRouter();
@@ -539,8 +536,7 @@ function TicketsView() {
               </TableHeader>
               <TableBody>
                 {rows.map(({ ticket, customer }) => {
-                  const assigneeName = demoMode ? getUserById(ticket.assigneeId)?.name : membersByServerId.get(ticket.assigneeId ?? "");
-                  const company = getCompanyById(customer!.companyId);
+                  const assigneeName = membersByServerId.get(ticket.assigneeId ?? "");
                   return (
                     <TableRow key={ticket.id} className="cursor-pointer" onClick={() => router.push(`/tickets/${ticket.id}?workspace=customer-support`)}>
                       <TableCell className="font-mono text-foreground">{ticket.number}</TableCell>
@@ -549,7 +545,7 @@ function TicketsView() {
                           <CustomerAvatar name={customer!.name} color={customer!.avatarColor} size="sm" />
                           <div>
                             <p className="font-medium text-foreground leading-tight">{customer!.name}</p>
-                            <p className="text-[11px] leading-tight text-muted-foreground">{company?.name}</p>
+                            <p className="text-[11px] leading-tight text-muted-foreground">{customer!.companyId}</p>
                           </div>
                         </div>
                       </TableCell>
@@ -590,7 +586,7 @@ function TicketsView() {
                 <SelectContent>
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.name} — {getCompanyById(c.companyId)?.name}
+                      {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

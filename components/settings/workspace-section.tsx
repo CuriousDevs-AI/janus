@@ -1,14 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { activeCompany, readCompanies } from "@/lib/company";
-import { isFirstCompany } from "@/lib/companies";
-import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bell, LockKeyhole, Plus, RefreshCw, Sparkles, UserRound, UsersRound } from "lucide-react";
 import { toast } from "sonner";
-import { tenant } from "@/lib/mock-data";
 import { SectionCard, FieldRow } from "@/components/settings/section-ui";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,12 +18,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ChannelType } from "@/lib/types";
 import { workspaceDefinitions } from "@/lib/workspace-config";
 import { api, message } from "@/lib/api/client";
 import { useApi as apiUse } from "@/lib/api/use-api";
-import { demoMode } from "@/lib/demo-mode";
-import { lakh, leadRows, dealRows, monthlyLeads, stats as crm } from "@/lib/demo-universe";
 import { CompanyProfileSection } from "@/components/settings/company-profile-section";
 import { ProfileCard } from "@/components/settings/profile-card";
 import { BillingSection } from "@/components/settings/billing-section";
@@ -36,7 +29,6 @@ import { LiveBusinessOverview } from "@/components/business/business-overview";
 import { inr, usePortfolioApi, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 import { LiveAccessReview, LiveDataExport } from "@/components/business/company-settings";
 import { useSession } from "@/components/auth/session-provider";
-import { hasPermission } from "@/lib/demo-persona";
 
 const timezones = [
   { value: "Asia/Kolkata", label: "Asia/Kolkata (IST)" },
@@ -47,57 +39,27 @@ const timezones = [
   { value: "UTC", label: "UTC" },
 ];
 
-const defaultChannelOptions: { value: ChannelType; label: string }[] = [
-  { value: "website_chat", label: "Website Chat" },
-  { value: "email", label: "Email" },
-  { value: "whatsapp", label: "WhatsApp" },
-];
-
 export function WorkspaceSection() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view");
   const requestedSection = searchParams.get("section");
-  const [timezone, setTimezone] = React.useState(tenant.timezone);
-  const [hoursStart, setHoursStart] = React.useState(tenant.businessHours.start);
-  const [hoursEnd, setHoursEnd] = React.useState(tenant.businessHours.end);
-  const [defaultChannel, setDefaultChannel] = React.useState<ChannelType>(tenant.defaultChannel);
   const [settingsSection, setSettingsSection] = React.useState(() => requestedSection || "profile");
-
-  const [regionalSaving, setRegionalSaving] = React.useState(false);
-
-  async function handleSave() {
-    setRegionalSaving(true);
-    try {
-      await api("/business/setup", {
-        method: "PATCH",
-        body: JSON.stringify({ timezone, businessHoursStart: hoursStart, businessHoursEnd: hoursEnd, defaultChannel }),
-      });
-      toast.success("Regional settings saved");
-    } catch (error) {
-      toast.error(message(error));
-    } finally {
-      setRegionalSaving(false);
-    }
-  }
 
   if (view === "overview") return <BusinessOverviewPanel />;
   if (view === "workspaces") return <WorkspacesPanel />;
   if (view === "administration") return <AdministrationPanel section={requestedSection} />;
-  // The plan is the account's and lives in the Portfolio; an old link here says so.
   if (view === "settings" && requestedSection === "billing") return <BillingSection />;
 
-  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", demoMode ? "Currency & Timezone" : "Hours & Timezone"], ["security", demoMode ? "Security & Privacy" : "Access & Security"], ["data", demoMode ? "Data Management" : "Export Your Data"]];
+  const settingsSections = [["profile", "Company Profile"], ["structure", "Organization Structure"], ["locale", "Hours & Timezone"], ["security", "Access & Security"], ["data", "Export Your Data"]];
   return (
     <div className="flex flex-col gap-5">
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
       <main className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
-          {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership.">{demoMode ? <StructurePanel /> : <RealStructure />}</SectionCard>}
-          {settingsSection === "locale" && !demoMode && <LiveHours />}
-          {settingsSection === "locale" && demoMode && <SectionCard title="Locale & hours" description="Timezone and business hours used for scheduling and AI handoff rules."><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timezones.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Default communication channel"><Select value={defaultChannel} onValueChange={(v) => setDefaultChannel(v as ChannelType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{defaultChannelOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select></FieldRow><FieldRow label="Business hours start"><Input type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} /></FieldRow><FieldRow label="Business hours end"><Input type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} /></FieldRow></div><div className="mt-4 flex justify-end"><Button disabled={regionalSaving} onClick={handleSave}>{regionalSaving ? "Saving…" : "Save regional settings"}</Button></div></SectionCard>}
-          {settingsSection === "security" && <SectionCard title={demoMode ? "Security & privacy" : "Who can get in"} description={demoMode ? "Control account protection and business data safeguards." : "Everyone with access to this business, from its member list. Check it whenever someone leaves."}>{demoMode ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Two-step verification</p><p className="mt-1 text-xs text-muted-foreground">Required for owners and administrators.</p><Badge className="mt-3" variant="success">Enabled</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Audit logging</p><p className="mt-1 text-xs text-muted-foreground">Security and access events are retained for 180 days.</p><Badge className="mt-3" variant="success">Active</Badge></div></div> : <LiveAccessReview />}</SectionCard>}
-          {settingsSection === "data" && !demoMode && <SectionCard title="Export your records" description="Everything your business keeps in Janus, as spreadsheets you own."><LiveDataExport /></SectionCard>}
-          {settingsSection === "data" && demoMode && <SectionCard title="Data management" description="Review connected data, exports, retention and backup status.">{demoMode ? <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Connected records</p><p className="mt-1 text-xs text-muted-foreground">1,248 contacts · 86 deals · 42 conversations</p><Badge className="mt-3" variant="success">Healthy sync</Badge></div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Latest backup</p><p className="mt-1 text-xs text-muted-foreground">Today at 02:15 IST · retained for 90 days</p><Badge className="mt-3" variant="neutral">Completed</Badge></div></div><div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => toast.success("Data export prepared")}>Export business data</Button><Button variant="ghost" onClick={() => toast.success("Backup check completed")}>Check backup status</Button></div></> : <UnavailableMessage text="Data exports, retention and backups are not connected yet. Janus will show verified counts once the data management service is available." />}</SectionCard>}
+          {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership."><RealStructure /></SectionCard>}
+          {settingsSection === "locale" && <LiveHours />}
+          {settingsSection === "security" && <SectionCard title="Who can get in" description="Everyone with access to this business, from its member list. Check it whenever someone leaves."><LiveAccessReview /></SectionCard>}
+          {settingsSection === "data" && <SectionCard title="Export your records" description="Everything your business keeps in Janus, as spreadsheets you own."><LiveDataExport /></SectionCard>}
       </main>
     </div>
   );
@@ -126,31 +88,20 @@ function AdministrationPanel({ section }: { section: string | null }) {
 
 function BusinessOverviewPanel() {
   const session = useSession();
-  const canReadReports = hasPermission(session.permissions, "reports:read");
-  // Users without reports:read see neither the summary nor the portfolio figures: show them a
-  // graceful message instead of 403 errors and dashes.
-  const canView = demoMode || canReadReports;
+  const canReadReports = session.permissions.includes("*") || session.permissions.includes("reports:read");
+  const canView = canReadReports;
   const live = apiUse<{ leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }>(canView ? "/business/reports/summary" : null);
-  const data = demoMode ? demoOverview : live.data;
-  const loading = demoMode ? false : live.loading;
-  const error = demoMode ? undefined : live.error;
-  const [metric, setMetric] = React.useState<"growth" | "revenue">("growth");
+  const data = live.data;
+  const loading = live.loading;
+  const error = live.error;
   const leads = data?.leads ?? 0;
   const openDeals = data?.openDeals ?? 0;
-  const wonDeals = data?.wonDeals ?? 0;
-  // The API sends the pipeline as a decimal string; show it as rupees, like every other amount.
   const pipelineAmount = Number(data?.pipelineValue);
   const pipeline = data?.pipelineValue != null && Number.isFinite(pipelineAmount) ? formatCurrencyINR(pipelineAmount, false) : "—";
   const unavailable = loading ? "Reading your records…" : error ? "CRM summary is unavailable right now." : null;
-  const company = activeCompany();
-  const crmOn = !demoMode || company.workspaces.includes("crm-sales");
-  // The finance-flavoured panels below are written for the first company only.
-  const rich = demoMode && isFirstCompany;
-  const people = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
-  // The company's own figures, as the Portfolio reads them for it: money, people, filings and what
-  // needs the Owner. Someone whose role cannot read the Portfolio keeps the CRM summary below.
+
   const [periodKey, setPeriodKey] = React.useState<PortfolioPeriodKey>("month");
-  const figures = usePortfolioApi<PortfolioSummary>(canView && !demoMode ? `/portfolio/summary?period=${periodKey}` : null, { keepPrevious: true });
+  const figures = usePortfolioApi<PortfolioSummary>(canView ? `/portfolio/summary?period=${periodKey}` : null, { keepPrevious: true });
   const shown = figures.data;
   const mine = shown?.companies.find((item) => item.current);
   const top = mine?.attention[0];
@@ -164,7 +115,6 @@ function BusinessOverviewPanel() {
   );
   return (
     <div className="mt-4 flex flex-col gap-6 rounded-xl bg-[#faf9f5] p-4 sm:mt-5 sm:p-6">
-      {demoMode && readCompanies().length > 1 && <Link href="/portfolio?view=overview" className="flex items-center gap-1 text-xs font-medium text-accent hover:underline">← Back to Portfolio</Link>}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -183,56 +133,23 @@ function BusinessOverviewPanel() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Janus brief</p>
-            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.openDeals ? `${mine.crm.openDeals} open deal${mine.crm.openDeals === 1 ? "" : "s"} worth ${inr(Number(mine.crm.pipelineValue))} in the pipeline.` : "No open deals in the pipeline."}` : !crmOn ? `CRM & Sales is not switched on for ${company.name} yet. ${people.length} ${people.length === 1 ? "person is" : "people are"} in HR & People.` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
+            <p className="mt-1 text-sm leading-6 text-foreground">{mine ? `${mine.attention.length ? `${mine.attention.length} ${mine.attention.length === 1 ? "thing needs" : "things need"} you. First: ${top?.text}.` : "Nothing needs you right now."} ${mine.crm.openDeals ? `${mine.crm.openDeals} open deal${mine.crm.openDeals === 1 ? "" : "s"} worth ${inr(Number(mine.crm.pipelineValue))} in the pipeline.` : "No open deals in the pipeline."}` : unavailable ?? `You have ${leads} captured lead${leads === 1 ? "" : "s"}, ${openDeals} active deal${openDeals === 1 ? "" : "s"}, and ${pipeline} in open pipeline.`}</p>
           </div>
         </div>
         <Link href="/ai?workspace=business" className="shrink-0 text-sm font-medium text-accent hover:underline">Ask Janus →</Link>
       </section>
 
-      {demoMode && !company.setupDone && <section className="flex flex-wrap items-center justify-between gap-3 border border-warning/40 bg-warning-muted px-4 py-3"><div><p className="text-sm font-medium">Finish setting up {company.name}</p><p className="text-xs text-muted-foreground">Choose its workspaces and add the first people to switch the company on.</p></div><Button size="sm" asChild><Link href={`/setup?finish=${company.id}`}>Continue setup</Link></Button></section>}
-
-      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : !demoMode && figures.loading ? <OverviewSkeleton /> : crmOn ? <div className="grid gap-3 sm:grid-cols-3">
+      {mine && shown ? <LiveBusinessOverview company={mine} period={shown.period} onPeriod={setPeriodKey} onReload={figures.reload} stale={figures.stale} /> : figures.loading ? <OverviewSkeleton /> : <div className="grid gap-3 sm:grid-cols-3">
         <OverviewKpi label="Leads" value={loading || error ? "—" : String(leads)} detail="Captured leads" />
         <OverviewKpi label="Open deals" value={loading || error ? "—" : String(openDeals)} detail="Active deals" />
         <OverviewKpi label="Pipeline" value={loading || error ? "—" : pipeline} detail="Open CRM pipeline" />
-      </div> : <div className="grid gap-3 sm:grid-cols-3">
-        <OverviewKpi label="People" value={demoMode ? String(people.length) : "—"} detail={demoMode ? "In HR & People" : "See HR & People"} />
-        <OverviewKpi label="Departments" value={demoMode ? String(new Set(people.map((item) => item.department)).size) : "—"} detail={demoMode ? "Teams on record" : "See Business Settings"} />
-        <OverviewKpi label="CRM & Sales" value="Off" detail="Switch it on under Workspaces" />
       </div>}
 
-      {demoMode && crmOn && leads > 0 && <OverviewPulse />}
-
-      {rich && <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-        <OverviewChart metric={metric} onMetricChange={setMetric} loading={loading} error={error} demoMode={demoMode} leads={leads} openDeals={openDeals} wonDeals={wonDeals} />
-        {demoMode ? <AttentionPanel /> : <SectionCard title="Owner attention" description="Only verified alerts and approvals appear here."><UnavailableMessage text={unavailable ?? "No verified alerts or pending approvals yet."} /></SectionCard>}
-      </div>}
-
-      {rich && <>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <PipelineSnapshot />
-          <TargetSnapshot />
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <ApprovalSnapshot />
-          <ActivitySnapshot />
-        </div>
-        <BusinessInsights />
-        <InsightGraph />
-      </>}
-
-      {demoMode && !mine && <SectionCard title="Data coverage" description="Business metrics will expand as additional workspaces are connected.">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={crmOn ? "success" : "neutral"}>{crmOn ? "CRM & Sales connected" : "CRM & Sales off"}</Badge>
-          <Badge variant="success">HR & People connected</Badge>
-          <Badge variant="neutral">Finance figures not in this summary yet</Badge>
-        </div>
-      </SectionCard>}
+      <SectionCard title="Owner attention" description="Only verified alerts and approvals appear here."><UnavailableMessage text={unavailable ?? "No verified alerts or pending approvals yet."} /></SectionCard>
     </div>
   );
 }
 
-/** The overview's shape while its figures load, so nothing jumps when they arrive. */
 function OverviewSkeleton() {
   return <div className="flex flex-col gap-6" role="status" aria-label="Reading your records">
     <div className="h-24 animate-pulse rounded-xl border border-[#e4e4df] bg-white" />
@@ -245,195 +162,6 @@ function OverviewKpi({ label, value, detail }: { label: string; value: string; d
   return <div className="rounded-xl border border-[#e4e4df] bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
-/** Open leads and deals that have gone quiet. Derived from the same records the CRM shows. */
-const openFollowUps = (() => {
-  const quiet = [...leadRows.filter((item) => !["won", "lost"].includes(item.stage))].map((item) => Math.round((Date.parse("2026-10-24T12:00:00+05:30") - Date.parse(item.lastActivityAt)) / 86400000));
-  return { due: quiet.filter((days) => days <= 1).length, overdue: quiet.filter((days) => days >= 4).length };
-})();
-
-function OverviewPulse() {
-  const metrics = [
-    ["Lead to deal", `${crm.leadToDeal}%`, `${crm.deals} of ${crm.leads} leads became deals`, "success"],
-    ["Win rate", `${crm.winRate}%`, `${crm.wonDeals} won, ${crm.lostDeals} lost of closed deals`, "success"],
-    ["Follow-up SLA", "91%", "Replies handled within 2 hours", "success"],
-    ["Owner workload", String(openFollowUps.due + openFollowUps.overdue), `${openFollowUps.due} due today · ${openFollowUps.overdue} overdue`, openFollowUps.overdue > 2 ? "warning" : "success"],
-  ] as const;
-  return <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Business pulse"><div className="sm:col-span-2 xl:col-span-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Business pulse</p><p className="mt-1 text-xs text-muted-foreground">A quick read of conversion, response quality and work waiting for attention.</p></div>{metrics.map(([label, value, detail, tone]) => <div key={label} className="rounded-lg border border-[#e4e4df] bg-white px-4 py-3"><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><span className={`size-2 rounded-full ${tone === "warning" ? "bg-warning" : "bg-success"}`} /></div><p className="mt-2 text-xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>)}</section>;
-}
-
-function OverviewChart({ metric, onMetricChange, loading, error, demoMode, leads, openDeals, wonDeals }: { metric: "growth" | "revenue"; onMetricChange: (metric: "growth" | "revenue") => void; loading: boolean; error?: string; demoMode: boolean; leads: number; openDeals: number; wonDeals: number }) {
-  const bars = [{ label: "Captured leads", value: leads }, { label: "Open deals", value: openDeals }, { label: "Won deals", value: wonDeals }];
-  return <SectionCard title={metric === "growth" ? "Growth snapshot" : "Revenue vs target"} description={metric === "growth" ? "CRM counts from the current reporting summary." : demoMode ? "Monthly revenue against the target." : "Revenue history requires a connected Finance & Accounting workspace."}>
-    <div className="mb-5 flex w-fit gap-1 rounded-lg border border-border bg-surface-2 p-1" role="group" aria-label="Business chart metric">
-      {([["growth", "Growth"], ["revenue", "Revenue"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => onMetricChange(value)} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${metric === value ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
-    </div>
-    {metric === "revenue" && demoMode ? <RevenueChart /> : metric === "revenue" ? <UnavailableMessage text={loading ? "Loading verified finance records…" : error ? "Revenue is unavailable because the connected report could not be loaded." : "No verified revenue records are connected yet. Janus will not estimate revenue from CRM pipeline value."} /> : <GrowthChart bars={bars} loading={loading || Boolean(error)} />}
-  </SectionCard>;
-}
-
-const change = (trend: { leads: number; deals: number }[], key: "leads" | "deals") => { const last = trend.at(-1)?.[key] ?? 0; const before = trend.at(-2)?.[key] ?? 0; if (!before) return "—"; const value = Math.round(((last - before) / before) * 100); return `${value >= 0 ? "+" : ""}${value}%`; };
-
-function GrowthChart({ bars, loading }: { bars: Array<{ label: string; value: number }>; loading: boolean }) {
-  const trend = monthlyLeads;
-  const ceiling = Math.max(...trend.map((item) => item.leads), 1) * 1.15;
-  const stage = (names: string[]) => crm.byStage.filter((item) => names.includes(item.stage)).reduce((sum, item) => sum + item.count, 0);
-  const funnel = [{ label: "Captured", value: crm.leads, color: "bg-accent" }, { label: "Qualified or further", value: crm.leads - stage(["new", "lost"]), color: "bg-info" }, { label: "Proposal or further", value: stage(["proposal", "negotiation", "won"]), color: "bg-violet-500" }, { label: "Won", value: stage(["won"]), color: "bg-success" }];
-  const smoothPath = (key: "leads" | "deals") => {
-    const points = trend.map((item, index) => [48 + index * 92, 178 - (item[key] / ceiling) * 145] as const);
-    return points.reduce((path, [x, y], index) => {
-      if (index === 0) return `M ${x} ${y}`;
-      const [previousX, previousY] = points[index - 1];
-      const midpoint = (previousX + x) / 2;
-      return `${path} C ${midpoint} ${previousY}, ${midpoint} ${y}, ${x} ${y}`;
-    }, "");
-  };
-  return <div className="flex flex-col gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-accent" />Leads</span><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-info" />Open deals</span></div><div className="flex gap-3 text-xs"><span className="font-medium text-success">{change(trend, "leads")} leads</span><span className="font-medium text-info">{change(trend, "deals")} deals</span></div></div><svg viewBox="0 0 540 218" role="img" aria-label="Six month lead and deal growth" className="h-auto w-full"><g stroke="#efefea" strokeWidth="1"><line x1="40" y1="178" x2="520" y2="178" /><line x1="40" y1="130" x2="520" y2="130" /><line x1="40" y1="82" x2="520" y2="82" /><line x1="40" y1="34" x2="520" y2="34" /></g><g fill="#7a7f87" fontSize="10" textAnchor="end"><text x="34" y="182">0</text><text x="34" y="134">{Math.round(ceiling / 3)}</text><text x="34" y="86">{Math.round((ceiling * 2) / 3)}</text><text x="34" y="38">{Math.round(ceiling)}</text></g>{!loading && <><path d={smoothPath("leads")} fill="none" stroke="var(--accent)" strokeWidth="3.5" strokeLinecap="round" /><path d={smoothPath("deals")} fill="none" stroke="var(--info)" strokeWidth="3.5" strokeLinecap="round" />{trend.map((item, index) => <text key={item.label} x={48 + index * 92} y="202" fill="#7a7f87" fontSize="10" textAnchor="middle">{item.label}</text>)}</>}</svg><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Qualified this month</p><p className="mt-1 text-sm font-semibold">{leadRows.filter((item) => item.createdAt >= "2026-10-01" && !["new", "lost"].includes(item.stage)).length} leads</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Pipeline added</p><p className="mt-1 text-sm font-semibold">{lakh(dealRows.filter((item) => item.createdAt >= "2026-10-01").reduce((sum, item) => sum + Number(item.amount), 0))}</p></div><div className="rounded-md bg-surface-2 px-3 py-2"><p className="text-[11px] text-muted-foreground">Current snapshot</p><p className="mt-1 text-sm font-semibold">{loading ? "Loading" : `${bars[0].value} leads`}</p></div></div><div className="rounded-lg border border-border bg-surface-2 p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">Lead-to-deal funnel</p><p className="mt-1 text-[11px] text-muted-foreground">How opportunities move through the current CRM snapshot.</p></div><Badge variant="neutral">{loading ? "Loading" : "Current"}</Badge></div><div className="mt-3 grid gap-2.5" role="img" aria-label="Lead conversion funnel"><div className="sr-only">{funnel.map((item) => `${item.label}: ${item.value}`).join(", ")}</div>{funnel.map((item) => <div key={item.label} className="flex items-center gap-3"><span className="w-36 text-xs text-muted-foreground">{item.label}</span><div className="h-2.5 flex-1 rounded-full bg-white"><div className={`h-2.5 rounded-full ${item.color}`} style={{ width: `${Math.max((item.value / funnel[0].value) * 100, 8)}%` }} /></div><span className="w-8 text-right text-xs font-semibold tabular-nums">{item.value}</span></div>)}</div></div><p className="text-xs text-muted-foreground">Janus compares the current CRM snapshot with the previous five months.</p></div>;
-}
-
-const demoOverview = { leads: crm.leads, openDeals: crm.openDeals, wonDeals: crm.wonDeals, pipelineValue: String(crm.pipeline), unavailable: [] as string[] };
-
-function RevenueChart() {
-  return <div className="flex flex-col gap-3"><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-accent" />Revenue</span><span className="flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-muted-foreground" />Target</span></div><svg viewBox="0 0 540 210" role="img" aria-label="Revenue trend" className="h-auto w-full"><g stroke="#efefea" strokeWidth="1"><line x1="40" y1="180" x2="520" y2="180" /><line x1="40" y1="123" x2="520" y2="123" /><line x1="40" y1="66" x2="520" y2="66" /><line x1="40" y1="10" x2="520" y2="10" /></g><g fill="#5b616e" fontSize="11" textAnchor="end"><text x="32" y="184">0</text><text x="32" y="127">₹20L</text><text x="32" y="70">₹40L</text><text x="32" y="14">₹60L</text></g><polyline points="40,66 136,61 232,56 328,50 424,44 520,38" fill="none" stroke="#8a8f99" strokeWidth="2" strokeDasharray="5 5" /><polyline points="40,92 136,84 232,87 328,75 424,72 520,59" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /><g fill="var(--accent)"><circle cx="40" cy="92" r="3.5" /><circle cx="136" cy="84" r="3.5" /><circle cx="232" cy="87" r="3.5" /><circle cx="328" cy="75" r="3.5" /><circle cx="424" cy="72" r="3.5" /><circle cx="520" cy="59" r="5" /></g><g fill="#5b616e" fontSize="11" textAnchor="middle"><text x="40" y="202">May</text><text x="136" y="202">Jun</text><text x="232" y="202">Jul</text><text x="328" y="202">Aug</text><text x="424" y="202">Sep</text><text x="520" y="202">Oct</text></g></svg><p className="text-xs text-muted-foreground">₹42.8L revenue against a ₹50L target.</p></div>;
-}
-
-function AttentionPanel() {
-  const waiting = dealRows.filter((item) => ["proposal", "negotiation"].includes(item.stage));
-  const items = [["High", `${waiting.length} deals in proposal or negotiation are waiting for a decision`, lakh(waiting.reduce((sum, item) => sum + Number(item.amount), 0))], ["High", "4 invoices overdue by 30+ days", "₹3.1L"], ["Medium", `${openFollowUps.due} follow-ups due today, ${openFollowUps.overdue} overdue`, String(openFollowUps.due + openFollowUps.overdue)], ["Medium", "3 approvals waiting for you", "3"], ["Due", "GSTR-3B filing deadline is approaching", "20 Nov"], ["Low", "1 automation failed overnight", "1"]];
-  return <SectionCard title="Needs your attention" description="What needs the owner next, in priority order."><div className="flex flex-col divide-y divide-border">{items.map(([severity, title, value]) => <div key={title} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"><Badge variant={severity === "High" ? "danger" : severity === "Medium" ? "warning" : "neutral"}>{severity}</Badge><span className="min-w-0 flex-1 text-sm font-medium">{title}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div></SectionCard>;
-}
-
-function PipelineSnapshot() {
-  const count = (stage: string) => crm.byStage.find((item) => item.stage === stage)?.count ?? 0;
-  const value = (stage: string) => lakh(dealRows.filter((item) => item.stage === stage).reduce((sum, item) => sum + Number(item.amount), 0));
-  const stages = [["New", count("new"), "no deal yet"], ["Qualified", count("qualified"), value("qualified")], ["Proposal", count("proposal"), value("proposal")], ["Negotiation", count("negotiation"), value("negotiation")], ["Won", count("won"), value("won")]];
-  return <SectionCard title="Pipeline by stage" description="Leads by stage, with the value of their deals."><div className="flex flex-col gap-4">{stages.map(([stage, count, value], index) => <div key={stage} className="flex flex-col gap-1.5"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{stage}</span><span className="text-muted-foreground">{count} · {value}</span></div><div className="h-2 rounded-full bg-[#efefea]"><div className={`h-2 rounded-full ${index === 2 ? "bg-orange-600" : index === 4 ? "bg-green-700" : "bg-accent"}`} style={{ width: `${Math.max(Number(count) / Math.max(1, ...stages.map((row) => Number(row[1]))) * 100, 8)}%` }} /></div></div>)}</div></SectionCard>;
-}
-
-function TargetSnapshot() {
-  const targets = [["Revenue", "₹42.8L of ₹50L", 86], ["New customers", `${crm.wonDeals} of 6`, Math.round((crm.wonDeals / 6) * 100)], ["Collections", "₹28.4L of ₹31.5L", 90], ["Hiring", "2 of 3", 67]];
-  return <SectionCard title="Monthly targets" description="This month against target."><div className="flex flex-col gap-4">{targets.map(([name, progress, percentage]) => <div key={name} className="flex flex-col gap-1.5"><div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{name}</span><span className="text-muted-foreground">{progress} · {percentage}%</span></div><div className="h-2 rounded-full bg-[#efefea]"><div className="h-2 rounded-full bg-accent" style={{ width: `${percentage}%` }} /></div></div>)}</div></SectionCard>;
-}
-
-function ApprovalSnapshot() {
-  const approvals = [["45-day credit for Metro Value Mart", "Requested by Arjun Mehta · ₹3.1L order"], ["Credit note for damaged cartons, order #4471", "Requested by Support · ₹8,500"], ["Send overdue reminders to 4 customers", "Collections agent · WhatsApp + email"]];
-  return <SectionCard title="Approvals" description="Waiting for the owner."><div className="flex flex-col divide-y divide-border">{approvals.map(([title, detail]) => <div key={title} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-medium">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" asChild><Link href="/approvals" aria-label={`Review ${title}`}>Review</Link></Button></div>)}</div></SectionCard>;
-}
-
-function ActivitySnapshot() {
-  const activity = [["Arjun closed Rajputana monthly dry goods · ₹5.2L", "6 days ago"], ["Meera logged a rate enquiry from Shiv Shakti Bakery", "4h ago"], ["HR & People workspace created", "Yesterday"], ["Weekly sales report sent to owners", "Yesterday"]];
-  return <SectionCard title="Recent activity" description="What the team did most recently."><div className="flex flex-col divide-y divide-border">{activity.map(([text, time]) => <div key={text} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><span className="text-sm">{text}</span><span className="shrink-0 text-xs text-muted-foreground">{time}</span></div>)}</div></SectionCard>;
-}
-
-function BusinessInsights() {
-  const insights = [["Positive", "WhatsApp is the strongest channel", `${crm.bySource.find((item) => item.source === "whatsapp")?.count} of ${crm.leads} leads came in on WhatsApp and ${leadRows.filter((item) => item.source === "whatsapp" && item.stage === "won").length} of them are already won.`, "Keep WhatsApp replies under two hours"], ["Watch", "Proposals are waiting on buyers", `${dealRows.filter((item) => item.stage === "proposal").length} proposals worth ${lakh(dealRows.filter((item) => item.stage === "proposal").reduce((sum, item) => sum + Number(item.amount), 0))} have had no decision yet.`, "Review the proposal queue"], ["Action", "Collections can release cash", "Four invoices are over 30 days overdue. A focused reminder sequence could unlock ₹3.1L this week.", "Open collection approvals"]];
-  return <SectionCard title="Janus insights" description="Recommendations from your CRM, finance and activity records."><div className="grid gap-3 lg:grid-cols-3">{insights.map(([tone, title, detail, action]) => <div key={title} className="flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-4"><div className="flex items-center justify-between gap-2"><Badge variant={tone === "Positive" ? "success" : tone === "Watch" ? "warning" : "info"}>{tone}</Badge><Sparkles className="size-3.5 text-accent" /></div><div><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" className="mt-auto w-fit">{action}<ArrowRight className="size-3.5" /></Button></div>)}</div></SectionCard>;
-}
-
-function InsightGraph() {
-  const signals = [{ label: "Lead quality", value: 82, detail: "Website and referral sources" }, { label: "Follow-up health", value: 74, detail: "Replies within SLA" }, { label: "Pipeline health", value: 79, detail: "Deals with a next step" }, { label: "Collection confidence", value: 68, detail: "Invoices likely to clear" }];
-  return <SectionCard title="Insight signals" description="A visual summary of the areas Janus is watching across your business records."><div className="grid gap-4 lg:grid-cols-[1fr_220px]"><div className="flex flex-col gap-3" role="img" aria-label="Business insight signal scores">{signals.map((signal) => <div key={signal.label}><div className="mb-1 flex items-center justify-between gap-3"><span className="text-sm font-medium">{signal.label}</span><span className="text-sm font-semibold tabular-nums">{signal.value}%</span></div><div className="h-2.5 rounded-full bg-surface-2"><div className={`h-2.5 rounded-full ${signal.value >= 80 ? "bg-success" : signal.value >= 72 ? "bg-accent" : "bg-warning"}`} style={{ width: `${signal.value}%` }} /></div><p className="mt-1 text-[11px] text-muted-foreground">{signal.detail}</p></div>)}</div><div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Signal to act on</p><p className="mt-2 text-sm font-semibold">Collections need attention</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Collection confidence is below the other business signals. Review overdue invoice reminders first.</p><Badge className="mt-3" variant="warning">Watch this week</Badge></div></div></SectionCard>;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function OverviewDashboard({ signals, loading, error }: { signals: string[][]; loading: boolean; error?: string }) {
-  return <>
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3"><div><p className="text-sm font-medium">Current reporting period</p><p className="text-xs text-muted-foreground">Verified records available from connected workspaces.</p></div><Button size="sm" variant="secondary" onClick={() => window.location.reload()}>Refresh</Button></div>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{signals.map(([label, description]) => <div key={label} className="rounded-lg border border-border bg-surface p-4"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><Badge variant={label === "Finance" || error ? "neutral" : "success"}>{label === "Finance" || error ? "Awaiting data" : "Connected"}</Badge></div><p className="mt-3 text-sm text-muted-foreground">{description}</p></div>)}</div>
-    <SectionCard title="Workspace performance" description="Only metrics available from connected workspaces are shown."><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><WorkspaceSummary name="CRM & Sales" detail={error ? "Unavailable" : "Leads, deals and pipeline connected"} /><WorkspaceSummary name="Finance & Accounting" detail="Awaiting verified financial records" /><WorkspaceSummary name="HR & People" detail="Awaiting connected employee records" /><WorkspaceSummary name="Projects & Delivery" detail="Awaiting project records" /><WorkspaceSummary name="Customer Support" detail="Awaiting support records" /><WorkspaceSummary name="Operations & Inventory" detail="Awaiting operations records" /></div></SectionCard>
-    <SectionCard title="Owner attention" description="Janus will surface insights and approvals from verified activity."><UnavailableMessage text={loading ? "Loading connected records…" : error ? "Business metrics are unavailable: " + error : "No business alerts yet."} /></SectionCard>
-  </>;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function FinancialPerformance({ data, loading, error }: { data?: { leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }; loading: boolean; error?: string }) {
-  return <div className="flex flex-col gap-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Revenue" value="—" /><Metric label="Expenses" value="—" /><Metric label="Net profit" value="—" /><Metric label="Cash flow" value="—" /><Metric label="CRM pipeline" value={loading || error ? "—" : data?.pipelineValue ?? "—"} /></div><SectionCard title="Financial performance" description="Financial statements are unavailable until Finance & Accounting or a supported financial integration is connected."><UnavailableMessage text={error ? "Unavailable: " + error : "No verified financial records are connected yet. Janus will not estimate revenue, expenses or profit."} /></SectionCard></div>;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function WorkspacePerformance({ data, loading, error }: { data?: { leads: number; openDeals: number; wonDeals: number; pipelineValue: string; unavailable: string[] }; loading: boolean; error?: string }) {
-  return <SectionCard title="Workspace performance" description="Workspace-specific metrics are shown only when verified records are available."><div className="flex flex-col gap-2"><WorkspaceRow name="CRM & Sales" type="Active" metric={loading || error ? "Unavailable" : (data?.leads ?? 0) + " leads · " + (data?.openDeals ?? 0) + " open deals"} /><WorkspaceRow name="HR & People" type="Active · demo" metric="8 people · 93% attendance" /><WorkspaceRow name="Finance & Accounting" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Projects & Delivery" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Customer Support & Success" type="Planned" metric="Awaiting data" /><WorkspaceRow name="Operations & Inventory" type="Planned" metric="Awaiting data" /></div></SectionCard>;
-}
-
-function WorkspaceSummary({ name, detail }: { name: string; detail: string }) { return <div className="rounded-md border border-border bg-surface-2 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{name}</span><span className="size-2 rounded-full bg-muted-foreground/50" /></div><p className="mt-2 text-xs text-muted-foreground">{detail}</p></div>; }
-function WorkspaceRow({ name, type, metric }: { name: string; type: string; metric: string }) { return <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-3"><div><p className="text-sm font-medium">{name}</p><p className="text-xs text-muted-foreground">{type}</p></div><span className="text-xs text-muted-foreground">{metric}</span></div>; }
-function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-border bg-surface p-4"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><p className="mt-2 text-xl font-semibold">{value}</p></div>; }
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function UnavailableSection({ title, description }: { title: string; description: string }) { return <SectionCard title={title} description={description}><UnavailableMessage text="No verified records are available for this section yet." /></SectionCard>; }
-/** The company's departments as HR keeps them, with how many people each has. */
-type HrRecords = { records: Record<string, Array<{ key: string; data: Record<string, unknown> }>> };
-type Department = { id: string; name: string; active?: boolean; headId?: string | null };
-
-/**
- * Departments and how many people are in each, from the HR records the server keeps: never from
- * this browser, which would show another company's or the demo's departments.
- */
-function RealStructure() {
-  const spaces = apiUse<Array<{ type: string; status: string }>>("/workspaces");
-  const hrOn = spaces.data?.some((item) => item.type === "hr_people" && item.status === "active");
-  const hr = apiUse<HrRecords>(hrOn ? "/hr/records" : null);
-  if (spaces.loading || (hrOn && hr.loading)) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (!hrOn) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text="Departments are kept in HR & People, which is not switched on for this business." /><Link href="/settings?tab=workspace&view=workspaces&workspace=business&activate=hr-people" className="text-sm font-medium text-accent hover:underline">Switch on HR &amp; People</Link></div>;
-  if (hr.error) return <UnavailableMessage text={`Departments could not be read: ${hr.error}`} />;
-  const setting = hr.data?.records.config?.find((item) => item.key === "org.departments")?.data.value;
-  const departments = (Array.isArray(setting) ? (setting as Department[]) : []).filter((item) => item.active !== false);
-  const employees = (hr.data?.records.employee ?? []).map((item) => item.data as { id: string; name?: string; department?: string; status?: string }).filter((item) => item.status !== "archived");
-  if (departments.length === 0) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text={`No departments yet${employees.length ? `, so the ${employees.length} ${employees.length === 1 ? "person" : "people"} in HR belong to none` : ""}.`} /><Link href="/workspace/hr-people?view=organization&workspace=hr-people" className="text-sm font-medium text-accent hover:underline">Add departments in HR &amp; People</Link></div>;
-  const unplaced = employees.filter((item) => !departments.some((department) => department.name === item.department)).length;
-  return (
-    <ul className="divide-y divide-border">
-      {departments.map((department) => {
-        const people = employees.filter((item) => item.department === department.name).length;
-        const head = employees.find((item) => item.id === department.headId)?.name;
-        return (
-          <li key={department.id} className="flex items-center justify-between gap-3 py-3 text-sm">
-            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : <span className="font-normal text-warning"> · no head</span>}</span>
-            <span className="text-muted-foreground">{people} {people === 1 ? "person" : "people"}</span>
-          </li>
-        );
-      })}
-      {unplaced > 0 && <li className="flex items-center justify-between gap-3 py-3 text-sm"><span className="text-muted-foreground">In no department</span><span className="text-muted-foreground">{unplaced} {unplaced === 1 ? "person" : "people"}</span></li>}
-    </ul>
-  );
-}
-
-type SavedHours = { timezone: string; businessHoursStart: string | null; businessHoursEnd: string | null };
-
-/** The business's timezone and working hours, as saved: the form starts from them, not from defaults. */
-function LiveHours() {
-  const saved = apiUse<SavedHours>("/business/setup");
-  if (saved.loading) return <SectionCard><p className="text-sm text-muted-foreground">Loading your hours…</p></SectionCard>;
-  if (saved.error || !saved.data) return <SectionCard title="Hours & timezone"><UnavailableMessage text={saved.error ?? "Your hours could not be loaded."} /></SectionCard>;
-  return <HoursForm initial={saved.data} onSaved={saved.reload} />;
-}
-
-function HoursForm({ initial, onSaved }: { initial: SavedHours; onSaved: () => void }) {
-  const [timezone, setTimezone] = React.useState(initial.timezone || "Asia/Kolkata");
-  const [start, setStart] = React.useState(initial.businessHoursStart ?? "09:00");
-  const [end, setEnd] = React.useState(initial.businessHoursEnd ?? "18:00");
-  const [saving, setSaving] = React.useState(false);
-  const dirty = timezone !== initial.timezone || start !== (initial.businessHoursStart ?? "09:00") || end !== (initial.businessHoursEnd ?? "18:00");
-  const wrong = start && end && start >= end ? "Closing time must be after opening time." : "";
-  const options = timezones.some((item) => item.value === timezone) ? timezones : [{ value: timezone, label: timezone }, ...timezones];
-  async function save() {
-    setSaving(true);
-    try {
-      await api("/business/setup", { method: "PATCH", body: JSON.stringify({ timezone, businessHoursStart: start, businessHoursEnd: end }) });
-      toast.success("Hours saved");
-      onSaved();
-    } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
-  }
-  return <SectionCard title="Hours & timezone" description="When your business is open, and the timezone it works in. Amounts are always in rupees.">
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{options.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow>
-      <FieldRow label="Opens at"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></FieldRow>
-      <FieldRow label="Closes at"><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></FieldRow>
-    </div>
-    {wrong && <p role="alert" className="mt-2 text-xs text-danger">{wrong}</p>}
-    <p className="mt-3 text-[11px] text-muted-foreground">Saved with your business. Janus does not yet hold back messages or workflows outside these hours.</p>
-    <div className="mt-4 flex justify-end"><Button disabled={!dirty || Boolean(wrong) || saving} onClick={save}>{saving ? "Saving…" : "Save hours"}</Button></div>
-  </SectionCard>;
-}
-
 function UnavailableMessage({ text }: { text: string }) { return <div className="rounded-md border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">{text}</div>; }
 
 function WorkspacesPanel() {
@@ -443,28 +171,23 @@ function WorkspacesPanel() {
   const [createOpen, setCreateOpen] = React.useState(Boolean(activationDefinition));
   const [workspaceName, setWorkspaceName] = React.useState(activationDefinition?.name ?? "");
   const [workspaceType, setWorkspaceType] = React.useState(activationDefinition?.id ?? "");
-  // The workspaces switched on for this business, as the server holds them; null until loaded.
   const [records, setRecords] = React.useState<WorkspaceRecord[] | null>(null);
   const [members, setMembers] = React.useState<Record<string, WorkspacePerson[]>>({});
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const switchedOn = demoMode ? activeCompany().workspaces : null;
   const departments = workspaceDefinitions.filter((workspace) => workspace.id !== "business" && workspace.id !== "portfolio");
   const recordFor = (id: string) => records?.find((item) => item.type === id.replaceAll("-", "_"));
-  // Team Chat has no workspace record: it is on for every business.
-  const isOn = (workspace: (typeof departments)[number]) => switchedOn ? switchedOn.includes(workspace.id) : workspace.id === "team-chat" || records === null ? workspace.status === "active" : Boolean(recordFor(workspace.id));
-  const ready = demoMode || records !== null || Boolean(loadError);
+  const isOn = (workspace: (typeof departments)[number]) => workspace.id === "team-chat" || records === null ? workspace.status === "active" : Boolean(recordFor(workspace.id));
+  const ready = records !== null || Boolean(loadError);
   const created = ready ? departments.filter(isOn) : [];
   const available = ready ? departments.filter((workspace) => !isOn(workspace)) : [];
 
   React.useEffect(() => {
-    if (demoMode) return;
     let cancelled = false;
     api<WorkspaceRecord[]>("/workspaces")
       .then(async (items) => {
         if (cancelled) return;
         setRecords(items);
-        // Who is in each workspace and who leads it; a workspace without a manager has nobody accountable.
         const lists = await Promise.all(items.map((item) => api<WorkspacePerson[]>(`/workspaces/${item.id}/members`).then((people) => [item.id, people] as const).catch(() => [item.id, null] as const)));
         if (!cancelled) setMembers(Object.fromEntries(lists.filter((entry): entry is readonly [string, WorkspacePerson[]] => entry[1] !== null)));
       })
@@ -519,7 +242,7 @@ function WorkspacesPanel() {
             <div key={workspace.id} className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent"><Plus className="size-4" /></span>
               <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-foreground">{workspace.name}</span><span className="mt-1 block text-xs text-muted-foreground">{workspace.description}</span></span>
-              {demoMode && !["crm-sales", "hr-people"].includes(workspace.id) ? <Badge variant="neutral">Coming soon</Badge> : <Button size="sm" variant="secondary" onClick={() => openActivate(workspace.id)}>Activate</Button>}
+              <Button size="sm" variant="secondary" onClick={() => openActivate(workspace.id)}>Activate</Button>
             </div>
           ))}
         </div>
@@ -550,7 +273,7 @@ function WorkspacesPanel() {
             <Select value={workspaceType} onValueChange={(value) => { if (!workspaceName.trim() || departments.some((workspace) => workspace.name === workspaceName)) setWorkspaceName(departments.find((workspace) => workspace.id === value)?.name ?? ""); setWorkspaceType(value); }}>
               <SelectTrigger id="workspace-type"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {available.filter((workspace) => !demoMode || ["crm-sales", "hr-people"].includes(workspace.id)).map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
+                {available.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -615,16 +338,71 @@ function SectionTabs({ items, value, onChange }: { items: string[][]; value: str
   );
 }
 
-/** The company's real departments and people, from HR & People. */
-function StructurePanel() {
-  const people = useHrPeopleStore((state) => state.employees).filter((item) => item.status !== "archived");
-  const owner = people.find((item) => !item.managerId) ?? people[0];
-  const departments = [...new Set(people.map((item) => item.department))];
-  return <>
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">{activeCompany().name}</p><p className="mt-1 text-xs text-muted-foreground">Owner: {owner?.name ?? "Not set"} · {people.length} {people.length === 1 ? "member" : "members"}</p><Badge className="mt-3" variant="success">Active organization</Badge></div>
-      <div className="rounded-lg border border-border bg-surface-2 p-4"><p className="text-sm font-medium">Departments</p><p className="mt-1 text-xs text-muted-foreground">{departments.length ? departments.join(", ") : "None yet"}</p><Badge className="mt-3" variant="neutral">{departments.length} {departments.length === 1 ? "department" : "departments"}</Badge></div>
+type HrRecords = { records: Record<string, Array<{ key: string; data: Record<string, unknown> }>> };
+type Department = { id: string; name: string; active?: boolean; headId?: string | null };
+
+function RealStructure() {
+  const spaces = apiUse<Array<{ type: string; status: string }>>("/workspaces");
+  const hrOn = spaces.data?.some((item) => item.type === "hr_people" && item.status === "active");
+  const hr = apiUse<HrRecords>(hrOn ? "/hr/records" : null);
+  if (spaces.loading || (hrOn && hr.loading)) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!hrOn) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text="Departments are kept in HR & People, which is not switched on for this business." /><Link href="/settings?tab=workspace&view=workspaces&workspace=business&activate=hr-people" className="text-sm font-medium text-accent hover:underline">Switch on HR &amp; People</Link></div>;
+  if (hr.error) return <UnavailableMessage text={`Departments could not be read: ${hr.error}`} />;
+  const setting = hr.data?.records.config?.find((item) => item.key === "org.departments")?.data.value;
+  const departments = (Array.isArray(setting) ? (setting as Department[]) : []).filter((item) => item.active !== false);
+  const employees = (hr.data?.records.employee ?? []).map((item) => item.data as { id: string; name?: string; department?: string; status?: string }).filter((item) => item.status !== "archived");
+  if (departments.length === 0) return <div className="flex flex-col items-start gap-2"><UnavailableMessage text={`No departments yet${employees.length ? `, so the ${employees.length} ${employees.length === 1 ? "person" : "people"} in HR belong to none` : ""}.`} /><Link href="/workspace/hr-people?view=organization&workspace=hr-people" className="text-sm font-medium text-accent hover:underline">Add departments in HR &amp; People</Link></div>;
+  const unplaced = employees.filter((item) => !departments.some((department) => department.name === item.department)).length;
+  return (
+    <ul className="divide-y divide-border">
+      {departments.map((department) => {
+        const people = employees.filter((item) => item.department === department.name).length;
+        const head = employees.find((item) => item.id === department.headId)?.name;
+        return (
+          <li key={department.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+            <span className="font-medium">{department.name}{head ? <span className="font-normal text-muted-foreground"> · head {head}</span> : <span className="font-normal text-warning"> · no head</span>}</span>
+            <span className="text-muted-foreground">{people} {people === 1 ? "person" : "people"}</span>
+          </li>
+        );
+      })}
+      {unplaced > 0 && <li className="flex items-center justify-between gap-3 py-3 text-sm"><span className="text-muted-foreground">In no department</span><span className="text-muted-foreground">{unplaced} {unplaced === 1 ? "person" : "people"}</span></li>}
+    </ul>
+  );
+}
+
+type SavedHours = { timezone: string; businessHoursStart: string | null; businessHoursEnd: string | null };
+
+function LiveHours() {
+  const saved = apiUse<SavedHours>("/business/setup");
+  if (saved.loading) return <SectionCard><p className="text-sm text-muted-foreground">Loading your hours…</p></SectionCard>;
+  if (saved.error || !saved.data) return <SectionCard title="Hours & timezone"><UnavailableMessage text={saved.error ?? "Your hours could not be loaded."} /></SectionCard>;
+  return <HoursForm initial={saved.data} onSaved={saved.reload} />;
+}
+
+function HoursForm({ initial, onSaved }: { initial: SavedHours; onSaved: () => void }) {
+  const [timezone, setTimezone] = React.useState(initial.timezone || "Asia/Kolkata");
+  const [start, setStart] = React.useState(initial.businessHoursStart ?? "09:00");
+  const [end, setEnd] = React.useState(initial.businessHoursEnd ?? "18:00");
+  const [saving, setSaving] = React.useState(false);
+  const dirty = timezone !== initial.timezone || start !== (initial.businessHoursStart ?? "09:00") || end !== (initial.businessHoursEnd ?? "18:00");
+  const wrong = start && end && start >= end ? "Closing time must be after opening time." : "";
+  const options = timezones.some((item) => item.value === timezone) ? timezones : [{ value: timezone, label: timezone }, ...timezones];
+  async function save() {
+    setSaving(true);
+    try {
+      await api("/business/setup", { method: "PATCH", body: JSON.stringify({ timezone, businessHoursStart: start, businessHoursEnd: end }) });
+      toast.success("Hours saved");
+      onSaved();
+    } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
+  }
+  return <SectionCard title="Hours & timezone" description="When your business is open, and the timezone it works in. Amounts are always in rupees.">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <FieldRow label="Timezone"><Select value={timezone} onValueChange={setTimezone}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{options.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></FieldRow>
+      <FieldRow label="Opens at"><Input type="time" value={start} onChange={(e) => setStart(e.target.value)} /></FieldRow>
+      <FieldRow label="Closes at"><Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></FieldRow>
     </div>
-    <div className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">{departments.map((name) => { const members = people.filter((item) => item.department === name); const head = members.find((item) => !members.some((other) => other.id === item.managerId)); return <div key={name} className="flex items-center justify-between p-3"><div><p className="text-sm font-medium">{name}</p><p className="text-xs text-muted-foreground">{members.length} {members.length === 1 ? "member" : "members"}</p></div><Badge variant="neutral">{head ? `Led by ${head.name}` : "No lead"}</Badge></div>; })}</div>
-  </>;
+    {wrong && <p role="alert" className="mt-2 text-xs text-danger">{wrong}</p>}
+    <p className="mt-3 text-[11px] text-muted-foreground">Saved with your business. Janus does not yet hold back messages or workflows outside these hours.</p>
+    <div className="mt-4 flex justify-end"><Button disabled={!dirty || Boolean(wrong) || saving} onClick={save}>{saving ? "Saving…" : "Save hours"}</Button></div>
+  </SectionCard>;
 }

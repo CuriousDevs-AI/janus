@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Activity } from "@/lib/types";
 import { ActorIcon } from "@/components/shared/ai-indicator";
 import { formatRelativeTime, formatTime, formatDate, cn } from "@/lib/utils";
-import { getCustomerById } from "@/lib/mock-data";
+import { useAppStore } from "@/lib/stores/app-store";
 
 const relatedHref: Record<NonNullable<Activity["relatedKind"]>, (id: string) => string> = {
   lead: (id) => `/leads/${id}`,
@@ -27,6 +27,7 @@ export function ActivityTimeline({
   showCustomer?: boolean;
   groupByDay?: boolean;
 }) {
+  const customers = useAppStore((s) => s.customers);
   if (activities.length === 0) {
     return <p className="px-1 py-6 text-center text-[12px] text-muted-foreground">No activity yet.</p>;
   }
@@ -38,7 +39,7 @@ export function ActivityTimeline({
       {activities.map((a, i) => {
         const day = days[i];
         const showDayHeading = groupByDay && day !== days[i - 1];
-        const customer = showCustomer ? getCustomerById(a.customerId) : undefined;
+        const customer = showCustomer ? customers.find((c) => c.id === a.customerId) : undefined;
         const href = a.relatedKind && a.relatedId ? relatedHref[a.relatedKind](a.relatedId) : undefined;
 
         return (

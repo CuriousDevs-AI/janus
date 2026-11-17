@@ -21,7 +21,6 @@ import {
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { useApi } from "@/lib/api/use-api";
 import type { Lead } from "@/lib/api/types";
-import { demoMode } from "@/lib/demo-mode";
 import { customersFromLeads } from "@/lib/customers-from-leads";
 import { message } from "@/lib/api/client";
 import {
@@ -31,7 +30,7 @@ import {
   syncSupportTickets,
   takeOverSupportTicket,
 } from "@/lib/ticket-records";
-import { currentUser, users } from "@/lib/mock-data";
+import { useSession } from "@/components/auth/session-provider";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { TicketStatusBadge, TicketPriorityBadge } from "@/components/shared/status-badge";
 import { AIConfidence } from "@/components/shared/ai-indicator";
@@ -49,18 +48,17 @@ import { TicketsNotAvailable, useCanWorkTickets } from "@/components/support/tic
 
 function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const session = useSession();
   const access = useCrmAccess();
   const found = useAppStore((s) => s.tickets.find((t) => t.id === id));
   const ticket = found && access.ticketVisible(found) ? found : undefined;
-  // A real account's customers come from its leads; the demo list is the demo's own.
-  const storeCustomer = useAppStore((s) => s.customers.find((c) => c.id === ticket?.customerId));
-  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
-  const customer = demoMode ? storeCustomer : customersFromLeads(leadsApi.data ?? []).find((c) => c.id === ticket?.customerId);
+  const leadsApi = useApi<Lead[]>("/leads?limit=100&after_id=0");
+  const customer = customersFromLeads(leadsApi.data ?? []).find((c) => c.id === ticket?.customerId);
   const ticketsStore = useAppStore((s) => s.tickets);
   const otherTickets = ticketsStore.filter((t) => t.customerId === ticket?.customerId && t.id !== ticket?.id);
   const company = useCompany(customer?.companyId);
   // Everyone in the company, names only: any member may assign, not only those who manage members.
-  const membersApi = useApi<{ id: number; name: string }[]>(demoMode ? null : "/team/people");
+  const membersApi = useApi<{ id: number; name: string }[]>("/team/people");
 
   React.useEffect(() => {
     syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
@@ -77,10 +75,7 @@ function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }
     );
   }
 
-  // A real account's people are its members on the server; the demo team is the demo's own.
-  const people = demoMode
-    ? users.filter((u) => u.role.includes("support") || u.role === "owner").map((u) => ({ id: u.id, name: u.name }))
-    : (membersApi.data ?? []).map((m) => ({ id: String(m.id), name: m.name }));
+  const people = (membersApi.data ?? []).map((m) => ({ id: String(m.id), name: m.name }));
   const assignee = people.find((p) => p.id === ticket.assigneeId);
   const showHandoff = !!ticket.handoff && !["resolved", "closed"].includes(ticket.status);
   const showAiSupport = !showHandoff && ["open", "ai_handling", "waiting_customer"].includes(ticket.status) && ticket.aiConfidence !== undefined;
@@ -191,13 +186,13 @@ function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }
               </p>
               {ticket.handoff.takenOverBy ? (
                 <Badge variant="info">
-                  Taken over by {users.find((u) => u.id === ticket.handoff!.takenOverBy)?.name} · {formatRelativeTime(ticket.handoff.takenOverAt!)}
+                  Taken over by {people.find((p) => p.id === ticket.handoff!.takenOverBy)?.name ?? "a teammate"} · {formatRelativeTime(ticket.handoff.takenOverAt!)}
                 </Badge>
               ) : (
                 <Button
                   size="sm"
                   onClick={() => {
-                    void takeOverSupportTicket(ticket.id, currentUser.id).then((error) =>
+                    void takeOverSupportTicket(ticket.id, session.user.id).then((error) =>
                       error
                         ? toast.error(error)
                         : toast.success("You're now handling this conversation", { description: "AI has stopped sending automated messages." }),

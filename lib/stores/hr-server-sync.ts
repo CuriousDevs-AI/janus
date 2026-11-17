@@ -4,7 +4,6 @@ import * as React from "react";
 import { toast } from "sonner";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { api, APIError, message as errorText } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { useHrCareerStore } from "@/lib/stores/hr-career-store";
 import { useHrDocumentStore } from "@/lib/stores/hr-document-store";
 import { useHrImportStore } from "@/lib/stores/hr-import-store";
@@ -227,9 +226,8 @@ function push(binding: Binding, value: unknown) {
 
 /** Keeps the HR stores and the server in step while an HR screen is open. Does nothing in the preview. */
 export function useHrServerSync() {
-  const [ready, setReady] = React.useState(demoMode);
+  const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
-    if (demoMode) return;
     let stopped = false;
     void pull()
       .catch((error) => toast.error(`HR records could not be loaded: ${errorText(error)}`))

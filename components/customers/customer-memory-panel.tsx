@@ -3,7 +3,8 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Check, Pencil, Trash2 } from "lucide-react";
-import { getMemoryForCustomer, getConversationsForCustomer } from "@/lib/mock-data";
+import { useAppStore } from "@/lib/stores/app-store";
+import { useApi } from "@/lib/api/use-api";
 import { AIConfidence } from "@/components/shared/ai-indicator";
 import { ChannelBadge } from "@/components/shared/channel-badge";
 import { formatRelativeTime } from "@/lib/utils";
@@ -12,8 +13,12 @@ import { Badge } from "@/components/ui/badge";
 import type { MemoryItem } from "@/lib/types";
 
 export function CustomerMemoryPanel({ customerId }: { customerId: string }) {
-  const [items, setItems] = React.useState<MemoryItem[]>(() => getMemoryForCustomer(customerId));
-  const conversations = getConversationsForCustomer(customerId).slice(0, 5);
+  const { data: serverMemory } = useApi<MemoryItem[]>(`/customers/${customerId}/memory`);
+  const allConversations = useAppStore((s) => s.conversations);
+  const conversations = allConversations.filter((c) => c.customerId === customerId).slice(0, 5);
+
+  const [items, setItems] = React.useState<MemoryItem[]>([]);
+  React.useEffect(() => { if (serverMemory) setItems(serverMemory); }, [serverMemory]);
 
   const facts = items.filter((m) => m.kind === "stable_fact");
   const insights = items.filter((m) => m.kind === "derived_insight");

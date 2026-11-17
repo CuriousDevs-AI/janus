@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { can } from "@/lib/permissions";
-import { demoMode } from "@/lib/demo-mode";
-import { demoAccounts } from "@/lib/demo-accounts";
 import { canSeeOwner } from "@/lib/crm-scope";
-import { useDemoAccount } from "@/lib/demo-persona";
 import Link from "next/link";
 import {
   BarChart3,
@@ -61,7 +58,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateTime } from "@/lib/utils";
-import { demoLeadRows } from "@/lib/api/demo-data";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
 import { useApi } from "@/lib/api/use-api";
 import { LostReasonFields } from "@/components/crm/lost-reason-fields";
@@ -182,7 +178,6 @@ function EditableValue({
 
 export default function LeadsPage() {
   const session = useSession();
-  const viewer = useDemoAccount();
   const canWrite = can(session, "leads:write");
   const [after, setAfter] = useState("0");
   const [version, setVersion] = useState(0);
@@ -250,23 +245,20 @@ export default function LeadsPage() {
     };
     load().catch((error) => {
       if (!controller.signal.aborted)
-        setResult({ after, rows: demoMode ? demoLeadRows.map((lead) => ({ lead })) : [], error: message(error) });
+        setResult({ after, rows: [], error: message(error) });
     });
     return () => controller.abort();
   }, [after, version, serverQuery, stageFilter, sourceFilter, ownerFilter, session.user.id]);
 
   const loaded = result?.after === after ? result : null;
-  const usingDemo = demoMode && Boolean(loaded?.error);
-  const canEditRows = canWrite && !usingDemo;
+  const canEditRows = canWrite;
   // Owners and managers can hand a lead to someone they manage.
   const canAssign = session.permissions.includes("*") || can(session, "leads:assign");
-  const assignees = demoMode && canAssign ? demoAccounts.filter((item) => (item.crm === "own" || item.crm === "team" || item.id === "owner") && canSeeOwner(viewer, item.crmUserId)) : [];
-  // Who a lead can be given to: the company's active members, for those who may assign.
-  const members = useApi<{ user_id: string | number; name: string; status: string }[]>(!demoMode && canAssign ? "/members/directory" : null);
-  const people = demoMode ? assignees.map((item) => ({ id: item.crmUserId, label: `${item.name} · ${item.title}` })) : (members.data ?? []).filter((item) => item.status === "active").map((item) => ({ id: String(item.user_id), label: item.name }));
+  const members = useApi<{ user_id: string | number; name: string; status: string }[]>(canAssign ? "/members/directory" : null);
+  const people = (members.data ?? []).filter((item) => item.status === "active").map((item) => ({ id: String(item.user_id), label: item.name }));
   const [assigning, setAssigning] = useState(false);
   const [assignTo, setAssignTo] = useState("none");
-  const filterOpts = useApi<{ stages: string[]; sources: string[]; owners: { id: string; name: string }[] }>(!demoMode ? "/leads/filter-options" : null);
+  const filterOpts = useApi<{ stages: string[]; sources: string[]; owners: { id: string; name: string }[] }>("/leads/filter-options");
   const sources = filterOpts.data?.sources ?? [...new Set(loaded?.rows.map(({ lead }) => lead.source) || [])];
   const rows = useMemo(() => {
     return (
@@ -316,10 +308,10 @@ export default function LeadsPage() {
     try {
       await api<Lead>(`/leads/${editing.lead.id}`, {
         method: "PATCH",
-        body: JSON.stringify(demoMode ? { ...editForm, phone: editForm.phone.trim() || null, email: editForm.email.trim() || null } : leadBody(editForm)),
+        body: JSON.stringify(leadBody(editForm)),
       });
       const owner = editForm.ownerId && editForm.ownerId !== "none" ? editForm.ownerId : null;
-      if (!demoMode && canAssign && owner !== (editing.lead.ownerId ?? null)) {
+      if (canAssign && owner !== (editing.lead.ownerId ?? null)) {
         await api("/leads/assign", { method: "POST", body: JSON.stringify({ leadIds: [editing.lead.id], ownerId: owner }) });
       }
       setEditing(null);
@@ -442,7 +434,7 @@ export default function LeadsPage() {
           </>
         }
       />
-      {!demoMode && loaded?.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your leads could not be read: {loaded.error}. Refresh to try again; nothing is lost.</p>}
+      {loaded?.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your leads could not be read: {loaded.error}. Refresh to try again; nothing is lost.</p>}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search name, mobile, email, company or notes..." className="w-full sm:w-[25rem]" />
@@ -522,7 +514,7 @@ export default function LeadsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              {canAssign && !demoMode && <DropdownMenuItem disabled={bulkUpdating || !selectedIds.length} onSelect={() => setAssigning(true)}>
+              {canAssign && <DropdownMenuItem disabled={bulkUpdating || !selectedIds.length} onSelect={() => setAssigning(true)}>
                 Assign selected to…
               </DropdownMenuItem>}
               <DropdownMenuItem disabled={bulkUpdating} onSelect={() => void bulkUpdateStage("qualified")}>
@@ -567,7 +559,7 @@ export default function LeadsPage() {
       ) : view === "quality" ? (
         <LeadQualityAnalysis rows={rows} />
       ) : view === "board" ? (
-        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => !demoMode && setDrawerLead(lead)} />
+        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => setDrawerLead(lead)} />
       ) : (
         <>
         <p className="mx-4 mt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
@@ -601,7 +593,7 @@ export default function LeadsPage() {
                   <tr key={lead.id} className={`group border-b border-border transition-colors hover:bg-surface-2/60 ${selected ? "bg-accent/5" : ""}`}>
                     <td className="w-12 min-w-12 px-3 py-4"><Checkbox checked={selected} aria-label={`Select ${displayName}`} onCheckedChange={(checked) => setSelectedIds((current) => checked ? [...new Set([...current, lead.id])] : current.filter((id) => id !== lead.id))} /></td>
                     <td className="w-16 min-w-16 whitespace-nowrap px-2 py-4"><span className="font-mono text-xs font-semibold text-foreground">#{String(index + 1).padStart(2, "0")}</span><span className="mt-1 block text-[10px] text-muted-foreground">ID {lead.id}</span></td>
-                    <td className="w-40 min-w-40 px-3 py-4"><div className="flex items-center gap-2">{usingDemo ? <span className="block truncate font-semibold text-foreground">{displayName}</span> : <Link href={`/leads/${lead.id}`} className="block truncate font-semibold text-foreground hover:text-accent">{displayName}</Link>}{canEditRows && <button type="button" title="Edit name" onClick={() => openEdit(row)} className="shrink-0 text-muted-foreground hover:text-accent"><Pencil className="size-3" /></button>}</div>{lead.contactName ? null : <span className="mt-1 block text-[11px] text-muted-foreground">Using mobile as name</span>}</td>
+                    <td className="w-40 min-w-40 px-3 py-4"><div className="flex items-center gap-2"><Link href={`/leads/${lead.id}`} className="block truncate font-semibold text-foreground hover:text-accent">{displayName}</Link>{canEditRows && <button type="button" title="Edit name" onClick={() => openEdit(row)} className="shrink-0 text-muted-foreground hover:text-accent"><Pencil className="size-3" /></button>}</div>{lead.contactName ? null : <span className="mt-1 block text-[11px] text-muted-foreground">Using mobile as name</span>}</td>
                     <td className="w-28 min-w-28 whitespace-nowrap px-3 py-4"><span className="inline-flex whitespace-nowrap rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs font-medium text-foreground">{phone.countryCode}</span></td>
                     <td className="w-32 min-w-32 whitespace-nowrap px-3 py-4 font-medium text-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{phone.mobile}</EditableValue> : phone.mobile}</td>
                     <td className="w-28 min-w-28 px-3 py-4">{canEditRows ? <EditableValue onClick={() => openEdit(row)}><Badge variant="neutral">{label(lead.stage)}</Badge></EditableValue> : <Badge variant="neutral">{label(lead.stage)}</Badge>}</td>
@@ -619,8 +611,8 @@ export default function LeadsPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${displayName}`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {!usingDemo && <DropdownMenuItem onSelect={() => setDrawerLead(lead)}><Eye className="size-3.5" />Quick view</DropdownMenuItem>}
-                          {!usingDemo && <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5" />Full page</Link></DropdownMenuItem>}
+                          <DropdownMenuItem onSelect={() => setDrawerLead(lead)}><Eye className="size-3.5" />Quick view</DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5" />Full page</Link></DropdownMenuItem>
                           {canEditRows && <DropdownMenuItem onSelect={() => openEdit(row)}><Pencil className="size-3.5" />Edit and update</DropdownMenuItem>}
                           {canEditRows && <><DropdownMenuSeparator /><DropdownMenuItem variant="destructive" onSelect={() => { setActionError(""); setDeleting(row); }}><Trash2 className="size-3.5" />Delete lead</DropdownMenuItem></>}
                         </DropdownMenuContent>

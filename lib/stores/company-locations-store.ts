@@ -3,17 +3,12 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { isFirstCompany } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 
 /** Offices, warehouses and branches of the active company. Company Profile edits them; Operations stocks them. */
 export interface CompanyLocation { id: number; name: string; kind: string; address: string; people: number; gst: string }
 
-const seed: CompanyLocation[] = isFirstCompany ? [
-  { id: 1, name: "Head office", kind: "Office", address: "Udyog Vihar Phase 4, Gurugram, Haryana", people: 18, gst: "" },
-  { id: 2, name: "Manesar warehouse", kind: "Warehouse", address: "IMT Manesar, Sector 8, Haryana", people: 17, gst: "" },
-  { id: 3, name: "Jaipur branch", kind: "Branch", address: "Sitapura Industrial Area, Jaipur, Rajasthan", people: 7, gst: "Own GSTIN" },
-] : [];
+const seed: CompanyLocation[] = [];
 
 /** Remove locations whose name duplicates an earlier entry (keeps the first). */
 function deduplicate(list: CompanyLocation[]): CompanyLocation[] {

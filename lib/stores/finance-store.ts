@@ -3,15 +3,14 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorage } from "@/lib/stores/workspace-storage";
-import { mergeServerOwned, withoutDemoRecords } from "@/lib/stores/server-owned";
-import { isFirstCompany } from "@/lib/companies";
+import { mergeServerOwned } from "@/lib/stores/server-owned";
 import { scoped } from "@/lib/company";
 import { periodLockProblem } from "@/lib/stores/period-lock-store";
 import { type TrailEntry, trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { useOperationsStore } from "@/lib/stores/operations-store";
 import { threeWayMatch } from "@/lib/three-way-match";
 import { workflowRules } from "@/lib/stores/workflow-rules-store";
-import { demoMode } from "@/lib/demo-mode";
+
 import { api } from "@/lib/api/client";
 import { todayIso } from "@/lib/today";
 
@@ -182,181 +181,14 @@ interface FinanceState {
 const today = todayIso();
 type FinanceSeed = Pick<FinanceState, "invoices" | "creditNotes" | "budgetLines" | "fundRequests" | "draws" | "bills" | "bankEntries" | "openingCash" | "bankLines" | "closeReviews" | "expenses" | "pettyCashTopUps" | "accounts" | "costCenters" | "vendors" | "customers" | "quotations" | "paymentVouchers" | "receiptVouchers" | "contraEntries" | "advancePayments" | "eInvoiceStatuses" | "currencyRates" | "fyClosings">;
 const emptyFinance = (): FinanceSeed => ({ invoices: [], creditNotes: [], budgetLines: [], fundRequests: [], draws: [], bills: [], bankEntries: [], openingCash: 0, bankLines: [], closeReviews: [], expenses: [], pettyCashTopUps: [], accounts: [], costCenters: [], vendors: [], customers: [], quotations: [], paymentVouchers: [], receiptVouchers: [], contraEntries: [], advancePayments: [], eInvoiceStatuses: [], currencyRates: [], fyClosings: [] });
-// Demo records are seeded only in demo mode; a real company starts empty and loads its records from the server.
-const seedFinance = (): FinanceSeed => (isFirstCompany && demoMode ? demoFinance() : emptyFinance());
-
-/** The preview's records. Also read on a real account, to recognise demo records in a copy saved in demo mode. */
-function demoFinance(): FinanceSeed {
-  const lines: BudgetLine[] = [
-    { id: "line-sales", name: "Sales and marketing", owner: "Arjun Mehta", allocated: 300000, drawn: 92000 },
-    { id: "line-ops", name: "Warehouse operations", owner: "Neha Verma", allocated: 180000, drawn: 64000 },
-    { id: "line-it", name: "IT and software", owner: "Pankaj Neema", allocated: 90000, drawn: 22500 },
-  ];
-  const invoices: Invoice[] = [
-    { id: "inv-1", number: "INV-2026-0101", customer: "Kavita Rao", customerCompany: "Northstar Retail", date: "2026-10-01", dueDate: "2026-10-31", sameState: true, createdBy: "Pankaj Neema", lines: [{ item: "Festive staples pack", hsn: "1904", qty: 40, rate: 1200, gstRate: 12 }, { item: "Gift hamper", hsn: "2106", qty: 10, rate: 2400, gstRate: 18 }], payments: [{ id: "pay-1", amount: 30000, method: "UPI", reference: "UPI-88213", date: "2026-10-10" }] },
-    { id: "inv-2", number: "INV-2026-0102", customer: "Bhanwar Singh", customerCompany: "Rajputana Wholesale Co-op", date: "2026-09-15", dueDate: "2026-10-15", sameState: false, createdBy: "Arjun Mehta", lines: [{ item: "Basmati rice 25 kg", hsn: "1006", qty: 120, rate: 1450, gstRate: 5 }], payments: [] },
-    { id: "inv-3", number: "INV-2026-0103", customer: "Suresh Nair", customerCompany: "Metro Value Mart", date: "2026-10-18", dueDate: "2026-11-17", sameState: true, createdBy: "Aman Verma", lines: [{ item: "Floor cleaner 5 L", hsn: "3402", qty: 60, rate: 380, gstRate: 18 }], payments: [] },
-  ];
-  const fundRequests: FundRequest[] = [
-    { id: "fund-1", number: "FR-2026-0007", purpose: "Trade fair stall for Rajasthan distributors", amount: 42000, lineId: "line-sales", requestedBy: "Arjun Mehta", date: "2026-10-20", status: "pending" },
-    { id: "fund-2", number: "FR-2026-0008", purpose: "Warehouse racking for Jaipur dock", amount: 78000, lineId: "line-ops", requestedBy: "Neha Verma", date: "2026-10-21", status: "awaiting_finance", ownerApprovedBy: "Pankaj Neema" },
-  ];
-  const bills: Bill[] = [
-    { id: "bill-1", number: "BILL-2026-0101", vendor: "Gurugram Packaging Co", vendorBillNo: "GPC/2610/88", date: "2026-10-15", dueDate: "2026-10-30", amount: 45000, gst: 6882, payments: [], createdBy: "Aman Verma" },
-    { id: "bill-2", number: "BILL-2026-0102", vendor: "Udyog Electricals", vendorBillNo: "UE-4471", date: "2026-10-01", dueDate: "2026-10-12", amount: 12500, gst: 1907, payments: [{ id: "bpay-1", amount: 12500, method: "Bank transfer", reference: "NEFT-55201", date: "2026-10-11" }], createdBy: "Aman Verma" },
-    { id: "bill-3", number: "BILL-2026-0103", vendor: "Sharma & Associates", vendorBillNo: "SA/2610/14", date: "2026-10-20", dueDate: "2026-11-19", amount: 85000, gst: 12966, tds: 8500, tdsSection: "194J", payments: [], createdBy: "Aman Verma" },
-    { id: "bill-4", number: "BILL-2026-0104", vendor: "Rajasthan Logistics", vendorBillNo: "RL-7812", date: "2026-10-05", dueDate: "2026-11-04", amount: 35000, gst: 5339, tds: 700, tdsSection: "194C", payments: [{ id: "bpay-2", amount: 34300, method: "Bank transfer", reference: "NEFT-55210", date: "2026-10-28" }], createdBy: "Aman Verma" },
-    { id: "bill-5", number: "BILL-2026-0105", vendor: "Sahara IT Solutions", vendorBillNo: "SIT-4421", date: "2026-11-01", dueDate: "2026-11-30", amount: 120000, gst: 18305, tds: 12000, tdsSection: "194J", payments: [], createdBy: "Pankaj Neema" },
-    { id: "bill-6", number: "BILL-2026-0106", vendor: "Mewar Office Space", vendorBillNo: "MOS/NOV/01", date: "2026-11-01", dueDate: "2026-11-10", amount: 65000, gst: 9915, tds: 6500, tdsSection: "194I", payments: [{ id: "bpay-3", amount: 58500, method: "Bank transfer", reference: "NEFT-55218", date: "2026-11-05" }], createdBy: "Aman Verma" },
-  ];
-  const expenses: Expense[] = [
-    { id: "exp-1", date: "2026-10-10", category: "Travel", payee: "Rajdhani Express tickets", amount: 4200, gstRate: 5, paidFrom: "bank", by: "Arjun Mehta" },
-    { id: "exp-2", date: "2026-10-22", category: "Office", payee: "Jaipur Stationery House", amount: 1850, gstRate: 18, paidFrom: "petty cash", by: "Aman Verma" },
-    { id: "exp-3", date: "2026-11-05", category: "Utilities", payee: "JVVNL electricity", amount: 8400, gstRate: 18, paidFrom: "bank", by: "Aman Verma" },
-    { id: "exp-4", date: "2026-11-12", category: "Repairs", payee: "Laxmi AC Services", amount: 3500, gstRate: 18, paidFrom: "petty cash", by: "Neha Verma" },
-  ];
-  const pettyCashTopUps: PettyCashTopUp[] = [
-    { id: "top-1", date: "2026-10-01", amount: 10000, by: "Aman Verma" },
-  ];
-  const bankEntries: BankEntry[] = [
-    { id: "bank-1", date: "2026-10-05", description: "Bank charges, September", amount: -850 },
-    { id: "bank-2", date: "2026-11-02", description: "Interest received on FD", amount: 4200 },
-  ];
-  const bankLines: BankLine[] = [
-    { id: "bl-1", date: "2026-10-10", description: "NEFT Kavita Rao", amount: 30000, matchedKey: "inv:inv-1:pay-1" },
-    { id: "bl-2", date: "2026-10-11", description: "NEFT Udyog Electricals", amount: -12500, matchedKey: "bill:bill-2:bpay-1" },
-    { id: "bl-3", date: "2026-10-18", description: "NEFT from unknown remitter", amount: 5000, matchedKey: null },
-    { id: "bl-4", date: "2026-10-28", description: "NEFT Rajasthan Logistics", amount: -34300, matchedKey: "bill:bill-4:bpay-2" },
-    { id: "bl-5", date: "2026-11-05", description: "NEFT Mewar Office Space", amount: -58500, matchedKey: "bill:bill-6:bpay-3" },
-  ];
-  const accounts: AccountMaster[] = [
-    { code: "1000", name: "Cash in Hand", group: "Assets", subGroup: "Current Assets", isSystem: true },
-    { code: "1010", name: "Cash at Bank — SBI", group: "Assets", subGroup: "Current Assets", isSystem: true },
-    { code: "1020", name: "Cash at Bank — HDFC", group: "Assets", subGroup: "Current Assets" },
-    { code: "1100", name: "Accounts Receivable", group: "Assets", subGroup: "Current Assets", isSystem: true },
-    { code: "1200", name: "Inventory", group: "Assets", subGroup: "Current Assets" },
-    { code: "1300", name: "Prepaid Expenses", group: "Assets", subGroup: "Current Assets" },
-    { code: "1400", name: "Advances to Suppliers", group: "Assets", subGroup: "Current Assets" },
-    { code: "1500", name: "TDS Receivable", group: "Assets", subGroup: "Current Assets" },
-    { code: "1600", name: "GST Input Credit (CGST)", group: "Assets", subGroup: "Current Assets" },
-    { code: "1610", name: "GST Input Credit (SGST)", group: "Assets", subGroup: "Current Assets" },
-    { code: "1620", name: "GST Input Credit (IGST)", group: "Assets", subGroup: "Current Assets" },
-    { code: "1700", name: "Fixed Deposits", group: "Assets", subGroup: "Investments" },
-    { code: "2000", name: "Office Equipment", group: "Assets", subGroup: "Fixed Assets" },
-    { code: "2010", name: "Furniture & Fixtures", group: "Assets", subGroup: "Fixed Assets" },
-    { code: "2020", name: "Computer & IT Equipment", group: "Assets", subGroup: "Fixed Assets" },
-    { code: "2030", name: "Vehicles", group: "Assets", subGroup: "Fixed Assets" },
-    { code: "2040", name: "Leasehold Improvements", group: "Assets", subGroup: "Fixed Assets" },
-    { code: "2100", name: "Accumulated Depreciation", group: "Assets", subGroup: "Fixed Assets" },
-    { code: "3000", name: "Accounts Payable", group: "Liabilities", subGroup: "Current Liabilities", isSystem: true },
-    { code: "3100", name: "GST Payable (CGST)", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3110", name: "GST Payable (SGST)", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3120", name: "GST Payable (IGST)", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3200", name: "TDS Payable", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3300", name: "Salary Payable", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3400", name: "Advance from Customers", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3500", name: "Provision for Expenses", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3600", name: "PF Payable", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3700", name: "ESI Payable", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "3800", name: "Professional Tax Payable", group: "Liabilities", subGroup: "Current Liabilities" },
-    { code: "4000", name: "Term Loan — SBI", group: "Liabilities", subGroup: "Long-term Liabilities" },
-    { code: "5000", name: "Share Capital", group: "Equity", subGroup: "Capital" },
-    { code: "5100", name: "Retained Earnings", group: "Equity", subGroup: "Reserves" },
-    { code: "5200", name: "Current Year Profit", group: "Equity", subGroup: "Reserves" },
-    { code: "6000", name: "Sales — Domestic", group: "Income", subGroup: "Revenue" },
-    { code: "6010", name: "Sales — Interstate", group: "Income", subGroup: "Revenue" },
-    { code: "6020", name: "Sales — Export", group: "Income", subGroup: "Revenue" },
-    { code: "6100", name: "Service Income", group: "Income", subGroup: "Revenue" },
-    { code: "6200", name: "Interest Income", group: "Income", subGroup: "Other Income" },
-    { code: "6300", name: "Discount Received", group: "Income", subGroup: "Other Income" },
-    { code: "7000", name: "Cost of Goods Sold", group: "Expenses", subGroup: "Direct Expenses" },
-    { code: "7010", name: "Packing Material", group: "Expenses", subGroup: "Direct Expenses" },
-    { code: "7020", name: "Freight & Logistics", group: "Expenses", subGroup: "Direct Expenses" },
-    { code: "7100", name: "Salaries & Wages", group: "Expenses", subGroup: "Employee Costs" },
-    { code: "7110", name: "Employer PF Contribution", group: "Expenses", subGroup: "Employee Costs" },
-    { code: "7120", name: "Employer ESI Contribution", group: "Expenses", subGroup: "Employee Costs" },
-    { code: "7200", name: "Rent", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7210", name: "Electricity & Utilities", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7220", name: "Repairs & Maintenance", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7230", name: "Insurance", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7240", name: "Office Supplies", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7260", name: "Travel & Conveyance", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7300", name: "Legal & Professional Fees", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7320", name: "Marketing & Advertising", group: "Expenses", subGroup: "Operating Expenses" },
-    { code: "7400", name: "Bank Charges", group: "Expenses", subGroup: "Financial Expenses" },
-    { code: "7410", name: "Interest on Loan", group: "Expenses", subGroup: "Financial Expenses" },
-    { code: "7500", name: "Depreciation", group: "Expenses", subGroup: "Non-cash Expenses" },
-    { code: "7600", name: "Bad Debts Written Off", group: "Expenses", subGroup: "Non-cash Expenses" },
-  ];
-  const costCenters: CostCenter[] = [
-    { id: "cc-hq", name: "Head Office — Jaipur", code: "CC-HQ", head: "Pankaj Neema", type: "cost", active: true },
-    { id: "cc-warehouse", name: "Warehouse Operations", code: "CC-WH", head: "Neha Verma", type: "cost", active: true },
-    { id: "cc-sales", name: "Sales & Distribution", code: "CC-SALES", head: "Arjun Mehta", type: "revenue", active: true },
-    { id: "cc-ecomm", name: "E-Commerce", code: "CC-ECOM", head: "Kavita Rao", type: "profit", active: true },
-    { id: "cc-mfg", name: "Production Unit", code: "CC-MFG", head: "Neha Verma", type: "cost", active: true },
-  ];
-  const vendorsMaster: VendorMaster[] = [
-    { id: "vm-1", name: "Gurugram Packaging Co", gstin: "06AABCG1234A1ZP", address: "Plot 45, Sector 18, Gurugram", state: "Haryana", paymentTermsDays: 15, contactName: "Rohit Kapoor", contactEmail: "rohit@example.com", contactPhone: "9876543210", category: "Packaging", msme: true, active: true },
-    { id: "vm-2", name: "Udyog Electricals", address: "12 Industrial Area, Bhiwadi", state: "Rajasthan", paymentTermsDays: 10, contactName: "Mahesh Patel", contactEmail: "mahesh@example.com", contactPhone: "9876543211", category: "Electrical", msme: true, active: true },
-    { id: "vm-3", name: "Sharma & Associates", gstin: "08AACFS9012C1Z3", address: "301 MG Road, Jaipur", state: "Rajasthan", paymentTermsDays: 30, contactName: "Vikram Sharma", contactEmail: "vikram@example.com", contactPhone: "9876543212", category: "Professional", active: true },
-    { id: "vm-4", name: "Rajasthan Logistics", gstin: "08AALRL3456D1Z7", address: "Truck Terminal, Ajmer Road, Jaipur", state: "Rajasthan", paymentTermsDays: 30, contactName: "Deepak Jain", contactEmail: "deepak@example.com", contactPhone: "9876543213", category: "Logistics", active: true },
-    { id: "vm-5", name: "Sahara IT Solutions", gstin: "08AASSI7890E1Z1", address: "Tower B, Mahindra SEZ, Jaipur", state: "Rajasthan", paymentTermsDays: 30, contactName: "Priya Nair", contactEmail: "priya@example.com", contactPhone: "9876543214", category: "IT Services", active: true },
-    { id: "vm-6", name: "Mewar Office Space", gstin: "08AAMMO2345F1Z5", address: "C-Scheme, Jaipur", state: "Rajasthan", paymentTermsDays: 10, contactName: "Sunil Mewar", contactEmail: "sunil@example.com", contactPhone: "9876543215", category: "Real Estate", active: true },
-  ];
-  const customersMaster: CustomerMaster[] = [
-    { id: "cm-1", name: "Kavita Rao", company: "Northstar Retail", gstin: "08AACNR1234G1Z9", address: "22 MI Road, Jaipur", state: "Rajasthan", creditLimitDays: 30, creditLimitAmount: 500000, contactName: "Kavita Rao", contactEmail: "kavita@example.com", contactPhone: "9876543220", segment: "Retail", active: true },
-    { id: "cm-2", name: "Bhanwar Singh", company: "Rajputana Wholesale Co-op", gstin: "07AARJW5678H1Z3", address: "Grain Market, Delhi", state: "Delhi", creditLimitDays: 15, creditLimitAmount: 1000000, contactName: "Bhanwar Singh", contactEmail: "bhanwar@example.com", contactPhone: "9876543221", segment: "Wholesale", active: true },
-    { id: "cm-3", name: "Suresh Nair", company: "Metro Value Mart", gstin: "08AAMVM9012I1Z7", address: "Vaishali Nagar, Jaipur", state: "Rajasthan", creditLimitDays: 30, creditLimitAmount: 300000, contactName: "Suresh Nair", contactEmail: "suresh@example.com", contactPhone: "9876543222", segment: "Modern Trade", active: true },
-    { id: "cm-4", name: "Anita Desai", company: "Desai General Store", address: "Station Road, Ajmer", state: "Rajasthan", creditLimitDays: 7, creditLimitAmount: 100000, contactName: "Anita Desai", contactEmail: "anita@example.com", contactPhone: "9876543223", segment: "Kirana", active: true },
-  ];
-  const quotationsSeed: Quotation[] = [
-    { id: "qt-1", number: "QT-2026-0101", customer: "Anita Desai", customerCompany: "Desai General Store", date: "2026-11-10", validUntil: "2026-11-25", lines: [{ item: "Festive staples pack", hsn: "1904", qty: 20, rate: 1200, gstRate: 12 }, { item: "Floor cleaner 5 L", hsn: "3402", qty: 15, rate: 380, gstRate: 18 }], status: "sent", createdBy: "Arjun Mehta", notes: "Festive season bulk order enquiry" },
-    { id: "qt-2", number: "QT-2026-0102", customer: "Suresh Nair", customerCompany: "Metro Value Mart", date: "2026-11-05", validUntil: "2026-11-20", lines: [{ item: "Basmati rice 25 kg", hsn: "1006", qty: 200, rate: 1400, gstRate: 5 }], status: "accepted", createdBy: "Arjun Mehta", notes: "Monthly supply contract pricing" },
-    { id: "qt-3", number: "QT-2026-0103", customer: "Kavita Rao", customerCompany: "Northstar Retail", date: "2026-10-28", validUntil: "2026-11-12", lines: [{ item: "Gift hamper", hsn: "2106", qty: 50, rate: 2200, gstRate: 18 }], status: "expired", createdBy: "Arjun Mehta", notes: "Corporate gifting for Diwali — expired" },
-  ];
-  const paymentVouchersSeed: PaymentVoucher[] = [
-    { id: "pv-1", number: "PV-2026-0101", date: "2026-10-11", paidTo: "Udyog Electricals", amount: 12500, method: "Bank transfer", reference: "NEFT-55201", narration: "Full payment for BILL-2026-0102", costCenter: "cc-warehouse", linkedBillId: "bill-2", createdBy: "Aman Verma" },
-    { id: "pv-2", number: "PV-2026-0102", date: "2026-10-28", paidTo: "Rajasthan Logistics", amount: 34300, method: "Bank transfer", reference: "NEFT-55210", narration: "Payment for BILL-2026-0104 (net of TDS ₹700)", costCenter: "cc-warehouse", linkedBillId: "bill-4", createdBy: "Aman Verma" },
-    { id: "pv-3", number: "PV-2026-0103", date: "2026-11-05", paidTo: "Mewar Office Space", amount: 58500, method: "Bank transfer", reference: "NEFT-55218", narration: "November rent (net of TDS ₹6,500)", costCenter: "cc-hq", linkedBillId: "bill-6", createdBy: "Aman Verma" },
-  ];
-  const receiptVouchersSeed: ReceiptVoucher[] = [
-    { id: "rv-1", number: "RV-2026-0101", date: "2026-10-10", receivedFrom: "Kavita Rao — Northstar Retail", amount: 30000, method: "UPI", reference: "UPI-88213", narration: "Part payment against INV-2026-0101", linkedInvoiceId: "inv-1", createdBy: "Pankaj Neema" },
-  ];
-  const contraEntriesSeed: ContraEntry[] = [
-    { id: "ce-1", number: "CE-2026-0101", date: "2026-10-01", from: "bank", to: "cash", amount: 10000, narration: "Cash withdrawn for petty cash float", createdBy: "Aman Verma" },
-    { id: "ce-2", number: "CE-2026-0102", date: "2026-11-08", from: "cash", to: "bank", amount: 15000, narration: "Cash deposit from counter collections", createdBy: "Aman Verma" },
-  ];
-  const advancePaymentsSeed: AdvancePayment[] = [
-    { id: "adv-1", date: "2026-10-01", vendor: "Gurugram Packaging Co", amount: 20000, poId: "po-1", adjustedAmount: 0, method: "Bank transfer", reference: "NEFT-55190", createdBy: "Aman Verma" },
-  ];
-  const eInvoiceStatusesSeed: EInvoiceStatus[] = [
-    { invoiceId: "inv-1", irn: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcd", ackNo: "132026100012345", ackDate: "2026-10-01", status: "generated", ewayBillNo: "3410261001234" },
-    { invoiceId: "inv-2", irn: "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1dcba", ackNo: "132026091512345", ackDate: "2026-09-15", status: "generated" },
-    { invoiceId: "inv-3", status: "pending" },
-  ];
-  const currencyRatesSeed: CurrencyRate[] = [
-    { code: "USD", name: "US Dollar", symbol: "$", rateToInr: 84.12, asOf: "2026-11-15" },
-    { code: "EUR", name: "Euro", symbol: "€", rateToInr: 91.45, asOf: "2026-11-15" },
-    { code: "GBP", name: "British Pound", symbol: "£", rateToInr: 106.80, asOf: "2026-11-15" },
-    { code: "AED", name: "UAE Dirham", symbol: "د.إ", rateToInr: 22.90, asOf: "2026-11-15" },
-    { code: "SGD", name: "Singapore Dollar", symbol: "S$", rateToInr: 62.35, asOf: "2026-11-15" },
-    { code: "JPY", name: "Japanese Yen", symbol: "¥", rateToInr: 0.55, asOf: "2026-11-15" },
-  ];
-  const fyClosingsSeed: FyClosing[] = [
-    { id: "fy-2025", fiscalYear: "2025-26", status: "closed", closedBy: "Pankaj Neema", closedAt: "2026-04-15", retainedEarnings: 1245000, openingBalancesCarried: true },
-    { id: "fy-2026", fiscalYear: "2026-27", status: "open", retainedEarnings: 0, openingBalancesCarried: false },
-  ];
-  return { invoices, creditNotes: [], budgetLines: lines, fundRequests, draws: [], bills, bankEntries, openingCash: 250000, bankLines, closeReviews: [], expenses, pettyCashTopUps, accounts, costCenters, vendors: vendorsMaster, customers: customersMaster, quotations: quotationsSeed, paymentVouchers: paymentVouchersSeed, receiptVouchers: receiptVouchersSeed, contraEntries: contraEntriesSeed, advancePayments: advancePaymentsSeed, eInvoiceStatuses: eInvoiceStatusesSeed, currencyRates: currencyRatesSeed, fyClosings: fyClosingsSeed };
-}
-
 const nextNumber = (prefix: string, count: number) => `${prefix}-2026-${String(101 + count).padStart(4, "0")}`;
 
 export const useFinanceStore = create<FinanceState>()(
   persist(
     (set, get) => ({
-      ...seedFinance(),
+      ...emptyFinance(),
       trail: [],
-      bills: seedFinance().bills,
+      bills: emptyFinance().bills,
       plans: [],
       shareCapital: 0,
       setShareCapital: (amount, by) => {
@@ -432,7 +264,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addInvoice: (input, by) => {
-        if (!demoMode) return "";
         const number = nextNumber("INV", get().invoices.length);
         const id = `inv-${Date.now()}`;
         const invoice: Invoice = { ...input, id, number, payments: [], createdBy: by };
@@ -441,7 +272,6 @@ export const useFinanceStore = create<FinanceState>()(
         return number;
       },
       recordPayment: (invoiceId, payment, by) => {
-        if (!demoMode) return "Recorded on the server.";
         const locked = periodLockProblem(payment.date);
         if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === invoiceId);
@@ -456,7 +286,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addCreditNote: (input, by) => {
-        if (!demoMode) return "Recorded on the server.";
         const locked = periodLockProblem(input.date);
         if (locked) return locked;
         const invoice = get().invoices.find((item) => item.id === input.invoiceId);
@@ -477,7 +306,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       decideCreditNote: (id, by) => {
-        if (!demoMode) return "Recorded on the server.";
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.createdBy === by) return "The person who created a credit note cannot approve it.";
@@ -488,7 +316,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       rejectCreditNote: (id, reason, by) => {
-        if (!demoMode) return "Recorded on the server.";
         const note = get().creditNotes.find((item) => item.id === id);
         if (!note) return "Credit note not found.";
         if (note.status !== "pending") return "Only a pending credit note can be rejected.";
@@ -550,7 +377,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addBill: (input, by) => {
-        if (!demoMode) return "Bills are recorded on the server.";
         const locked = periodLockProblem(input.date);
         if (locked) return locked;
         if (input.vendor.trim().length < 2) return "Enter the vendor name.";
@@ -572,7 +398,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       recordBillPayment: (billId, payment, by) => {
-        if (!demoMode) return "Bills are recorded on the server.";
         const locked = periodLockProblem(payment.date);
         if (locked) return locked;
         const bill = get().bills.find((item) => item.id === billId);
@@ -593,7 +418,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       addFundRequest: (input, by) => {
-        if (!demoMode) return "Fund requests are recorded on the server.";
         const number = nextNumber("FR", get().fundRequests.length);
         set((state) => ({
           fundRequests: [{ id: `fund-${Date.now()}`, number, status: "pending", requestedBy: by, ...input }, ...state.fundRequests],
@@ -601,7 +425,6 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
       approveFundRequest: async (id, step, by) => {
-        if (!demoMode) return "Fund requests are recorded on the server.";
         const request = get().fundRequests.find((item) => item.id === id);
         if (!request) return "Request not found.";
         if (request.requestedBy === by) return "You cannot approve your own request.";
@@ -631,7 +454,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       rejectFundRequest: (id, reason, by) => {
-        if (!demoMode) return "Fund requests are recorded on the server.";
         const request = get().fundRequests.find((item) => item.id === id);
         set((state) => ({
           fundRequests: state.fundRequests.map((item) => item.id === id ? { ...item, status: "rejected", rejectedBy: by, rejectedReason: reason } : item),
@@ -646,7 +468,6 @@ export const useFinanceStore = create<FinanceState>()(
       },
       drawBudget: (lineId, amount, note, by, date) => {
         // Real mode moves budget money on the server only (see lib/finance-records.ts).
-        if (!demoMode) return "Budget money moves on the server.";
         const locked = periodLockProblem(date);
         if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);
@@ -661,7 +482,6 @@ export const useFinanceStore = create<FinanceState>()(
         return null;
       },
       releaseBudget: (lineId, amount, note, by, date) => {
-        if (!demoMode) return "Budget money moves on the server.";
         const locked = periodLockProblem(date);
         if (locked) return locked;
         const line = get().budgetLines.find((item) => item.id === lineId);
@@ -675,18 +495,18 @@ export const useFinanceStore = create<FinanceState>()(
         }));
         return null;
       },
-      accounts: seedFinance().accounts,
-      costCenters: seedFinance().costCenters,
-      vendors: seedFinance().vendors,
-      customers: seedFinance().customers,
-      quotations: seedFinance().quotations,
-      paymentVouchers: seedFinance().paymentVouchers,
-      receiptVouchers: seedFinance().receiptVouchers,
-      contraEntries: seedFinance().contraEntries,
-      advancePayments: seedFinance().advancePayments,
-      eInvoiceStatuses: seedFinance().eInvoiceStatuses,
-      currencyRates: seedFinance().currencyRates,
-      fyClosings: seedFinance().fyClosings,
+      accounts: emptyFinance().accounts,
+      costCenters: emptyFinance().costCenters,
+      vendors: emptyFinance().vendors,
+      customers: emptyFinance().customers,
+      quotations: emptyFinance().quotations,
+      paymentVouchers: emptyFinance().paymentVouchers,
+      receiptVouchers: emptyFinance().receiptVouchers,
+      contraEntries: emptyFinance().contraEntries,
+      advancePayments: emptyFinance().advancePayments,
+      eInvoiceStatuses: emptyFinance().eInvoiceStatuses,
+      currencyRates: emptyFinance().currencyRates,
+      fyClosings: emptyFinance().fyClosings,
       addVendor: (input, by) => {
         if (input.name.trim().length < 2) return "Enter the vendor name.";
         const vendor: VendorMaster = { ...input, id: `vm-${Date.now()}`, name: input.name.trim(), active: true };
@@ -842,21 +662,13 @@ export const useFinanceStore = create<FinanceState>()(
       // Invoices, credit notes, budget lines, fund requests and bills come from the server. Expenses,
       // petty cash, draws, bank entries and lines, opening cash and close reviews are saved only in this
       // store (synced as the company's workspace state), so the saved copy is kept, less any demo records.
-      const merged = mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills"])(persisted, current);
-      const demo = demoFinance();
-      const cleaned = withoutDemoRecords(merged, { draws: demo.draws, bankEntries: demo.bankEntries, bankLines: demo.bankLines, closeReviews: demo.closeReviews, expenses: demo.expenses, pettyCashTopUps: demo.pettyCashTopUps });
-      return !demoMode && cleaned.openingCash === demo.openingCash ? { ...cleaned, openingCash: 0 } : cleaned;
+      return mergeServerOwned<FinanceState>(["trail", "invoices", "creditNotes", "budgetLines", "fundRequests", "bills"])(persisted, current);
     },
     partialize: (state) => ({ invoices: state.invoices, creditNotes: state.creditNotes, budgetLines: state.budgetLines, fundRequests: state.fundRequests, draws: state.draws, bills: state.bills, plans: state.plans, bankEntries: state.bankEntries, openingCash: state.openingCash, shareCapital: state.shareCapital, bankLines: state.bankLines, closeReviews: state.closeReviews, expenses: state.expenses, pettyCashTopUps: state.pettyCashTopUps, trail: state.trail, accounts: state.accounts, costCenters: state.costCenters, vendors: state.vendors, customers: state.customers, quotations: state.quotations, paymentVouchers: state.paymentVouchers, receiptVouchers: state.receiptVouchers, contraEntries: state.contraEntries, advancePayments: state.advancePayments, eInvoiceStatuses: state.eInvoiceStatuses, currencyRates: state.currencyRates, fyClosings: state.fyClosings }) },
   ),
 );
 
-/** Adds an approved request's amount to its budget line. Real mode asks the server; the request id is the idempotency key, so a retry allocates once. */
 async function allocateFunds(request: FundRequest): Promise<string | null> {
-  if (demoMode) {
-    allocate(request.lineId, request.amount);
-    return null;
-  }
   try {
     const result = await api<{ budget: { allocated_paise: number; drawn_paise: number } }>(
       `/finance/budget-lines/${encodeURIComponent(request.lineId)}/allocations`,

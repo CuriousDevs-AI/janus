@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { useSession } from "@/components/auth/session-provider";
-import { hasPermission } from "@/lib/demo-persona";
+import { can } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { setPeriodLock } from "@/lib/company-rules-records";
 /** Close the books up to a date. Entries on or before it are refused until the owner reopens them. */
 export function PeriodLockView() {
   const session = useSession();
-  const isOwner = hasPermission(session.permissions, "billing:manage");
+  const isOwner = can(session, "billing:manage");
   const lockedThrough = usePeriodLockStore((state) => state.lockedThrough);
   const [date, setDate] = React.useState(lockedThrough ?? "");
 

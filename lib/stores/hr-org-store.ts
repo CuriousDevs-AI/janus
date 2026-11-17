@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { activeSpec, isFirstCompany } from "@/lib/companies";
+import { activeSpec } from "@/lib/companies";
 import { scoped } from "@/lib/company";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -45,18 +45,7 @@ function derivedDepartments(): HrDepartment[] {
   });
 }
 
-export const defaultDepartments = (): HrDepartment[] => {
-  if (!isFirstCompany) return derivedDepartments();
-  const base = { description: "", steps: null, longLeave: null, backupApproverId: null, active: true };
-  return [
-    { ...base, id: "dept-management", name: "Management", headId: "emp-001", parentId: null, description: "Owner and leadership" },
-    { ...base, id: "dept-people", name: "People", headId: "emp-002", parentId: "dept-management", description: "HR and people operations" },
-    { ...base, id: "dept-sales", name: "Sales", headId: "emp-003", parentId: "dept-management", description: "Sales and customer accounts" },
-    { ...base, id: "dept-operations", name: "Operations", headId: "emp-005", parentId: "dept-management", description: "Warehouse and dispatch" },
-    { ...base, id: "dept-finance", name: "Finance", headId: "emp-007", parentId: "dept-management", description: "Accounts and payroll" },
-    { ...base, id: "dept-support", name: "Support", headId: "emp-008", parentId: "dept-management", description: "Customer support" },
-  ];
-};
+export const defaultDepartments = (): HrDepartment[] => derivedDepartments();
 
 export const defaultRoles = (): HrRoleDef[] => [
   { id: "role-owner", name: "Owner", description: "Full control of the company.", system: true, permissions: ["leave.approve_team", "leave.approve_department", "leave.approve_all", "employees.manage", "policies.manage", "settings.manage", "org.manage", "career.propose", "career.approve", "payroll.view", "attendance.edit"] },
@@ -67,7 +56,7 @@ export const defaultRoles = (): HrRoleDef[] => [
 ];
 
 /** Who holds which role today. Anyone not listed here gets the plain Employee role. */
-export const defaultAssignments = (): Record<string, string> => !isFirstCompany ? Object.fromEntries((activeSpec.accounts ?? []).flatMap((item) => item.hrRole === "owner" ? [[item.employeeId, "role-owner"]] : item.hrRole === "hr_manager" ? [[item.employeeId, "role-hr"]] : item.hrRole === "payroll_admin" ? [[item.employeeId, "role-payroll"]] : item.crm === "team" ? [[item.employeeId, "role-department-head"]] : [])) : ({ "emp-001": "role-owner", "emp-002": "role-hr", "emp-003": "role-department-head", "emp-007": "role-payroll" });
+export const defaultAssignments = (): Record<string, string> => Object.fromEntries((activeSpec.accounts ?? []).flatMap((item) => item.hrRole === "owner" ? [[item.employeeId, "role-owner"]] : item.hrRole === "hr_manager" ? [[item.employeeId, "role-hr"]] : item.hrRole === "payroll_admin" ? [[item.employeeId, "role-payroll"]] : item.crm === "team" ? [[item.employeeId, "role-department-head"]] : []));
 
 export const useHrOrgStore = create<HrOrgState>()(persist((set) => ({
   departments: defaultDepartments(), roles: defaultRoles(), assignments: defaultAssignments(),

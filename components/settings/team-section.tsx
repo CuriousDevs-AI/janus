@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { UserPlus } from "lucide-react";
-import { users } from "@/lib/mock-data";
+import { useApi } from "@/lib/api/use-api";
 import { SectionCard } from "@/components/settings/section-ui";
 import { roleMeta, roleOrder } from "@/components/settings/role-meta";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
@@ -30,6 +30,8 @@ interface PendingInvite {
 }
 
 export function TeamSection() {
+  const { data } = useApi<{ id: string; name: string; email: string; role: Role; avatarColor: string; online: boolean }[]>("/team/members");
+  const users = data ?? [];
   const [invites, setInvites] = React.useState<PendingInvite[]>([]);
   const [open, setOpen] = React.useState(false);
   const [email, setEmail] = React.useState("");
@@ -92,7 +94,7 @@ export function TeamSection() {
             {invites.map((i) => (
               <TableRow key={i.id}>
                 <TableCell>
-                  <span className="text-muted-foreground">—</span>
+                  <span className="text-muted-foreground">-</span>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{i.email}</TableCell>
                 <TableCell>

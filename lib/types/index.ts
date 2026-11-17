@@ -1,5 +1,5 @@
 // Core domain types for the Janus (CuriousDevs) customer operations platform.
-// This is the shared contract between mock-data, stores, and every UI module.
+// This is the shared contract between stores, API responses, and every UI module.
 
 export type ID = string;
 

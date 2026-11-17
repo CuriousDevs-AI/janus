@@ -1,7 +1,6 @@
 "use client";
 
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { toPaise } from "@/lib/finance-records";
 import { trailEntry, withTrail } from "@/lib/stores/audit-trail";
 import { type CreditNote, type Invoice, type Payment, useFinanceStore } from "@/lib/stores/finance-store";
@@ -11,7 +10,7 @@ import { todayIso } from "@/lib/today";
 /**
  * Invoices, payments and credit notes are recorded on the server, in paise. The server works out the
  * totals and the amount still due, checks each change, and writes the audit row. The screen shows what
- * the server returned. Demo mode keeps the local path.
+ * the server returned.
  */
 
 interface ServerLine { item: string; hsn: string; qty: number; rate_paise: number; gst_rate: number }
@@ -108,7 +107,6 @@ function apply(row: ServerInvoice, entry?: ReturnType<typeof trailEntry>) {
  * replaces the screen's copy, so invoices that only exist on this screen are not shown.
  */
 export async function syncInvoices(): Promise<void> {
-  if (demoMode) return;
   const rows = await api<ServerInvoice[]>("/finance/invoices");
   useFinanceStore.setState({
     invoices: rows.map(toInvoice),
@@ -120,10 +118,6 @@ type NewInvoice = Omit<Invoice, "id" | "number" | "payments" | "createdBy">;
 
 /** Books an invoice on the server and returns its number. The server assigns the number and works out the tax. */
 export async function createInvoice(input: NewInvoice, by: string): Promise<{ number: string | null; error: string | null }> {
-  if (demoMode) {
-    const number = useFinanceStore.getState().addInvoice(input, by);
-    return { number, error: null };
-  }
   const locked = periodLockProblem(input.date);
   if (locked) return { number: null, error: locked };
   try {
@@ -149,7 +143,6 @@ export async function createInvoice(input: NewInvoice, by: string): Promise<{ nu
 
 /** Records money received against an invoice. The server refuses more than is still due. */
 export async function recordInvoicePayment(invoiceId: string, payment: Omit<Payment, "id">, by: string): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().recordPayment(invoiceId, payment, by);
   const locked = periodLockProblem(payment.date);
   if (locked) return locked;
   try {
@@ -170,7 +163,6 @@ export async function raiseCreditNote(
   input: { invoiceId: string; amount: number; reason: string; date: string; ticketId?: string; kind?: CreditNote["kind"] },
   by: string,
 ): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().addCreditNote(input, by);
   const kind = input.kind ?? "credit";
   try {
     const row = await api<ServerInvoice>(`/finance/invoices/${encodeURIComponent(input.invoiceId)}/credit-notes`, {
@@ -189,7 +181,6 @@ export async function raiseCreditNote(
 
 /** Approves a pending credit note. The server refuses the person who raised it and any note not pending. */
 export async function approveCreditNote(id: string, by: string): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().decideCreditNote(id, by);
   try {
     const row = await api<ServerInvoice>(`/finance/credit-notes/${encodeURIComponent(id)}/approve`, { method: "POST" });
     const note = row.credit_notes.find((item) => item.id === id);
@@ -202,7 +193,6 @@ export async function approveCreditNote(id: string, by: string): Promise<string 
 
 /** Rejects a pending credit note with a reason. */
 export async function rejectCreditNote(id: string, reason: string, by: string): Promise<string | null> {
-  if (demoMode) return useFinanceStore.getState().rejectCreditNote(id, reason, by);
   try {
     const row = await api<ServerInvoice>(`/finance/credit-notes/${encodeURIComponent(id)}/reject`, {
       method: "POST",

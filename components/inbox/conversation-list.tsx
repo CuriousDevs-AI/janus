@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useAppStore } from "@/lib/stores/app-store";
-import { getCompanyById } from "@/lib/mock-data";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { ChannelIcon } from "@/components/shared/channel-badge";
 import { AIIndicator } from "@/components/shared/ai-indicator";
@@ -24,8 +23,11 @@ const FILTERS = [
 export function ConversationList({ selectedId, onSelect }: { selectedId: string | undefined; onSelect: (id: string) => void }) {
   const conversations = useAppStore((s) => s.conversations);
   const customers = useAppStore((s) => s.customers);
+  const companies = useAppStore((s) => s.companies ?? []);
   const [filter, setFilter] = React.useState<(typeof FILTERS)[number]["key"]>("all");
   const [query, setQuery] = React.useState("");
+
+  const findCompany = (id: string | undefined) => companies.find((c: { id: string; name: string }) => c.id === id);
 
   const rows = conversations
     .map((c) => ({ conversation: c, customer: customers.find((cu) => cu.id === c.customerId) }))
@@ -40,7 +42,7 @@ export function ConversationList({ selectedId, onSelect }: { selectedId: string 
     })
     .filter((r) => {
       if (!query) return true;
-      const company = getCompanyById(r.customer!.companyId)?.name ?? "";
+      const company = findCompany(r.customer!.companyId)?.name ?? "";
       return r.customer!.name.toLowerCase().includes(query.toLowerCase()) || company.toLowerCase().includes(query.toLowerCase());
     })
     .sort((a, b) => (a.conversation.lastMessageAt < b.conversation.lastMessageAt ? 1 : -1));
@@ -48,7 +50,7 @@ export function ConversationList({ selectedId, onSelect }: { selectedId: string 
   return (
     <div className="flex h-full w-full flex-col border-r border-border bg-surface md:w-[320px]">
       <div className="flex flex-col gap-2.5 border-b border-border px-3 py-3">
-        <SearchInput value={query} onChange={setQuery} placeholder="Search conversations…" />
+        <SearchInput value={query} onChange={setQuery} placeholder="Search conversations..." />
         <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
           <TabsList className="h-auto gap-0 border-b-0">
             {FILTERS.map((f) => (
@@ -64,7 +66,7 @@ export function ConversationList({ selectedId, onSelect }: { selectedId: string 
           <EmptyState icon={InboxIcon} title="No active conversations" description="Nothing matches this filter." className="border-none" />
         )}
         {rows.map(({ conversation, customer }) => {
-          const company = getCompanyById(customer!.companyId);
+          const company = findCompany(customer!.companyId);
           const active = conversation.id === selectedId;
           return (
             <button

@@ -3,8 +3,7 @@
 import * as React from "react";
 import { activeCompany, activeCompanyId, portfolioHome, scoped } from "@/lib/company";
 import { CompanyLogo } from "@/components/shared/company-logo";
-import { hrNavVisible } from "@/lib/hr-nav";
-import { CompanySwitcher, LiveCompanySwitcher } from "@/components/layout/company-switcher";
+import { LiveCompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -21,11 +20,8 @@ import {
 import { useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { cn } from "@/lib/utils";
-import { useDemoAccount } from "@/lib/demo-persona";
 import { OPERATIONAL_WORKSPACES, workspaceDefinitions } from "@/lib/workspace-config";
 import { useApi } from "@/lib/api/use-api";
-import { demoMode } from "@/lib/demo-mode";
-import type { HrDemoRole } from "@/lib/types";
 import { useTeamChatStore } from "@/lib/stores/team-chat-store";
 import { managesBusiness, mayOpenWorkspace, PORTFOLIO_ROLES } from "@/lib/access";
 import { TeamChatSidebarList } from "@/components/team/chat-list";
@@ -65,8 +61,6 @@ export function SidebarNav({
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
   const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
-  const account = useDemoAccount();
-  const hrDemoRole: HrDemoRole = account?.hrRole ?? "owner";
   React.useEffect(() => {
     const key = scoped("janus.setup.active-workspace");
     const read = () => {
@@ -92,8 +86,7 @@ export function SidebarNav({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => (!item.demoOnly || demoMode) && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)) &&
-          (workspaceId !== "hr-people" || !demoMode || hrNavVisible(item.label, hrDemoRole)),
+        (item) => !item.demoOnly && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)),
       ),
     }))
     .filter((section) => section.items.length > 0);
@@ -114,33 +107,25 @@ export function SidebarNav({
     return true;
   }
 
-  // On real accounts the role's permissions decide; the preview uses its sample personas.
-  const ownerView = demoMode ? hrDemoRole === "owner" : managesBusiness(session.permissions);
-  const canCreateWorkspace = demoMode ? ownerView : session.permissions.includes("*") || session.permissions.includes("workspaces:manage");
+  const ownerView = managesBusiness(session.permissions);
+  const canCreateWorkspace = session.permissions.includes("*") || session.permissions.includes("workspaces:manage");
   const hasTeamChatList = useTeamChatStore((state) => state.actions !== null);
   const accessibleWorkspaces = React.useMemo(() => withTeamChat((() => {
     const businessEntry = { id: "business", name: "Business Management", description: "Overview, people, workspaces, reports and settings." };
-    const catalogue: Record<string, { id: string; name: string; description: string }> = { "crm-sales": { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customers." }, "hr-people": { id: "hr-people", name: "HR & People", description: "Your work, time off, pay and documents." } };
-    const switchedOn = demoMode ? activeCompany().workspaces : ["crm-sales", "hr-people"];
-    // Only the Owner moves between workspaces. Everyone else works inside HR & People.
-    if (demoMode && ownerView) return [businessEntry, ...switchedOn.map((id) => catalogue[id]).filter(Boolean)];
-    if (demoMode && !ownerView) return [...(account && account.crm !== "none" && switchedOn.includes("crm-sales") ? [catalogue["crm-sales"]] : []), catalogue["hr-people"]];
     const fromApi = workspacesApi.data?.filter((item) => item.status === "active").map((item) => ({
       id: item.type.replaceAll("_", "-"),
       name: item.name,
       description: item.description,
     }));
     if (hasActiveWorkspace && fromApi?.length) {
-      if (!demoMode || fromApi.some((item) => item.id === "hr-people")) return [businessEntry, ...fromApi.filter((item) => item.id !== "business")];
-      return [businessEntry, ...fromApi.filter((item) => item.id !== "business"), { id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }];
+      return [businessEntry, ...fromApi.filter((item) => item.id !== "business")];
     }
     if (hasActiveWorkspace) return [
       businessEntry,
       { id: "crm-sales", name: "CRM & Sales", description: "Leads, deals, conversations and customer operations." },
-      ...(demoMode ? [{ id: "hr-people", name: "HR & People", description: "Employees, attendance, leave and payroll." }] : []),
     ];
     return [];
-  })()).filter((item) => demoMode || mayOpenWorkspace(item.id, session.permissions)), [hasActiveWorkspace, workspacesApi.data, ownerView, account, session.permissions]);
+  })()).filter((item) => mayOpenWorkspace(item.id, session.permissions)), [hasActiveWorkspace, workspacesApi.data, ownerView, session.permissions]);
 
   const teamChatList = !collapsed && workspaceId === "team-chat" && pathname === "/team" && hasTeamChatList;
 
@@ -306,9 +291,8 @@ export function SidebarNav({
         ))}
       </nav>}
 
-      {ownerView && demoMode && <CompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
       {/* A real account sees the switcher once it can go somewhere: a second company, or a Portfolio. */}
-      {!demoMode && (session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
+      {(session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
     </>
   );

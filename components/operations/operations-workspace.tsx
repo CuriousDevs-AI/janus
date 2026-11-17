@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +23,7 @@ import { useVendorsStore } from "@/lib/stores/vendors-store";
 import { useFinanceStore } from "@/lib/stores/finance-store";
 import { useWorkflowRulesStore, type WorkflowRules } from "@/lib/stores/workflow-rules-store";
 import { useSession } from "@/components/auth/session-provider";
-import { hasPermission } from "@/lib/demo-persona";
+import { can as hasPermission } from "@/lib/permissions";
 import { linkedLabel, useCrmLinkOptions } from "@/lib/record-links";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { TrailPanel } from "@/components/shared/audit-trail-panel";
@@ -196,7 +195,7 @@ function OperationsReportsView() {
 /** Operations workflows: the standard steps, and the rules the owner sets. Each rule is enforced where it applies. */
 function WorkflowsView() {
   const session = useSession();
-  const isOwner = hasPermission(session.permissions, "billing:manage");
+  const isOwner = hasPermission(session,"billing:manage");
   const rules = useWorkflowRulesStore();
   const [threshold, setThreshold] = React.useState(String(rules.adjustmentApprovalValue));
   const [tolerance, setTolerance] = React.useState(String(rules.matchTolerancePercent));
@@ -513,7 +512,7 @@ function PurchaseOrdersView({ me }: { me: string }) {
 /** The vendor master: the names purchase orders and bills pick from, with GSTIN and payment terms. */
 function VendorsView() {
   const session = useSession();
-  const canBilling = hasPermission(session.permissions, "billing:manage");
+  const canBilling = hasPermission(session,"billing:manage");
   const vendors = useVendorsStore((state) => state.vendors);
   const addVendor = useVendorsStore((state) => state.addVendor);
   const [name, setName] = React.useState("");
@@ -581,7 +580,6 @@ function VendorBankSection({ vendors }: { vendors: { id: string; name: string }[
   // Bumping this counter reloads the list from the server after a change.
   const [reload, setReload] = React.useState(0);
   React.useEffect(() => {
-    if (demoMode) return;
     let cancelled = false;
     (async () => {
       try {
@@ -598,10 +596,6 @@ function VendorBankSection({ vendors }: { vendors: { id: string; name: string }[
       cancelled = true;
     };
   }, [reload]);
-
-  if (demoMode) {
-    return <Card><CardContent className="p-4 text-sm text-muted-foreground">Bank details are kept on the server in a live workspace, so the preview has none to show.</CardContent></Card>;
-  }
   const list = accounts ?? [];
   const pending = list.filter((a) => a.status === "pending");
   const active = (id: string) => list.find((a) => a.vendor_id === id && a.status === "approved");
@@ -841,7 +835,7 @@ function InventoryView({ me }: { me: string }) {
       if (problem) return toast.error(problem);
       toast.success("Stock received");
     } else {
-      if (!hasPermission(session.permissions, "stock:adjust")) return toast.error("Needs the stock:adjust permission.");
+      if (!hasPermission(session,"stock:adjust")) return toast.error("Needs the stock:adjust permission.");
       const problem = await requestAdjustment({ itemId, locationId: Number(locationId), batchNo: item?.trackBatch ? batchNo || null : null, qty: Number(qty), reason }, me);
       if (problem) return toast.error(problem);
       toast.success(Math.abs(Number(qty)) * (item?.rate ?? 0) > useWorkflowRulesStore.getState().adjustmentApprovalValue ? "Adjustment sent for approval" : "Adjustment applied");

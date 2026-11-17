@@ -1,7 +1,7 @@
 "use client";
 
 import { api, APIError } from "@/lib/api/client";
-import { demoMode } from "@/lib/demo-mode";
+
 
 /** The project has no record on the server yet (it was created before the server mirror), so the change stays on this screen. */
 export class ProjectNotOnServer extends Error {
@@ -24,7 +24,6 @@ export async function createProjectRecord(project: {
   start: string;
   end: string;
 }): Promise<void> {
-  if (demoMode) return;
   await api("/project-records", {
     method: "POST",
     body: JSON.stringify({
@@ -40,7 +39,6 @@ export async function createProjectRecord(project: {
 }
 
 export async function setProjectRecordStatus(projectId: string, status: "planned" | "active" | "on hold" | "done"): Promise<void> {
-  if (demoMode) return;
   try {
     await api(`/project-records/${encodeURIComponent(projectId)}`, {
       method: "PATCH",
@@ -62,7 +60,6 @@ export async function mirrorNewProject(
   ownerName: string,
   chosenOwnerId?: string,
 ): Promise<Record<string, string>> {
-  if (demoMode) return {};
   // A person picked from the directory is used as they are. Otherwise the name is matched, and never guessed.
   let ownerUserId = chosenOwnerId;
   if (!ownerUserId) {
@@ -93,7 +90,6 @@ export async function mirrorNewProject(
  * stay where they are until those move to the server too.
  */
 export async function refreshProjectRecords(): Promise<void> {
-  if (demoMode) return;
   const records = await api<
     { external_key: string; name: string; client: string; status: string; budget: string; start_on: string; end_on: string }[]
   >("/project-records");
@@ -121,7 +117,6 @@ export async function mirrorMilestone(
   projectId: string,
   milestone: { id: string; name: string; due: string; amount: number },
 ): Promise<void> {
-  if (demoMode) return;
   try {
     await api(`/project-records/${encodeURIComponent(projectId)}/milestones`, {
       method: "POST",
@@ -136,7 +131,6 @@ export async function mirrorMilestone(
 
 /** Moves a mirrored milestone to done or accepted on the server. The server enforces the same rules as the screen. */
 export async function mirrorMilestoneStatus(projectId: string, milestoneId: string, status: "done" | "accepted"): Promise<void> {
-  if (demoMode) return;
   try {
     await api(`/project-records/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/status`, {
       method: "POST",
@@ -150,7 +144,6 @@ export async function mirrorMilestoneStatus(projectId: string, milestoneId: stri
 
 /** Brings the status of mirrored milestones of one project into the screen data. */
 export async function refreshMilestones(projectId: string): Promise<void> {
-  if (demoMode) return;
   let rows: { external_key: string; status: string; name: string; amount: string }[];
   try {
     rows = await api(`/project-records/${encodeURIComponent(projectId)}/milestones`);
@@ -181,7 +174,6 @@ export async function mirrorTask(
   projectId: string,
   task: { id: string; title: string; milestoneId: string | null; assignee: string; due: string },
 ): Promise<void> {
-  if (demoMode) return;
   try {
     await api(`/project-records/${encodeURIComponent(projectId)}/tasks`, {
       method: "POST",
@@ -201,7 +193,6 @@ export async function mirrorTask(
 }
 
 export async function mirrorTaskStatus(projectId: string, taskId: string, status: "todo" | "doing" | "done"): Promise<void> {
-  if (demoMode) return;
   try {
     await api(`/project-records/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/status`, {
       method: "POST",
@@ -215,7 +206,6 @@ export async function mirrorTaskStatus(projectId: string, taskId: string, status
 
 /** Brings the status of mirrored tasks of one project into the screen data. */
 export async function refreshTasks(projectId: string): Promise<void> {
-  if (demoMode) return;
   let rows: { external_key: string; status: string }[];
   try {
     rows = await api(`/project-records/${encodeURIComponent(projectId)}/tasks`);
@@ -238,7 +228,6 @@ let repairing: Promise<number> | null = null;
  * timeline had nowhere to live. Runs once at a time; returns how many projects were copied.
  */
 export function repairMissingProjects(): Promise<number> {
-  if (demoMode) return Promise.resolve(0);
   repairing ??= (async () => {
     const records = await api<{ external_key: string }[]>("/project-records");
     const known = new Set(records.map((record) => record.external_key));

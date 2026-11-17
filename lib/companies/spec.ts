@@ -1,5 +1,6 @@
-import type { DemoAccount } from "@/lib/demo-accounts";
 import type { HrEmployee } from "@/lib/types";
+
+export type AccountSeed = { id: string; email: string; password: string; name: string; title: string; employeeId: string; crmUserId: string; hrRole: string; crm: string; blurb: string };
 
 export type LeadSourceKey = "website" | "whatsapp" | "phone_call";
 export interface Buyer { id: string; company: string; contact: string; phone: string; email: string; city: string; kind: string }
@@ -16,5 +17,5 @@ export interface CompanySpec {
   rows: Row[];
   /** People, for companies other than the first (the first keeps its detailed HR seed). */
   employees?: HrEmployee[];
-  accounts?: DemoAccount[];
+  accounts?: AccountSeed[];
 }
