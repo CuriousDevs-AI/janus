@@ -54,7 +54,13 @@ import { HrLeaveView } from "@/components/hr-people/leave";
 import { HrOnboardingView } from "@/components/hr-people/onboarding";
 import { HrPayrollView } from "@/components/hr-people/payroll";
 import { HrRecruitmentView } from "@/components/hr-people/recruitment";
+import { HrTrainingView } from "@/components/hr-people/training";
 import { HrOffboardingView } from "@/components/hr-people/offboarding";
+import { HrAssetsView } from "@/components/hr-people/assets";
+import { HrLoansView } from "@/components/hr-people/loans";
+import { HrStatutoryView } from "@/components/hr-people/statutory";
+import { HrCtcConfigView } from "@/components/hr-people/ctc-config";
+import { HrShiftsView } from "@/components/hr-people/shifts";
 import { HrDocumentsView, HrSignaturesView } from "@/components/hr-people/documents";
 import { canOpenHrView, canSeeBusinessSummary, demoActorId, hrRoleLabels, salaryVisible, setSignedInEmployee, setSignedInName, visibleEmployees } from "@/lib/hr-people-access";
 import { useSession } from "@/components/auth/session-provider";
@@ -155,12 +161,18 @@ export function HrPeopleWorkspace() {
             {view === "approvals" && <HrApprovalsView role={role} actorId={demoActorId(role)} />}
             {view === "my-profile" && <MyProfileView role={role} />}
             {view === "performance" && <HrPerformanceView role={role} actorId={demoActorId(role)} />}
+            {view === "training" && <HrTrainingView role={role} actorId={demoActorId(role)} />}
             {view === "reports" && <HrReportsView role={role} />}
             {view === "expenses" && <HrExpensesView role={role} actorId={demoActorId(role)} />}
             {view === "compliance" && <ComplianceView role={role} />}
             {view === "signatures" && <HrSignaturesView role={role} actorId={demoActorId(role)} />}
             {view === "policy-qa" && <HrPolicyQaView role={role} actorId={demoActorId(role)} />}
             {view === "organization" && <HrOrganizationView role={role} actorId={demoActorId(role)} />}
+            {view === "assets" && <HrAssetsView role={role} actorId={demoActorId(role)} />}
+            {view === "loans" && <HrLoansView role={role} actorId={demoActorId(role)} />}
+            {view === "statutory" && <HrStatutoryView role={role} actorId={demoActorId(role)} />}
+            {view === "ctc" && <HrCtcConfigView role={role} actorId={demoActorId(role)} />}
+            {view === "shifts" && <HrShiftsView role={role} actorId={demoActorId(role)} />}
             {view === "promotions" && <HrCareerView role={role} actorId={demoActorId(role)} />}
             {view === "settings" && <div className="flex flex-col gap-4"><LeaveTypesPanel role={role} actorId={demoActorId(role)} /><ApprovalAuthorityPanel role={role} actorId={demoActorId(role)} /><HrPolicyPanel role={role} actorId={demoActorId(role)} /><HrSettingsView role={role} /></div>}
           </>
@@ -171,7 +183,7 @@ export function HrPeopleWorkspace() {
 }
 
 function viewTitle(view: string) {
-  const titles: Record<string, string> = { overview: "HR Overview", employees: "Employees", attendance: "Attendance", leave: "Leave Management", "leave-calendar": "Leave Calendar", "my-requests": "My requests", documents: "Documents", "my-documents": "My documents", onboarding: "Onboarding", "my-onboarding": "My onboarding", offboarding: "Offboarding", recruitment: "Recruitment", payroll: "Payroll", "my-payslips": "Payslips", team: "My Team", approvals: "Pending Approvals", "my-profile": "My profile", performance: "Performance & Reviews", reports: "HR Reports", expenses: "Expenses & Reimbursements", compliance: "HR Compliance", signatures: "Signature & Audit", settings: "HR Settings", "policy-qa": "Ask about policy", promotions: "Promotions & changes", organization: "Departments & roles", "my-home": "Home", engage: "Engage", "leave-apply": "Leave Apply", "leave-balances": "Leave Balances", "holiday-calendar": "Holiday Calendar", "attendance-info": "Attendance Info", "my-regularization": "Regularization & Permission", "document-center": "Document Center" };
+  const titles: Record<string, string> = { overview: "HR Overview", employees: "Employees", attendance: "Attendance", leave: "Leave Management", "leave-calendar": "Leave Calendar", "my-requests": "My requests", documents: "Documents", "my-documents": "My documents", onboarding: "Onboarding", "my-onboarding": "My onboarding", offboarding: "Offboarding", recruitment: "Recruitment", payroll: "Payroll", "my-payslips": "Payslips", team: "My Team", approvals: "Pending Approvals", "my-profile": "My profile", performance: "Performance & Reviews", training: "Training & Development", assets: "My Assets & Requests", loans: "Loans & Advances", ctc: "CTC & Salary Structure", shifts: "Shift & Roster Management", reports: "HR Reports", expenses: "Expenses & Reimbursements", compliance: "HR Compliance", signatures: "Signature & Audit", settings: "HR Settings", "policy-qa": "Ask about policy", promotions: "Promotions & changes", organization: "Departments & roles", "my-home": "Home", engage: "Engage", "leave-apply": "Leave Apply", "leave-balances": "Leave Balances", "holiday-calendar": "Holiday Calendar", "attendance-info": "Attendance Info", "my-regularization": "Regularization & Permission", "document-center": "Document Center", statutory: "Statutory Compliance" };
   return titles[view] ?? "HR & People";
 }
 
@@ -184,6 +196,8 @@ function Overview({ role, employees, onNavigate }: { role: HrDemoRole; employees
   const allAttendance = useHrPeopleStore((state) => state.attendance);
   const allIssues = useHrPeopleStore((state) => state.payrollIssues);
   const allOnboarding = useHrPeopleStore((state) => state.onboardingTasks);
+  const candidates = useHrPeopleStore((state) => state.candidates);
+  const expenseClaims = useHrPeopleStore((state) => state.expenseClaims);
   const visibleIds = new Set(employees.map((employee) => employee.id));
   const scoped = role === "owner" || role === "hr_manager" ? (() => ({ leaveRequests: allLeaveRequests, attendance: allAttendance, issues: allIssues, onboarding: allOnboarding }))() : {
     leaveRequests: allLeaveRequests.filter((request) => visibleIds.has(request.employeeId)),
@@ -206,21 +220,33 @@ function Overview({ role, employees, onNavigate }: { role: HrDemoRole; employees
   const trendMax = Math.max(1, ...trend.map((point) => point.present + point.absent));
   const departmentCounts = [...employees.reduce((map, employee) => map.set(employee.department, (map.get(employee.department) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const openIssues = issues.filter((issue) => issue.status === "open").length;
-  const onboarded = onboarding.filter((task) => task.status !== "done").length;
+  const onboardedTasks = onboarding.filter((task) => task.status !== "done").length;
+  const onboardingPeople = employees.filter((e) => e.status === "onboarding");
+  const noticePeople = employees.filter((e) => e.status === "notice");
+  const empTypes = { full_time: 0, part_time: 0, contract: 0 };
+  employees.forEach((e) => { empTypes[e.employmentType] = (empTypes[e.employmentType] ?? 0) + 1; });
+  const activeCandidates = candidates.filter((c) => !["accepted", "rejected"].includes(c.stage)).length;
+  const pendingExpenses = expenseClaims.filter((c) => !["paid", "rejected"].includes(c.status)).length;
+  const outToday = leaveRequests.filter((r) => r.status === "approved" && r.from <= todayIst && todayIst <= r.to).length;
   return <div className="flex flex-col gap-5">
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricCard label="Headcount" value={String(employees.length)} detail="Active people in scope" icon={<Users className="size-4" />} />
-      <MetricCard label="Present" value={latestRecords.length ? `${present}/${latestRecords.length}` : "—"} detail={latestDay ? `On ${dateLabel(latestDay)}` : "No attendance recorded yet"} icon={<CheckCircle2 className="size-4" />} tone="success" />
-      <MetricCard label="Pending approvals" value={String(pendingLeave)} detail="Leave and regularisation" icon={<Clock3 className="size-4" />} tone="warning" />
-      <MetricCard label="Payroll attention" value={String(openIssues)} detail={openIssues === 0 && onboarded === 0 ? "Nothing needs attention" : `${onboarded} onboarding tasks open`} icon={<CircleAlert className="size-4" />} tone={openIssues > 0 ? "danger" : onboarded > 0 ? "warning" : "accent"} />
+      <MetricCard label="Headcount" value={String(employees.length)} detail={`${empTypes.full_time} full-time · ${empTypes.part_time + empTypes.contract} others`} icon={<Users className="size-4" />} />
+      <MetricCard label="Present today" value={latestRecords.length ? `${present}/${latestRecords.length}` : "—"} detail={outToday > 0 ? `${outToday} on leave today` : latestDay ? `On ${dateLabel(latestDay)}` : "No attendance recorded yet"} icon={<CheckCircle2 className="size-4" />} tone="success" />
+      <MetricCard label="Pending approvals" value={String(pendingLeave + pendingExpenses)} detail={`${pendingLeave} leave · ${pendingExpenses} expenses`} icon={<Clock3 className="size-4" />} tone={pendingLeave + pendingExpenses > 0 ? "warning" : "accent"} />
+      <MetricCard label="Payroll attention" value={String(openIssues)} detail={openIssues === 0 && onboardedTasks === 0 ? "Nothing needs attention" : `${onboardedTasks} onboarding tasks open`} icon={<CircleAlert className="size-4" />} tone={openIssues > 0 ? "danger" : onboardedTasks > 0 ? "warning" : "accent"} />
     </div>
     <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
       <SectionCard title="Attendance trend" description="Recent days with attendance records"><div role="img" aria-label={trend.length ? `Attendance for the last ${trend.length} days: ${trend.map((point) => `${point.label} ${point.present} present, ${point.absent} absent or flagged`).join("; ")}` : "No attendance data yet"}>{trend.length > 1 ? <div className="flex h-48 items-end gap-3 px-2 pt-5">{trend.map((point) => <div key={point.day} className="flex min-w-0 flex-1 flex-col items-center gap-2"><div className="flex h-32 w-full max-w-10 items-end gap-1"><div className="w-1/2 rounded-t bg-accent" style={{ height: `${(point.present / trendMax) * 100}%` }} /><div className="w-1/2 rounded-t bg-warning/60" style={{ height: `${(Math.max(point.absent, 0) / trendMax) * 100}%` }} /></div><span className="text-center text-[10px] text-muted-foreground">{point.label}</span></div>)}</div> : <p className="py-12 text-center text-xs text-muted-foreground">The trend appears once attendance exists for two or more days.</p>}</div><div className="mt-3 flex gap-4 text-[11px] text-muted-foreground"><span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-accent" />Present</span><span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-warning/60" />Absent / flagged</span></div></SectionCard>
       <SectionCard title="Department snapshot" description="Headcount across active teams">{departmentCounts.length ? <div className="flex flex-col gap-3">{departmentCounts.map(([label, value]) => <div key={label} className="flex items-center gap-3"><span className="w-24 truncate text-xs text-muted-foreground">{label}</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3"><div className="h-full rounded-full bg-accent" style={{ width: `${(value / departmentCounts[0][1]) * 100}%` }} /></div><span className="w-5 text-right text-xs font-medium">{value}</span></div>)}</div> : <p className="py-8 text-center text-xs text-muted-foreground">No people in your view yet.</p>}</SectionCard>
     </div>
+    {(onboardingPeople.length > 0 || noticePeople.length > 0 || activeCandidates > 0) && <div className="grid gap-4 xl:grid-cols-3">
+      {onboardingPeople.length > 0 && <SectionCard title={`Onboarding · ${onboardingPeople.length}`} description="New joiners in progress"><div className="flex flex-col gap-2">{onboardingPeople.map((e) => <button key={e.id} type="button" onClick={() => onNavigate("onboarding")} className="flex items-center gap-3 rounded-md p-2 text-left hover:bg-surface-2"><span className="flex size-8 items-center justify-center rounded-full bg-accent-muted text-[10px] font-semibold text-accent">{e.name.split(" ").map((p) => p[0]).join("").slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{e.name}</span><span className="block text-xs text-muted-foreground">{e.title}</span></span><span className="text-xs font-medium">{e.onboardingPercent}%</span></button>)}</div></SectionCard>}
+      {noticePeople.length > 0 && <SectionCard title={`On notice · ${noticePeople.length}`} description="Employees serving notice period"><div className="flex flex-col gap-2">{noticePeople.map((e) => <button key={e.id} type="button" onClick={() => onNavigate("offboarding")} className="flex items-center gap-3 rounded-md p-2 text-left hover:bg-surface-2"><span className="flex size-8 items-center justify-center rounded-full bg-warning-muted text-[10px] font-semibold text-warning">{e.name.split(" ").map((p) => p[0]).join("").slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{e.name}</span><span className="block text-xs text-muted-foreground">{e.department}</span></span><Badge variant="warning">notice</Badge></button>)}</div></SectionCard>}
+      {activeCandidates > 0 && <SectionCard title={`Recruitment · ${activeCandidates}`} description="Active candidates in pipeline"><div className="flex flex-col gap-2">{([["Screening", candidates.filter((c) => c.stage === "screening").length], ["Interview", candidates.filter((c) => c.stage === "interview").length], ["Offer", candidates.filter((c) => c.stage === "offer").length]] as const).filter(([, n]) => n > 0).map(([stage, n]) => <button key={stage} type="button" onClick={() => onNavigate("recruitment")} className="flex items-center justify-between rounded-md border border-border p-3 text-left hover:bg-surface-2"><span className="text-sm font-medium">{stage}</span><span className="text-sm font-semibold">{n}</span></button>)}</div></SectionCard>}
+    </div>}
     <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
       <SectionCard title="Owner attention" description={canShowIndividualAttention ? "The work that needs a human decision now" : "Your assigned work and status updates"}><div className="divide-y divide-border">{canShowIndividualAttention ? <>{issues.filter((issue) => issue.status === "open").map((issue) => <button type="button" key={issue.id} onClick={() => onNavigate("payroll")} className="flex w-full items-center gap-3 py-3 text-left hover:bg-surface-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-danger/10 text-danger"><CircleAlert className="size-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{issue.title}</span><span className="block truncate text-xs text-muted-foreground">{issue.employeeName} · {issue.detail}</span></span><ChevronRight className="size-4 text-muted-foreground" /></button>)}{pendingLeave > 0 && <button type="button" onClick={() => onNavigate("leave")} className="flex w-full items-center gap-3 py-3 text-left hover:bg-surface-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-warning/10 text-warning"><Clock3 className="size-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{pendingLeave} leave request{pendingLeave > 1 ? "s" : ""} need approval</span><span className="block text-xs text-muted-foreground">Requests route to the reporting manager first.</span></span><ChevronRight className="size-4 text-muted-foreground" /></button>}</> : <div className="flex items-center gap-3 py-4 text-xs text-muted-foreground"><ShieldCheck className="size-4 text-success" />Sensitive HR details are hidden for this role. Open My requests for your own status.</div>}</div></SectionCard>
-      <SectionCard title="Quick actions" description="Common people operations"><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1"><QuickAction label="Add employee" icon={<UserPlus className="size-4" />} onClick={() => onNavigate("employees")} /><QuickAction label="Review attendance" icon={<Clock3 className="size-4" />} onClick={() => onNavigate("attendance")} /><QuickAction label="Approve leave" icon={<CheckCircle2 className="size-4" />} onClick={() => onNavigate("leave")} /><QuickAction label="Start payroll review" icon={<IndianRupee className="size-4" />} onClick={() => onNavigate("payroll")} /></div></SectionCard>
+      <SectionCard title="Quick actions" description="Common people operations"><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1"><QuickAction label="Add employee" icon={<UserPlus className="size-4" />} onClick={() => onNavigate("employees")} /><QuickAction label="Review attendance" icon={<Clock3 className="size-4" />} onClick={() => onNavigate("attendance")} /><QuickAction label="Approve leave" icon={<CheckCircle2 className="size-4" />} onClick={() => onNavigate("leave")} /><QuickAction label="Start payroll review" icon={<IndianRupee className="size-4" />} onClick={() => onNavigate("payroll")} /><QuickAction label="Open HR reports" icon={<FileText className="size-4" />} onClick={() => onNavigate("reports")} /></div></SectionCard>
     </div>
     <SectionCard title="Permission boundary" description="What this role can see"><div className="flex flex-wrap items-center gap-2"><Badge variant="success">{hrRoleLabels[role]}</Badge><span className="text-xs text-muted-foreground">{role === "employee" ? "Self-service only" : role === "reporting_manager" ? "Direct reports only" : role === "business_manager" ? "Authorised company summaries" : "HR operations in assigned scope"}</span></div></SectionCard>
   </div>;
@@ -259,7 +285,25 @@ function EmployeeRecordDialog({ employee, canManage, showPay, onEdit, onOpenChan
 
 function TeamView({ role }: { role: HrDemoRole }) {
   const employees = useHrPeopleStore((state) => state.employees).filter((employee) => role === "reporting_manager" ? employee.managerId === demoActorId(role) : employee.managerId !== null);
-  return <SectionCard title="My Team" description="The reporting hierarchy controls which people and approvals are visible."><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{employees.map((employee) => <div key={employee.id} className="rounded-lg border border-border bg-surface-2 p-3"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-full bg-accent-muted text-xs font-semibold text-accent">{employee.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{employee.name}</span><span className="block truncate text-xs text-muted-foreground">{employee.title}</span></span><Badge variant={statusVariant(employee.status)}>{employee.status}</Badge></div><div className="mt-3 flex items-center justify-between text-xs text-muted-foreground"><span>{employee.department}</span><span>{employee.onboardingPercent}% onboarded</span></div></div>)}</div></SectionCard>;
+  const leaveRequests = useHrPeopleStore((state) => state.leaveRequests);
+  const attendance = useHrPeopleStore((state) => state.attendance);
+  const todayIst = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const teamIds = new Set(employees.map((e) => e.id));
+  const outToday = leaveRequests.filter((r) => r.status === "approved" && teamIds.has(r.employeeId) && r.from <= todayIst && todayIst <= r.to);
+  const outIds = new Set(outToday.map((r) => r.employeeId));
+  const pendingLeave = leaveRequests.filter((r) => teamIds.has(r.employeeId) && (r.status === "pending" || r.status === "needs_clarification")).length;
+  const todayAttendance = attendance.filter((r) => teamIds.has(r.employeeId) && r.date === todayIst);
+  const presentToday = todayAttendance.filter((r) => r.status === "present" || r.status === "late").length;
+  return <div className="flex flex-col gap-5">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {[["Team size", employees.length, `${employees.filter((e) => e.status === "active").length} active`],
+        ["Present today", todayAttendance.length ? `${presentToday}/${todayAttendance.length}` : "—", todayAttendance.length ? `${Math.round((presentToday / todayAttendance.length) * 100)}%` : "No records"],
+        ["On leave today", outIds.size, outIds.size ? [...outIds].map((id) => employees.find((e) => e.id === id)?.name?.split(" ")[0]).filter(Boolean).join(", ") : "Everyone is in"],
+        ["Pending approvals", pendingLeave, "Leave requests from your team"],
+      ].map(([label, value, hint]) => <div key={label as string} className="border border-border bg-surface p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{hint}</p></div>)}
+    </div>
+    <SectionCard title="My Team" description="The reporting hierarchy controls which people and approvals are visible."><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{employees.map((employee) => { const isOut = outIds.has(employee.id); const att = todayAttendance.find((r) => r.employeeId === employee.id); return <div key={employee.id} className="rounded-lg border border-border bg-surface-2 p-3"><div className="flex items-center gap-3"><span className={`flex size-9 items-center justify-center rounded-full text-xs font-semibold ${isOut ? "bg-warning-muted text-warning" : "bg-accent-muted text-accent"}`}>{employee.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{employee.name}</span><span className="block truncate text-xs text-muted-foreground">{employee.title}</span></span><Badge variant={isOut ? "warning" : statusVariant(employee.status)}>{isOut ? "on leave" : employee.status}</Badge></div><div className="mt-3 flex items-center justify-between text-xs text-muted-foreground"><span>{employee.department}</span>{att ? <span className={att.status === "present" ? "text-success" : att.status === "late" ? "text-warning" : "text-muted-foreground"}>{att.checkIn ? `In ${att.checkIn}` : att.status}</span> : <span>{employee.onboardingPercent < 100 ? `${employee.onboardingPercent}% onboarded` : employee.location || employee.branch}</span>}</div></div>; })}</div></SectionCard>
+  </div>;
 }
 
 function RuleRow({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between gap-3 border-b border-border/60 py-2 last:border-0"><span className="text-xs text-muted-foreground">{label}</span><span className="text-xs font-medium">{value}</span></div>; }

@@ -8,8 +8,11 @@ import { canSeeOwner } from "@/lib/crm-scope";
 import { useDemoAccount } from "@/lib/demo-persona";
 import Link from "next/link";
 import {
+  BarChart3,
   Eye,
   GripVertical,
+  LayoutGrid,
+  List,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -18,6 +21,7 @@ import {
   SlidersHorizontal,
   Settings2,
   Trash2,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -64,6 +68,7 @@ import { LostReasonFields } from "@/components/crm/lost-reason-fields";
 import type { LostCategory } from "@/lib/lost-reasons";
 import { LeadDetailDrawer } from "@/components/crm/lead-detail";
 import { ImportDialog } from "@/components/crm/import-dialog";
+import { LeadsBoard } from "@/components/crm/leads-board";
 
 type Row = { lead: Lead };
 type EditForm = {
@@ -78,7 +83,7 @@ type EditForm = {
   lostReason: string;
 };
 
-type OptionalColumn = "followUp" | "email" | "company" | "source" | "owner" | "created";
+type OptionalColumn = "followUp" | "email" | "company" | "source" | "owner" | "created" | "score";
 
 const optionalColumns: { key: OptionalColumn; label: string }[] = [
   { key: "followUp", label: "Next follow-up" },
@@ -86,6 +91,7 @@ const optionalColumns: { key: OptionalColumn; label: string }[] = [
   { key: "company", label: "Company" },
   { key: "source", label: "Source" },
   { key: "owner", label: "Owner" },
+  { key: "score", label: "Score" },
   { key: "created", label: "Created" },
 ];
 
@@ -183,6 +189,7 @@ export default function LeadsPage() {
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
+  const [view, setView] = useState<"table" | "board" | "quality">("table");
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   // Leads whose follow-up falls today or has passed: the list a salesperson works through first.
@@ -204,6 +211,7 @@ export default function LeadsPage() {
     company: false,
     source: false,
     owner: true,
+    score: false,
     created: false,
   });
   const [columnOrder, setColumnOrder] = useState<OptionalColumn[]>(optionalColumns.map(({ key }) => key));
@@ -278,7 +286,7 @@ export default function LeadsPage() {
     .map((key) => optionalColumns.find((column) => column.key === key))
     .filter((column): column is { key: OptionalColumn; label: string } => Boolean(column));
   const resetColumns = () => {
-    setVisibleColumns({ followUp: true, email: false, company: false, source: false, owner: false, created: false });
+    setVisibleColumns({ followUp: true, email: false, company: false, source: false, owner: false, score: false, created: false });
     setColumnOrder(optionalColumns.map(({ key }) => key));
   };
 
@@ -448,6 +456,11 @@ export default function LeadsPage() {
           <SelectTrigger className="w-36"><SelectValue placeholder="Source" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All sources</SelectItem>{sources.map((source) => <SelectItem key={source} value={source}>{label(source)}</SelectItem>)}</SelectContent>
         </Select>
+        <div className="flex rounded-lg border border-border p-0.5 bg-surface-2/50">
+          <button type="button" aria-pressed={view === "table"} onClick={() => setView("table")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", view === "table" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><List className="size-3.5" /> Table</button>
+          <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", view === "board" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><LayoutGrid className="size-3.5" /> Board</button>
+          <button type="button" aria-pressed={view === "quality"} onClick={() => setView("quality")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", view === "quality" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><BarChart3 className="size-3.5" /> Quality</button>
+        </div>
         <Popover>
           <PopoverTrigger asChild>
             <Button size="sm" variant="outline" title="Choose and reorder visible columns">
@@ -533,10 +546,16 @@ export default function LeadsPage() {
         {loaded && !loaded.error && <span className="ml-auto text-xs text-muted-foreground">Showing {rows.length} of {loaded.rows.length} loaded leads</span>}
         
       </div>
-      <div className="flex items-center gap-2 px-6 pt-3 text-[11px] text-muted-foreground">
-        <Pencil className="size-3" />
-        <span>Click a value with the pencil affordance to edit name, mobile, email, company, stage or requirement.</span>
-      </div>
+      {loaded && !loaded.error && rows.length > 0 && view !== "quality" && (
+        <LeadQualityBar rows={rows} />
+      )}
+      {view === "table" && (
+        <div className="flex items-center gap-2 px-6 pt-3 text-[11px] text-muted-foreground">
+          <Pencil className="size-3" />
+          <span>Click a value with the pencil affordance to edit name, mobile, email, company, stage or requirement.</span>
+        </div>
+      )}
+      {view === "board" && <p className="px-6 pt-3 text-xs text-muted-foreground">Drag leads between stages. Scroll sideways to see every stage.</p>}
 
       {!loaded ? (
         <p role="status" className="p-6 text-sm">Loading leads…</p>
@@ -545,6 +564,10 @@ export default function LeadsPage() {
           <h2 className="text-sm font-medium">{filtersActive ? "No leads match these filters" : after === "0" ? "No leads yet" : "No more leads"}</h2>
           <p className="text-sm text-muted-foreground">{filtersActive ? "Try another search, stage or source." : "Connect a website form, call provider or API, or upload a CSV."}</p>
         </div>
+      ) : view === "quality" ? (
+        <LeadQualityAnalysis rows={rows} />
+      ) : view === "board" ? (
+        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => !demoMode && setDrawerLead(lead)} />
       ) : (
         <>
         <p className="mx-4 mt-3 text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
@@ -589,6 +612,7 @@ export default function LeadsPage() {
                       if (key === "company") return <td key={key} className="max-w-[180px] px-5 py-4 text-muted-foreground">{canEditRows ? <EditableValue onClick={() => openEdit(row)}>{lead.company || "—"}</EditableValue> : <span className="block truncate">{lead.company || "—"}</span>}</td>;
                       if (key === "source") return <td key={key} className="whitespace-nowrap px-5 py-4 text-muted-foreground">{label(lead.source)}</td>;
                       if (key === "owner") return <td key={key} className="max-w-[160px] truncate px-5 py-4 text-muted-foreground">{lead.ownerId === session.user.id ? session.user.name : lead.ownerName || (lead.ownerId ? `Member #${lead.ownerId}` : "Unassigned")}</td>;
+                      if (key === "score") return <td key={key} className="whitespace-nowrap px-5 py-4"><LeadScoreBadge leadId={lead.id} /></td>;
                       return <td key={key} className="whitespace-nowrap px-5 py-4 text-muted-foreground">{formatDateTime(lead.createdAt)}</td>;
                     })}
                     <td className="sticky right-0 z-30 w-14 min-w-14 border-l border-border bg-surface px-3 py-4 text-right shadow-[-2px_0_0_rgba(15,23,42,0.06)] group-hover:bg-surface-2/60" onClick={(event) => event.stopPropagation()}>
@@ -647,5 +671,182 @@ export default function LeadsPage() {
         <DialogContent><DialogHeader><DialogTitle>Delete selected leads?</DialogTitle><DialogDescription>{deletingSelected?.length || 0} selected leads will be removed from the pipeline. Their contact records stay available.</DialogDescription></DialogHeader>{actionError && <p role="alert" className="text-xs text-danger">{actionError}</p>}<DialogFooter><Button variant="secondary" onClick={() => setDeletingSelected(null)}>Cancel</Button><Button variant="destructive" onClick={() => void deleteSelectedLeads()} disabled={deletingLead}>{deletingLead ? "Deleting…" : "Delete selected"}</Button></DialogFooter></DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function LeadQualityBar({ rows }: { rows: Row[] }) {
+  const leads = rows.map(({ lead }) => lead);
+  const total = leads.length;
+  const won = leads.filter((l) => l.stage === "won").length;
+  const lost = leads.filter((l) => l.stage === "lost").length;
+  const conversion = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
+  const withFollowUp = leads.filter((l) => l.nextFollowUpOn).length;
+  const overdue = leads.filter((l) => isDue(l.nextFollowUpOn) && !["won", "lost"].includes(l.stage)).length;
+  const sourceCounts = leads.reduce<Record<string, number>>((acc, l) => { acc[l.source] = (acc[l.source] || 0) + 1; return acc; }, {});
+  const bestSource = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])[0];
+  const stageNew = leads.filter((l) => l.stage === "new").length;
+  const qualified = leads.filter((l) => ["qualified", "demo", "proposal", "negotiation", "approval", "won"].includes(l.stage)).length;
+  const qualifyRate = total > 0 ? Math.round((qualified / total) * 100) : 0;
+  return (
+    <div className="mx-6 mt-3 flex flex-wrap items-center gap-4 rounded-lg bg-surface-2/50 px-4 py-2.5">
+      <div className="flex items-center gap-1.5 text-xs"><span className="size-1.5 rounded-full bg-accent" /><span className="text-muted-foreground">New:</span><span className="font-semibold">{stageNew}</span></div>
+      <div className="flex items-center gap-1.5 text-xs"><span className="size-1.5 rounded-full bg-success" /><span className="text-muted-foreground">Qualified+:</span><span className="font-semibold">{qualified}</span><span className="text-muted-foreground">({qualifyRate}%)</span></div>
+      <span className="hidden sm:inline text-border">|</span>
+      {bestSource && <div className="flex items-center gap-1.5 text-xs"><span className="text-muted-foreground">Top source:</span><span className="font-semibold">{label(bestSource[0])}</span><span className="text-muted-foreground">{Math.round((bestSource[1] / total) * 100)}%</span></div>}
+      <span className="hidden sm:inline text-border">|</span>
+      <div className="flex items-center gap-1.5 text-xs"><span className="text-muted-foreground">Follow-ups set:</span><span className="font-semibold">{withFollowUp}</span>{overdue > 0 && <span className="font-medium text-warning">({overdue} overdue)</span>}</div>
+      <span className="hidden sm:inline text-border">|</span>
+      <div className="flex items-center gap-1.5 text-xs"><span className="text-muted-foreground">Conversion:</span><span className={cn("font-semibold", conversion >= 25 ? "text-success" : "text-warning")}>{conversion}%</span></div>
+    </div>
+  );
+}
+
+function LeadQualityAnalysis({ rows }: { rows: Row[] }) {
+  const leads = rows.map(({ lead }) => lead);
+  const total = leads.length;
+  const won = leads.filter((l) => l.stage === "won").length;
+  const lost = leads.filter((l) => l.stage === "lost").length;
+  const active = leads.filter((l) => !["won", "lost"].includes(l.stage)).length;
+
+  const stageCounts = stages.map((s) => ({ stage: s, count: leads.filter((l) => l.stage === s).length }));
+  const maxStage = Math.max(...stageCounts.map((s) => s.count), 1);
+
+  const sourceCounts = leads.reduce<Record<string, { total: number; won: number; lost: number }>>((acc, l) => {
+    if (!acc[l.source]) acc[l.source] = { total: 0, won: 0, lost: 0 };
+    acc[l.source].total++;
+    if (l.stage === "won") acc[l.source].won++;
+    if (l.stage === "lost") acc[l.source].lost++;
+    return acc;
+  }, {});
+  const sourceRows = Object.entries(sourceCounts).sort((a, b) => b[1].total - a[1].total);
+
+  const withFollowUp = leads.filter((l) => l.nextFollowUpOn && !["won", "lost"].includes(l.stage)).length;
+  const overdue = leads.filter((l) => isDue(l.nextFollowUpOn) && !["won", "lost"].includes(l.stage)).length;
+  const noFollowUp = leads.filter((l) => !l.nextFollowUpOn && !["won", "lost"].includes(l.stage)).length;
+  const withEmail = leads.filter((l) => l.email).length;
+  const withCompany = leads.filter((l) => l.company).length;
+  const unassigned = leads.filter((l) => !l.ownerId).length;
+  const conversion = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
+  const qualifiedCount = leads.filter((l) => ["qualified", "demo", "proposal", "negotiation", "approval", "won"].includes(l.stage)).length;
+  const qualifyRate = total > 0 ? Math.round((qualifiedCount / total) * 100) : 0;
+  const dataScore = Math.round(((withEmail / Math.max(total, 1)) * 40 + (withCompany / Math.max(total, 1)) * 30 + (withFollowUp / Math.max(active, 1)) * 30));
+
+  return (
+    <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {([
+          ["Pipeline Health", `${active} active`, `${won} won · ${lost} lost`, conversion >= 25 ? "bg-success" : "bg-warning"],
+          ["Conversion Rate", `${conversion}%`, `${won} of ${won + lost} closed`, conversion >= 30 ? "bg-success" : conversion >= 15 ? "bg-warning" : "bg-danger"],
+          ["Qualification Rate", `${qualifyRate}%`, `${qualifiedCount} of ${total} leads`, qualifyRate >= 40 ? "bg-success" : qualifyRate >= 20 ? "bg-warning" : "bg-danger"],
+          ["Data Quality Score", `${dataScore}/100`, `${withEmail} email · ${withCompany} company`, dataScore >= 70 ? "bg-success" : dataScore >= 40 ? "bg-warning" : "bg-danger"],
+        ] as const).map(([title, value, detail, dot]) => (
+          <div key={title} className="rounded-xl border border-border bg-surface p-4">
+            <div className="flex items-center gap-1.5"><span className={cn("size-2 rounded-full", dot)} /><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span></div>
+            <div className="mt-1.5 text-2xl font-bold tabular-nums">{value}</div>
+            <span className="text-[11px] text-muted-foreground">{detail}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <h3 className="mb-3 text-sm font-semibold flex items-center gap-2"><TrendingUp className="size-4 text-accent" /> Stage Distribution</h3>
+          <div className="space-y-2">
+            {stageCounts.map(({ stage: s, count }) => (
+              <div key={s} className="flex items-center gap-3">
+                <span className="w-24 text-xs text-muted-foreground truncate">{label(s)}</span>
+                <div className="flex-1 h-5 rounded bg-surface-2 overflow-hidden">
+                  <div className={cn("h-full rounded transition-all", s === "won" ? "bg-success" : s === "lost" ? "bg-danger" : s === "new" ? "bg-accent" : "bg-accent/60")} style={{ width: `${(count / maxStage) * 100}%` }} />
+                </div>
+                <span className="w-8 text-right text-xs font-semibold tabular-nums">{count}</span>
+                <span className="w-10 text-right text-[10px] text-muted-foreground">{total > 0 ? Math.round((count / total) * 100) : 0}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <h3 className="mb-3 text-sm font-semibold flex items-center gap-2"><BarChart3 className="size-4 text-accent" /> Source Performance</h3>
+          {sourceRows.length === 0 ? <p className="text-xs text-muted-foreground">No source data available.</p> : (
+            <div className="space-y-2.5">
+              {sourceRows.slice(0, 8).map(([src, data]) => {
+                const srcConv = data.won + data.lost > 0 ? Math.round((data.won / (data.won + data.lost)) * 100) : null;
+                return (
+                  <div key={src} className="flex items-center gap-3">
+                    <span className="w-28 text-xs font-medium truncate">{label(src)}</span>
+                    <div className="flex-1 h-5 rounded bg-surface-2 overflow-hidden">
+                      <div className="h-full rounded bg-accent/70" style={{ width: `${(data.total / Math.max(sourceRows[0][1].total, 1)) * 100}%` }} />
+                    </div>
+                    <span className="w-8 text-right text-xs font-semibold tabular-nums">{data.total}</span>
+                    {srcConv !== null && <Badge variant={srcConv >= 30 ? "success" : srcConv >= 15 ? "warning" : "neutral"} className="text-[10px]">{srcConv}%</Badge>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <h3 className="mb-3 text-sm font-semibold">Follow-up Health</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Follow-ups scheduled</span><span className="text-sm font-semibold">{withFollowUp}<span className="ml-1 text-xs text-muted-foreground font-normal">/ {active} active</span></span></div>
+            <div className="h-2.5 rounded-full bg-surface-2 overflow-hidden"><div className="h-full rounded-full bg-accent" style={{ width: `${active > 0 ? (withFollowUp / active) * 100 : 0}%` }} /></div>
+            {overdue > 0 && <div className="flex items-center gap-1.5 text-xs text-warning font-medium"><span className="size-1.5 rounded-full bg-warning" />{overdue} overdue follow-up{overdue !== 1 ? "s" : ""}</div>}
+            {noFollowUp > 0 && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-muted-foreground" />{noFollowUp} active lead{noFollowUp !== 1 ? "s" : ""} without follow-up</div>}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <h3 className="mb-3 text-sm font-semibold">Data Completeness</h3>
+          <div className="space-y-2.5">
+            {([
+              ["Has email", withEmail, total],
+              ["Has company", withCompany, total],
+              ["Assigned owner", total - unassigned, total],
+              ["Follow-up set", withFollowUp, active],
+            ] as const).map(([label, count, of]) => (
+              <div key={label}>
+                <div className="flex items-center justify-between mb-1"><span className="text-xs text-muted-foreground">{label}</span><span className="text-xs font-semibold tabular-nums">{of > 0 ? Math.round((count / of) * 100) : 0}%</span></div>
+                <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden"><div className={cn("h-full rounded-full", count / Math.max(of, 1) >= 0.7 ? "bg-success" : count / Math.max(of, 1) >= 0.4 ? "bg-warning" : "bg-danger")} style={{ width: `${of > 0 ? (count / of) * 100 : 0}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <h3 className="mb-3 text-sm font-semibold">Pipeline Velocity</h3>
+          <div className="space-y-3">
+            <div className="text-center py-2">
+              <div className="text-3xl font-bold tabular-nums">{active}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Active leads in pipeline</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-lg bg-surface-2 p-2.5">
+                <div className="text-lg font-bold text-success tabular-nums">{won}</div>
+                <div className="text-[10px] text-muted-foreground">Won</div>
+              </div>
+              <div className="rounded-lg bg-surface-2 p-2.5">
+                <div className="text-lg font-bold text-danger tabular-nums">{lost}</div>
+                <div className="text-[10px] text-muted-foreground">Lost</div>
+              </div>
+            </div>
+            {unassigned > 0 && <div className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning font-medium">{unassigned} lead{unassigned !== 1 ? "s" : ""} unassigned — assign an owner to improve response time</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadScoreBadge({ leadId }: { leadId: string }) {
+  const { data } = useApi<{ score: number }>(`/leads/${leadId}/score`);
+  if (!data) return <span className="text-xs text-muted-foreground">—</span>;
+  const s = data.score;
+  const color = s >= 80 ? "text-success" : s >= 50 ? "text-warning" : "text-muted-foreground";
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`}>
+      <span className={`size-1.5 rounded-full ${s >= 80 ? "bg-success" : s >= 50 ? "bg-warning" : "bg-muted-foreground"}`} />
+      {s}
+    </span>
   );
 }

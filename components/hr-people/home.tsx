@@ -15,7 +15,8 @@ import { canDecide } from "@/lib/hr-leave";
 import { useLeaveTypes } from "@/lib/hr-leave-hooks";
 import { buildPayslip } from "@/lib/hr-payroll";
 import { canDecideExpense } from "@/components/hr-people/expenses";
-import { HrEmpty, HrPanel, hrDate, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
+import { leaveBalance } from "@/lib/hr-leave";
+import { HrEmpty, HrPanel, HrStats, hrDate, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
 import type { TeamAnnouncement } from "@/components/team/types";
 import { useApi } from "@/lib/api/use-api";
@@ -103,8 +104,23 @@ export function HrHomeView({ role, actorId }: { role: HrDemoRole; actorId: strin
     ...policyQuestions.filter((item) => item.employeeId === actorId && item.status === "answered" && item.repliedAt).map((item) => ({ id: item.id, at: item.repliedAt!, text: `HR replied to your question: “${item.question}”`, by: nameOf(item.repliedBy ?? "") })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
 
+  // Personal stat strip
+  const { leaveAdjustments } = useHrOperationsStore();
+  const totalRemaining = settings.leaveTypes.filter((lt) => lt.active && lt.days !== null).reduce((sum, lt) => sum + leaveBalance(leaveRequests, actorId, lt.id, settings, today, undefined, leaveAdjustments).remaining, 0);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const myAtt = attendance.filter((r) => r.employeeId === actorId && r.date >= monthStart && r.date <= today);
+  const myPresent = myAtt.filter((r) => r.status === "present" || r.status === "late").length;
+  const nextHoliday = holidays.find((h) => h.date >= today);
+  const pendingTotal = review.length;
+
   return <div className="space-y-5">
     <section className="flex flex-wrap items-end justify-between gap-4 border border-border bg-surface p-5"><div><h2 className="text-2xl font-semibold tracking-tight">{greeting()}, {first}</h2><p className="mt-1 text-sm text-muted-foreground">{quote}</p></div><p className="text-sm text-muted-foreground">{new Date(`${today}T12:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></section>
+    <HrStats items={[
+      { label: "Leave balance", value: `${totalRemaining} days`, hint: "Remaining this year" },
+      { label: "Attendance this month", value: myAtt.length ? `${myPresent}/${myAtt.length}` : "—", hint: myAtt.length ? `${Math.round((myPresent / myAtt.length) * 100)}% present` : "No records yet" },
+      { label: "Needs your action", value: pendingTotal, hint: pendingTotal ? "Documents, approvals and tasks" : "All caught up" },
+      { label: "Next holiday", value: nextHoliday ? nextHoliday.name : "—", hint: nextHoliday ? hrDate(nextHoliday.date) : "No upcoming holidays" },
+    ]} />
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       <Card title="Needs you">{review.length ? <ul className="divide-y divide-border text-sm">{review.map((item) => <li key={item.text}><Link href={item.to} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface-2"><span>{item.text}</span><span aria-hidden className="text-muted-foreground">›</span></Link></li>)}</ul> : <HrEmpty>Hurrah! You&apos;ve nothing to review.</HrEmpty>}</Card>
       <Card title="What's new" link={{ href: engageHref, label: demoMode ? "Open Engage" : "Open Team Chat" }}>{announcements.length || newPolicies.length ? <ul className="divide-y divide-border text-sm">

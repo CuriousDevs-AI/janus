@@ -70,6 +70,7 @@ export function HrExpensesView({ role, actorId, personal = false }: { role: HrDe
           {v.allowed && v.mode && <><Button size="sm" onClick={() => decide(claim, v.mode!)}>{v.mode === "finance" ? "Mark paid" : "Approve"}</Button>{v.mode !== "finance" && <Button size="sm" variant="outline" onClick={() => setRejecting(claim)}>Reject</Button>}</>}
           <Button size="sm" variant="ghost" onClick={() => setDetail(claim)}>Details</Button></div></td></tr>; })}</HrTable> : <HrEmpty>{actor ? "No expense claims yet. Use Submit expense to add one." : "No expense claims in your scope."}</HrEmpty>}
     </HrPanel>
+    {wide && claims.some((c) => c.status === "approved") && <p className="text-xs text-muted-foreground">Approved claims also appear in <a href="/workspace/finance-accounting?view=hr-costs" className="text-accent underline">Finance → Payroll & HR Costs</a> for payment tracking.</p>}
     {submitting && actor && <SubmitDialog actor={actor} onClose={() => setSubmitting(false)} />}
     {rejecting && <ReasonDialog claim={rejecting} onClose={() => setRejecting(null)} onSubmit={(reason) => { updateExpense(rejecting.id, "rejected"); log({ recordId: rejecting.id, actorId, action: "rejected", reason }); toast.success("Claim rejected"); setRejecting(null); }} />}
     {detail && <DetailDialog claim={detail} evidence={evidence[detail.id]} entries={audit.filter((item) => item.recordId === detail.id)} nameOf={(id) => employees.find((item) => item.id === id)?.name ?? id} onClose={() => setDetail(null)} />}

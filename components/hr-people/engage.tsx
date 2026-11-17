@@ -47,7 +47,33 @@ export function HrEngageView({ role, actorId }: { role: HrDemoRole; actorId: str
     ...derived.map((item) => ({ type: "derived" as const, item, at: `${item.date <= today ? item.date : today}T08:00:00+05:30` })),
   ].sort((a, b) => Number(b.type === "stored" && b.item.pinned) - Number(a.type === "stored" && a.item.pinned) || b.at.localeCompare(a.at));
 
+  const { meta: engageMeta, react: engageReact } = useHrEngageStore();
+  const moods = ["😫", "😟", "😐", "🙂", "😄"] as const;
+  const moodLabels = ["Struggling", "Low", "Okay", "Good", "Great"] as const;
+  const moodKey = `mood:${today}`;
+  const myMood = (engageMeta[moodKey]?.reactions as Record<string, string[] | undefined> | undefined);
+  const myMoodToday = moods.find((m) => myMood?.[m]?.includes(actorId));
+  const moodCounts = moods.map((m) => (myMood?.[m]?.length ?? 0));
+  const totalMoods = moodCounts.reduce((s, c) => s + c, 0);
+
   return <div className="space-y-5">
+    {actor && <section aria-label="Pulse check" className="border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div><p className="text-sm font-semibold">How are you feeling today?</p><p className="text-[11px] text-muted-foreground">Your response is anonymous to colleagues. HR sees aggregate trends only.</p></div>
+        {totalMoods > 0 && <span className="text-xs text-muted-foreground">{totalMoods} {totalMoods === 1 ? "response" : "responses"} today</span>}
+      </div>
+      <div className="flex gap-2">
+        {moods.map((m, i) => {
+          const selected = myMoodToday === m;
+          const pct = totalMoods > 0 ? Math.round((moodCounts[i] / totalMoods) * 100) : 0;
+          return <button key={m} type="button" onClick={() => engageReact(moodKey, m, actorId)} className={`flex flex-col items-center gap-1 border px-4 py-2.5 transition-all ${selected ? "border-accent bg-accent-muted shadow-sm" : "border-border hover:border-accent"}`} aria-pressed={selected} aria-label={moodLabels[i]}>
+            <span className="text-2xl">{m}</span>
+            <span className="text-[10px] text-muted-foreground">{moodLabels[i]}</span>
+            {totalMoods > 0 && myMoodToday && <span className="text-[10px] font-medium tabular-nums text-muted-foreground">{pct}%</span>}
+          </button>;
+        })}
+      </div>
+    </section>}
     <section aria-label="Start something" className="flex flex-wrap items-center justify-between gap-4 border border-border bg-surface p-4">
       <div className="flex items-center gap-3"><Avatar name={actor?.name ?? "HR"} /><div><p className="text-sm font-semibold">Hey {actor?.name.split(" ")[0] ?? "there"},</p><p className="text-xs text-muted-foreground">Ready to dive in?</p></div></div>
       <div className="flex flex-wrap gap-2">

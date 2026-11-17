@@ -254,6 +254,98 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {leadRows.length > 0 && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <div className="flex items-center gap-2"><TrendingUp className="size-4 text-success" /><h2 className="text-[13px] font-semibold">Lead quality by source</h2></div>
+            <p className="mt-1 text-[11px] text-muted-foreground">Source distribution and progression through the pipeline.</p>
+            <div className="mt-4 space-y-2.5">
+              {(() => {
+                const bySource: Record<string, { total: number; qualified: number; won: number }> = {};
+                for (const lead of leadRows) {
+                  const src = lead.source || "unknown";
+                  if (!bySource[src]) bySource[src] = { total: 0, qualified: 0, won: 0 };
+                  bySource[src].total++;
+                  if (["qualified", "demo", "proposal", "negotiation", "approval", "won"].includes(lead.stage)) bySource[src].qualified++;
+                  if (lead.stage === "won") bySource[src].won++;
+                }
+                const sorted = Object.entries(bySource).sort((a, b) => b[1].total - a[1].total).slice(0, 6);
+                const maxTotal = Math.max(...sorted.map(([, v]) => v.total), 1);
+                return sorted.map(([src, v]) => (
+                  <div key={src} className="flex items-center gap-3">
+                    <span className="w-24 shrink-0 truncate text-xs font-medium">{sourceLabel(src)}</span>
+                    <div className="flex-1">
+                      <div className="flex h-4 overflow-hidden rounded-full bg-surface-3">
+                        <div className="bg-success/70 transition-all" style={{ width: `${(v.won / maxTotal) * 100}%` }} title={`${v.won} won`} />
+                        <div className="bg-accent/50 transition-all" style={{ width: `${((v.qualified - v.won) / maxTotal) * 100}%` }} title={`${v.qualified - v.won} qualified`} />
+                        <div className="bg-surface-3 transition-all" style={{ width: `${((v.total - v.qualified) / maxTotal) * 100}%` }} />
+                      </div>
+                    </div>
+                    <div className="flex w-28 shrink-0 items-center gap-2 text-[10px] text-muted-foreground">
+                      <span>{v.total} leads</span>
+                      <span className="text-success">{v.total > 0 ? Math.round((v.qualified / v.total) * 100) : 0}% qual</span>
+                    </div>
+                  </div>
+                ));
+              })()}
+              <div className="flex items-center gap-4 pt-1.5 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-success/70" /> Won</span>
+                <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-accent/50" /> Qualified</span>
+                <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-surface-3" /> New/Contacted</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <div className="flex items-center gap-2"><Sparkles className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Follow-up effectiveness</h2></div>
+            <p className="mt-1 text-[11px] text-muted-foreground">How quickly and consistently your team follows up on leads.</p>
+            <div className="mt-4 space-y-3">
+              {(() => {
+                const withFollowUp = leadRows.filter((l) => l.nextFollowUpOn);
+                const overdue = withFollowUp.filter((l) => isDue(l.nextFollowUpOn) && !["won", "lost"].includes(l.stage));
+                const noActivity = leadRows.filter((l) => l.lastActivityAt === l.createdAt && !["won", "lost"].includes(l.stage));
+                const totalActive = leadRows.filter((l) => !["won", "lost"].includes(l.stage)).length;
+                const followUpRate = totalActive > 0 ? Math.round((withFollowUp.filter((l) => !["won", "lost"].includes(l.stage)).length / totalActive) * 100) : 0;
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-md bg-surface-2/50 p-2.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Follow-up set</span>
+                        <span className="mt-0.5 block text-lg font-bold">{followUpRate}%</span>
+                      </div>
+                      <div className="rounded-md bg-surface-2/50 p-2.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Overdue</span>
+                        <span className="mt-0.5 block text-lg font-bold text-danger">{overdue.length}</span>
+                      </div>
+                      <div className="rounded-md bg-surface-2/50 p-2.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">No first reply</span>
+                        <span className="mt-0.5 block text-lg font-bold text-warning">{noActivity.length}</span>
+                      </div>
+                      <div className="rounded-md bg-surface-2/50 p-2.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Active leads</span>
+                        <span className="mt-0.5 block text-lg font-bold">{totalActive}</span>
+                      </div>
+                    </div>
+                    {overdue.length > 0 && (
+                      <div className="rounded-md border border-danger/20 bg-danger/5 p-2.5">
+                        <p className="text-[11px] font-medium text-danger">{overdue.length} overdue follow-up{overdue.length === 1 ? "" : "s"} need attention</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Leads with missed follow-up dates tend to go cold within a week.</p>
+                      </div>
+                    )}
+                    {noActivity.length > 0 && (
+                      <div className="rounded-md border border-warning/20 bg-warning/5 p-2.5">
+                        <p className="text-[11px] font-medium text-warning">{noActivity.length} lead{noActivity.length === 1 ? "" : "s"} with no first response</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">First response within 5 minutes increases conversion by 21x.</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </section>
+        </div>
+      )}
+
       {(session.permissions.includes("*") || can(session, "leads:assign")) && <>
         <TeamToday leads={leadRows} deals={dealRows} />
         {!demoMode && <LostReasonsCard />}

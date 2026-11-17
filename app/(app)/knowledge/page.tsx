@@ -91,6 +91,34 @@ function DemoKnowledge() {
         </Select>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 px-6 py-3 sm:grid-cols-5">
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Documents</p>
+          <p className="mt-1 text-xl font-bold tabular-nums">{knowledgeDocuments.length}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">in knowledge base</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Indexed</p>
+          <p className="mt-1 text-xl font-bold tabular-nums text-emerald-600">{knowledgeDocuments.filter((d) => d.status === "published").length}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">ready for retrieval</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Categories</p>
+          <p className="mt-1 text-xl font-bold tabular-nums">{new Set(knowledgeDocuments.map((d) => d.category)).size}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">topic areas</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Chunks</p>
+          <p className="mt-1 text-xl font-bold tabular-nums">{knowledgeDocuments.reduce((s, d) => s + (d.chunkCount ?? 0), 0)}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">searchable segments</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Agents Using</p>
+          <p className="mt-1 text-xl font-bold tabular-nums">{new Set(knowledgeDocuments.flatMap((d) => d.usedByAgentIds)).size}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">connected agents</p>
+        </div>
+      </div>
+
       {rows.length === 0 ? (
         <div className="px-6 py-6">
           <EmptyState

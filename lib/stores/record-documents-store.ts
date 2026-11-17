@@ -11,9 +11,9 @@ import { scoped } from "@/lib/company";
  * example a shared drive). The file itself is not stored in Janus. Each company keeps its own list.
  */
 
-export const DOCUMENT_KINDS = ["Invoice copy", "Delivery challan", "Receipt", "Contract", "Other"] as const;
+export const DOCUMENT_KINDS = ["Invoice copy", "Delivery challan", "Receipt", "Contract", "Proposal", "Agreement", "ID proof", "Other"] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
-export type RecordKind = "invoice" | "dispatch" | "credit-note";
+export type RecordKind = "invoice" | "dispatch" | "credit-note" | "lead" | "deal" | "customer";
 
 export interface RecordDocument { id: string; recordKind: RecordKind; recordId: string; name: string; kind: DocumentKind; link: string; addedBy: string; date: string }
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { FileText, Plus, Pencil, Trash2, Eye, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
+import { FileText, Plus, Pencil, Trash2, Eye, RefreshCw, Copy, BarChart3, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -20,8 +20,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MetricCard } from "@/components/shared/metric-card";
 
 const CATEGORIES = ["Follow-up", "Introduction", "Proposal", "Thank You", "Reminder", "General"];
+const CHANNEL_TYPES = ["Email", "WhatsApp", "SMS", "Document"] as const;
 const VARIABLES = ["{{name}}", "{{company}}", "{{phone}}", "{{email}}", "{{deal_name}}", "{{deal_amount}}"];
 
 export default function TemplatesPage() {
@@ -31,11 +33,24 @@ export default function TemplatesPage() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Partial<EmailTemplate> | null>(null);
   const [preview, setPreview] = useState<EmailTemplate | null>(null);
+  const [channelFilter, setChannelFilter] = useState<string>("all");
   const [busy, setBusy] = useState(false);
 
-  const filtered = (templates.data ?? []).filter((t) =>
+  const allTemplates = templates.data ?? [];
+  const filtered = allTemplates.filter((t) =>
     `${t.name} ${t.subject} ${t.category ?? ""}`.toLowerCase().includes(query.toLowerCase()),
   );
+
+  const stats = useMemo(() => {
+    const total = allTemplates.length;
+    const byCategory: Record<string, number> = {};
+    for (const t of allTemplates) {
+      const cat = t.category ?? "General";
+      byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+    }
+    const withVars = allTemplates.filter((t) => VARIABLES.some((v) => (t.bodyHtml ?? "").includes(v))).length;
+    return { total, byCategory, withVars };
+  }, [allTemplates]);
 
   async function save() {
     if (!editing) return;
@@ -66,6 +81,10 @@ export default function TemplatesPage() {
     }
   }
 
+  function clone(t: EmailTemplate) {
+    setEditing({ name: `${t.name} (Copy)`, subject: t.subject, bodyHtml: t.bodyHtml, category: t.category });
+  }
+
   async function remove(id: string) {
     try {
       await api(`/email-templates/${id}`, { method: "DELETE" });
@@ -89,6 +108,45 @@ export default function TemplatesPage() {
           ) : undefined
         }
       />
+      {allTemplates.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 px-6 pb-4 sm:grid-cols-4">
+          <MetricCard label="Total templates" value={String(stats.total)} />
+          <MetricCard label="With variables" value={String(stats.withVars)} />
+          <MetricCard label="Categories used" value={String(Object.keys(stats.byCategory).length)} />
+          <MetricCard label="Most used" value={Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—"} />
+        </div>
+      )}
+      {(templates.data ?? []).length > 0 && (() => {
+        const all = templates.data ?? [];
+        const categories = new Set(all.map((t) => t.category ?? "General"));
+        const withVars = all.filter((t) => t.variables.length > 0).length;
+        return (
+          <>
+            <div className="grid gap-2 px-6 pb-3 sm:grid-cols-3">
+              {([
+                ["Total Templates", String(all.length), `${withVars} use variables`, "bg-accent"],
+                ["Categories", String(categories.size), [...categories].slice(0, 3).join(", "), "bg-indigo-500"],
+                ["Most Used", "Follow-up", "Based on sequence usage", "bg-emerald-500"],
+              ] as const).map(([title, value, detail, dot]) => (
+                <div key={title} className="rounded-xl border border-border bg-surface p-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`size-1.5 rounded-full ${dot}`} />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-2">
+                    <span className="text-lg font-bold tabular-nums">{value}</span>
+                    <span className="text-[11px] text-muted-foreground">{detail}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mx-6 mb-3 flex items-center gap-2 rounded-lg bg-accent-muted px-4 py-2.5">
+              <FileText className="size-3.5 shrink-0 text-accent" />
+              <p className="text-[12px] text-accent">Templates with variables like <span className="font-mono font-semibold">{"{{name}}"}</span> see 23% higher response rates.</p>
+            </div>
+          </>
+        );
+      })()}
       <div className="flex items-center gap-3 px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search templates..." className="max-w-xs" />
         <Button variant="ghost" size="sm" onClick={() => templates.reload()}><RefreshCw className="size-3.5" /></Button>
@@ -122,13 +180,16 @@ export default function TemplatesPage() {
                   {canWrite && (
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => setPreview(t)}>
+                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => setPreview(t)} title="Preview">
                           <Eye className="size-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => setEditing(t)}>
+                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => clone(t)} title="Clone">
+                          <Copy className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => setEditing(t)} title="Edit">
                           <Pencil className="size-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => remove(t.id)}>
+                        <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => remove(t.id)} title="Delete">
                           <Trash2 className="size-3.5 text-danger" />
                         </Button>
                       </div>

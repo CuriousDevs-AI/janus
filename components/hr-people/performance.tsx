@@ -25,9 +25,72 @@ export function HrPerformanceView({ role, actorId }: { role: HrDemoRole; actorId
   const scoped = reviews.filter((item) => { const person = personOf(item.employeeId); return hr || item.employeeId === actorId || (role === "reporting_manager" && person?.managerId === actorId); });
   const open = scoped.find((item) => item.id === openId);
   const done = scoped.filter((item) => item.status === "completed").length;
+  const completed = scoped.filter((item) => item.status === "completed" && item.rating);
+  const cycles = [...new Set(scoped.map((item) => item.cycle))];
 
   return <div className="space-y-5">
     <HrStats items={[{ label: "Reviews in view", value: scoped.length, hint: hr ? "Everyone" : role === "reporting_manager" ? "You and your team" : "Yours" }, { label: "Completed", value: done, hint: `${scoped.length - done} still open` }, { label: "Waiting for review", value: scoped.filter((item) => item.status === "in_review").length, hint: "Submitted, not yet completed" }, { label: "Average progress", value: scoped.length ? `${Math.round(scoped.reduce((sum, item) => sum + item.progress, 0) / scoped.length)}%` : "—", hint: "Across goals" }]} />
+
+    {hr && completed.length > 0 && <HrPanel title="Rating distribution" description={`${completed.length} completed ${completed.length === 1 ? "review" : "reviews"}`}>
+      <div className="space-y-2 p-5">{ratings.slice(1).map((label, i) => {
+        const count = completed.filter((item) => item.rating === i + 1).length;
+        const widthPct = (count / completed.length) * 100;
+        return <div key={label} className="flex items-center gap-3">
+          <span className="w-40 truncate text-xs text-muted-foreground">{i + 1}. {label}</span>
+          <div className="h-5 flex-1 bg-surface-2"><div className="h-5 bg-accent" style={{ width: `${widthPct}%` }} /></div>
+          <span className="w-8 text-right text-xs font-medium">{count}</span>
+        </div>;
+      })}</div>
+    </HrPanel>}
+
+    {hr && cycles.length > 0 && <HrPanel title="Cycle summary" description="Performance review cycles at a glance">
+      <HrTable headings={["Cycle", "Reviews", "Completed", "Avg progress", "Avg rating"]}>{cycles.map((cycle) => {
+        const inCycle = scoped.filter((item) => item.cycle === cycle);
+        const cycleDone = inCycle.filter((item) => item.status === "completed");
+        const avgProgress = Math.round(inCycle.reduce((s, item) => s + item.progress, 0) / inCycle.length);
+        const avgRating = cycleDone.length ? (cycleDone.reduce((s, item) => s + (item.rating ?? 0), 0) / cycleDone.length).toFixed(1) : "—";
+        return <tr key={cycle}><td className={`${hrCell} font-medium`}>{cycle}</td><td className={hrCell}>{inCycle.length}</td><td className={hrCell}>{cycleDone.length}</td><td className={hrCell}>{avgProgress}%</td><td className={hrCell}>{avgRating}</td></tr>;
+      })}</HrTable>
+    </HrPanel>}
+
+    {hr && completed.length > 0 && (() => {
+      const departments = [...new Set(employees.filter((e) => e.status === "active").map((e) => e.department))].sort();
+      return <HrPanel title="Performance by department" description="Average rating and completion across departments">
+        <HrTable headings={["Department", "People", "Reviews", "Completed", "Avg rating", "Avg progress"]}>{departments.map((dept) => {
+          const deptIds = new Set(employees.filter((e) => e.department === dept && e.status === "active").map((e) => e.id));
+          const deptReviews = scoped.filter((r) => deptIds.has(r.employeeId));
+          const deptDone = deptReviews.filter((r) => r.status === "completed");
+          const avgRating = deptDone.length ? (deptDone.reduce((s, r) => s + (r.rating ?? 0), 0) / deptDone.length).toFixed(1) : "—";
+          const avgProgress = deptReviews.length ? Math.round(deptReviews.reduce((s, r) => s + r.progress, 0) / deptReviews.length) : 0;
+          return <tr key={dept}>
+            <td className={`${hrCell} font-medium`}>{dept}</td>
+            <td className={hrCell}>{deptIds.size}</td>
+            <td className={hrCell}>{deptReviews.length}</td>
+            <td className={hrCell}>{deptDone.length}</td>
+            <td className={hrCell}>{avgRating !== "—" ? <span className={Number(avgRating) >= 4 ? "text-success-foreground" : Number(avgRating) < 3 ? "text-danger" : ""}>{avgRating}/5</span> : "—"}</td>
+            <td className={hrCell}><div className="flex items-center gap-2"><div className="h-1.5 w-16 bg-surface-2"><div className="h-1.5 bg-accent" style={{ width: `${avgProgress}%` }} /></div><span className="text-xs">{avgProgress}%</span></div></td>
+          </tr>;
+        })}</HrTable>
+      </HrPanel>;
+    })()}
+
+    {hr && (() => {
+      const low = completed.filter((r) => r.rating !== null && r.rating <= 2);
+      return low.length > 0 && <HrPanel title="Improvement plans needed" description={`${low.length} ${low.length === 1 ? "employee" : "employees"} rated below expectations — consider a performance improvement plan.`}>
+        <HrTable headings={["Employee", "Department", "Cycle", "Rating", "Progress", ""]}>{low.map((r) => {
+          const p = personOf(r.employeeId);
+          return <tr key={r.id}>
+            <td className={`${hrCell} font-medium`}>{p?.name ?? r.employeeId}<p className="text-xs text-muted-foreground">{p?.title}</p></td>
+            <td className={hrCell}>{p?.department ?? "—"}</td>
+            <td className={hrCell}>{r.cycle}</td>
+            <td className={`${hrCell} text-danger`}>{r.rating ? ratings[r.rating] : "—"}</td>
+            <td className={hrCell}>{r.progress}%</td>
+            <td className={hrCell}><Button size="sm" variant="outline" onClick={() => setOpenId(r.id)}>Open</Button></td>
+          </tr>;
+        })}</HrTable>
+      </HrPanel>;
+    })()}
+
     <HrPanel title="Performance & reviews" description="Goals, progress and review outcomes. Ratings stay private until the review is completed." actions={hr ? <Button size="sm" onClick={() => setStarting(true)}>Start review cycle</Button> : undefined}>
       {scoped.length ? <HrTable headings={["Employee", "Cycle", "Goal", "Progress", "Status", "Rating", ""]}>{scoped.map((item) => { const person = personOf(item.employeeId); const showRating = item.status === "completed" || hr || (role === "reporting_manager" && item.employeeId !== actorId); return <tr key={item.id}>
         <td className={hrCell}><p className="font-medium">{person?.name ?? item.employeeId}</p><p className="text-xs text-muted-foreground">{person?.title}</p></td>

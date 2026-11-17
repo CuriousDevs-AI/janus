@@ -99,6 +99,9 @@ const viewAccess: Record<string, HrDemoRole[]> = {
   team: ["owner", "hr_manager", "reporting_manager"], approvals: ["owner", "hr_manager", "reporting_manager"],
   promotions: ["owner", "hr_manager", "reporting_manager"],
   performance: ["owner", "hr_manager", "reporting_manager", "employee"],
+  training: ["owner", "hr_manager", "reporting_manager", "employee"],
+  assets: ["owner", "hr_manager", "reporting_manager", "employee"],
+  loans: ["owner", "hr_manager", "payroll_admin", "employee"],
   reports: ["owner", "hr_manager"],
   organization: hrOnly, onboarding: hrOnly, offboarding: hrOnly, recruitment: hrOnly, signatures: hrOnly, settings: hrOnly,
 };

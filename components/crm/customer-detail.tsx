@@ -22,6 +22,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { MetricCard } from "@/components/shared/metric-card";
 import { ActivityForm } from "./activity-form";
 import { TagsManager } from "./tags-manager";
+import { RecordDocuments } from "@/components/shared/record-documents";
+import { todayIso } from "@/lib/today";
 
 const ACTIVITY_ICON: Record<string, typeof Phone> = {
   call: Phone, meeting: Video, email: Mail, task: ClipboardList, note: StickyNote,
@@ -124,6 +126,7 @@ export function CustomerDetailPanel({
           <TabsTrigger value="leads">Leads ({leadsList.length})</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="activities">Activities</TabsTrigger>
+          <TabsTrigger value="docs">Docs</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
         </TabsList>
 
@@ -214,6 +217,12 @@ export function CustomerDetailPanel({
                 );
               })}
               {detail.data?.activities?.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No activities</p>}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="docs" className="px-6 pb-6 mt-0">
+            <div className="mt-3">
+              <RecordDocuments recordKind="customer" recordId={contactId} addedBy={c.name || "CRM"} today={todayIso()} />
             </div>
           </TabsContent>
 

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   CalendarCheck, Phone, Video, Mail, ClipboardList,
   CheckCircle2, RefreshCw, Plus, ChevronLeft, ChevronRight,
+  BarChart3, TrendingUp, Clock, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
@@ -13,19 +14,24 @@ import type { Activity, ActivityKind } from "@/lib/api/types";
 import { ActivityForm } from "@/components/crm/activity-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { MetricCard } from "@/components/shared/metric-card";
 import { formatDateTime, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Bar, BarChart, CartesianGrid, Cell,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
 
-const KIND_META: Record<ActivityKind, { label: string; icon: typeof Phone; color: string }> = {
-  call: { label: "Call", icon: Phone, color: "text-info" },
-  meeting: { label: "Meeting", icon: Video, color: "text-accent" },
-  email: { label: "Email", icon: Mail, color: "text-warning" },
-  task: { label: "Task", icon: ClipboardList, color: "text-success" },
+const KIND_META: Record<ActivityKind, { label: string; icon: typeof Phone; color: string; chartColor: string }> = {
+  call: { label: "Call", icon: Phone, color: "text-info", chartColor: "var(--info)" },
+  meeting: { label: "Meeting", icon: Video, color: "text-accent", chartColor: "var(--accent)" },
+  email: { label: "Email", icon: Mail, color: "text-warning", chartColor: "var(--warning)" },
+  task: { label: "Task", icon: ClipboardList, color: "text-success", chartColor: "var(--success)" },
 };
 
-type ViewTab = "today" | "upcoming" | "overdue" | "calendar";
+type ViewTab = "today" | "upcoming" | "overdue" | "calendar" | "analysis";
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -56,6 +62,13 @@ function getCalendarDays(year: number, month: number) {
   return days;
 }
 
+function weekKey(dateStr: string) {
+  const d = new Date(dateStr);
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+  return `W${week}`;
+}
+
 export default function ActivitiesPage() {
   useSession();
   const [tab, setTab] = useState<ViewTab>("today");
@@ -71,9 +84,11 @@ export default function ActivitiesPage() {
   });
 
   const activities = useApi<Activity[]>(
-    `/activities?limit=200${kindFilter !== "all" ? `&kind=${kindFilter}` : ""}`,
+    `/activities?limit=200${kindFilter !== "all" && tab !== "analysis" ? `&kind=${kindFilter}` : ""}`,
   );
+  const allActivities = useApi<Activity[]>("/activities?limit=200");
   const rows = useMemo(() => activities.data ?? [], [activities.data]);
+  const allRows = useMemo(() => allActivities.data ?? [], [allActivities.data]);
 
   const filtered = useMemo(() => {
     if (tab === "today") return rows.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) === today);
@@ -92,12 +107,75 @@ export default function ActivitiesPage() {
     return map;
   }, [rows]);
 
+  const analytics = useMemo(() => {
+    const data = allRows;
+    if (!data.length) return null;
+
+    const total = data.length;
+    const completed = data.filter((a) => a.completedAt).length;
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    const overdue = data.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) < today);
+    const overdueRate = total > 0 ? Math.round((overdue.length / total) * 100) : 0;
+    const avgDaysOverdue = overdue.length > 0
+      ? Math.round(overdue.reduce((sum, a) => {
+          const due = new Date(a.dueAt!);
+          const now = new Date(today);
+          return sum + Math.max(0, (now.getTime() - due.getTime()) / 86400000);
+        }, 0) / overdue.length)
+      : 0;
+
+    const byKind = (Object.keys(KIND_META) as ActivityKind[]).map((kind) => {
+      const kindItems = data.filter((a) => a.kind === kind);
+      const kindDone = kindItems.filter((a) => a.completedAt).length;
+      return {
+        kind,
+        label: KIND_META[kind].label,
+        total: kindItems.length,
+        completed: kindDone,
+        rate: kindItems.length > 0 ? Math.round((kindDone / kindItems.length) * 100) : 0,
+        color: KIND_META[kind].chartColor,
+      };
+    });
+
+    const weekMap: Record<string, number> = {};
+    for (const a of data) {
+      const w = weekKey((a.dueAt ?? a.createdAt).slice(0, 10));
+      weekMap[w] = (weekMap[w] ?? 0) + 1;
+    }
+    const weeklyVolume = Object.entries(weekMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-8)
+      .map(([week, count]) => ({ week, count }));
+
+    const ownerMap: Record<string, { name: string; total: number; completed: number }> = {};
+    for (const a of data) {
+      const name = a.ownerName || "Unassigned";
+      if (!ownerMap[name]) ownerMap[name] = { name, total: 0, completed: 0 };
+      ownerMap[name].total++;
+      if (a.completedAt) ownerMap[name].completed++;
+    }
+    const topPerformers = Object.values(ownerMap)
+      .sort((a, b) => b.completed - a.completed)
+      .slice(0, 5);
+
+    const completedWithTimes = data.filter((a) => a.completedAt && a.createdAt);
+    const avgResponseHrs = completedWithTimes.length > 0
+      ? Math.round(completedWithTimes.reduce((sum, a) => {
+          return sum + (new Date(a.completedAt!).getTime() - new Date(a.createdAt).getTime()) / 3600000;
+        }, 0) / completedWithTimes.length)
+      : 0;
+
+    return { total, completed, completionRate, overdueRate, avgDaysOverdue, byKind, weeklyVolume, topPerformers, avgResponseHrs };
+  }, [allRows, today]);
+
   async function complete(id: string) {
     setCompleting(id);
     try {
       await api(`/activities/${id}/complete`, { method: "POST", body: JSON.stringify({ outcome: "completed" }) });
       toast.success("Activity completed");
       activities.reload();
+      allActivities.reload();
     } catch (e) {
       toast.error(message(e));
     } finally {
@@ -110,6 +188,7 @@ export default function ActivitiesPage() {
     { key: "upcoming", label: "Upcoming", count: rows.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) > today && a.dueAt.slice(0, 10) <= weekEnd).length },
     { key: "overdue", label: "Overdue", count: rows.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) < today).length },
     { key: "calendar", label: "Calendar", count: 0 },
+    { key: "analysis", label: "Analysis", count: 0 },
   ];
 
   function prevMonth() {
@@ -126,7 +205,7 @@ export default function ActivitiesPage() {
         description="Calls, meetings, emails and tasks across all leads"
         actions={
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => activities.reload()}>
+            <Button size="sm" variant="secondary" onClick={() => { activities.reload(); allActivities.reload(); }}>
               <RefreshCw className="size-3.5" />
             </Button>
             <Button size="sm" onClick={() => setLogOpen(true)}>
@@ -152,16 +231,18 @@ export default function ActivitiesPage() {
             </button>
           ))}
         </div>
-        <Select value={kindFilter} onValueChange={setKindFilter}>
-          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="call">Calls</SelectItem>
-            <SelectItem value="meeting">Meetings</SelectItem>
-            <SelectItem value="email">Emails</SelectItem>
-            <SelectItem value="task">Tasks</SelectItem>
-          </SelectContent>
-        </Select>
+        {tab !== "analysis" && (
+          <Select value={kindFilter} onValueChange={setKindFilter}>
+            <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="call">Calls</SelectItem>
+              <SelectItem value="meeting">Meetings</SelectItem>
+              <SelectItem value="email">Emails</SelectItem>
+              <SelectItem value="task">Tasks</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {activities.error && (
@@ -170,7 +251,141 @@ export default function ActivitiesPage() {
         </p>
       )}
 
-      {tab !== "calendar" ? (
+      {tab === "analysis" ? (
+        <div className="flex-1 overflow-auto px-6 py-4">
+          {!analytics ? (
+            <EmptyState icon={BarChart3} title="No activity data yet" description="Log activities to see follow-up effectiveness analysis" />
+          ) : (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <MetricCard label="Total activities" value={String(analytics.total)} />
+                <MetricCard label="Completion rate" value={`${analytics.completionRate}%`} />
+                <MetricCard label="Avg response time" value={analytics.avgResponseHrs < 24 ? `${analytics.avgResponseHrs}h` : `${Math.round(analytics.avgResponseHrs / 24)}d`} />
+                <MetricCard label="Overdue rate" value={`${analytics.overdueRate}%`} />
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-2">
+                <section className="rounded-lg border border-border bg-surface p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <BarChart3 className="size-4 text-accent" />
+                    <h3 className="text-[13px] font-semibold">Completion rate by type</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {analytics.byKind.map((k) => {
+                      const Icon = KIND_META[k.kind as ActivityKind].icon;
+                      return (
+                        <div key={k.kind} className="flex items-center gap-3">
+                          <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2", KIND_META[k.kind as ActivityKind].color)}>
+                            <Icon className="size-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-medium">{k.label}</span>
+                              <span className="text-muted-foreground">{k.completed}/{k.total} ({k.rate}%)</span>
+                            </div>
+                            <div className="mt-1 h-2 rounded-full bg-surface-3">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${k.rate}%`, backgroundColor: k.color }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="rounded-lg border border-border bg-surface p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <TrendingUp className="size-4 text-accent" />
+                    <h3 className="text-[13px] font-semibold">Weekly activity volume</h3>
+                  </div>
+                  {analytics.weeklyVolume.length > 0 ? (
+                    <div className="h-52">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={analytics.weeklyVolume} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                          <XAxis dataKey="week" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                          <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                          <Tooltip contentStyle={{ borderRadius: 8, borderColor: "var(--border)", background: "var(--surface)", fontSize: 12 }} />
+                          <Bar dataKey="count" name="Activities" fill="var(--accent)" radius={[4, 4, 0, 0]} barSize={24} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="flex h-52 items-center justify-center text-xs text-muted-foreground">Not enough data</div>
+                  )}
+                </section>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-2">
+                <section className="rounded-lg border border-border bg-surface p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Users className="size-4 text-accent" />
+                    <h3 className="text-[13px] font-semibold">Top performers</h3>
+                  </div>
+                  {analytics.topPerformers.length > 0 ? (
+                    <div className="space-y-2">
+                      {analytics.topPerformers.map((p, i) => (
+                        <div key={p.name} className="flex items-center gap-3 rounded-lg bg-surface-2/50 p-2.5">
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium">{p.name}</p>
+                            <p className="text-[10px] text-muted-foreground">{p.completed} completed of {p.total}</p>
+                          </div>
+                          <Badge variant={p.total > 0 && p.completed / p.total >= 0.8 ? "success" : "neutral"} className="text-[10px]">
+                            {p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0}%
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No performer data</div>
+                  )}
+                </section>
+
+                <section className="rounded-lg border border-border bg-surface p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock className="size-4 text-warning" />
+                    <h3 className="text-[13px] font-semibold">Follow-up health</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-surface-2/50 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium">Avg time to complete</span>
+                        <span className="text-sm font-semibold">
+                          {analytics.avgResponseHrs < 24 ? `${analytics.avgResponseHrs} hours` : `${Math.round(analytics.avgResponseHrs / 24)} days`}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">From creation to completion</p>
+                    </div>
+                    <div className="rounded-lg bg-surface-2/50 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium">Overdue items</span>
+                        <span className={cn("text-sm font-semibold", analytics.overdueRate > 20 ? "text-danger" : "text-foreground")}>
+                          {analytics.overdueRate}%
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {analytics.avgDaysOverdue > 0 ? `Avg ${analytics.avgDaysOverdue} days overdue` : "No overdue items"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-surface-2/50 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium">Completion rate</span>
+                        <span className={cn("text-sm font-semibold", analytics.completionRate >= 70 ? "text-success" : analytics.completionRate >= 40 ? "text-warning" : "text-danger")}>
+                          {analytics.completionRate}%
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{analytics.completed} of {analytics.total} activities completed</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : tab !== "calendar" ? (
         <div className="flex-1 overflow-auto px-6 py-4">
           {filtered.length === 0 ? (
             <EmptyState
@@ -273,7 +488,7 @@ export default function ActivitiesPage() {
         open={logOpen}
         onOpenChange={setLogOpen}
         contactId=""
-        onSaved={() => activities.reload()}
+        onSaved={() => { activities.reload(); allActivities.reload(); }}
       />
     </div>
   );

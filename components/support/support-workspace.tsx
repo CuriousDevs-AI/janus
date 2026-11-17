@@ -2,25 +2,44 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
+import { Plus, LifeBuoy } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterChips, StatTile as Kpi, workspaceHref } from "@/components/shared/stat-tile";
+import { SearchInput } from "@/components/shared/search-input";
+import { EmptyState } from "@/components/shared/empty-state";
+import { CustomerAvatar } from "@/components/shared/customer-avatar";
+import { TicketStatusBadge, TicketPriorityBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/stores/app-store";
-import { assignSupportTicket, syncSupportTickets } from "@/lib/ticket-records";
-import { message } from "@/lib/api/client";
+import { assignSupportTicket, createSupportTicket, syncSupportTickets } from "@/lib/ticket-records";
+import { useApi } from "@/lib/api/use-api";
+import { api, message } from "@/lib/api/client";
+import type { Lead } from "@/lib/api/types";
+import { demoMode } from "@/lib/demo-mode";
+import { customersFromLeads } from "@/lib/customers-from-leads";
+import { getUserById, getCompanyById } from "@/lib/mock-data";
 import { useRenewalsStore } from "@/lib/stores/renewals-store";
 import { useFeedbackStore } from "@/lib/stores/feedback-store";
 import { useFinanceStore, dueAmount } from "@/lib/stores/finance-store";
 import { customerHealth } from "@/lib/customer-health";
 import { usePeople } from "@/lib/people-directory";
 import { useCrmLinkOptions } from "@/lib/record-links";
-import type { Ticket } from "@/lib/types";
+import { formatRelativeTime, cn } from "@/lib/utils";
+import type { Ticket, TicketPriority, TicketStatus } from "@/lib/types";
 import { todayIso } from "@/lib/today";
 
 const selectClass = "h-8 rounded-md border border-input bg-surface px-2 text-xs";
@@ -42,7 +61,7 @@ const comingSoon: Record<string, string> = {
 export function SupportWorkspace() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "overview";
-  const titles: Record<string, string> = { overview: "Support overview", queues: "Queues & assignments", sla: "SLA management", renewals: "Renewals & contracts", feedback: "Customer feedback", reports: "Support reports" };
+  const titles: Record<string, string> = { overview: "Support overview", tickets: "Tickets", queues: "Queues & assignments", sla: "SLA management", renewals: "Renewals & contracts", feedback: "Customer feedback", reports: "Support reports" };
 
   if (view in comingSoon) {
     return (
@@ -55,9 +74,9 @@ export function SupportWorkspace() {
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col">
-      <PageHeader title={titles[view] ?? "Support overview"} description="Tickets are worked in CRM & Sales. This workspace shows who holds them, and whether they are within their service time." />
+      <PageHeader title={titles[view] ?? "Support overview"} description="Customer support tickets, SLA tracking, queues and customer success — all in one workspace." />
       <div className="flex flex-col gap-4 px-6 pb-10">
-        {view === "queues" ? <QueuesView /> : view === "sla" ? <SlaView /> : view === "renewals" ? <RenewalsView /> : view === "feedback" ? <FeedbackView /> : view === "reports" ? <SupportReportsView /> : <OverviewView />}
+        {view === "tickets" ? <TicketsView /> : view === "queues" ? <QueuesView /> : view === "sla" ? <SlaView /> : view === "renewals" ? <RenewalsView /> : view === "feedback" ? <FeedbackView /> : view === "reports" ? <SupportReportsView /> : <OverviewView />}
       </div>
     </div>
   );
@@ -96,7 +115,7 @@ function OverviewView() {
           {open.filter((t) => slaState(t) === "breached" || !t.assigneeId).length === 0 ? <p className="text-muted-foreground">Nothing is breached or unassigned.</p> : null}
         </CardContent>
       </Card>
-      <p className="text-xs text-muted-foreground">Open a ticket in <Link href="/tickets?workspace=customer-support" className="underline">Tickets</Link> to reply, escalate or resolve it.</p>
+      <p className="text-xs text-muted-foreground">Open a ticket in <Link href="/workspace/customer-support?view=tickets" className="underline">Tickets</Link> to reply, escalate or resolve it.</p>
       <HealthCard />
       <AssignmentsTrail />
     </>
@@ -370,6 +389,241 @@ function QueuesView() {
           </CardContent>
         </Card>
       ))}
+    </>
+  );
+}
+
+const TICKET_STATUS_FILTERS: { key: "all" | TicketStatus; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "open", label: "Open" },
+  { key: "ai_handling", label: "AI Handling" },
+  { key: "waiting_customer", label: "Waiting" },
+  { key: "escalated", label: "Escalated" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "resolved", label: "Resolved" },
+  { key: "closed", label: "Closed" },
+];
+
+const ticketSchema = z.object({
+  customerId: z.string().min(1, "Select a customer"),
+  subject: z.string().min(3, "Enter a subject"),
+  description: z.string().min(4, "Describe the issue"),
+  priority: z.string(),
+});
+type TicketFormValues = z.infer<typeof ticketSchema>;
+
+function TicketsView() {
+  const allTickets = useAppStore((s) => s.tickets);
+  const tickets = allTickets;
+  const storeCustomers = useAppStore((s) => s.customers);
+  const leadsApi = useApi<Lead[]>(demoMode ? null : "/leads?limit=100&after_id=0");
+  const membersApi = useApi<{ id: number; name: string }[]>(demoMode ? null : "/team/people");
+  const customers = React.useMemo(() => demoMode ? storeCustomers : customersFromLeads(leadsApi.data ?? []), [storeCustomers, leadsApi.data]);
+  const membersByServerId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    if (!demoMode) for (const m of membersApi.data ?? []) map.set(String(m.id), m.name);
+    return map;
+  }, [membersApi.data]);
+  const router = useRouter();
+  React.useEffect(() => {
+    syncSupportTickets().catch((error: unknown) => toast.error(message(error)));
+  }, []);
+
+  const [query, setQuery] = React.useState("");
+  const [status, setStatus] = React.useState<"all" | TicketStatus>("all");
+  const [createOpen, setCreateOpen] = React.useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    control,
+    formState: { errors, isSubmitting },
+  } = useForm<TicketFormValues>({ resolver: zodResolver(ticketSchema), defaultValues: { priority: "medium", customerId: customers[0]?.id } });
+
+  const customerId = useWatch({ control, name: "customerId" });
+  const priority = useWatch({ control, name: "priority" });
+
+  const rows = tickets
+    .map((t) => ({ ticket: t, customer: customers.find((c) => c.id === t.customerId) }))
+    .filter((r) => r.customer)
+    .filter((r) => status === "all" || r.ticket.status === status)
+    .filter((r) => {
+      if (!query) return true;
+      const q = query.toLowerCase();
+      return r.ticket.subject.toLowerCase().includes(q) || r.customer!.name.toLowerCase().includes(q) || r.ticket.number.includes(q);
+    })
+    .sort((a, b) => (a.ticket.updatedAt < b.ticket.updatedAt ? 1 : -1));
+
+  const openCount = tickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
+  const breachedCount = tickets.filter((t) => !closed(t) && slaState(t) === "breached").length;
+  const escalatedCount = tickets.filter((t) => t.status === "escalated").length;
+  const resolvedCount = tickets.filter((t) => closed(t)).length;
+
+  async function onCreate(values: TicketFormValues) {
+    const { id, error } = await createSupportTicket({
+      customerId: values.customerId,
+      subject: values.subject,
+      description: values.description,
+      priority: values.priority as TicketPriority,
+    });
+    if (error) toast.error("Ticket not saved on the server", { description: error });
+    else toast.success("Ticket created", { description: values.subject });
+    setCreateOpen(false);
+    reset();
+    router.push(`/tickets/${id}?workspace=customer-support`);
+  }
+
+  return (
+    <>
+      <div className="grid gap-2 sm:grid-cols-4">
+        {([
+          ["Open", String(openCount), "bg-accent"],
+          ["SLA Breached", String(breachedCount), breachedCount > 0 ? "bg-red-500" : "bg-emerald-500"],
+          ["Escalated", String(escalatedCount), escalatedCount > 0 ? "bg-amber-500" : "bg-emerald-500"],
+          ["Resolved", String(resolvedCount), "bg-indigo-500"],
+        ] as const).map(([title, value, dot]) => (
+          <div key={title} className="rounded-xl border border-border bg-surface p-3">
+            <div className="flex items-center gap-1.5">
+              <span className={`size-1.5 rounded-full ${dot}`} />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+            </div>
+            <span className="mt-1 block text-lg font-bold tabular-nums">{value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchInput value={query} onChange={setQuery} placeholder="Search tickets, customers..." className="w-64" />
+        <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TICKET_STATUS_FILTERS.map((f) => (
+              <SelectItem key={f.key} value={f.key}>
+                {f.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex-1" />
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="size-3.5" />
+          New Ticket
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={LifeBuoy}
+          title={tickets.length === 0 ? "No tickets" : "No tickets match"}
+          description={tickets.length === 0 ? "Support issues will appear here as customers reach out." : "Try a different search term or status filter."}
+        />
+      ) : (
+        <Card>
+          <CardContent className="overflow-x-auto p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Ticket</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Issue</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Assignee</TableHead>
+                  <TableHead>SLA</TableHead>
+                  <TableHead>Last Update</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map(({ ticket, customer }) => {
+                  const assigneeName = demoMode ? getUserById(ticket.assigneeId)?.name : membersByServerId.get(ticket.assigneeId ?? "");
+                  const company = getCompanyById(customer!.companyId);
+                  return (
+                    <TableRow key={ticket.id} className="cursor-pointer" onClick={() => router.push(`/tickets/${ticket.id}?workspace=customer-support`)}>
+                      <TableCell className="font-mono text-foreground">{ticket.number}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <CustomerAvatar name={customer!.name} color={customer!.avatarColor} size="sm" />
+                          <div>
+                            <p className="font-medium text-foreground leading-tight">{customer!.name}</p>
+                            <p className="text-[11px] leading-tight text-muted-foreground">{company?.name}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[240px] truncate text-muted-foreground">{ticket.subject}</TableCell>
+                      <TableCell><TicketPriorityBadge priority={ticket.priority} /></TableCell>
+                      <TableCell><TicketStatusBadge status={ticket.status} /></TableCell>
+                      <TableCell className="text-muted-foreground">{assigneeName ?? "Unassigned"}</TableCell>
+                      <TableCell>
+                        {ticket.slaMinutesRemaining === null ? (
+                          <span className="text-muted-foreground">&mdash;</span>
+                        ) : (
+                          <span className={cn("font-mono", ticket.slaMinutesRemaining < 60 ? "text-danger" : ticket.slaMinutesRemaining < 240 ? "text-warning" : "text-muted-foreground")}>
+                            {ticket.slaMinutesRemaining < 60 ? `${ticket.slaMinutesRemaining}m` : `${Math.round(ticket.slaMinutesRemaining / 60)}h`}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{formatRelativeTime(ticket.updatedAt)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New ticket</DialogTitle>
+            <DialogDescription>Open a support ticket for a customer.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(onCreate)} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Customer</Label>
+              <Select value={customerId} onValueChange={(v) => setValue("customerId", v)}>
+                <SelectTrigger><SelectValue placeholder="Select a customer" /></SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} — {getCompanyById(c.companyId)?.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ws-ticket-subject">Subject</Label>
+              <Input id="ws-ticket-subject" placeholder="What's the issue?" {...register("subject")} />
+              {errors.subject && <p className="text-[11px] text-danger">{errors.subject.message}</p>}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ws-ticket-description">Description</Label>
+              <Textarea id="ws-ticket-description" placeholder="Describe the issue in detail" {...register("description")} />
+              {errors.description && <p className="text-[11px] text-danger">{errors.description.message}</p>}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Priority</Label>
+              <Select value={priority} onValueChange={(v) => setValue("priority", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["low", "medium", "high", "urgent"].map((p) => (
+                    <SelectItem key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={isSubmitting}>Create ticket</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

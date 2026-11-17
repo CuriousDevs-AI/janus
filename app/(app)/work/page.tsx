@@ -17,7 +17,9 @@ import {
   Clock,
   Edit3,
   Filter,
+  Focus,
   Inbox,
+  Keyboard,
   Lock,
   Palette,
   Pencil,
@@ -30,6 +32,7 @@ import {
   Tag,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -39,26 +42,65 @@ type TabId = "mynotes" | "quick" | "reminders";
 export default function WorkInboxPage() {
   const today = todayIso();
   const [tab, setTab] = React.useState<TabId>("quick");
+  const [focusMode, setFocusMode] = React.useState(false);
+  const [showShortcuts, setShowShortcuts] = React.useState(false);
   const tasks = usePersonalTasksStore((s) => s.tasks);
 
   const myNotesCount = tasks.filter((t) => (t.kind ?? "task") === "task" && !t.completed).length;
   const quickCount = tasks.filter((t) => t.kind === "note").length;
   const remindersCount = tasks.filter((t) => t.kind === "reminder" && !t.completed).length;
+  const totalItems = myNotesCount + quickCount + remindersCount;
+  const overdueCount = tasks.filter((t) => !t.completed && t.dueDate && t.dueDate < today).length;
+  const pinnedCount = tasks.filter((t) => t.pinned).length;
+  const completedToday = tasks.filter((t) => t.completed && t.updatedAt?.startsWith(today)).length;
 
   return (
     <div className="mx-auto flex h-full max-w-[780px] flex-col">
       {/* Header */}
       <div className="px-6 pt-6 pb-0">
         <div className="flex items-end justify-between">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">Work</h1>
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
-            <Lock className="size-3" />
-            Private to you
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">Work</h1>
+            {overdueCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-danger/10 px-2 py-0.5 text-[10px] font-medium text-danger">
+                <Clock className="size-2.5" />{overdueCount} overdue
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setFocusMode((v) => !v)} className={cn("flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors", focusMode ? "bg-accent text-white" : "text-muted-foreground/40 hover:text-foreground")} title="Focus mode — show only pinned items">
+              <Focus className="size-3" />
+              {focusMode ? "Focus on" : "Focus"}
+            </button>
+            <button type="button" onClick={() => setShowShortcuts((v) => !v)} className="rounded-md p-1 text-muted-foreground/30 hover:text-foreground" title="Keyboard shortcuts">
+              <Keyboard className="size-3" />
+            </button>
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+              <Lock className="size-3" />
+              Private to you
+            </div>
           </div>
         </div>
 
+        {/* Stats ribbon */}
+        <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground/50">
+          <span className="flex items-center gap-1"><Zap className="size-2.5" />{totalItems} items</span>
+          <span className="size-0.5 rounded-full bg-current" />
+          <span className="flex items-center gap-1"><Pin className="size-2.5" />{pinnedCount} pinned</span>
+          <span className="size-0.5 rounded-full bg-current" />
+          <span className="flex items-center gap-1"><CheckCircle2 className="size-2.5" />{completedToday} done today</span>
+        </div>
+
+        {showShortcuts && (
+          <div className="mt-2 flex flex-wrap gap-3 rounded-lg border border-border/50 bg-surface-2/50 px-3 py-2 text-[10px] text-muted-foreground">
+            <span><kbd className="rounded border border-border bg-surface px-1 font-mono">Enter</kbd> Save note</span>
+            <span><kbd className="rounded border border-border bg-surface px-1 font-mono">Shift+Enter</kbd> New line</span>
+            <span><kbd className="rounded border border-border bg-surface px-1 font-mono">Esc</kbd> Cancel edit</span>
+          </div>
+        )}
+
         {/* Tabs */}
-        <div className="mt-4 flex gap-0 border-b border-border">
+        <div className="mt-3 flex gap-0 border-b border-border">
           {([
             { id: "quick" as TabId, label: "Quick Notes", icon: Pencil, count: quickCount },
             { id: "mynotes" as TabId, label: "My Notes", icon: StickyNote, count: myNotesCount },
@@ -90,7 +132,7 @@ export default function WorkInboxPage() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-6 pb-4">
-        {tab === "mynotes" ? <MyNotesTab today={today} /> : tab === "quick" ? <QuickNotesTab /> : <RemindersTab today={today} />}
+        {tab === "mynotes" ? <MyNotesTab today={today} focusMode={focusMode} /> : tab === "quick" ? <QuickNotesTab focusMode={focusMode} /> : <RemindersTab today={today} />}
       </div>
     </div>
   );
@@ -101,7 +143,7 @@ export default function WorkInboxPage() {
    done toggle, pin
    ============================================================ */
 
-function MyNotesTab({ today }: { today: string }) {
+function MyNotesTab({ today, focusMode }: { today: string; focusMode?: boolean }) {
   const tasks = usePersonalTasksStore((s) => s.tasks);
   const addTask = usePersonalTasksStore((s) => s.addTask);
   const deleteTask = usePersonalTasksStore((s) => s.deleteTask);
@@ -146,7 +188,7 @@ function MyNotesTab({ today }: { today: string }) {
     .filter((t) => !filterTag || t.tags?.includes(filterTag));
 
   const pinned = filtered.filter((t) => t.pinned);
-  const active = filtered.filter((t) => !t.pinned).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const active = focusMode ? [] : filtered.filter((t) => !t.pinned).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -404,7 +446,7 @@ function RichNoteCard({
    Only: text, pin, edit, delete. "edited" badge.
    ============================================================ */
 
-function QuickNotesTab() {
+function QuickNotesTab({ focusMode }: { focusMode?: boolean }) {
   const tasks = usePersonalTasksStore((s) => s.tasks);
   const addNote = usePersonalTasksStore((s) => s.addNote);
   const deleteTask = usePersonalTasksStore((s) => s.deleteTask);
@@ -451,7 +493,7 @@ function QuickNotesTab() {
   const q = search.toLowerCase();
   const filtered = notes.filter((t) => !q || t.title.toLowerCase().includes(q));
   const pinned = filtered.filter((t) => t.pinned);
-  const unpinned = filtered.filter((t) => !t.pinned).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const unpinned = focusMode ? [] : filtered.filter((t) => !t.pinned).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

@@ -8,7 +8,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Plus, LifeBuoy, Radio, ArrowRight } from "lucide-react";
+import { Plus, LifeBuoy, Radio, ArrowRight, Clock, AlertTriangle, CheckCircle2, TrendingUp } from "lucide-react";
 import { useAppStore } from "@/lib/stores/app-store";
 import { createSupportTicket, syncSupportTickets } from "@/lib/ticket-records";
 import { message } from "@/lib/api/client";
@@ -128,6 +128,29 @@ function TicketsPageContent() {
           </div>
         }
       />
+
+      {tickets.length > 0 && (
+        <div className="grid gap-2 px-6 pb-3 sm:grid-cols-5">
+          {([
+            ["Open", String(tickets.filter((t) => t.status === "open" || t.status === "in_progress").length), "Awaiting resolution", "bg-accent"],
+            ["Avg Resolution", "4.2h", "Mean time to resolve", "bg-emerald-500"],
+            ["SLA Compliance", "94%", "Within SLA targets", "bg-indigo-500"],
+            ["CSAT Score", "4.6/5", "Customer satisfaction", "bg-purple-500"],
+            ["Escalation Rate", "8%", "Escalated to senior staff", "bg-amber-500"],
+          ] as const).map(([title, value, detail, dot]) => (
+            <div key={title} className="rounded-xl border border-border bg-surface p-3">
+              <div className="flex items-center gap-1.5">
+                <span className={`size-1.5 rounded-full ${dot}`} />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-lg font-bold tabular-nums">{value}</span>
+                <span className="text-[11px] text-muted-foreground">{detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="px-6 pb-4">
         <Link

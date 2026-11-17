@@ -42,7 +42,7 @@ export const leadStageMeta: Record<LeadStage, { label: string; tone: BadgeTone }
   lost: { label: "Lost", tone: "danger" },
 };
 
-export const dealStageMeta: Record<DealStage, { label: string; tone: BadgeTone }> = {
+const _dealStageMeta: Record<string, { label: string; tone: BadgeTone }> = {
   new: { label: "New", tone: "neutral" },
   qualified: { label: "Qualified", tone: "accent" },
   demo: { label: "Demo", tone: "accent" },
@@ -52,6 +52,12 @@ export const dealStageMeta: Record<DealStage, { label: string; tone: BadgeTone }
   won: { label: "Won", tone: "success" },
   lost: { label: "Lost", tone: "danger" },
 };
+
+export const dealStageMeta = new Proxy(_dealStageMeta, {
+  get(target, prop: string) {
+    return target[prop] ?? { label: prop.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), tone: "neutral" as BadgeTone };
+  },
+}) as Record<DealStage, { label: string; tone: BadgeTone }>;
 
 export const dealStageOrder: DealStage[] = ["new", "qualified", "demo", "proposal", "negotiation", "approval", "won", "lost"];
 

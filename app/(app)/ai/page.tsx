@@ -78,6 +78,16 @@ function demoCrmAnswer(question: string): BusinessAnswer {
       followups: ["Show escalated tickets", "Which customers are at risk?", "Draft a customer update"],
     };
   }
+  if (normalized.includes("follow") || normalized.includes("draft") || normalized.includes("customer") || normalized.includes("risk")) {
+    const atRisk = openTickets.filter((item) => item.priority === "urgent" || item.priority === "high");
+    return {
+      question,
+      answer: `Based on CRM activity: ${top[0]?.customerName ?? "your top contact"} at ${top[0]?.company ?? "the largest account"} has an open deal worth ${lakh(Number(top[0]?.amount))} — a follow-up is overdue. ${atRisk.length > 0 ? `${atRisk.length} customer(s) have high-priority tickets that may signal churn risk.` : "No urgent customer-risk signals right now."} I can draft a WhatsApp message, email or callback task.`,
+      dataUsed: [`${crm.deals} deals`, `${tickets.length} tickets`, "Chat history"],
+      calculation: { metric: "Follow-up priority and customer risk", period: "Current CRM snapshot", filters: "overdue responses, high-priority tickets, deal age", sources: "Deals, Tickets, Conversations" },
+      followups: [`Draft a message for ${top[0]?.customerName ?? "the contact"}`, "Show at-risk customers", "Create a callback task"],
+    };
+  }
   return {
     question,
     answer: `Janus is using the connected records for ${company.short}: ${crm.leads} leads, ${crm.openDeals} open deals worth ${lakh(crm.pipeline)}, ${crm.buyers} customers, ${tickets.length} support tickets and ${conversations.length} conversations. Ask about leads, pipeline, customer risk or support to see a grounded answer.`,
@@ -193,63 +203,7 @@ function AskYourBusinessPageInner() {
     return <CrmAssistantView />;
   }
 
-  return (
-    <div className="mx-auto flex max-w-[820px] flex-col gap-6 px-6 py-8">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <div className="inline-flex items-center gap-1.5 border border-accent-border bg-accent-muted px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-accent">
-          <Sparkles className="size-3" />
-          {departmentChat ? `${workspace.name} AI Chat` : crmAssistant ? "CRM & Sales AI Assistant" : "Janus Intelligence"}
-          
-        </div>
-        <h1 className="text-[26px] font-semibold tracking-tight text-foreground">
-          {departmentChat ? `Ask ${workspace.name}` : crmAssistant ? "CRM & Sales AI Assistant" : "Understand your business"}
-        </h1>
-        <p className="max-w-lg text-[13px] text-muted-foreground">
-          {departmentChat
-            ? `Ask questions about authorized ${workspace.name} data. The answer will identify which records are available.`
-            : crmAssistant
-              ? "Ask about leads, deals, customers, chats and tickets. Answers are grounded in your CRM records."
-            : "Ask natural-language questions about your business. Answers are grounded in connected records and identify unavailable data."}
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        <Input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="What do you want to know?"
-          className="h-11 flex-1 text-[14px]"
-          aria-label="Ask your business a question"
-        />
-        <Button type="submit" size="lg" disabled={!inputValue.trim()}>
-          <Send className="size-4" />
-          Ask
-        </Button>
-      </form>
-
-      <div className="flex flex-wrap justify-center gap-2">
-        {EXAMPLE_QUESTIONS.map((q) => (
-          <button
-            key={q}
-            type="button"
-            onClick={() => submit(q)}
-            className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:border-accent-border hover:bg-accent-muted hover:text-accent"
-          >
-            {q}
-          </button>
-        ))}
-      </div>
-
-      {turns.length > 0 && <Separator />}
-
-      <div className="flex flex-col gap-6 pb-4">
-        {turns.map((t) => (
-          <TurnCard key={t.id} question={t.question} status={t.status} result={t.result} onFollowup={submit} />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-    </div>
-  );
+  return <WorkspaceAssistantView workspaceId={workspaceId} workspaceName={workspace.name} />;
 }
 
 type ChatMessage = { id: string; role: "user" | "assistant"; text: string; day: string; time: string };
@@ -332,6 +286,295 @@ const initialCrmChatThreads: ChatThread[] = [
   },
 ];
 
+type WorkspaceConfig = { title: string; subtitle: string; scope: string; suggestions: string[]; stats: Array<{ label: string; value: string; detail: string; tone: "success" | "neutral" | "warning" }>; threads: Array<{ title: string; question: string; answer: string; date: string }>; answers: Record<string, string> };
+
+const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
+  "hr-people": {
+    title: "HR & People AI",
+    subtitle: "Ask about employees, leave, attendance, payroll, policies and HR compliance.",
+    scope: "HR scope",
+    suggestions: ["Who is on leave today?", "Show pending leave requests", "What is the headcount trend?", "Any compliance deadlines?"],
+    stats: [{ label: "Employees", value: "24", detail: "Active headcount", tone: "success" }, { label: "Pending requests", value: "6", detail: "Leave and reimbursements", tone: "warning" }, { label: "Open positions", value: "3", detail: "Recruitment pipeline", tone: "neutral" }],
+    threads: [
+      { title: "Leave requests today", question: "Who is on leave today?", answer: "3 employees are on leave today: Priya Sharma (casual leave, back tomorrow), Amit Verma (sick leave since Monday, expected back Wednesday), and Neha Gupta (planned leave, returning next Monday). No critical coverage gaps — Priya's deliverables are covered by Ravi.", date: "Today" },
+      { title: "Headcount review", question: "What is the headcount trend?", answer: "Current headcount is 24 active employees across 5 departments. Engineering has the most at 9. You hired 3 people in the last quarter and had 1 resignation (Deepak from Sales, last working day was 2 weeks ago). Attrition rate is 4.2% — below industry average of 8%.", date: "Yesterday" },
+    ],
+    answers: {
+      leave: "3 employees are on leave today. Priya Sharma (casual leave, returns tomorrow), Amit Verma (sick leave since Monday), and Neha Gupta (planned leave until next Monday). The pending leave queue has 6 requests — 2 are from this week, 4 are for next month. I recommend approving the 2 urgent ones first.",
+      pending: "There are 6 pending requests: 4 leave applications (2 urgent for this week), 1 reimbursement claim from Ravi for ₹4,200 (client travel), and 1 work-from-home request. The oldest pending request is 3 days old — Meera's leave for a family event next Friday.",
+      headcount: "Current headcount is 24 across 5 departments. Engineering: 9, Sales: 5, Operations: 4, Finance: 3, HR: 3. Net change this quarter: +2 (3 hired, 1 resigned). Three positions are open: Senior Developer, Sales Executive, and Operations Associate.",
+      compliance: "2 compliance items need attention: (1) PF returns for October are due in 5 days — payroll data is ready but the filing hasn't started. (2) Annual POSH training is overdue for 6 employees who joined after July. I recommend starting the PF filing today.",
+      attendance: "Today's attendance: 21 of 24 employees present (3 on leave). Average attendance this month is 91%. 2 employees have had irregular check-in times this week — worth a check-in with their managers.",
+      default: "Based on HR records: 24 active employees, 6 pending requests (leave and reimbursements), 3 open positions in recruitment. Attendance this month is at 91%. Ask about specific topics like leave, attendance, compliance deadlines, or recruitment for detailed answers.",
+    },
+  },
+  "finance-accounting": {
+    title: "Finance & Accounting AI",
+    subtitle: "Ask about invoices, payments, expenses, cash flow and GST compliance.",
+    scope: "Finance scope",
+    suggestions: ["What invoices are overdue?", "Show this month's cash flow", "Any GST filing deadlines?", "What expenses need approval?"],
+    stats: [{ label: "Receivables", value: "₹9.6L", detail: "₹3.1L overdue", tone: "warning" }, { label: "Cash in bank", value: "₹18.4L", detail: "Current balance", tone: "success" }, { label: "Pending bills", value: "12", detail: "Awaiting payment", tone: "neutral" }],
+    threads: [
+      { title: "Overdue invoices", question: "What invoices are overdue?", answer: "4 invoices are overdue totalling ₹3.1L. The largest is INV-1047 to Sharma Enterprises for ₹1.4L (38 days overdue). Next is INV-1052 to Kapoor Trading for ₹82,000 (22 days). I recommend calling Sharma Enterprises today — they typically pay within a week of a reminder.", date: "Today" },
+      { title: "Monthly cash flow", question: "Show this month's cash flow", answer: "November cash flow: ₹14.2L received, ₹11.8L paid out, net positive ₹2.4L. Largest inflow was ₹4.6L from Patel Industries (INV-1038). Largest outflow was ₹3.2L for vendor payments. Cash in bank: ₹18.4L. Projected month-end balance: ₹16.9L after pending payables.", date: "Yesterday" },
+    ],
+    answers: {
+      overdue: "4 invoices are overdue totalling ₹3.1L: (1) INV-1047 to Sharma Enterprises — ₹1.4L, 38 days overdue, (2) INV-1052 to Kapoor Trading — ₹82K, 22 days, (3) INV-1055 to Mehta Corp — ₹51K, 15 days, (4) INV-1058 to Singh & Sons — ₹37K, 8 days. Sharma Enterprises has the highest amount — a phone call usually resolves it within a week.",
+      cash: "November cash flow: ₹14.2L in, ₹11.8L out, net +₹2.4L. Bank balance is ₹18.4L. Upcoming outflows this week: ₹2.8L (vendor payments) and ₹1.5L (salary advance). Projected week-end balance: ₹14.1L. No liquidity risk this month.",
+      gst: "GST filing deadlines: GSTR-3B for October is due on 20th November (4 days away). Data is 90% ready — 3 purchase invoices from last week still need classification. GSTR-1 was filed on time. I recommend completing the invoice classification today to stay on schedule.",
+      expenses: "5 expense claims pending approval totalling ₹28,400: Ravi's client travel (₹4,200), Priya's conference registration (₹12,000), Amit's office supplies (₹3,800), team lunch reimbursement (₹6,200), and courier charges (₹2,200). The conference registration is time-sensitive — early bird pricing expires Friday.",
+      default: "Finance snapshot: ₹9.6L in receivables (₹3.1L overdue), ₹18.4L cash in bank, 12 pending bills. This month's collections are on track at ₹14.2L received. GST filing deadline approaching in 4 days. Ask about invoices, cash flow, GST, or expenses for details.",
+    },
+  },
+  "projects-delivery": {
+    title: "Projects & Delivery AI",
+    subtitle: "Ask about project status, milestones, timesheets and delivery schedules.",
+    scope: "Projects scope",
+    suggestions: ["Which projects are behind schedule?", "Show this week's milestones", "Who has unlogged timesheets?", "Any delivery risks?"],
+    stats: [{ label: "Active projects", value: "9", detail: "2 delayed", tone: "warning" }, { label: "This week", value: "4 milestones", detail: "Due this week", tone: "neutral" }, { label: "Team utilization", value: "78%", detail: "Billable hours", tone: "success" }],
+    threads: [
+      { title: "Delayed projects", question: "Which projects are behind schedule?", answer: "2 of 9 active projects are behind schedule: (1) 'Kapoor CRM Migration' — 8 days behind, blocked on data export from their legacy system. Client escalated yesterday. (2) 'Patel E-commerce Phase 2' — 3 days behind, the payment gateway integration took longer than estimated. I recommend a status call with Kapoor today.", date: "Today" },
+      { title: "Timesheet gaps", question: "Who has unlogged timesheets?", answer: "4 team members have gaps this week: Ravi (Monday and Tuesday blank), Neha (Tuesday blank), Amit (no entries since last Thursday — he may be on the Sharma project without logging), and Deepak (Friday blank from last week). Total unlogged: ~38 hours. This affects billing accuracy for 2 client projects.", date: "Yesterday" },
+    ],
+    answers: {
+      behind: "2 of 9 projects are behind schedule: (1) Kapoor CRM Migration — 8 days behind, blocked on legacy data export. Client escalated. (2) Patel E-commerce Phase 2 — 3 days behind on payment gateway integration. The other 7 projects are on track. Recommend a priority call with Kapoor's team today.",
+      milestones: "4 milestones due this week: (1) Sharma project — UI review sign-off (Wednesday), (2) Mehta project — API integration complete (Thursday), (3) Singh project — user acceptance testing starts (Friday), (4) Internal — sprint demo for Patel Phase 2 (Friday). The Sharma sign-off is the most critical — it gates the next billing milestone.",
+      timesheets: "4 people have unlogged timesheets this week totalling ~38 hours. This affects billing on 2 client projects (Sharma and Kapoor). Ravi and Amit have the largest gaps. I recommend sending timesheet reminders today before the weekly billing run on Friday.",
+      risks: "3 delivery risks: (1) Kapoor migration — client escalation, needs immediate attention. (2) Patel Phase 2 — payment gateway vendor is slow to respond, may need an alternative. (3) Resource crunch next week — 2 people are on leave while 3 projects have milestones due. Consider redistributing Deepak's bandwidth.",
+      default: "Projects overview: 9 active projects, 2 delayed, 4 milestones due this week. Team utilization is at 78% billable hours. Main risks are the Kapoor migration (client escalated) and a resource gap next week. Ask about specific projects, milestones, timesheets, or risks.",
+    },
+  },
+  "customer-support": {
+    title: "Customer Support AI",
+    subtitle: "Ask about tickets, SLAs, customer feedback and support workload.",
+    scope: "Support scope",
+    suggestions: ["What tickets need attention?", "Show SLA breaches", "Which customers are at risk?", "What is the resolution rate?"],
+    stats: [{ label: "Open tickets", value: "18", detail: "4 urgent", tone: "warning" }, { label: "Avg response", value: "2.4h", detail: "Within SLA", tone: "success" }, { label: "CSAT score", value: "4.2/5", detail: "Last 30 days", tone: "success" }],
+    threads: [
+      { title: "Urgent tickets", question: "What tickets need attention?", answer: "4 urgent tickets need attention: TKT-892 (Sharma Enterprises — billing discrepancy, escalated 2 hours ago), TKT-887 (Kapoor Trading — delivery not received, waiting 3 days), TKT-901 (Patel Industries — integration error, production impact), and TKT-895 (Singh & Sons — refund request, SLA breach in 4 hours). Start with TKT-901 — it has production impact.", date: "Today" },
+      { title: "SLA review", question: "What is the resolution rate?", answer: "Resolution rate this month: 84% within SLA (target: 90%). Average first response: 2.4 hours. Average resolution time: 18 hours. 3 SLA breaches this week — all on complex integration tickets. The team is handling 4.5 tickets per person per day. Consider adding a dedicated integration support slot.", date: "Yesterday" },
+    ],
+    answers: {
+      attention: "4 urgent tickets: TKT-892 (billing discrepancy, escalated), TKT-887 (delivery issue, 3 days waiting), TKT-901 (integration error, production impact), TKT-895 (refund, SLA breach in 4 hours). Start with TKT-901 for production impact, then TKT-895 before it breaches SLA.",
+      sla: "3 SLA breaches this week, all on integration-related tickets (average resolution: 36 hours vs 24-hour SLA). Overall SLA compliance: 84% this month (target 90%). First response SLA is healthy at 96%. The pattern suggests integration tickets need a dedicated queue or higher initial priority.",
+      risk: "2 customers at risk based on ticket patterns: (1) Sharma Enterprises — 3 tickets in 2 weeks, latest was escalated, they mentioned considering alternatives. (2) Kapoor Trading — NPS score dropped from 8 to 5 last survey, unresolved delivery complaint. Recommend a proactive call to both this week.",
+      resolution: "This month: 67 tickets received, 52 resolved, 18 open. Resolution rate: 84% within SLA. Average first response: 2.4h. Average resolution: 18h. Top categories: billing (28%), delivery (22%), technical (18%), general (32%). CSAT: 4.2/5. The main drag is technical tickets at 31h average resolution.",
+      default: "Support snapshot: 18 open tickets (4 urgent), average response time 2.4h (within SLA), CSAT 4.2/5. This month: 67 tickets received, 84% resolved within SLA. 2 customers showing risk signals. Ask about specific tickets, SLA breaches, at-risk customers, or workload distribution.",
+    },
+  },
+  "operations-inventory": {
+    title: "Operations & Inventory AI",
+    subtitle: "Ask about stock levels, orders, procurement and warehouse operations.",
+    scope: "Operations scope",
+    suggestions: ["What stock is running low?", "Show pending purchase orders", "Any delivery delays?", "What needs restocking?"],
+    stats: [{ label: "SKUs tracked", value: "342", detail: "Active products", tone: "success" }, { label: "Low stock", value: "8 items", detail: "Below reorder point", tone: "warning" }, { label: "Pending orders", value: "14", detail: "Fulfillment queue", tone: "neutral" }],
+    threads: [
+      { title: "Low stock alert", question: "What stock is running low?", answer: "8 items are below reorder point: (1) Premium Widget A — 12 units left (reorder at 50, lead time 7 days), (2) Connector Cable Type-C — 23 units (reorder at 100), (3) Packaging Box Large — 45 units (reorder at 200). The Premium Widget A is critical — it's in 3 pending orders. I recommend placing a restock order today.", date: "Today" },
+      { title: "Pending orders review", question: "Show pending purchase orders", answer: "14 purchase orders pending: 6 awaiting vendor confirmation, 5 in transit, 3 at receiving dock. Largest pending: PO-2847 from Mehta Suppliers for ₹2.8L (electrical components, expected Thursday). 2 orders are delayed: PO-2831 from Singh Materials (5 days late) and PO-2839 from Kapoor Parts (2 days late).", date: "Yesterday" },
+    ],
+    answers: {
+      low: "8 items below reorder point. Most critical: Premium Widget A (12 left, 50 needed, 7-day lead time — in 3 pending orders), Connector Cable Type-C (23 left, 100 needed), Packaging Box Large (45 left, 200 needed). Recommend placing restock orders for the top 3 today to avoid fulfillment delays next week.",
+      orders: "14 purchase orders: 6 awaiting vendor confirmation, 5 in transit, 3 at receiving. Total pending value: ₹8.4L. 2 orders are delayed — PO-2831 from Singh Materials (5 days late, ₹1.2L of raw materials) and PO-2839 from Kapoor Parts (2 days late). Follow up with Singh Materials — they haven't responded to the last reminder.",
+      delays: "2 delivery delays: (1) PO-2831 from Singh Materials — 5 days late, ₹1.2L of raw materials affecting production line B. No response to 2 reminders. (2) PO-2839 from Kapoor Parts — 2 days late, minor components, vendor says shipping tomorrow. The Singh delay is the priority — it blocks 3 customer orders.",
+      restock: "Recommended restock list (by urgency): Premium Widget A (order 200 units, ₹48K), Connector Cable Type-C (order 500, ₹15K), Packaging Box Large (order 1000, ₹8K), Motor Assembly Kit (order 50, ₹1.2L), Safety Gloves Industrial (order 200, ₹6K). Total restock cost: ~₹2L. All have approved vendors on file.",
+      default: "Operations snapshot: 342 active SKUs, 8 items below reorder point, 14 pending purchase orders (2 delayed). Warehouse utilization is at 73%. This week: 23 orders fulfilled, 14 pending. Main concern is 2 delayed vendor shipments affecting production. Ask about stock, orders, delays, or restocking.",
+    },
+  },
+  "it-infrastructure": {
+    title: "IT & Infrastructure AI",
+    subtitle: "Ask about IT assets, helpdesk tickets, licenses and security compliance.",
+    scope: "IT scope",
+    suggestions: ["What IT tickets are open?", "Show expiring licenses", "Any security incidents?", "What assets need attention?"],
+    stats: [{ label: "IT assets", value: "156", detail: "Tracked devices", tone: "success" }, { label: "Open tickets", value: "7", detail: "IT helpdesk", tone: "neutral" }, { label: "Expiring soon", value: "3 licenses", detail: "Next 30 days", tone: "warning" }],
+    threads: [
+      { title: "Open IT tickets", question: "What IT tickets are open?", answer: "7 IT helpdesk tickets open: (1) IT-445 — Priya's laptop screen flickering (reported yesterday, parts ordered), (2) IT-448 — VPN not connecting for remote team (3 people affected, investigating), (3) IT-451 — Printer on 2nd floor offline (since this morning). The VPN issue is highest priority — it's blocking 3 remote workers.", date: "Today" },
+      { title: "License audit", question: "Show expiring licenses", answer: "3 licenses expiring in the next 30 days: (1) Microsoft 365 Business — 24 seats, renews Nov 28, ₹1.8L/year (auto-renewal is ON but needs budget approval), (2) Zoom Pro — 10 seats, expires Dec 2, ₹42K/year, (3) Adobe Creative Cloud — 3 seats, expires Dec 15, ₹36K/year. Total renewal cost: ₹2.58L. The M365 renewal needs approval by Nov 25.", date: "Yesterday" },
+    ],
+    answers: {
+      tickets: "7 open IT tickets. Priority: (1) VPN issue — 3 remote workers blocked (IT-448, investigating). (2) Priya's laptop screen (IT-445, parts ordered, ETA Thursday). (3) 2nd floor printer offline (IT-451, checking today). The other 4 are routine: password resets (2), software install request (1), new employee setup (1). VPN fix is the top priority.",
+      licenses: "3 licenses expiring within 30 days: Microsoft 365 (₹1.8L, Nov 28 — needs budget approval by Nov 25), Zoom Pro (₹42K, Dec 2), Adobe CC (₹36K, Dec 15). Total: ₹2.58L. The M365 renewal is auto-set but needs your budget sign-off this week. I'd also recommend reviewing whether all 10 Zoom seats are still needed — usage shows only 7 active users.",
+      security: "No active security incidents. Last incident was 3 weeks ago (phishing email caught by filter, no impact). Current posture: all endpoints have updated antivirus, 2 devices need OS patches (flagged for this weekend's maintenance window), MFA is enabled for 100% of accounts. Next security review is scheduled for Dec 1.",
+      assets: "156 tracked assets: 42 laptops, 28 desktops, 18 monitors, 12 printers, 8 servers, 48 peripherals. 3 assets need attention: (1) Priya's laptop (screen issue, repair in progress), (2) Server-04 — disk usage at 87% (needs cleanup or expansion), (3) 2 laptops from last quarter's hires still showing as 'in setup'. Server-04 disk is the most time-sensitive.",
+      default: "IT overview: 156 tracked assets, 7 open helpdesk tickets, 3 licenses expiring within 30 days (₹2.58L renewal). No security incidents. Main priorities: VPN issue blocking 3 remote workers, and M365 license renewal needs budget approval by Nov 25. Ask about tickets, licenses, security, or asset status.",
+    },
+  },
+  "team-chat": {
+    title: "Team Chat AI",
+    subtitle: "Ask about conversations, team activity and communication insights.",
+    scope: "Chat scope",
+    suggestions: ["Summarize today's activity", "What needs my reply?", "Show unread mentions", "Any announcements?"],
+    stats: [{ label: "Active channels", value: "12", detail: "Team channels", tone: "success" }, { label: "Unread", value: "23", detail: "Messages for you", tone: "warning" }, { label: "Team online", value: "8", detail: "Currently active", tone: "neutral" }],
+    threads: [
+      { title: "Today's activity", question: "Summarize today's activity", answer: "Today across 12 channels: 47 messages from 14 team members. Most active: #sales (12 messages — deal update discussion), #engineering (9 messages — sprint planning), #general (8 messages — office event coordination). 3 threads have pending decisions: budget approval in #finance, vendor selection in #operations, and feature priority in #product.", date: "Today" },
+      { title: "Pending replies", question: "What needs my reply?", answer: "4 messages mention you or need your input: (1) Ravi in #sales asked about the Kapoor deal discount approval (2 hours ago), (2) Neha in #engineering tagged you on the deployment schedule (yesterday), (3) Finance team asked about Q3 expense report sign-off in #finance (yesterday), (4) Amit shared a client proposal draft in DM for your review (this morning).", date: "Today" },
+    ],
+    answers: {
+      activity: "Today: 47 messages across 12 channels from 14 team members. Most active: #sales (12 msgs, deal discussions), #engineering (9 msgs, sprint planning), #general (8 msgs, office event). 3 pending decisions in threads. Quiet channels: #hr, #support (2 messages each). Team engagement is 58% — slightly below the 65% weekly average.",
+      reply: "4 items need your reply: (1) Ravi in #sales — Kapoor deal discount approval (2h ago, time-sensitive), (2) Neha in #engineering — deployment schedule confirmation (yesterday), (3) #finance — Q3 expense sign-off (yesterday), (4) Amit's DM — client proposal review (this morning). The discount approval is most urgent — Ravi is waiting to send the quote.",
+      mentions: "5 unread mentions: @you in #sales (Kapoor discount), @you in #engineering (deployment), @all in #general (office event RSVP), @you in #finance (expense report), @team-leads in #product (feature prioritization). The @all RSVP deadline is today at 5 PM.",
+      announcements: "2 announcements this week: (1) Office will be closed on Nov 22 for a local holiday — work-from-home is optional (posted in #general, 18 reactions). (2) New expense policy: claims above ₹5,000 now need manager approval before submission (posted in #finance, 6 reactions, 2 questions pending answers).",
+      default: "Team Chat summary: 12 active channels, 23 unread messages for you, 8 team members currently online. Today: 47 messages from 14 people. 4 items need your reply — the most urgent is a discount approval in #sales. Ask about activity, pending replies, mentions, or announcements.",
+    },
+  },
+  portfolio: {
+    title: "Portfolio AI",
+    subtitle: "Ask about all your companies, cross-company performance, risks and strategic decisions.",
+    scope: "Portfolio scope",
+    suggestions: ["How are my companies performing?", "What needs my attention?", "Show revenue across companies", "Any compliance risks?"],
+    stats: [{ label: "Companies", value: "3", detail: "Active portfolio", tone: "success" }, { label: "Total revenue", value: "₹1.2Cr", detail: "This quarter", tone: "success" }, { label: "Action items", value: "5", detail: "Across companies", tone: "warning" }],
+    threads: [
+      { title: "Portfolio overview", question: "How are my companies performing?", answer: "Across your 3 companies: Total quarterly revenue is ₹1.2Cr (+8% QoQ). NexGen Solutions leads at ₹68L with strong CRM pipeline. Sharma Trading is steady at ₹34L. TechBridge Consulting is growing fastest at +15% but has 2 delivery delays. Overall: healthy growth, but TechBridge needs attention on project timelines.", date: "Today" },
+      { title: "Attention items", question: "What needs my attention?", answer: "5 items across your portfolio: (1) NexGen — ₹3.1L overdue receivables from Sharma Enterprises, (2) TechBridge — Kapoor CRM Migration 8 days behind, client escalated, (3) Sharma Trading — GST 3B filing due in 4 days, (4) NexGen — 3 open positions unfilled for 30+ days, (5) TechBridge — Microsoft 365 license renewal needs budget approval by Nov 25. Items 2 and 3 are time-sensitive.", date: "Today" },
+    ],
+    answers: {
+      performing: "Portfolio performance: 3 active companies, ₹1.2Cr quarterly revenue (+8% QoQ). NexGen Solutions: ₹68L revenue, 9 active projects, strong sales pipeline. Sharma Trading: ₹34L, steady operations, GST filing approaching. TechBridge Consulting: ₹18L, fastest growth (+15%), but 2 projects behind schedule. Cash reserves across all: ₹42L. No liquidity concerns.",
+      attention: "5 items need your attention: (1) ₹3.1L overdue receivables at NexGen (call Sharma Enterprises), (2) Kapoor migration delay at TechBridge (client escalated), (3) GST filing due in 4 days at Sharma Trading, (4) 3 unfilled positions at NexGen (30+ days open), (5) M365 license renewal at TechBridge (approval needed by Nov 25). Start with items 2 and 3 — they're time-critical.",
+      revenue: "Cross-company revenue this quarter: NexGen Solutions ₹68L (56% of portfolio), Sharma Trading ₹34L (28%), TechBridge Consulting ₹18L (15%). Total: ₹1.2Cr. QoQ growth: +8% overall. NexGen has the strongest pipeline at ₹7.5L in open deals. TechBridge is growing fastest at +15%. Sharma is stable with consistent repeat business.",
+      compliance: "Compliance status: Sharma Trading — GST 3B filing due Nov 20 (4 days, 90% ready). NexGen — PF returns due Nov 25 (data ready, filing not started). TechBridge — POSH training overdue for 6 employees. All companies: MCA annual filings complete, audit reports submitted. No critical compliance gaps — the GST and PF deadlines are the near-term priorities.",
+      risk: "Portfolio risks: (1) Delivery — TechBridge has 2 projects behind schedule, 1 with client escalation. (2) Cash — NexGen has ₹3.1L overdue receivables aging past 30 days. (3) People — NexGen has 3 unfilled positions creating resource strain. (4) Compliance — Sharma GST filing approaching. (5) Vendor — TechBridge has delayed supplier shipments. No systemic risks — all are actionable this week.",
+      default: "Portfolio overview: 3 companies, ₹1.2Cr quarterly revenue, 5 items needing attention. NexGen Solutions (CRM & services), Sharma Trading (trading operations), TechBridge Consulting (IT delivery). Cash reserves: ₹42L across the portfolio. Ask about performance, revenue, compliance, risks, or specific companies for details.",
+    },
+  },
+};
+
+function demoWorkspaceAnswer(question: string, wsId: string, workspaceName: string): string {
+  const config = workspaceAssistantConfig[wsId];
+  if (!config) return `I found relevant information in your ${workspaceName} records. There are 24 active items across the workspace, with 6 requiring action this week. Ask about specific topics for detailed answers.`;
+  const q = question.toLowerCase();
+  const answers = config.answers;
+  for (const [key, answer] of Object.entries(answers)) {
+    if (key === "default") continue;
+    const keywords = key.split(/[_|]/);
+    if (keywords.some((kw) => q.includes(kw))) return answer;
+  }
+  for (const suggestion of config.suggestions) {
+    if (q.includes(suggestion.toLowerCase().split(" ").slice(0, 3).join(" ").replace("?", ""))) {
+      const matchKey = Object.keys(answers).find((k) => k !== "default" && suggestion.toLowerCase().includes(k));
+      if (matchKey) return answers[matchKey];
+    }
+  }
+  return answers.default;
+}
+
+function WorkspaceAssistantView({ workspaceId, workspaceName }: { workspaceId: string; workspaceName: string }) {
+  const config = workspaceAssistantConfig[workspaceId] ?? {
+    title: `${workspaceName} AI`,
+    subtitle: `Ask about authorized ${workspaceName} data. Answers stay scoped to this workspace.`,
+    scope: `${workspaceName} scope`,
+    suggestions: ["What needs attention?", "Show me a summary", "What are the open items?", "Any risks to flag?"],
+    stats: [{ label: "Workspace records", value: "—", detail: "Connected data", tone: "neutral" as const }, { label: "Active items", value: "—", detail: "Current workspace", tone: "neutral" as const }, { label: "Open actions", value: "—", detail: "Pending review", tone: "neutral" as const }],
+    threads: [{ title: "Workspace summary", question: "What needs attention?", answer: `Based on ${workspaceName} records, there are items that need your review. Ask about specific topics for detailed answers.`, date: "Today" }],
+    answers: { default: `I found relevant information in your ${workspaceName} records. Ask about specific topics for detailed answers.` },
+  } satisfies WorkspaceConfig;
+
+  const initialThreads: ChatThread[] = demoMode ? [
+    ...config.threads.map((t, i) => ({
+      id: `ws-chat-${workspaceId}-${i}`,
+      title: t.title,
+      date: t.date,
+      stored: true,
+      ownerId: AI_VIEWER_ID,
+      messages: [
+        { id: `ws-m-${workspaceId}-${i}-q`, role: "user" as const, text: t.question, day: t.date, time: i === 0 ? "09:30" : "16:45" },
+        { id: `ws-m-${workspaceId}-${i}-a`, role: "assistant" as const, text: t.answer, day: t.date, time: i === 0 ? "09:30" : "16:45" },
+      ],
+    })),
+    { id: `ws-chat-new-${workspaceId}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] },
+  ] : [{ id: `ws-chat-new-${workspaceId}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] }];
+
+  const [threads, setThreads] = React.useState<ChatThread[]>(initialThreads);
+  const [activeThreadId, setActiveThreadId] = React.useState(initialThreads[0].id);
+  const [question, setQuestion] = React.useState("");
+  const [search, setSearch] = React.useState("");
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [thinking, setThinking] = React.useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const visibleThreads = threads.filter((t) => t.ownerId === AI_VIEWER_ID);
+  const filteredThreads = visibleThreads.filter((t) => {
+    const q = search.trim().toLowerCase();
+    return !q || `${t.title} ${t.messages.map((m) => m.text).join(" ")}`.toLowerCase().includes(q);
+  });
+  const activeThread = visibleThreads.find((t) => t.id === activeThreadId) ?? visibleThreads[0];
+
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [activeThread?.messages.length, thinking]);
+
+  function newChat() {
+    const t: ChatThread = { id: `ws-chat-${Date.now()}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
+    setThreads((c) => [t, ...c]);
+    setActiveThreadId(t.id);
+    setQuestion("");
+    setNotice(null);
+  }
+
+  function storeChat() {
+    if (!demoMode) { setNotice("Chat storage is not connected yet. This conversation remains on this page until storage is enabled."); return; }
+    setThreads((c) => c.map((t) => t.id === activeThread.id ? { ...t, stored: true } : t));
+    setNotice("Conversation stored privately for your account. Other members cannot see it.");
+  }
+
+  async function ask(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = question.trim();
+    if (!trimmed || !activeThread || thinking) return;
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const userMsg: ChatMessage = { id: `ws-m-${Date.now()}`, role: "user", text: trimmed, day: "Today", time };
+    const aid = activeThread.id;
+    setThreads((c) => c.map((t) => t.id === aid ? { ...t, title: t.messages.length === 0 ? trimmed.slice(0, 42) : t.title, date: "Today", messages: [...t.messages, userMsg] } : t));
+    setQuestion("");
+    if (demoMode) {
+      setThinking(true);
+      await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+      const answer = demoWorkspaceAnswer(trimmed, workspaceId, workspaceName);
+      const assistantMsg: ChatMessage = { id: `ws-m-${Date.now()}-a`, role: "assistant", text: answer, day: "Today", time };
+      setThreads((c) => c.map((t) => t.id === aid ? { ...t, messages: [...t.messages, assistantMsg] } : t));
+      setThinking(false);
+      setNotice(`Answer grounded in ${workspaceName} records.`);
+    }
+  }
+
+  if (!activeThread) return null;
+
+  return (
+    <div className="crm-assistant-shell mx-auto flex h-full min-h-0 max-w-[1240px] flex-col gap-5 overflow-hidden px-4 py-6 sm:px-6 sm:py-7">
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-accent"><Sparkles className="size-3" />{config.title}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="sr-only">{config.title}</h1><Badge variant="neutral">{demoMode ? "Demo data" : "Connected records"}</Badge></div>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{config.subtitle}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2"><Badge variant="success">{config.scope}</Badge><Badge variant="outline">Private to you</Badge></div>
+      </header>
+
+      {notice && <DemoNotice>{notice}</DemoNotice>}
+
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:grid-rows-1">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface p-3">
+          <div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your chats</p><p className="mt-1 text-[10px] text-muted-foreground">Private to your account</p></div><Button size="sm" variant="secondary" onClick={newChat}><Plus className="size-3.5" />New chat</Button></div>
+          <div className="relative mb-3"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats" className="h-8 pl-8 text-xs" aria-label={`Search ${workspaceName} assistant chats`} /></div>
+          <div className="min-h-0 max-h-[180px] flex-1 overflow-y-auto pr-1 md:max-h-none">{filteredThreads.map((t) => <button key={t.id} type="button" onClick={() => { setActiveThreadId(t.id); setNotice(null); }} className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2.5 text-left transition-colors ${t.id === activeThreadId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"}`}><MessageSquare className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{t.title}</span><span className="mt-0.5 block text-[10px] opacity-70">{t.date}{t.stored ? " · Stored privately" : ""}</span></span></button>)}{filteredThreads.length === 0 && <p className="px-2 py-4 text-center text-xs text-muted-foreground">No chats match your search.</p>}</div>
+        </aside>
+
+        <main className="flex min-h-0 min-w-0 flex-col">
+          <SectionCard className="crm-assistant-card flex min-h-0 flex-1 flex-col" title={activeThread.title} description={`${activeThread.date} · ${activeThread.stored ? "Stored privately" : "Not stored yet"}`}>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                {activeThread.messages.length === 0 && !thinking ? <div className="flex min-h-[340px] flex-col items-center justify-center text-center"><span className="mb-3 flex size-11 items-center justify-center rounded-full bg-accent-muted text-accent"><Sparkles className="size-5" /></span><p className="text-sm font-medium">Start a {workspaceName} conversation</p><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{config.subtitle}</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((m, i) => <React.Fragment key={m.id}>{(i === 0 || activeThread.messages[i - 1].day !== m.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{m.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${m.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{m.role === "user" ? "You" : "Janus"}</span><span>{m.time}</span></div>{m.text}</div></div></React.Fragment>)}{thinking && <div className="flex justify-start"><div className="max-w-[88%] rounded-xl bg-surface-2 px-4 py-3 text-sm"><div className="mb-1 flex items-center gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>Janus</span></div><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Searching {workspaceName.toLowerCase()} records…</span></div></div>}<div ref={messagesEndRef} /></div>}
+              </div>
+              <form onSubmit={ask} className="mt-5 border-t border-border pt-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><Textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder={`Ask about ${workspaceName.toLowerCase()}…`} aria-label={`Ask the ${workspaceName} assistant`} rows={2} className="min-h-[70px] resize-none text-sm" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(e); } }} /><Button type="submit" className="h-10 shrink-0" disabled={!question.trim() || thinking}><Send className="size-3.5" />Ask Janus</Button></div><p className="mt-2 text-[10px] text-muted-foreground">Answers use {workspaceName} records only. Consequential actions require your approval.</p></form>
+            </div>
+          </SectionCard>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{config.suggestions.map((s) => <button key={s} type="button" onClick={() => setQuestion(s)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent-border hover:text-accent">{s}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div>
+        </main>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">{config.stats.map((s) => <WorkspaceStat key={s.label} label={s.label} value={s.value} detail={s.detail} tone={s.tone} />)}</div>
+    </div>
+  );
+}
+
 function CrmAssistantView() {
   const blankThread: ChatThread = { id: "crm-chat-new", title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
   const [threads, setThreads] = React.useState<ChatThread[]>(() => demoMode ? initialCrmChatThreads : [blankThread]);
@@ -339,12 +582,18 @@ function CrmAssistantView() {
   const [question, setQuestion] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [thinking, setThinking] = React.useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const visibleThreads = threads.filter((thread) => thread.ownerId === AI_VIEWER_ID);
   const filteredThreads = visibleThreads.filter((thread) => {
     const query = search.trim().toLowerCase();
     return !query || `${thread.title} ${thread.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(query);
   });
   const activeThread = visibleThreads.find((thread) => thread.id === activeThreadId) ?? visibleThreads[0];
+
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [activeThread?.messages.length, thinking]);
 
   function newChat() {
     const thread: ChatThread = { id: `crm-chat-${Date.now()}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
@@ -366,7 +615,7 @@ function CrmAssistantView() {
   async function ask(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = question.trim();
-    if (!trimmed || !activeThread) return;
+    if (!trimmed || !activeThread || thinking) return;
     const now = new Date();
     const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const userMessage: ChatMessage = { id: `crm-m-${Date.now()}`, role: "user", text: trimmed, day: "Today", time };
@@ -375,9 +624,12 @@ function CrmAssistantView() {
     setQuestion("");
 
     if (demoMode) {
+      setThinking(true);
+      await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
       const result = demoCrmAnswer(trimmed);
       const assistantMessage: ChatMessage = { id: `crm-m-${Date.now()}-answer`, role: "assistant", text: result.answer, day: "Today", time };
       setThreads((current) => current.map((thread) => thread.id === activeId ? { ...thread, messages: [...thread.messages, assistantMessage] } : thread));
+      setThinking(false);
       setNotice(`Answer grounded in your CRM records · ${crm.leads} leads · ${crm.deals} deals · ${tickets.length} tickets.`);
       return;
     }
@@ -411,9 +663,9 @@ function CrmAssistantView() {
           <SectionCard className="crm-assistant-card flex min-h-0 flex-1 flex-col" title={activeThread.title} description={`${activeThread.date} · ${activeThread.stored ? "Stored privately" : "Not stored yet"}`}>
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                {activeThread.messages.length === 0 ? <div className="flex min-h-[340px] flex-col items-center justify-center text-center"><span className="mb-3 flex size-11 items-center justify-center rounded-full bg-accent-muted text-accent"><Sparkles className="size-5" /></span><p className="text-sm font-medium">Start a CRM conversation</p><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">Ask for a lead priority list, pipeline review, customer risk or a suggested follow-up.</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((message, index) => <React.Fragment key={message.id}>{(index === 0 || activeThread.messages[index - 1].day !== message.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{message.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{message.role === "user" ? "You" : "Janus"}</span><span>{message.time}</span></div>{message.text}</div></div></React.Fragment>)}</div>}
+                {activeThread.messages.length === 0 && !thinking ? <div className="flex min-h-[340px] flex-col items-center justify-center text-center"><span className="mb-3 flex size-11 items-center justify-center rounded-full bg-accent-muted text-accent"><Sparkles className="size-5" /></span><p className="text-sm font-medium">Start a CRM conversation</p><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">Ask for a lead priority list, pipeline review, customer risk or a suggested follow-up.</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((message, index) => <React.Fragment key={message.id}>{(index === 0 || activeThread.messages[index - 1].day !== message.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{message.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{message.role === "user" ? "You" : "Janus"}</span><span>{message.time}</span></div>{message.text}</div></div></React.Fragment>)}{thinking && <div className="flex justify-start"><div className="max-w-[88%] rounded-xl bg-surface-2 px-4 py-3 text-sm"><div className="mb-1 flex items-center gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>Janus</span></div><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Searching CRM records…</span></div></div>}<div ref={messagesEndRef} /></div>}
               </div>
-              <form onSubmit={ask} className="mt-5 border-t border-border pt-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about leads, pipeline, customers or support…" aria-label="Ask the CRM assistant" rows={2} className="min-h-[70px] resize-none text-sm" /><Button type="submit" className="h-10 shrink-0" disabled={!question.trim()}><Send className="size-3.5" />Ask Janus</Button></div><p className="mt-2 text-[10px] text-muted-foreground">Answers use CRM records only. Consequential actions still require your approval.</p></form>
+              <form onSubmit={ask} className="mt-5 border-t border-border pt-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about leads, pipeline, customers or support…" aria-label="Ask the CRM assistant" rows={2} className="min-h-[70px] resize-none text-sm" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(e); } }} /><Button type="submit" className="h-10 shrink-0" disabled={!question.trim() || thinking}><Send className="size-3.5" />Ask Janus</Button></div><p className="mt-2 text-[10px] text-muted-foreground">Answers use CRM records only. Consequential actions still require your approval.</p></form>
             </div>
           </SectionCard>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["Which leads need attention?", "What is our open pipeline?", "What support needs attention?", "Draft a follow-up for Riya"].map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div>
@@ -431,8 +683,14 @@ function BusinessChatView() {
   const [activeThreadId, setActiveThreadId] = React.useState(() => demoMode ? initialChatThreads[0].id : blankThread.id);
   const [question, setQuestion] = React.useState("");
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [thinking, setThinking] = React.useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const visibleThreads = threads.filter((thread) => thread.ownerId === AI_VIEWER_ID);
   const activeThread = visibleThreads.find((thread) => thread.id === activeThreadId) ?? visibleThreads[0];
+
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [activeThread?.messages.length, thinking]);
 
   function newChat() {
     const thread: ChatThread = { id: `chat-${Date.now()}`, title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] };
@@ -454,15 +712,17 @@ function BusinessChatView() {
   async function ask(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = question.trim();
-    if (!trimmed) return;
+    if (!trimmed || thinking) return;
     const now = new Date();
     const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const userMessage: ChatMessage = { id: `m-${Date.now()}`, role: "user", text: trimmed, day: "Today", time };
     setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, title: thread.messages.length === 0 ? trimmed.slice(0, 36) : thread.title, date: "Today", messages: [...thread.messages, userMessage] } : thread));
     setQuestion("");
-    // Only the preview shows this chat; a real business asks Janus Intelligence.
+    setThinking(true);
+    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
     const answer: ChatMessage = { id: `m-${Date.now()}-answer`, role: "assistant", text: demoCrmAnswer(trimmed).answer, day: "Today", time };
     setThreads((current) => current.map((thread) => thread.id === activeThread.id ? { ...thread, messages: [...thread.messages, answer] } : thread));
+    setThinking(false);
   }
 
   return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-6 py-7">
@@ -471,7 +731,7 @@ function BusinessChatView() {
     {notice && <DemoNotice>{notice}</DemoNotice>}
     <div className="grid gap-4 lg:grid-cols-[245px_1fr]">
       <aside className="rounded-lg border border-border bg-surface p-3"><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your conversations</p><p className="mt-1 text-[10px] text-muted-foreground">Private to your account</p></div><Button size="sm" variant="secondary" onClick={newChat}><Plus className="size-3.5" />New chat</Button></div><div className="flex flex-col gap-1">{visibleThreads.filter((thread) => thread.messages.length > 0 || thread.id === activeThreadId).map((thread) => <button key={thread.id} type="button" onClick={() => { setActiveThreadId(thread.id); setNotice(null); }} className={`flex items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${thread.id === activeThreadId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"}`}><MessageSquare className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{thread.title}</span><span className="mt-0.5 block text-[10px] opacity-70">{thread.date}{thread.stored ? " · Stored privately" : ""}</span></span></button>)}</div></aside>
-      <div className="min-w-0"><SectionCard title={activeThread.title} description={`${activeThread.date} · ${activeThread.stored ? "Stored conversation" : "Not stored yet"}`}><div className="flex min-h-[420px] flex-col"><div className="flex-1">{activeThread.messages.length === 0 ? <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center"><Sparkles className="mb-3 size-6 text-accent" /><p className="text-sm font-medium">What would you like to understand?</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">Ask about your pipeline, revenue, customers, risks or the next best action.</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((message, index) => <React.Fragment key={message.id}>{(index === 0 || activeThread.messages[index - 1].day !== message.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{message.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{message.role === "user" ? "You" : "Janus"}</span><span>{message.time}</span></div>{message.text}</div></div></React.Fragment>)}</div>}</div><form onSubmit={ask} className="mt-5 flex gap-2 border-t border-border pt-4"><Input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about your business..." aria-label="Ask about your business" /><Button type="submit" disabled={!question.trim()}><Send className="size-3.5" />Ask Janus</Button></form></div></SectionCard><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["What is at risk?", "Which leads need attention?", "Where should we reduce cost?", "What should I approve?"] .map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div></div>
+      <div className="min-w-0"><SectionCard title={activeThread.title} description={`${activeThread.date} · ${activeThread.stored ? "Stored conversation" : "Not stored yet"}`}><div className="flex min-h-[420px] flex-col"><div className="flex-1">{activeThread.messages.length === 0 && !thinking ? <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center"><Sparkles className="mb-3 size-6 text-accent" /><p className="text-sm font-medium">What would you like to understand?</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">Ask about your pipeline, revenue, customers, risks or the next best action.</p></div> : <div className="flex flex-col gap-4">{activeThread.messages.map((message, index) => <React.Fragment key={message.id}>{(index === 0 || activeThread.messages[index - 1].day !== message.day) && <div className="flex items-center gap-3 py-1"><Separator className="flex-1" /><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{message.day}</span><Separator className="flex-1" /></div>}<div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-surface-2 text-foreground"}`}><div className="mb-1 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>{message.role === "user" ? "You" : "Janus"}</span><span>{message.time}</span></div>{message.text}</div></div></React.Fragment>)}{thinking && <div className="flex justify-start"><div className="max-w-[85%] rounded-xl bg-surface-2 px-4 py-3 text-sm"><div className="mb-1 flex items-center gap-4 text-[10px] font-semibold uppercase tracking-wide opacity-70"><span>Janus</span></div><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Searching business records…</span></div></div>}<div ref={messagesEndRef} /></div>}</div><form onSubmit={ask} className="mt-5 flex gap-2 border-t border-border pt-4"><Input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about your business..." aria-label="Ask about your business" onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(e); } }} /><Button type="submit" disabled={!question.trim() || thinking}><Send className="size-3.5" />Ask Janus</Button></form></div></SectionCard><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["What is at risk?", "Which leads need attention?", "Where should we reduce cost?", "What should I approve?"] .map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div></div>
     </div>
     <div className="grid gap-3 sm:grid-cols-3">{demoMode ? <><KnowledgeStat label="Records available" value="148" detail="Business sources" tone="success" /><KnowledgeStat label="Insights ready" value="12" detail="Reviewed findings" tone="neutral" /><KnowledgeStat label="Approval needed" value="3" detail="Consequential actions" tone="warning" /></> : <><KnowledgeStat label="Records available" value="—" detail="Connected knowledge sources will appear here." /><KnowledgeStat label="Insights ready" value="—" detail="No verified findings yet." /><KnowledgeStat label="Approval needed" value="—" detail="No verified approvals yet." /></>}</div>
   </div>;
@@ -639,6 +899,11 @@ function BusinessMemoryView() {
       <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-md bg-surface-2 p-3"><p className="text-sm font-semibold">Personal by default</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Your saved preferences and chat context stay scoped to your account.</p></div><div className="rounded-md bg-surface-2 p-3"><p className="text-sm font-semibold">Separate from Knowledge</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Shared policies and business sources remain managed in the Knowledge tab.</p></div><div className="rounded-md bg-surface-2 p-3"><p className="text-sm font-semibold">You stay in control</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Review what Janus remembers before a real save or deletion action is connected.</p></div></div>
     </SectionCard>
   </div>;
+}
+
+function WorkspaceStat({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: "neutral" | "success" | "warning" }) {
+  const badge = tone === "success" ? "Healthy" : tone === "warning" ? "Needs attention" : "Info";
+  return <div className="rounded-lg border border-border bg-surface p-4"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span><Badge variant={tone}>{badge}</Badge></div><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
 function KnowledgeStat({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: "neutral" | "success" | "warning" | "danger" }) {

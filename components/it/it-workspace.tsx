@@ -403,6 +403,24 @@ function MonitoringView() {
   );
 }
 
+interface HrAssetRequest {
+  id: string;
+  employeeName: string;
+  category: string;
+  reason: string;
+  urgency: "normal" | "urgent";
+  status: "manager_approved" | "it_processing" | "issued";
+  approvedBy: string;
+  approvedAt: string;
+}
+
+function seedHrRequests(): HrAssetRequest[] {
+  return [
+    { id: "areq-1", employeeName: "Riya Kapoor", category: "Monitor", reason: "Need dual monitor setup for design work", urgency: "normal", status: "manager_approved", approvedBy: "Priya Sharma", approvedAt: "2026-11-11" },
+    { id: "areq-4", employeeName: "Vikram Singh", category: "Laptop", reason: "New joiner — need laptop and peripherals", urgency: "urgent", status: "it_processing", approvedBy: "Rahul Verma", approvedAt: "2026-11-13" },
+  ];
+}
+
 function AssetsView() {
   const people = useITPeople();
   const names = people.map((person) => person.name);
@@ -424,6 +442,20 @@ function AssetsView() {
   const term = find.trim().toLowerCase();
   const shown = assets.filter((a) => (show === "all" || a.status === show) && (!term || `${a.name} ${a.kind} ${a.serial} ${a.assignedTo ?? ""}`.toLowerCase().includes(term)));
 
+  const [hrRequests, setHrRequests] = React.useState(seedHrRequests);
+  const pendingFromHr = hrRequests.filter((r) => r.status === "manager_approved");
+  const processing = hrRequests.filter((r) => r.status === "it_processing");
+
+  function startProcessing(id: string) {
+    setHrRequests((prev) => prev.map((r) => r.id === id ? { ...r, status: "it_processing" } : r));
+    toast.success("Marked as processing");
+  }
+
+  function markIssued(id: string) {
+    setHrRequests((prev) => prev.map((r) => r.id === id ? { ...r, status: "issued" } : r));
+    toast.success("Asset issued to employee");
+  }
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const problem = addAsset({ name: draft.name, kind: draft.kind, serial: draft.serial, purchaseDate: draft.purchaseDate, cost: Number(draft.cost) || 0 }, me);
@@ -432,6 +464,27 @@ function AssetsView() {
 
   return (
     <>
+      {(pendingFromHr.length > 0 || processing.length > 0) && <Card>
+        <CardHeader><CardTitle className="text-base">Asset requests from HR</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <p className="text-xs text-muted-foreground">Requests approved by manager / HR. Process them here and mark as issued once the asset is handed over. Employees request assets in <a href="/workspace/hr-people?view=assets" className="font-medium text-accent hover:underline">HR → My Assets & Requests</a>.</p>
+          {[...pendingFromHr, ...processing].map((r) => (
+            <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0">
+              <span>
+                <span className="font-medium">{r.employeeName}</span> · {r.category}
+                <span className="block text-xs text-muted-foreground">{r.reason}</span>
+                <span className="block text-xs text-muted-foreground">Approved by {r.approvedBy} on {r.approvedAt}</span>
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                <Badge variant={r.urgency === "urgent" ? "warning" : "neutral"}>{r.urgency}</Badge>
+                <Badge variant={r.status === "it_processing" ? "accent" : "info"}>{r.status === "it_processing" ? "Processing" : "Approved"}</Badge>
+                {r.status === "manager_approved" && <Button size="sm" variant="secondary" onClick={() => startProcessing(r.id)}>Start processing</Button>}
+                {r.status === "it_processing" && <Button size="sm" onClick={() => markIssued(r.id)}>Mark issued</Button>}
+              </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>}
       <Card>
         <CardHeader><CardTitle className="text-base">Add an asset</CardTitle></CardHeader>
         <CardContent>

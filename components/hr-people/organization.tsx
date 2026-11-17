@@ -10,12 +10,12 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { useHrOperationsStore } from "@/lib/stores/hr-operations-store";
 import { useHrOrgStore, type ApprovalStepKind, type HrDepartment, type HrRoleDef, type OrgPermission } from "@/lib/stores/hr-org-store";
 import { companySteps, departmentByName, hasPermission, permissionCatalog, permissionLabel, resolveRoute, roleOf, stepLabels, stepsText, wouldLoop } from "@/lib/hr-org";
-import { HrEmpty, HrField, HrModal, HrPanel, HrTable, hrCell, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
+import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrTable, hrCell, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
 import { canOpenHrView } from "@/lib/hr-people-access";
 import type { HrDemoRole, HrEmployee } from "@/lib/types";
 
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
-const tabs = [{ id: "departments", label: "Departments" }, { id: "roles", label: "Roles" }, { id: "flow", label: "Approval flow" }] as const;
+const tabs = [{ id: "departments", label: "Departments" }, { id: "roles", label: "Roles" }, { id: "flow", label: "Approval flow" }, { id: "chart", label: "Org Chart" }] as const;
 
 function useOrg() {
   const { departments, roles, assignments } = useHrOrgStore();
@@ -39,6 +39,7 @@ export function HrOrganizationView({ role, actorId }: { role: HrDemoRole; actorI
     {tab === "departments" && <DepartmentsTab actorId={actorId} editable={editable} unlisted={unlisted} />}
     {tab === "roles" && <RolesTab actorId={actorId} editable={editable} />}
     {tab === "flow" && <FlowTab />}
+    {tab === "chart" && <OrgChartTab />}
   </div>;
 }
 
@@ -269,6 +270,123 @@ function RoleDialog({ role, actorId, onClose }: { role?: HrRoleDef; actorId: str
       <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" disabled={Boolean(error)}>{role ? "Save role" : "Add role"}</Button></div>
     </form>
   </HrModal>;
+}
+
+/* ── Org Chart ─────────────────────────────────────────────────────── */
+
+function OrgChartTab() {
+  const employees = useHrPeopleStore((state) => state.employees).filter((e) => e.status !== "archived");
+  const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+  const [mode, setMode] = React.useState<"tree" | "list">("tree");
+
+  // Build tree: roots = employees with no manager or whose manager isn't in the list
+  const idSet = new Set(employees.map((e) => e.id));
+  const roots = employees.filter((e) => !e.managerId || !idSet.has(e.managerId));
+  const childrenOf = (id: string) => employees.filter((e) => e.managerId === id);
+
+  // Calculate max depth
+  const depth = (id: string, seen = new Set<string>()): number => {
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const kids = childrenOf(id);
+    return kids.length === 0 ? 0 : 1 + Math.max(...kids.map((k) => depth(k.id, seen)));
+  };
+  const maxDepth = roots.length === 0 ? 0 : 1 + Math.max(0, ...roots.map((r) => depth(r.id)));
+
+  // Department color palette
+  const depts = [...new Set(employees.map((e) => e.department))];
+  const palette = ["bg-accent-muted", "bg-success-muted", "bg-warning-muted", "bg-info-muted", "bg-danger-muted/40"];
+  const deptColor = (dept: string) => palette[depts.indexOf(dept) % palette.length];
+
+  const toggle = (id: string) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // Initials from a name
+  const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+
+  // Tree node renderer
+  function TreeNode({ employee, level }: { employee: typeof employees[number]; level: number }) {
+    const kids = childrenOf(employee.id);
+    const isCollapsed = collapsed.has(employee.id);
+    const hasKids = kids.length > 0;
+    return <div className="flex flex-col items-center">
+      {/* Card */}
+      <div className="relative w-[180px] border border-border bg-surface p-3 text-center">
+        <div className={`mx-auto flex size-10 items-center justify-center text-sm font-semibold ${deptColor(employee.department)}`}>{initials(employee.name)}</div>
+        <p className="mt-2 truncate text-sm font-medium">{employee.name}</p>
+        <p className="truncate text-xs text-muted-foreground">{employee.title}</p>
+        <Badge variant="neutral" className="mt-1">{employee.department}</Badge>
+        {hasKids && <button type="button" onClick={() => toggle(employee.id)} className="absolute -bottom-3 left-1/2 z-10 flex size-6 -translate-x-1/2 items-center justify-center border border-border bg-surface text-muted-foreground hover:bg-surface-2" aria-label={isCollapsed ? "Expand" : "Collapse"}><ChevronRight className={`size-3 transition-transform ${isCollapsed ? "" : "rotate-90"}`} /></button>}
+      </div>
+      {/* Children with connector lines */}
+      {hasKids && !isCollapsed && <div className="flex flex-col items-center">
+        {/* Vertical line from parent down */}
+        <div className="h-6 w-px border-l-2 border-border" />
+        {kids.length === 1 ? (
+          <TreeNode employee={kids[0]} level={level + 1} />
+        ) : (
+          <div className="flex flex-col items-center">
+            {/* Horizontal connector across all children */}
+            <div className="flex">
+              {kids.map((_, i) => <div key={i} className="flex" style={{ width: 212 }}>
+                <div className={`h-px w-1/2 ${i === 0 ? "" : "border-t-2 border-border"}`} />
+                <div className={`h-px w-1/2 ${i === kids.length - 1 ? "" : "border-t-2 border-border"}`} />
+              </div>)}
+            </div>
+            {/* Children with individual vertical lines */}
+            <div className="flex gap-8">
+              {kids.map((kid) => <div key={kid.id} className="flex flex-col items-center">
+                <div className="h-6 w-px border-l-2 border-border" />
+                <TreeNode employee={kid} level={level + 1} />
+              </div>)}
+            </div>
+          </div>
+        )}
+      </div>}
+    </div>;
+  }
+
+  // List mode: flatten with depth
+  function flattenTree(nodes: typeof employees, level: number): { employee: typeof employees[number]; depth: number }[] {
+    return nodes.flatMap((emp) => [{ employee: emp, depth: level }, ...flattenTree(childrenOf(emp.id), level + 1)]);
+  }
+  const flatList = flattenTree(roots, 0);
+
+  return <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <HrStats items={[
+        { label: "People", value: employees.length, hint: `${depts.length} departments` },
+        { label: "Roots", value: roots.length, hint: "Top of hierarchy" },
+        { label: "Max depth", value: maxDepth, hint: "Levels in org tree" },
+      ]} />
+      <div className="flex gap-1 border border-border bg-surface-2 p-1">
+        <button onClick={() => setMode("tree")} className={`px-3 py-1 text-xs ${mode === "tree" ? "bg-accent text-white" : "text-muted-foreground"}`}>Tree</button>
+        <button onClick={() => setMode("list")} className={`px-3 py-1 text-xs ${mode === "list" ? "bg-accent text-white" : "text-muted-foreground"}`}>List</button>
+      </div>
+    </div>
+
+    {employees.length === 0 ? <HrEmpty>No active employees to show.</HrEmpty> : mode === "tree" ? (
+      <div className="overflow-x-auto pb-4">
+        <div className="inline-flex flex-col items-center gap-6 min-w-full px-4">
+          {roots.map((root) => <TreeNode key={root.id} employee={root} level={0} />)}
+        </div>
+      </div>
+    ) : (
+      <HrPanel title="Hierarchy list">
+        <HrTable headings={["Name", "Title", "Department", "Manager"]}>
+          {flatList.map(({ employee, depth }) => <tr key={employee.id}>
+            <td className={hrCell}><div style={{ paddingLeft: `${depth * 24}px` }} className="font-medium">{employee.name}</div></td>
+            <td className={hrCell}>{employee.title}</td>
+            <td className={hrCell}><Badge variant="neutral">{employee.department}</Badge></td>
+            <td className={hrCell}>{employee.managerName ?? "—"}</td>
+          </tr>)}
+        </HrTable>
+      </HrPanel>
+    )}
+  </div>;
 }
 
 function FlowTab() {

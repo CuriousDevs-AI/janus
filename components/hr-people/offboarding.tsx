@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,7 +10,7 @@ import { useHrPeopleStore } from "@/lib/stores/hr-people-store";
 import { exitChecklist, lifecycleEvent, lifecycleId, useHrLifecycleStore, type HrClearanceOwner, type HrExitRecord } from "@/lib/stores/hr-lifecycle-store";
 import { demoMode } from "@/lib/demo-mode";
 import { actorDisplayName, canManageHr } from "@/lib/hr-people-access";
-import { HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrToday } from "@/components/hr-people/operations-ui";
+import { downloadHrCsv, HrEmpty, HrField, HrModal, HrPanel, HrStats, HrStatus, hrDate, hrInputClass, hrMoney, hrToday } from "@/components/hr-people/operations-ui";
 import type { HrDemoRole } from "@/lib/types";
 
 const ownerLabels: Record<HrClearanceOwner, string> = { manager: "Manager", hr: "HR", finance: "Finance", it: "IT", operations: "Operations", employee: "Employee" };
@@ -75,6 +76,8 @@ function ExitDetail({ exit, role, actorName, manager, onTask, onFinish, onCancel
         {!allowed && !closed && <p className="ml-7 text-[11px] text-muted-foreground">Only {ownerLabels[task.owner]} or HR can update this task.</p>}
       </li>; })}</ul>
       {manager && !closed && <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={onCancel}>Cancel exit</Button><Button onClick={onFinish} disabled={!allDone}>{allDone ? "Complete exit and archive" : "Finish all tasks to complete"}</Button></div>}
+      {manager && !closed && employee && <FnfSettlement employee={employee} exit={exit} />}
+      {manager && !closed && <ExitInterviewPanel exitId={exit.id} onSave={() => toast.success("Exit interview saved")} />}
       <div><h3 className="mb-2 text-sm font-semibold">Activity</h3><ol className="divide-y divide-border border border-border text-sm">{exit.events.map((event) => <li key={event.id} className="px-4 py-2"><p>{event.text}</p><p className="text-xs text-muted-foreground">{event.actor} · {dateTime(event.at)}</p></li>)}{!exit.events.length && <li className="px-4 py-3 text-xs text-muted-foreground">No activity yet.</li>}</ol><p className="mt-2 text-[11px] text-muted-foreground">Acting as {actorName}.{demoMode ? " Demo records stay in this browser." : ""}</p></div>
     </div>
   </HrPanel>;
@@ -102,3 +105,165 @@ function StartExitDialog({ onClose, onStart, actorName }: { onClose: () => void;
     </form> : <HrEmpty>Every active employee already has an exit in progress.</HrEmpty>}
   </HrModal>;
 }
+
+function FnfSettlement({ employee, exit }: { employee: { id: string; name: string; salaryMonthly: number; joiningDate: string; title: string; department: string }; exit: HrExitRecord }) {
+  const today = hrToday();
+  const daily = Math.round(employee.salaryMonthly / 30);
+  const lwd = exit.lastWorkingDay;
+  const lwdDate = new Date(`${lwd}T12:00:00`);
+  const daysWorked = lwdDate.getDate();
+  const pendingSalary = daily * daysWorked;
+
+  const leaveBalance = 12;
+  const leaveEncashment = leaveBalance * daily;
+
+  const joiningDate = new Date(`${employee.joiningDate}T12:00:00`);
+  const tenureMs = lwdDate.getTime() - joiningDate.getTime();
+  const tenureYears = tenureMs / (365.25 * 86400000);
+  const gratuity = tenureYears >= 5 ? Math.round((15 / 26) * employee.salaryMonthly * Math.floor(tenureYears)) : 0;
+
+  const noticeDays = 30;
+  const daysUntilLwd = Math.ceil((lwdDate.getTime() - new Date(`${today}T12:00:00`).getTime()) / 86400000);
+  const noticeShortfall = Math.max(0, noticeDays - Math.max(0, daysUntilLwd));
+  const noticeRecovery = noticeShortfall * daily;
+
+  const bonusProration = Math.round((employee.salaryMonthly * (lwdDate.getMonth() >= 3 ? lwdDate.getMonth() - 3 : lwdDate.getMonth() + 9)) / 12);
+  const loanOutstanding = 0;
+
+  const payable = pendingSalary + leaveEncashment + gratuity + bonusProration;
+  const deductions = noticeRecovery + loanOutstanding;
+  const netFnf = payable - deductions;
+
+  function downloadFnf() {
+    const lines = [
+      `FULL & FINAL SETTLEMENT STATEMENT`,
+      `${"=".repeat(50)}`,
+      `Employee: ${employee.name} (${employee.id.toUpperCase()})`,
+      `Designation: ${employee.title} · ${employee.department}`,
+      `Date of joining: ${hrDate(employee.joiningDate)}`,
+      `Last working day: ${hrDate(lwd)}`,
+      `Tenure: ${tenureYears.toFixed(1)} years`,
+      ``,
+      `PAYABLE`,
+      `  Pending salary (${daysWorked} days)      ${hrMoney(pendingSalary)}`,
+      `  Leave encashment (${leaveBalance} days)   ${hrMoney(leaveEncashment)}`,
+      `  Bonus proration                       ${hrMoney(bonusProration)}`,
+      gratuity > 0 ? `  Gratuity (${Math.floor(tenureYears)} years)             ${hrMoney(gratuity)}` : null,
+      `  ────────────────────────────`,
+      `  Total payable                         ${hrMoney(payable)}`,
+      ``,
+      `DEDUCTIONS`,
+      noticeRecovery > 0 ? `  Notice period recovery (${noticeShortfall} days)  ${hrMoney(noticeRecovery)}` : `  Notice period recovery                ₹0`,
+      loanOutstanding > 0 ? `  Loan outstanding                      ${hrMoney(loanOutstanding)}` : null,
+      `  ────────────────────────────`,
+      `  Total deductions                      ${hrMoney(deductions)}`,
+      ``,
+      `${"=".repeat(50)}`,
+      `  NET F&F AMOUNT                        ${hrMoney(netFnf)}`,
+      `${"=".repeat(50)}`,
+      ``,
+      `Generated on ${hrDate(today)} · This is a provisional computation.`,
+    ].filter(Boolean).join("\n");
+    const blob = new Blob([lines], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `fnf-${employee.id}-${lwd}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast.success("F&F statement downloaded");
+  }
+
+  return <div className="space-y-3">
+    <h3 className="text-sm font-semibold">Full & Final Settlement</h3>
+    <p className="text-xs text-muted-foreground">Provisional computation based on current salary and standard assumptions. Actual amounts may vary after payroll reconciliation.</p>
+    <div className="grid gap-4 lg:grid-cols-2">
+      <div className="border border-border">
+        <div className="bg-surface-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payable</div>
+        <div className="divide-y divide-border">
+          <FnfRow label={`Pending salary (${daysWorked} days in month)`} amount={pendingSalary} />
+          <FnfRow label={`Leave encashment (${leaveBalance} days unused)`} amount={leaveEncashment} />
+          <FnfRow label="Bonus proration" amount={bonusProration} />
+          {gratuity > 0 && <FnfRow label={`Gratuity (${Math.floor(tenureYears)} years, ≥5yr eligible)`} amount={gratuity} />}
+          <div className="flex items-center justify-between bg-surface-2 px-4 py-2 text-sm font-semibold"><span>Total payable</span><span>{hrMoney(payable)}</span></div>
+        </div>
+      </div>
+      <div className="border border-border">
+        <div className="bg-surface-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deductions</div>
+        <div className="divide-y divide-border">
+          <FnfRow label={noticeShortfall > 0 ? `Notice period recovery (${noticeShortfall} days short)` : "Notice period recovery"} amount={noticeRecovery} />
+          {loanOutstanding > 0 && <FnfRow label="Loan outstanding" amount={loanOutstanding} />}
+          <div className="flex items-center justify-between bg-surface-2 px-4 py-2 text-sm font-semibold"><span>Total deductions</span><span>{hrMoney(deductions)}</span></div>
+        </div>
+      </div>
+    </div>
+    <div className="flex items-center justify-between border-2 border-accent bg-accent-muted px-4 py-3">
+      <span className="text-sm font-semibold">Net F&F Amount</span>
+      <span className="text-lg font-bold">{hrMoney(netFnf)}</span>
+    </div>
+    <div className="flex items-center justify-between">
+      <p className="text-[11px] text-muted-foreground">Tenure: {tenureYears.toFixed(1)} years · Daily rate: {hrMoney(daily)}{gratuity === 0 && tenureYears < 5 ? " · Gratuity not applicable (< 5 years)" : ""}</p>
+      <Button size="sm" variant="outline" onClick={downloadFnf}><Download className="mr-1 size-3.5" />Download F&F statement</Button>
+    </div>
+  </div>;
+}
+
+function FnfRow({ label, amount }: { label: string; amount: number }) {
+  return <div className="flex items-center justify-between px-4 py-2 text-sm"><span className="text-muted-foreground">{label}</span><span className="font-medium">{amount > 0 ? hrMoney(amount) : "₹0"}</span></div>;
+}
+
+const exitReasons = ["Better opportunity", "Compensation", "Work-life balance", "Management", "Relocation", "Personal reasons", "Career growth", "Higher education", "Health", "Other"] as const;
+
+const exitInterviewStore = new Map<string, ExitInterviewData>();
+
+function ExitInterviewPanel({ exitId, onSave }: { exitId: string; onSave: () => void }) {
+  const existing = exitInterviewStore.get(exitId);
+  const [reason, setReason] = React.useState(existing?.reason ?? "");
+  const [enjoyed, setEnjoyed] = React.useState(existing?.enjoyed ?? "");
+  const [improve, setImprove] = React.useState(existing?.improve ?? "");
+  const [wouldReturn, setWouldReturn] = React.useState<"yes" | "no" | "maybe">(existing?.wouldReturn ?? "maybe");
+  const [rating, setRating] = React.useState(existing?.rating ?? 3);
+  const [feedback, setFeedback] = React.useState(existing?.feedback ?? "");
+  const [saved, setSaved] = React.useState(Boolean(existing));
+
+  function save() {
+    const data: ExitInterviewData = { reason, enjoyed: enjoyed.trim(), improve: improve.trim(), wouldReturn, rating, feedback: feedback.trim(), savedAt: new Date().toISOString() };
+    exitInterviewStore.set(exitId, data);
+    onSave();
+    setSaved(true);
+  }
+
+  return <div className="space-y-3">
+    <h3 className="text-sm font-semibold">Exit Interview</h3>
+    <p className="text-xs text-muted-foreground">{saved ? "Responses saved. These help retention analytics." : "Capture feedback before the employee leaves."}</p>
+    <div className="grid gap-4 border border-border p-4">
+      <HrField label="Primary reason for leaving">
+        <select className={hrInputClass} value={reason} disabled={saved} onChange={(e) => setReason(e.target.value)}>
+          <option value="">Choose…</option>
+          {exitReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </HrField>
+      <HrField label="What did you enjoy most about working here?">
+        <Textarea maxLength={500} disabled={saved} value={enjoyed} onChange={(e) => setEnjoyed(e.target.value)} className="rounded-none" placeholder="Team, culture, projects, learning…" />
+      </HrField>
+      <HrField label="What could we improve?">
+        <Textarea maxLength={500} disabled={saved} value={improve} onChange={(e) => setImprove(e.target.value)} className="rounded-none" placeholder="Processes, communication, benefits…" />
+      </HrField>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <HrField label="Would you consider returning?">
+          <select className={hrInputClass} value={wouldReturn} disabled={saved} onChange={(e) => setWouldReturn(e.target.value as "yes" | "no" | "maybe")}>
+            <option value="yes">Yes</option><option value="maybe">Maybe</option><option value="no">No</option>
+          </select>
+        </HrField>
+        <HrField label={`Overall experience: ${rating}/5`}>
+          <div className="flex gap-1 py-1">{[1, 2, 3, 4, 5].map((star) => <button key={star} type="button" disabled={saved} onClick={() => setRating(star)} className={`size-8 border text-sm font-semibold ${star <= rating ? "border-accent bg-accent text-white" : "border-border text-muted-foreground"}`}>{star}</button>)}</div>
+        </HrField>
+      </div>
+      <HrField label="Additional feedback (optional)">
+        <Textarea maxLength={500} disabled={saved} value={feedback} onChange={(e) => setFeedback(e.target.value)} className="rounded-none" />
+      </HrField>
+      {!saved && <div className="flex justify-end"><Button size="sm" onClick={save} disabled={!reason}>Save interview</Button></div>}
+    </div>
+  </div>;
+}
+
+interface ExitInterviewData { reason: string; enjoyed: string; improve: string; wouldReturn: "yes" | "no" | "maybe"; rating: number; feedback: string; savedAt: string }

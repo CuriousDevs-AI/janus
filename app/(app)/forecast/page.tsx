@@ -143,6 +143,32 @@ export default function ForecastPage() {
           </div>
         )}
 
+        {f && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Won to Date</p>
+              <p className="mt-2 text-xl font-bold tabular-nums text-success">{formatCurrencyINR(wonVal)}</p>
+              {targetVal > 0 && <p className="mt-1 text-[11px] text-muted-foreground">{attainPct}% of target</p>}
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Weighted Pipeline</p>
+              <p className="mt-2 text-xl font-bold tabular-nums text-accent">{formatCurrencyINR(pipelineVal)}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Likely to close this period</p>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Gap to Target</p>
+              <p className={`mt-2 text-xl font-bold tabular-nums ${Number(f.gap ?? 0) <= 0 ? "text-success" : "text-warning"}`}>
+                {Number(f.gap ?? 0) <= 0 ? "On Track" : formatCurrencyINR(Number(f.gap))}
+              </p>
+              {Number(f.gap ?? 0) > 0 && pipelineVal > 0 && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Pipeline covers {Math.round((pipelineVal / Number(f.gap)) * 100)}% of gap
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         <section className="rounded-lg border border-border bg-surface">
           <div className="border-b border-border px-4 py-3">
             <h3 className="text-[13px] font-semibold">Pipeline by Stage (Weighted)</h3>
@@ -155,20 +181,30 @@ export default function ForecastPage() {
                 <TableHead className="text-right">Value</TableHead>
                 <TableHead className="text-right">Weight</TableHead>
                 <TableHead className="text-right">Weighted Value</TableHead>
+                <TableHead className="hidden sm:table-cell">Distribution</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(f?.stageBreakdown ?? Object.entries(STAGE_WEIGHTS).map(([stage, weight]) => ({
-                stage, count: 0, value: "0", weight, weightedValue: "0",
-              }))).map((s) => (
-                <TableRow key={s.stage}>
-                  <TableCell className="capitalize font-medium">{s.stage}</TableCell>
-                  <TableCell className="text-right">{s.count}</TableCell>
-                  <TableCell className="text-right">{formatCurrencyINR(Number(s.value))}</TableCell>
-                  <TableCell className="text-right">{s.weight}%</TableCell>
-                  <TableCell className="text-right font-semibold">{formatCurrencyINR(Number(s.weightedValue))}</TableCell>
-                </TableRow>
-              ))}
+              {(() => {
+                const breakdown = f?.stageBreakdown ?? Object.entries(STAGE_WEIGHTS).map(([stage, weight]) => ({
+                  stage, count: 0, value: "0", weight, weightedValue: "0",
+                }));
+                const maxVal = Math.max(...breakdown.map((s) => Number(s.value)), 1);
+                return breakdown.map((s) => (
+                  <TableRow key={s.stage}>
+                    <TableCell className="capitalize font-medium">{s.stage}</TableCell>
+                    <TableCell className="text-right">{s.count}</TableCell>
+                    <TableCell className="text-right">{formatCurrencyINR(Number(s.value))}</TableCell>
+                    <TableCell className="text-right">{s.weight}%</TableCell>
+                    <TableCell className="text-right font-semibold">{formatCurrencyINR(Number(s.weightedValue))}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <div className="h-2 w-24 overflow-hidden rounded-full bg-surface-3">
+                        <div className="h-full rounded-full bg-accent/60" style={{ width: `${(Number(s.value) / maxVal) * 100}%` }} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ));
+              })()}
             </TableBody>
           </Table>
         </section>
@@ -198,9 +234,19 @@ export default function ForecastPage() {
                     <TableCell className="text-right">{formatCurrencyINR(Number(r.won))}</TableCell>
                     <TableCell className="text-right">{formatCurrencyINR(Number(r.pipeline))}</TableCell>
                     <TableCell className="text-right">
-                      <Badge variant={Number(r.attainmentPercent) >= 100 ? "success" : Number(r.attainmentPercent) >= 50 ? "accent" : "neutral"}>
-                        {r.attainmentPercent}%
-                      </Badge>
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="hidden w-20 sm:block">
+                          <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+                            <div
+                              className={`h-full rounded-full ${Number(r.attainmentPercent) >= 100 ? "bg-success" : Number(r.attainmentPercent) >= 50 ? "bg-accent" : "bg-amber-500"}`}
+                              style={{ width: `${Math.min(100, Number(r.attainmentPercent))}%` }}
+                            />
+                          </div>
+                        </div>
+                        <Badge variant={Number(r.attainmentPercent) >= 100 ? "success" : Number(r.attainmentPercent) >= 50 ? "accent" : "neutral"}>
+                          {r.attainmentPercent}%
+                        </Badge>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

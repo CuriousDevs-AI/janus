@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
-import type { Activity, CrmTag, Deal, Lead, LeadNote } from "@/lib/api/types";
+import type { Activity, CrmTag, Deal, Lead, LeadNote, LeadScore } from "@/lib/api/types";
 import { leadStageMeta } from "@/lib/status-meta";
 import type { LeadStage } from "@/lib/types";
 import { formatCurrencyINR, formatRelativeTime, formatDateTime } from "@/lib/utils";
@@ -26,6 +26,8 @@ import { Separator } from "@/components/ui/separator";
 import { ActivityForm } from "./activity-form";
 import { TagsManager } from "./tags-manager";
 import { DealItemsEditor } from "./deal-items";
+import { RecordDocuments } from "@/components/shared/record-documents";
+import { todayIso } from "@/lib/today";
 
 const STAGES = ["new", "contacted", "qualified", "demo", "proposal", "negotiation", "approval", "won", "lost"] as const;
 
@@ -70,6 +72,7 @@ function LeadDetailContent({
   const activities = useApi<Activity[]>(`/activities?lead_id=${lead.id}`);
   const deal = useApi<Deal | null>(lead.dealId ? `/deals/${lead.dealId}` : null);
   const tags = useApi<CrmTag[]>(`/leads/${lead.id}/tags`);
+  const scoreData = useApi<LeadScore>(`/leads/${lead.id}/score`);
   const [activityOpen, setActivityOpen] = useState(false);
   const [noteBody, setNoteBody] = useState("");
   const [noteFollowUp, setNoteFollowUp] = useState("");
@@ -134,6 +137,7 @@ function LeadDetailContent({
             <div className="flex items-center gap-2 mt-1.5">
               <Badge variant={stageMeta.tone}>{stageMeta.label}</Badge>
               <Badge variant="outline" className="text-xs">{lead.source.replace("_", " ")}</Badge>
+              {scoreData.data && <Badge variant={scoreData.data.score >= 80 ? "success" : scoreData.data.score >= 50 ? "warning" : "neutral"} className="text-xs">Score: {scoreData.data.score}</Badge>}
               {lead.ownerName && <span className="text-xs text-muted-foreground">{lead.ownerName}</span>}
             </div>
           </div>
@@ -175,6 +179,7 @@ function LeadDetailContent({
           <TabsTrigger value="notes">Notes{notes.data ? ` (${notes.data.length})` : ""}</TabsTrigger>
           <TabsTrigger value="activities">Activities</TabsTrigger>
           <TabsTrigger value="deal">Deal</TabsTrigger>
+          <TabsTrigger value="docs">Docs</TabsTrigger>
           <TabsTrigger value="tags">Tags</TabsTrigger>
         </TabsList>
 
@@ -324,6 +329,12 @@ function LeadDetailContent({
                   <p className="text-sm text-muted-foreground mb-3">No deal created yet</p>
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="docs" className="px-5 pb-5 mt-0">
+            <div className="mt-3">
+              <RecordDocuments recordKind="lead" recordId={lead.id} addedBy={lead.ownerName || "CRM"} today={todayIso()} />
             </div>
           </TabsContent>
 

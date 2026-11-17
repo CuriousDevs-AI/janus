@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Archive, Copy, Folder, ListFilter, MoreHorizontal, Plus, Power, Search, Trash2, Workflow, XCircle } from "lucide-react";
-import { useAppStore } from "@/lib/stores/app-store";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -14,10 +13,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AutomationCard } from "@/components/automations/automation-card";
-import { CreateAutomationDialog } from "@/components/automations/create-automation-dialog";
-import type { Automation } from "@/lib/types";
-import { useWorkspace } from "@/components/layout/workspace-context";
 import { useApi } from "@/lib/api/use-api";
 import { api, message } from "@/lib/api/client";
 import { toast } from "sonner";
@@ -25,77 +20,8 @@ import { demoMode } from "@/lib/demo-mode";
 import { WorkspaceCopyDialog, workspaceCopyOptions, type WorkspaceCopyTarget } from "@/components/workspace-copy-dialog";
 import { RunsWaiting, runStats, StarterCards, StarterSetup, whenItStarts, type RunStats, type WorkflowRun, type WorkflowStarter } from "@/components/business/workflow-starters";
 
-type StatusFilter = "all" | Automation["status"];
-
 export default function AutomationsPage() {
-  const { workspaceId } = useWorkspace();
-  // The workflows Janus runs are the company's, wherever they are opened from; the CRM list
-  // below is the demo's preview only.
-  if (workspaceId === "business" || !demoMode) return <BusinessAutomationCenter />;
-  return <CrmAutomationsPage />;
-}
-
-function CrmAutomationsPage() {
-  const automations = useAppStore((s) => s.automations);
-  const [query, setQuery] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
-  const [createOpen, setCreateOpen] = React.useState(false);
-
-  const filtered = automations.filter((a) => {
-    const matchesStatus = statusFilter === "all" || a.status === statusFilter;
-    const q = query.trim().toLowerCase();
-    const matchesQuery = !q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q);
-    return matchesStatus && matchesQuery;
-  });
-
-  const activeCount = automations.filter((a) => a.status === "active").length;
-
-  return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        title="Automations"
-        description={`${automations.length} automations · ${activeCount} active`}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="size-3.5" />
-              New Automation
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 pb-4">
-        <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="disabled">Disabled</TabsTrigger>
-            <TabsTrigger value="draft">Draft</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <SearchInput value={query} onChange={setQuery} placeholder="Search automations…" className="w-72" />
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon={Workflow}
-            title="No automations found"
-            description="Try a different search term or status filter."
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((automation) => (
-              <AutomationCard key={automation.id} automation={automation} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <CreateAutomationDialog open={createOpen} onOpenChange={setCreateOpen} />
-    </div>
-  );
+  return <BusinessAutomationCenter />;
 }
 
 type BusinessWorkflow = {
@@ -255,6 +181,33 @@ function BusinessAutomationCenter() {
     <div className="grid min-h-0 flex-1 lg:grid-cols-[210px_minmax(0,1fr)]">
       <aside className="border-r border-border px-4 py-5"><p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Folders</p><div className="grid gap-1"><FolderButton active={folder === "all"} label="All workflows" count={data.length} onClick={() => setFolder("all")} />{folderRows.map((item) => <div key={item.id} className="group flex items-center gap-1"><div className="min-w-0 flex-1"><FolderButton active={folder === item.id} label={item.name} count={item.count} onClick={() => setFolder(item.id)} /></div>{!demoMode && <button type="button" aria-label={`Delete folder ${item.name}`} className="rounded p-1 text-muted-foreground opacity-0 hover:text-danger focus:opacity-100 group-hover:opacity-100" onClick={() => void deleteFolder(item)}><Trash2 className="size-3.5" /></button>}</div>)}{!demoMode && <Button variant="ghost" size="sm" className="justify-start text-xs" onClick={() => setFolderOpen(true)}><Plus className="size-3.5" />New folder</Button>}</div></aside>
       <main className="min-w-0 px-5 py-5">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Workflows</p>
+            <p className="mt-1 text-xl font-bold tabular-nums">{data.length}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">total</p>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Active</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-emerald-600">{data.filter((w) => normalizedStatus(w.status) === "on").length}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">running now</p>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Runs (7d)</p>
+            <p className="mt-1 text-xl font-bold tabular-nums">{data.reduce((s, w) => s + (w.runs7d ?? 0), 0)}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">executions</p>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Errors</p>
+            <p className={`mt-1 text-xl font-bold tabular-nums ${data.reduce((s, w) => s + (w.errors7d ?? 0), 0) > 0 ? "text-red-600" : "text-emerald-600"}`}>{data.reduce((s, w) => s + (w.errors7d ?? 0), 0)}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">failed runs</p>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Waiting</p>
+            <p className={`mt-1 text-xl font-bold tabular-nums ${data.reduce((s, w) => s + (w.waiting ?? 0), 0) > 0 ? "text-amber-600" : ""}`}>{data.reduce((s, w) => s + (w.waiting ?? 0), 0)}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">need approval</p>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4"><div className="relative min-w-[220px] flex-1"><Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search workflows…" className="pl-8" /></div><select aria-label="Status filter" value={status} onChange={(event) => setStatus(event.target.value)} className="h-9 border border-input bg-surface px-3 text-xs"><option value="all">All statuses</option><option value="on">On</option><option value="off">Off</option><option value="draft">Draft</option><option value="attention">Needs attention</option></select><select aria-label="Module filter" value={module} onChange={(event) => setModule(event.target.value)} className="h-9 border border-input bg-surface px-3 text-xs"><option value="all">All modules</option>{allModules.map((item) => <option key={item} value={item}>{moduleLabel(item)}</option>)}</select><select aria-label="Sort workflows" value={sort} onChange={(event) => setSort(event.target.value)} className="h-9 border border-input bg-surface px-3 text-xs"><option value="updated">Last updated</option><option value="name">Name</option><option value="runs">Runs</option></select></div>
         {selected.length > 0 && <div className="my-3 flex flex-wrap items-center gap-2 border border-accent/30 bg-accent-muted px-3 py-2 text-xs"><span className="font-medium">{selected.length} selected</span><Button size="sm" variant="secondary" onClick={() => bulk("on")}><Power className="size-3.5" />Turn on</Button><Button size="sm" variant="secondary" onClick={() => bulk("off")}><XCircle className="size-3.5" />Turn off</Button><Button size="sm" variant="secondary" onClick={() => bulk("archive")}><Archive className="size-3.5" />Archive</Button></div>}
         {!demoMode && <div className="mt-4"><RunsWaiting runs={runs.data ?? []} names={names} onApproved={() => runs.reload()} /></div>}

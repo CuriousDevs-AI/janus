@@ -170,7 +170,8 @@ export type DealStage =
   | "negotiation"
   | "approval"
   | "won"
-  | "lost";
+  | "lost"
+  | (string & {});
 
 export interface DealTask {
   id: ID;

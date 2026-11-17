@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
-import { formatCurrencyINR, formatRelativeTime } from "@/lib/utils";
+import { formatCurrencyINR, formatRelativeTime, cn } from "@/lib/utils";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Building2, RefreshCw } from "lucide-react";
+import { Building2, RefreshCw, Heart } from "lucide-react";
 import { useAllRows } from "@/lib/api/use-all-rows";
 import { useApi } from "@/lib/api/use-api";
 import type { Contact, Deal, Lead } from "@/lib/api/types";
@@ -171,6 +171,39 @@ export default function CustomersPage() {
       />
       {loadError && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">Your customers could not be read: {loadError}. Refresh to try again; nothing is lost.</p>}
 
+      {!loading && rowCount > 0 && (() => {
+        const activeDeals = demoMode
+          ? demoRows.filter(({ leads: cls }) => cls.some((l) => !["won", "lost"].includes(l.stage))).length
+          : serverRows.filter((r) => !["won", "lost"].includes(r.stage)).length;
+        const totalRev = demoMode
+          ? demoRows.reduce((s, { deals: ds }) => s + ds.filter((d) => d.stage !== "lost").reduce((a, d) => a + Number(d.amount), 0), 0)
+          : serverRows.reduce((s, r) => s + Number(r.dealValue), 0);
+        const needsAtt = demoMode
+          ? demoRows.filter(({ leads: cls }) => cls.some((l) => { const age = Date.now() - new Date(l.lastActivityAt).getTime(); return age > 3 * 24 * 60 * 60 * 1000 && !["won", "lost"].includes(l.stage); })).length
+          : serverRows.filter((r) => r.lastActivityAt && (Date.now() - new Date(r.lastActivityAt).getTime()) > 3 * 24 * 60 * 60 * 1000 && !["won", "lost"].includes(r.stage)).length;
+        return (
+          <div className="grid gap-2 px-6 pb-3 sm:grid-cols-4">
+            {([
+              ["Total Customers", String(rowCount), "In your CRM", "bg-accent"],
+              ["Active Deals", String(activeDeals), "With open pipeline stages", "bg-emerald-500"],
+              ["Total Revenue", formatCurrencyINR(totalRev), "Across all deals", "bg-indigo-500"],
+              ["Needs Attention", String(needsAtt), "No activity in 3+ days", "bg-amber-500"],
+            ] as const).map(([title, value, detail, dot]) => (
+              <div key={title} className="rounded-xl border border-border bg-surface p-3">
+                <div className="flex items-center gap-1.5">
+                  <span className={`size-1.5 rounded-full ${dot}`} />
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+                </div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-lg font-bold tabular-nums">{value}</span>
+                  <span className="text-[11px] text-muted-foreground">{detail}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 pb-4">
         <SearchInput value={query} onChange={setQuery} placeholder="Search customers or companies..." className="w-72" />
         <Tabs value={filter} onValueChange={changeFilter}>
@@ -197,6 +230,7 @@ export default function CustomersPage() {
             <TableRow>
               <TableHead>Customer</TableHead>
               <TableHead>Company</TableHead>
+              <TableHead>Health</TableHead>
               <TableHead>CRM stage</TableHead>
               <TableHead>Deal Value</TableHead>
               <TableHead>Owner</TableHead>
@@ -211,10 +245,15 @@ export default function CustomersPage() {
               const furthest = [...customerLeads].sort((a, b) => stageOrder.indexOf(b.stage) - stageOrder.indexOf(a.stage))[0];
               const currentStage = furthest?.stage ?? "new";
               const dName = contact.name || contact.phone || contact.email || `Customer #${contact.id}`;
+              const daysIdle = lastLead ? Math.floor((Date.now() - new Date(lastLead.lastActivityAt).getTime()) / 86400000) : 999;
+              const health = currentStage === "won" ? "good" : currentStage === "lost" ? "cold" : daysIdle > 7 ? "cold" : daysIdle > 3 ? "warm" : "good";
+              const healthColor = health === "good" ? "text-success" : health === "warm" ? "text-warning" : "text-danger";
+              const healthLabel = health === "good" ? "Healthy" : health === "warm" ? "Needs attention" : "At risk";
               return (
                 <TableRow key={contact.id} className={usingDemo ? "" : "cursor-pointer"} onClick={usingDemo ? undefined : () => router.push(`/customers/${contact.id}`)}>
                   <TableCell><div className="flex items-center gap-2"><CustomerAvatar name={dName} color="#4169e1" size="sm" /><span className="font-medium text-foreground">{dName}</span></div></TableCell>
                   <TableCell className="text-muted-foreground">{contact.company || "—"}</TableCell>
+                  <TableCell><div className="flex items-center gap-1.5"><Heart className={cn("size-3", healthColor)} /><span className={cn("text-xs", healthColor)}>{healthLabel}</span></div></TableCell>
                   <TableCell className="capitalize text-muted-foreground">{currentStage.replaceAll("_", " ")}</TableCell>
                   <TableCell className="text-mono text-foreground">{dealValue > 0 ? formatCurrencyINR(dealValue) : "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{ownerLabel(lastLead?.ownerId ?? customerDeals[0]?.ownerId ?? null, lastLead?.ownerName ?? customerDeals[0]?.ownerName ?? null)}</TableCell>
@@ -225,10 +264,15 @@ export default function CustomersPage() {
             }) : serverRows.map((row) => {
               const dealValue = Number(row.dealValue);
               const name = displayName(row);
+              const daysIdleSrv = row.lastActivityAt ? Math.floor((Date.now() - new Date(row.lastActivityAt).getTime()) / 86400000) : 999;
+              const srvHealth = row.stage === "won" ? "good" : row.stage === "lost" ? "cold" : daysIdleSrv > 7 ? "cold" : daysIdleSrv > 3 ? "warm" : "good";
+              const srvHealthColor = srvHealth === "good" ? "text-success" : srvHealth === "warm" ? "text-warning" : "text-danger";
+              const srvHealthLabel = srvHealth === "good" ? "Healthy" : srvHealth === "warm" ? "Needs attention" : "At risk";
               return (
                 <TableRow key={row.contactId} className="cursor-pointer" onClick={() => setSelectedContactId(row.contactId)}>
                   <TableCell><div className="flex items-center gap-2"><CustomerAvatar name={name} color="#4169e1" size="sm" /><span className="font-medium text-foreground">{name}</span></div></TableCell>
                   <TableCell className="text-muted-foreground">{row.company || "—"}</TableCell>
+                  <TableCell><div className="flex items-center gap-1.5"><Heart className={cn("size-3", srvHealthColor)} /><span className={cn("text-xs", srvHealthColor)}>{srvHealthLabel}</span></div></TableCell>
                   <TableCell className="capitalize text-muted-foreground">{row.stage.replaceAll("_", " ")}</TableCell>
                   <TableCell className="text-mono text-foreground">{dealValue > 0 ? formatCurrencyINR(dealValue) : "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{ownerLabel(row.ownerId, row.ownerName)}</TableCell>

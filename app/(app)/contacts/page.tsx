@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, RefreshCw, Phone, Mail, Building2 } from "lucide-react";
+import { Users, RefreshCw, Phone, Mail, Building2, Tag, Clock } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
 import type { Contact, CrmTag } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatRelativeTime } from "@/lib/utils";
 
 interface ContactRow extends Contact {
   tags?: CrmTag[];
@@ -36,6 +37,13 @@ export default function ContactsPage() {
 
   const rows = contacts.data ?? [];
 
+  const stats = useMemo(() => ({
+    total: rows.length,
+    withPhone: rows.filter((c) => c.phone).length,
+    withEmail: rows.filter((c) => c.email).length,
+    tagged: rows.filter((c) => (c.tags ?? []).length > 0).length,
+  }), [rows]);
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -49,6 +57,32 @@ export default function ContactsPage() {
           </div>
         }
       />
+
+      {rows.length > 0 && (
+        <div className="grid gap-2 px-6 pb-3 sm:grid-cols-4">
+          {([
+            ["Total Contacts", String(stats.total), Users, "bg-accent"],
+            ["With Phone", String(stats.withPhone), Phone, "bg-emerald-500"],
+            ["With Email", String(stats.withEmail), Mail, "bg-indigo-500"],
+            ["Tagged", String(stats.tagged), Tag, "bg-purple-500"],
+          ] as const).map(([title, value, Icon, dot]) => (
+            <div key={title} className="rounded-xl border border-border bg-surface p-3">
+              <div className="flex items-center gap-1.5">
+                <span className={`size-1.5 rounded-full ${dot}`} />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-lg font-bold tabular-nums">{value}</span>
+                {title !== "Total Contacts" && stats.total > 0 && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {Math.round((Number(value) / stats.total) * 100)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 px-6 pb-4">
         <SearchInput
@@ -92,6 +126,7 @@ export default function ContactsPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Company</TableHead>
                 <TableHead>Tags</TableHead>
+                <TableHead>Last Activity</TableHead>
                 <TableHead>Leads</TableHead>
               </TableRow>
             </TableHeader>
@@ -135,6 +170,14 @@ export default function ContactsPage() {
                         </Badge>
                       ))}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {c.lastActivityAt ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="size-3" />
+                        {formatRelativeTime(c.lastActivityAt)}
+                      </span>
+                    ) : "—"}
                   </TableCell>
                   <TableCell className="text-xs">{c.leadCount ?? "—"}</TableCell>
                 </TableRow>

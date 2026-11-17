@@ -168,8 +168,9 @@ class LeadUpdate(BaseModel):
         return self
 
 
-DealStage = Literal[
-    "new", "qualified", "demo", "proposal", "negotiation", "approval", "won", "lost"
+DealStage = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=40, pattern=r"^[a-z][a-z0-9_-]{0,39}$"),
 ]
 
 

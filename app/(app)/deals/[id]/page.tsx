@@ -8,6 +8,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useApi } from "@/lib/api/use-api";
 import type { Deal, DealEvent } from "@/lib/api/types";
+import { RecordDocuments } from "@/components/shared/record-documents";
+import { todayIso } from "@/lib/today";
 import { useSession } from "@/components/auth/session-provider";
 import { WhatsAppButton } from "@/components/inbox/whatsapp-button";
 import { DealForm } from "@/components/deals/deal-form";
@@ -186,6 +188,10 @@ export default function DealPage({
               </div>
             </section>
           </div>
+          <section className="rounded-lg border border-border bg-surface p-4">
+            <h2 className="mb-4 text-sm font-semibold">Documents</h2>
+            <RecordDocuments recordKind="deal" recordId={deal.id} addedBy={deal.ownerName || "CRM"} today={todayIso()} />
+          </section>
         </>
       )}
     </div>
