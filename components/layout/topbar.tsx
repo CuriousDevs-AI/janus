@@ -1,14 +1,12 @@
 "use client";
 import * as React from "react";
-import { Bell, ClipboardList, LogOut, Menu, Search, User } from "lucide-react";
+import { LogOut, Menu, Search, User } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { Button } from "@/components/ui/button";
-import { useDemoAccount, useLoginAccount } from "@/lib/demo-persona";
-import { toast } from "sonner";
 import { CallPill } from "@/components/team/voice-stage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { roleLabel } from "@/lib/access";
@@ -67,8 +65,6 @@ export function Topbar() {
   const signOut = useSignOut();
   const setOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const setMobile = useUIStore((s) => s.setMobileNavOpen);
-  const account = useDemoAccount();
-  const login = useLoginAccount();
   const pathname = usePathname();
   const onTeam = pathname === "/team";
 
@@ -260,18 +256,6 @@ export function Topbar() {
               <Link href={`/account?tab=profile&workspace=${workspaceId}`} className="flex items-center gap-2">
                 <User className="size-3.5" />
                 My Profile
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={`/work?workspace=${workspaceId}`} className="flex items-center gap-2">
-                <ClipboardList className="size-3.5" />
-                My Tasks
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/notifications" className="flex items-center gap-2">
-                <Bell className="size-3.5" />
-                Notifications
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
