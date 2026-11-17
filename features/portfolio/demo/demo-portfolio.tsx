@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SWITCHABLE_WORKSPACES, getWorkspaceDefinition, type WorkspaceId } from "@/lib/workspace-config";
-import { ArrowRight, ArrowUp, BellOff, Building2, Check, Plus, RotateCcw, Send, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, ArrowUp, BellOff, Building2, Check, Eye, Plus, RotateCcw, Search, Send, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { inr } from "@/features/portfolio/lib/format";
 import { useLoginAccount } from "@/lib/demo-persona";
 import { useSession } from "@/components/auth/session-provider";
 import { userScoped } from "@/lib/stores/user-scoped";
+import { useAuditLog, actionLabel, actionCategories, type AuditEntry } from "@/lib/stores/audit-log-store";
 
 function sinceDate(iso: string): string {
   try {
@@ -40,7 +41,7 @@ const titles: Record<string, [string, string]> = {
   analytics: ["Analytics", "The same measures for every company, side by side."],
   finance: ["Finance", "What the people and the pipeline cost and bring in, by company."],
   work: ["Work Inbox", "Everything that needs someone to act, across your companies."],
-  activity: ["Activity", "What changed across your companies, most recent first."],
+  activity: ["Activity", "Every action across your portfolio, newest first."],
   companies: ["Companies", "Set up, switch on workspaces, open or remove a company."],
   intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
   "ai-keys": ["AI Models & Keys", "Providers, models, keys and routing for AI features across your portfolio."],
@@ -210,22 +211,41 @@ function Companies({ list }: { list: CompanySummary[] }) {
 }
 
 function EditCompany({ company, onClose }: { company: CompanyRecord; onClose: () => void }) {
+  const session = useSession();
+  const appendLog = useAuditLog((s) => s.append);
   const [name, setName] = React.useState(company.name);
   const [industry, setIndustry] = React.useState(company.industry);
   const [city, setCity] = React.useState(company.city);
   const [logo, setLogo] = React.useState<string | undefined>(company.logo);
   const taken = readCompanies().some((item) => item.id !== company.id && item.name.trim().toLowerCase() === name.trim().toLowerCase());
   const error = name.trim().length < 2 ? "Give the company a name." : taken ? `${name.trim()} already exists.` : industry.trim().length > 0 && industry.trim().length < 3 ? "Industry must be at least 3 characters." : city.trim().length > 0 && city.trim().length < 2 ? "City must be at least 2 characters." : "";
+  const save = () => {
+    const before: Record<string, string> = {};
+    const after: Record<string, string> = {};
+    if (name.trim() !== company.name) { before.name = company.name; after.name = name.trim(); }
+    if (industry.trim() !== company.industry) { before.industry = company.industry; after.industry = industry.trim(); }
+    if (city.trim() !== company.city) { before.city = company.city; after.city = city.trim(); }
+    updateCompany(company.id, { name: name.trim(), industry: industry.trim(), city: city.trim(), logo });
+    appendLog({ action: "company.edited", actor: { name: session.user.name, email: session.user.email, role: session.role }, companyId: company.id, companyName: company.name, target: company.name, detail: null, before: Object.keys(before).length ? before : null, after: Object.keys(after).length ? after : null });
+    toast.success("Company updated."); onClose();
+  };
   return <Dialog open onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>Edit {company.name}</DialogTitle><DialogDescription>The name appears in the company menu, reports and letters.</DialogDescription></DialogHeader>
     <div className="grid gap-4"><LogoPicker id={company.id} name={name} value={logo} onChange={setLogo} /><label className="grid gap-1.5 text-xs text-muted-foreground">Name<Input value={name} maxLength={60} onChange={(event) => setName(event.target.value)} /></label><label className="grid gap-1.5 text-xs text-muted-foreground">Industry<Input value={industry} maxLength={60} onChange={(event) => setIndustry(event.target.value)} /></label><label className="grid gap-1.5 text-xs text-muted-foreground">City<Input value={city} maxLength={40} onChange={(event) => setCity(event.target.value)} /></label>{error && <p role="alert" className="text-xs text-danger">{error}</p>}</div>
-    <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={Boolean(error)} onClick={() => { updateCompany(company.id, { name: name.trim(), industry: industry.trim(), city: city.trim(), logo }); toast.success("Company updated."); onClose(); }}>Save</Button></DialogFooter></DialogContent></Dialog>;
+    <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={Boolean(error)} onClick={save}>Save</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function RemoveCompany({ company, onClose }: { company: CompanyRecord; onClose: () => void }) {
+  const session = useSession();
+  const appendLog = useAuditLog((s) => s.append);
   const [typed, setTyped] = React.useState("");
+  const remove = () => {
+    removeCompany(company.id);
+    appendLog({ action: "company.archived", actor: { name: session.user.name, email: session.user.email, role: session.role }, companyId: company.id, companyName: company.name, target: company.name, detail: null, before: null, after: null });
+    toast.success(`${company.name} removed.`); onClose();
+  };
   return <Dialog open onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>Remove {company.name}?</DialogTitle><DialogDescription>It disappears from your account and from the Portfolio. Type its name to confirm.</DialogDescription></DialogHeader>
     <Input aria-label="Type the company name" value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={company.name} />
-    <DialogFooter><Button variant="outline" onClick={onClose}>Keep it</Button><Button variant="destructive" disabled={typed.trim() !== company.name} onClick={() => { removeCompany(company.id); toast.success(`${company.name} removed.`); onClose(); }}>Remove company</Button></DialogFooter></DialogContent></Dialog>;
+    <DialogFooter><Button variant="outline" onClick={onClose}>Keep it</Button><Button variant="destructive" disabled={typed.trim() !== company.name} onClick={remove}>Remove company</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function Intelligence({ list }: { list: CompanySummary[] }) {
@@ -347,25 +367,177 @@ function WorkInbox({ list }: { list: CompanySummary[] }) {
   </>;
 }
 
-function Activity({ list }: { list: CompanySummary[] }) {
-  const events: { company: CompanyRecord; text: string; time: string; to: string }[] = [];
-  for (const item of list) {
-    events.push({ company: item.company, text: `${item.hr.people} people on the team, ${item.hr.departments} department${item.hr.departments !== 1 ? "s" : ""}`, time: "Current", to: "/workspace/hr-people?view=directory&workspace=hr-people" });
-    if (item.crm) {
-      if (item.crm.wonValue > 0) events.push({ company: item.company, text: `${inr(item.crm.wonValue)} in closed deals`, time: "Recent", to: "/deals?workspace=crm-sales" });
-      if (item.crm.leads > 0) events.push({ company: item.company, text: `${item.crm.leads} leads captured`, time: "Recent", to: "/leads?workspace=crm-sales" });
+const fmtAuditDate = (iso: string) => {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) + ", " + d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+  } catch { return iso; }
+};
+const fmtAuditDay = (iso: string) => {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    if (isToday) return "Today";
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+  } catch { return iso; }
+};
+const fmtAuditTime = (iso: string) => {
+  try { return new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }); }
+  catch { return ""; }
+};
+
+const PAGE_SIZE = 20;
+
+function useSeedAuditLog(list: CompanySummary[], session: { user: { name: string; email: string }; role: string }) {
+  const entries = useAuditLog((s) => s.entries);
+  const seeded = React.useRef(false);
+  React.useEffect(() => {
+    if (seeded.current || entries.length > 0 || list.length === 0) return;
+    seeded.current = true;
+    const actor = { name: session.user.name, email: session.user.email, role: session.role };
+    const batch: Omit<AuditEntry, "id" | "at" | "device" | "ip">[] = [];
+    for (const item of [...list].reverse()) {
+      const c = item.company;
+      batch.push({ action: "company.created", actor, companyId: c.id, companyName: c.name, target: c.name, detail: `Industry: ${c.industry}, City: ${c.city}`, before: null, after: { industry: c.industry, city: c.city } });
+      for (const ws of c.workspaces) {
+        batch.push({ action: "workspace.enabled", actor, companyId: c.id, companyName: c.name, target: ws, detail: null, before: null, after: { workspace: ws } });
+      }
+      if (c.setupDone) {
+        batch.push({ action: "setup.completed", actor, companyId: c.id, companyName: c.name, target: c.name, detail: null, before: null, after: null });
+      }
     }
-    if (item.hr.pendingLeave > 0) events.push({ company: item.company, text: `${item.hr.pendingLeave} leave request${item.hr.pendingLeave !== 1 ? "s" : ""} submitted`, time: "Recent", to: "/workspace/hr-people?view=approvals&workspace=hr-people" });
-    if (item.hr.claimsPending > 0) events.push({ company: item.company, text: `${item.hr.claimsPending} expense claim${item.hr.claimsPending !== 1 ? "s" : ""} submitted`, time: "Recent", to: "/workspace/hr-people?view=expenses&workspace=hr-people" });
-    if (!item.company.setupDone) events.push({ company: item.company, text: "Company setup started, not yet finished", time: "Pending", to: `/setup?finish=${item.company.id}` });
-  }
-  return <SectionCard title="Recent activity" description="What happened across your companies.">
-    {events.length === 0 ? <p className="text-sm text-muted-foreground">No activity yet. Add a company and start working.</p> : <ul className="flex flex-col divide-y divide-border">{events.map((event, index) => <li key={`${event.company.id}-${index}`} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
-      <Badge variant="neutral">{event.time}</Badge>
-      <div className="flex min-w-0 flex-1 items-center gap-2"><CompanyLogo company={event.company} size={20} className="rounded" /><span className="text-sm"><span className="font-medium">{event.company.name}</span> · {event.text}</span></div>
-      <Button size="sm" variant="secondary" onClick={() => open(event.company.id, event.to)}>Open</Button>
-    </li>)}</ul>}
-  </SectionCard>;
+    requestAnimationFrame(() => { for (const entry of batch) useAuditLog.getState().append(entry); });
+  }, [list, entries.length, session]);
+}
+
+function Activity({ list }: { list: CompanySummary[] }) {
+  const session = useSession();
+  useSeedAuditLog(list, session);
+  const entries = useAuditLog((s) => s.entries);
+  const [search, setSearchRaw] = React.useState("");
+  const [filterCompany, setFilterCompanyRaw] = React.useState("all");
+  const [filterCategory, setFilterCategoryRaw] = React.useState("all");
+  const [page, setPage] = React.useState(0);
+  const [drawer, setDrawer] = React.useState<AuditEntry | null>(null);
+  const setSearch = (v: string) => { setSearchRaw(v); setPage(0); };
+  const setFilterCompany = (v: string) => { setFilterCompanyRaw(v); setPage(0); };
+  const setFilterCategory = (v: string) => { setFilterCategoryRaw(v); setPage(0); };
+
+  const companyNames = React.useMemo(() => [...new Set(entries.filter((e) => e.companyName).map((e) => e.companyName!))].sort(), [entries]);
+  const categories = React.useMemo(() => actionCategories(), []);
+
+  const filtered = React.useMemo(() => {
+    let result = entries;
+    if (filterCompany !== "all") result = result.filter((e) => e.companyName === filterCompany);
+    if (filterCategory !== "all") {
+      const cat = categories.find((c) => c.label === filterCategory);
+      if (cat) result = result.filter((e) => cat.actions.includes(e.action));
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((e) => e.actor.name.toLowerCase().includes(q) || actionLabel(e.action).toLowerCase().includes(q) || (e.target && e.target.toLowerCase().includes(q)) || (e.companyName && e.companyName.toLowerCase().includes(q)));
+    }
+    return result;
+  }, [entries, filterCompany, filterCategory, search, categories]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const groups = paged.reduce<[string, AuditEntry[]][]>((out, entry) => {
+    const label = fmtAuditDay(entry.at);
+    const last = out[out.length - 1];
+    if (last && last[0] === label) last[1].push(entry); else out.push([label, [entry]]);
+    return out;
+  }, []);
+
+  return <>
+    <SectionCard title="Audit log" description="Every action across your portfolio, newest first. Click View for full details.">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input type="text" placeholder="Search events…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent" />
+        </div>
+        <select aria-label="Company" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={filterCompany} onChange={(e) => setFilterCompany(e.target.value)}>
+          <option value="all">All companies</option>
+          {companyNames.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <select aria-label="Action type" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+          <option value="all">All actions</option>
+          {categories.map((cat) => <option key={cat.label} value={cat.label}>{cat.label}</option>)}
+        </select>
+        <span className="text-[11px] text-muted-foreground tabular-nums">{filtered.length} event{filtered.length !== 1 ? "s" : ""}</span>
+      </div>
+      {groups.length === 0 ? <p className="text-sm text-muted-foreground">No events{search || filterCompany !== "all" || filterCategory !== "all" ? " match the filters" : " recorded yet"}.</p>
+        : <div className="flex flex-col gap-5">{groups.map(([label, groupEntries]) => <section key={label}>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
+          <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+            {groupEntries.map((entry) => <li key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2.5 text-sm">
+              <span className="w-20 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtAuditTime(entry.at)}</span>
+              <span className="min-w-0 flex-1"><span className="font-medium">{entry.actor.name}</span> {actionLabel(entry.action)} <span className="font-medium">{entry.target}</span>{entry.companyName ? <span className="text-muted-foreground"> · {entry.companyName}</span> : null}</span>
+              <Button size="sm" variant="ghost" onClick={() => setDrawer(entry)}><Eye className="size-3.5" />View</Button>
+            </li>)}
+          </ul>
+        </section>)}</div>}
+      {totalPages > 1 && <div className="mt-4 flex items-center justify-between">
+        <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button>
+        <span className="text-xs text-muted-foreground tabular-nums">Page {page + 1} of {totalPages}</span>
+        <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>Next</Button>
+      </div>}
+    </SectionCard>
+    {drawer && <AuditDrawer entry={drawer} onClose={() => setDrawer(null)} />}
+  </>;
+}
+
+function AuditDrawer({ entry, onClose }: { entry: AuditEntry; onClose: () => void }) {
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+  const rows: [string, string][] = [
+    ["Who", `${entry.actor.name} (${entry.actor.email})`],
+    ["Role", entry.actor.role],
+    ["Action", actionLabel(entry.action)],
+    ["Target", entry.target],
+    ...(entry.companyName ? [["Company", entry.companyName] as [string, string]] : []),
+    ["When", fmtAuditDate(entry.at)],
+    ["Device", entry.device.length > 60 ? entry.device.slice(0, 60) + "…" : entry.device],
+    ["IP address", entry.ip],
+    ["Log ID", entry.id],
+  ];
+  if (entry.detail) rows.splice(4, 0, ["Detail", entry.detail]);
+  return <>
+    <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+    <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-lg">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <h2 className="text-sm font-semibold">Event details</h2>
+        <button type="button" onClick={onClose} className="rounded-md p-1 hover:bg-surface-2" aria-label="Close"><X className="size-4" /></button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        <dl className="flex flex-col gap-3">
+          {rows.map(([label, value]) => <div key={label} className="flex flex-col gap-0.5">
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+            <dd className="text-sm text-foreground break-all">{value}</dd>
+          </div>)}
+        </dl>
+        {(entry.before || entry.after) && <div className="mt-5">
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Changes</h3>
+          <div className="grid gap-2">
+            {Object.keys({ ...entry.before, ...entry.after }).map((key) => <div key={key} className="rounded-md border border-border p-2.5 text-xs">
+              <span className="font-medium">{key}</span>
+              {entry.before?.[key] && <span className="block text-danger line-through">{entry.before[key]}</span>}
+              {entry.after?.[key] && <span className="block text-emerald-600 dark:text-emerald-400">{entry.after[key]}</span>}
+            </div>)}
+          </div>
+        </div>}
+      </div>
+    </aside>
+  </>;
 }
 
 

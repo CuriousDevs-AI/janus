@@ -15,6 +15,8 @@ import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
 import { checkLogin } from "@/lib/demo-accounts";
 import { homeFor, signIn } from "@/lib/demo-persona";
+import { useSessionStore } from "@/lib/stores/session-store";
+import { useAuditLog } from "@/lib/stores/audit-log-store";
 import { newCompanyId, readCompanies, saveCompanies, seedCompanies, switchCompany } from "@/lib/company";
 import type { CompanyRecord } from "@/lib/company";
 import type { Me } from "@/lib/api/types";
@@ -29,6 +31,8 @@ type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const ensureSession = useSessionStore((s) => s.ensureSession);
+  const appendLog = useAuditLog((s) => s.append);
   const {
     register,
     handleSubmit,
@@ -43,6 +47,8 @@ export default function LoginPage() {
       const account = checkLogin(values.email, values.password);
       if (!account) { toast.error("No match. Use the email or full name with the right password."); return; }
       signIn(account.id);
+      ensureSession(account.id);
+      appendLog({ action: "session.signed_in", actor: { name: account.name, email: account.email, role: "owner" }, companyId: null, companyName: null, target: account.email, detail: null, before: null, after: null });
       if (account.registered) {
         let companies = readCompanies();
         let own = companies.find((c) => c.template === "blank");
