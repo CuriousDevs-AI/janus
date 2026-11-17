@@ -55,8 +55,8 @@ const titles: Record<string, [string, string]> = {
 // The views that report on a period, and so show the period bar and the board pack.
 const periodViews = ["overview", "analytics", "finance"];
 
-/** The Portfolio for a real account: every company the person owns or was shared, as the server reports it. */
-export function LivePortfolio() {
+/** Every company the person owns or was shared, as the server reports it. */
+export function Portfolio() {
   const params = useSearchParams();
   const router = useRouter();
   const view = params.get("view") ?? "overview";

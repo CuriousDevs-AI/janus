@@ -1,12 +1,10 @@
 "use client";
 
 import { Eye, ShieldAlert } from "lucide-react";
-import { demoMode } from "@/lib/demo-mode";
 import { useSession } from "@/components/auth/session-provider";
 import { PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
 import { PageHeader } from "@/components/shared/page-header";
-import { LivePortfolio } from "@/features/portfolio/components/live-portfolio";
-import { DemoPortfolio } from "@/features/portfolio/demo/portfolio-panel";
+import { Portfolio } from "@/features/portfolio/components/portfolio";
 
 const ROLE_DESCRIPTIONS: [string, string, string][] = [
   ["group_analyst", "Read-only", "Leads, deals, people, support, compliance. No money from the books."],
@@ -16,10 +14,9 @@ const ROLE_DESCRIPTIONS: [string, string, string][] = [
   ["company_admin", "Company administrator", "Runs the company and sees it on the Portfolio with money."],
 ];
 
-/** A real account reads its companies from the server; the preview shows its demo companies. */
 export function PortfolioPage() {
   const session = useSession();
-  const allowed = demoMode || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
+  const allowed = session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role) && item.status === "active");
   if (!allowed) {
     const companies = session.tenants.filter((item) => item.status === "active");
     return <div className="mx-auto flex max-w-[1000px] flex-col pb-10">
@@ -55,5 +52,5 @@ export function PortfolioPage() {
       </div>
     </div>;
   }
-  return demoMode ? <DemoPortfolio /> : <LivePortfolio />;
+  return <Portfolio />;
 }
