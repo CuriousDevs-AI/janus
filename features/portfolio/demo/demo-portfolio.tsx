@@ -24,6 +24,7 @@ import { useLoginAccount } from "@/lib/demo-persona";
 import { useSession } from "@/components/auth/session-provider";
 import { userScoped } from "@/lib/stores/user-scoped";
 import { useAuditLog, actionLabel, actionCategories, type AuditEntry } from "@/lib/stores/audit-log-store";
+import { roleLabel } from "@/lib/access";
 
 function sinceDate(iso: string): string {
   try {
@@ -104,11 +105,11 @@ function Overview({ list }: { list: CompanySummary[] }) {
   return <>
     <div className="flex justify-end"><Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button></div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-      <Kpi label="Companies" value={String(list.length)} detail="Under your login" />
-      <Kpi label="People" value={String(total.people)} detail="Across all companies" />
-      <Kpi label="Open pipeline" value={inr(total.pipeline)} detail="Companies with CRM" />
-      <Kpi label="Won so far" value={inr(total.won)} detail="Closed deals" />
-      <Kpi label="Monthly payroll" value={inr(total.pay)} detail="All companies" />
+      <Kpi label="Companies" value={String(list.length)} detail="Under your login" href="/portfolio?view=companies" />
+      <Kpi label="People" value={String(total.people)} detail="Across all companies" href="/portfolio?view=finance" />
+      <Kpi label="Open pipeline" value={inr(total.pipeline)} detail="Companies with CRM" href="/portfolio?view=analytics" />
+      <Kpi label="Won so far" value={inr(total.won)} detail="Closed deals" href="/portfolio?view=analytics" />
+      <Kpi label="Monthly payroll" value={inr(total.pay)} detail="All companies" href="/portfolio?view=finance" />
     </div>
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
       <SectionCard title="Needs your attention" description="Most urgent first. Open an item to go straight to it.">
@@ -133,7 +134,7 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div><dt className="text-[11px] text-muted-foreground">People</dt><dd className="font-semibold tabular-nums">{item.hr.people}</dd></div>
         <div><dt className="text-[11px] text-muted-foreground">On leave today</dt><dd className="font-semibold tabular-nums">{item.hr.onLeaveToday}</dd></div>
-        {item.crm ? <><div><dt className="text-[11px] text-muted-foreground">Open pipeline</dt><dd className="font-semibold tabular-nums">{inr(item.crm.pipeline)}</dd></div><div><dt className="text-[11px] text-muted-foreground">Win rate</dt><dd className="font-semibold tabular-nums">{item.crm.winRate}%</dd></div></> : <div className="col-span-2 text-xs text-muted-foreground">CRM & Sales is not switched on.</div>}
+        {item.crm ? <><div><dt className="text-[11px] text-muted-foreground">Open pipeline</dt><dd className="font-semibold tabular-nums">{inr(item.crm.pipeline)}</dd></div><div><dt className="text-[11px] text-muted-foreground">Win rate</dt><dd className="font-semibold tabular-nums">{item.crm.winRate >= 0 ? `${item.crm.winRate}%` : <span title="No closed deals yet">—</span>}</dd></div></> : <div className="col-span-2 text-xs text-muted-foreground">CRM & Sales is not switched on.</div>}
       </dl>
       <Button variant="secondary" size="sm" className="self-start" onClick={() => open(item.company.id)}>Open {item.company.name.split(" ")[0]}<ArrowRight className="ml-1 size-4" /></Button>
     </section>)}
@@ -141,15 +142,35 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
 }
 
 
+const DATE_RANGES = [
+  { label: "Last 3 months", months: 3 },
+  { label: "Last 6 months", months: 6 },
+  { label: "Last 12 months", months: 12 },
+] as const;
+
 function Analytics({ list }: { list: CompanySummary[] }) {
-  const crm = list.filter((item) => item.crm);
+  const [filterCompanyId, setFilterCompanyId] = React.useState("all");
+  const [rangeMonths, setRangeMonths] = React.useState(6);
+  const all = list.filter((item) => item.crm);
+  const crm = filterCompanyId === "all" ? all : all.filter((item) => item.company.id === filterCompanyId);
   const colors = new Map(list.map((item, index) => [item.company.id, palette[index % palette.length]]));
-  const months = crm[0]?.crm?.monthly.map((m) => m.label) ?? [];
-  const peak = Math.max(1, ...crm.flatMap((item) => item.crm!.monthly.map((m) => m.leads)));
-  const x = (index: number) => 40 + index * (480 / Math.max(1, months.length - 1));
+  const fullMonths = crm[0]?.crm?.monthly ?? [];
+  const months = fullMonths.slice(-rangeMonths);
+  const monthLabels = months.map((m) => m.label);
+  const peak = Math.max(1, ...crm.flatMap((item) => (item.crm?.monthly ?? []).slice(-rangeMonths).map((m) => m.leads)));
+  const x = (index: number) => 40 + index * (480 / Math.max(1, monthLabels.length - 1));
   const y = (value: number) => 170 - (value / peak) * 140;
   return <>
-    {crm.length === 0 ? <SectionCard title="Sales analytics" description="Needs CRM records."><p className="text-sm text-muted-foreground">No company has CRM & Sales switched on yet.</p></SectionCard> : <>
+    {all.length === 0 ? <SectionCard title="Sales analytics" description="Needs CRM records."><p className="text-sm text-muted-foreground">No company has CRM & Sales switched on yet.</p></SectionCard> : <>
+      <div className="flex flex-wrap items-center gap-2">
+        {list.length > 1 && <select aria-label="Company" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={filterCompanyId} onChange={(e) => setFilterCompanyId(e.target.value)}>
+          <option value="all">All companies</option>
+          {all.map((item) => <option key={item.company.id} value={item.company.id}>{item.company.name}</option>)}
+        </select>}
+        <select aria-label="Date range" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={rangeMonths} onChange={(e) => setRangeMonths(Number(e.target.value))}>
+          {DATE_RANGES.map((r) => <option key={r.months} value={r.months}>{r.label}</option>)}
+        </select>
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars format={inr} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.pipeline, color: colors.get(item.company.id)! }))} /></SectionCard>
         <SectionCard title="Won so far" description="Closed deals by company."><Bars format={inr} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.wonValue, color: colors.get(item.company.id)! }))} /></SectionCard>
@@ -157,8 +178,8 @@ function Analytics({ list }: { list: CompanySummary[] }) {
       <SectionCard title="Leads captured by month" description="Counted from each company's leads, by the month they came in.">
         <svg viewBox="0 0 560 200" role="img" aria-label="Leads captured per month for each company" className="h-auto w-full">
           <g stroke="var(--border)" strokeWidth="1"><line x1="40" y1="170" x2="520" y2="170" /><line x1="40" y1="100" x2="520" y2="100" /><line x1="40" y1="30" x2="520" y2="30" /></g>
-          {months.map((month, index) => <text key={month} x={x(index)} y="190" textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">{month}</text>)}
-          {crm.map((item) => <polyline key={item.company.id} fill="none" stroke={colors.get(item.company.id)} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={item.crm!.monthly.map((m, index) => `${x(index)},${y(m.leads)}`).join(" ")} />)}
+          {monthLabels.map((month, index) => <text key={month} x={x(index)} y="190" textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">{month}</text>)}
+          {crm.map((item) => <polyline key={item.company.id} fill="none" stroke={colors.get(item.company.id)} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={(item.crm?.monthly ?? []).slice(-rangeMonths).map((m, index) => `${x(index)},${y(m.leads)}`).join(" ")} />)}
         </svg>
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">{crm.map((item) => <span key={item.company.id} className="flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ background: colors.get(item.company.id) }} />{item.company.name}</span>)}</div>
       </SectionCard>
@@ -198,8 +219,8 @@ function Companies({ list }: { list: CompanySummary[] }) {
     <div className="grid gap-4 lg:grid-cols-2">
       {list.map((item) => { const company = item.company; return <section key={company.id} aria-label={company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
         <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{[company.industry, company.city, sinceDate(company.createdAt)].filter(Boolean).join(" · ")}</p></div></div>{company.setupDone ? <Badge variant="success">Active</Badge> : <Link href={`/setup?finish=${company.id}`}><Badge variant="warning" className="cursor-pointer hover:opacity-80">Setup unfinished</Badge></Link>}</div>
-        <div className="grid gap-1.5"><p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</p>
-          <div className="flex flex-wrap gap-1.5">{SWITCHABLE_WORKSPACES.map((id) => { const on = company.workspaces.includes(id); return <Badge key={id} variant={on ? "success" : "neutral"}>{workspaceName(id)}</Badge>; })}</div>
+        <div className="grid gap-1.5"><p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces <span className="font-normal normal-case tracking-normal">({company.workspaces.length} of {SWITCHABLE_WORKSPACES.length} enabled)</span></p>
+          <div className="flex flex-wrap gap-1.5">{SWITCHABLE_WORKSPACES.map((id) => { const on = company.workspaces.includes(id); return <Badge key={id} variant={on ? "success" : "neutral"} className={on ? "" : "opacity-50"}>{workspaceName(id)}{on ? "" : " (off)"}</Badge>; })}</div>
         </div>
         <p className="text-xs text-muted-foreground">{pl(item.hr.people, "person", "people")}{item.crm ? ` · ${pl(item.crm.leads, "lead", "leads")} · ${pl(item.crm.openDeals, "open deal", "open deals")}` : ""}</p>
         <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => open(company.id)}>Open<ArrowRight className="ml-1 size-4" /></Button>{!company.setupDone && <Button size="sm" variant="secondary" asChild><Link href={`/setup?finish=${company.id}`}>Finish setup</Link></Button>}<Button size="sm" variant="outline" onClick={() => setEditing(company)}>Edit details</Button><Button size="sm" variant="ghost" aria-label={`Remove ${company.name}`} onClick={() => setRemoving(company)}><Trash2 className="size-4" /></Button></div>
@@ -218,7 +239,8 @@ function EditCompany({ company, onClose }: { company: CompanyRecord; onClose: ()
   const [city, setCity] = React.useState(company.city);
   const [logo, setLogo] = React.useState<string | undefined>(company.logo);
   const taken = readCompanies().some((item) => item.id !== company.id && item.name.trim().toLowerCase() === name.trim().toLowerCase());
-  const error = name.trim().length < 2 ? "Give the company a name." : taken ? `${name.trim()} already exists.` : industry.trim().length > 0 && industry.trim().length < 3 ? "Industry must be at least 3 characters." : city.trim().length > 0 && city.trim().length < 2 ? "City must be at least 2 characters." : "";
+  const alphaOnly = (s: string) => /^[\p{L}\p{M}\s.'-]+$/u.test(s);
+  const error = name.trim().length < 2 ? "Give the company a name." : taken ? `${name.trim()} already exists.` : industry.trim().length > 0 && industry.trim().length < 3 ? "Industry must be at least 3 characters." : industry.trim().length > 0 && !alphaOnly(industry.trim()) ? "Industry should contain only letters." : city.trim().length > 0 && city.trim().length < 3 ? "City must be at least 3 characters." : city.trim().length > 0 && !alphaOnly(city.trim()) ? "City should contain only letters." : "";
   const save = () => {
     const before: Record<string, string> = {};
     const after: Record<string, string> = {};
@@ -378,11 +400,13 @@ const fmtAuditDay = (iso: string) => {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const today = new Date();
-    const isToday = d.toDateString() === today.toDateString();
-    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-    if (isToday) return "Today";
-    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    const now = new Date();
+    const todayStr = now.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    const entryStr = d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    if (entryStr === todayStr) return "Today";
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = yesterday.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    if (entryStr === yesterdayStr) return "Yesterday";
     return d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
   } catch { return iso; }
 };
@@ -478,7 +502,7 @@ function Activity({ list }: { list: CompanySummary[] }) {
           <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
             {groupEntries.map((entry) => <li key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2.5 text-sm">
               <span className="w-20 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtAuditTime(entry.at)}</span>
-              <span className="min-w-0 flex-1"><span className="font-medium">{entry.actor.name}</span> {actionLabel(entry.action)} <span className="font-medium">{entry.target}</span>{entry.companyName ? <span className="text-muted-foreground"> · {entry.companyName}</span> : null}</span>
+              <span className="min-w-0 flex-1"><span className="font-medium">{entry.actor.name}</span> {actionLabel(entry.action)} <span className="font-medium">{entry.action.startsWith("workspace.") ? displayWorkspaceInDrawer(entry.target) : entry.target}</span>{entry.companyName ? <span className="text-muted-foreground"> · {entry.companyName}</span> : null}</span>
               <Button size="sm" variant="ghost" onClick={() => setDrawer(entry)}><Eye className="size-3.5" />View</Button>
             </li>)}
           </ul>
@@ -493,24 +517,50 @@ function Activity({ list }: { list: CompanySummary[] }) {
   </>;
 }
 
+function parseDevice(ua: string): string {
+  if (!ua || ua === "unknown") return "Unknown device";
+  let browser = "Browser";
+  if (/Edg\//.test(ua)) browser = "Edge";
+  else if (/OPR\/|Opera/.test(ua)) browser = "Opera";
+  else if (/Chrome\//.test(ua)) browser = "Chrome";
+  else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = "Safari";
+  else if (/Firefox\//.test(ua)) browser = "Firefox";
+  let os = "Unknown OS";
+  if (/Windows/.test(ua)) os = "Windows";
+  else if (/Mac OS X|Macintosh/.test(ua)) os = "macOS";
+  else if (/Android/.test(ua)) os = "Android";
+  else if (/iPhone|iPad/.test(ua)) os = "iOS";
+  else if (/Linux/.test(ua)) os = "Linux";
+  else if (/CrOS/.test(ua)) os = "ChromeOS";
+  return `${browser} on ${os}`;
+}
+
+function displayWorkspaceInDrawer(value: string): string {
+  try { return workspaceName(value); } catch { return value; }
+}
+
 function AuditDrawer({ entry, onClose }: { entry: AuditEntry; onClose: () => void }) {
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
-  const rows: [string, string][] = [
+  const device = parseDevice(entry.device);
+  const targetDisplay = entry.action.startsWith("workspace.") ? displayWorkspaceInDrawer(entry.target) : entry.target;
+  const rows: [string, React.ReactNode][] = [
     ["Who", `${entry.actor.name} (${entry.actor.email})`],
-    ["Role", entry.actor.role],
+    ["Role", roleLabel(entry.actor.role)],
     ["Action", actionLabel(entry.action)],
-    ["Target", entry.target],
-    ...(entry.companyName ? [["Company", entry.companyName] as [string, string]] : []),
+    ["Target", targetDisplay],
+    ...(entry.companyName ? [["Company", entry.companyName] as [string, React.ReactNode]] : []),
     ["When", fmtAuditDate(entry.at)],
-    ["Device", entry.device.length > 60 ? entry.device.slice(0, 60) + "…" : entry.device],
+    ["Device", <span key="device" title={entry.device}>{device}</span>],
     ["IP address", entry.ip],
     ["Log ID", entry.id],
   ];
   if (entry.detail) rows.splice(4, 0, ["Detail", entry.detail]);
+  const changeLabel = (key: string) => key === "workspace" ? "Workspace" : key;
+  const changeValue = (key: string, value: string) => key === "workspace" ? displayWorkspaceInDrawer(value) : value;
   return <>
     <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
     <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-lg">
@@ -529,9 +579,9 @@ function AuditDrawer({ entry, onClose }: { entry: AuditEntry; onClose: () => voi
           <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Changes</h3>
           <div className="grid gap-2">
             {Object.keys({ ...entry.before, ...entry.after }).map((key) => <div key={key} className="rounded-md border border-border p-2.5 text-xs">
-              <span className="font-medium">{key}</span>
-              {entry.before?.[key] && <span className="block text-danger line-through">{entry.before[key]}</span>}
-              {entry.after?.[key] && <span className="block text-emerald-600 dark:text-emerald-400">{entry.after[key]}</span>}
+              <span className="font-medium">{changeLabel(key)}</span>
+              {entry.before?.[key] && <span className="block text-danger line-through">{changeValue(key, entry.before[key])}</span>}
+              {entry.after?.[key] && <span className="block text-emerald-600 dark:text-emerald-400">{changeValue(key, entry.after[key])}</span>}
             </div>)}
           </div>
         </div>}
@@ -545,9 +595,7 @@ function Compliance({ list }: { list: CompanySummary[] }) {
   const complianceItems: { company: CompanyRecord; category: string; item: string; status: "compliant" | "attention" | "overdue"; due?: string }[] = [];
   for (const item of list) {
     if (!item.company.setupDone) complianceItems.push({ company: item.company, category: "Setup", item: "Company setup", status: "overdue", due: "Incomplete" });
-    complianceItems.push({ company: item.company, category: "HR", item: "Employee agreements", status: item.hr.people > 0 ? "compliant" : "attention", due: item.hr.people > 0 ? "On file" : "No employees" });
-    complianceItems.push({ company: item.company, category: "Policy", item: "Leave policy", status: "compliant" });
-    if (item.crm) complianceItems.push({ company: item.company, category: "Data", item: "CRM data handling", status: "compliant" });
+    complianceItems.push({ company: item.company, category: "HR", item: "Employee agreements", status: item.hr.people > 0 ? "compliant" : "attention", due: item.hr.people > 0 ? `${item.hr.people} on record` : "No employees" });
   }
   const overdue = complianceItems.filter((i) => i.status === "overdue").length;
   const attention = complianceItems.filter((i) => i.status === "attention").length;
@@ -560,7 +608,8 @@ function Compliance({ list }: { list: CompanySummary[] }) {
     </div>
     <SectionCard title="Compliance status by company" description="Policy acknowledgments, document expiry and setup status.">
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Company</th><th className="px-3 py-2">Category</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Note</th></tr></thead>
-        <tbody>{complianceItems.map((ci, index) => <tr key={`${ci.company.id}-${index}`} className="border-b border-border last:border-0"><td className="py-2.5 pr-4"><div className="flex items-center gap-2"><CompanyLogo company={ci.company} size={20} className="rounded" /><span className="font-medium">{ci.company.name}</span></div></td><td className="px-3 py-2.5 text-muted-foreground">{ci.category}</td><td className="px-3 py-2.5">{ci.item}</td><td className="px-3 py-2.5"><Badge variant={ci.status === "compliant" ? "success" : ci.status === "attention" ? "warning" : "danger"}>{ci.status === "compliant" ? "Compliant" : ci.status === "attention" ? "Attention" : "Overdue"}</Badge></td><td className="px-3 py-2.5 text-xs text-muted-foreground">{ci.due ?? "—"}</td></tr>)}</tbody></table></div>
+        <tbody>{complianceItems.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-sm text-muted-foreground">No compliance items to show. Items appear as you add companies and employees.</td></tr> : complianceItems.map((ci, index) => <tr key={`${ci.company.id}-${index}`} className="border-b border-border last:border-0"><td className="py-2.5 pr-4"><div className="flex items-center gap-2"><CompanyLogo company={ci.company} size={20} className="rounded" /><span className="font-medium">{ci.company.name}</span></div></td><td className="px-3 py-2.5 text-muted-foreground">{ci.category}</td><td className="px-3 py-2.5">{ci.item}</td><td className="px-3 py-2.5"><Badge variant={ci.status === "compliant" ? "success" : ci.status === "attention" ? "warning" : "danger"}>{ci.status === "compliant" ? "Compliant" : ci.status === "attention" ? "Attention" : "Overdue"}</Badge></td><td className="px-3 py-2.5 text-xs text-muted-foreground">{ci.due ?? "—"}</td></tr>)}</tbody></table></div>
+      <p className="mt-3 text-xs text-muted-foreground">Showing setup status and employee agreements only. Leave policy, CRM data handling and statutory filings will appear once their compliance rules are connected.</p>
     </SectionCard>
   </>;
 }
@@ -568,7 +617,7 @@ function Compliance({ list }: { list: CompanySummary[] }) {
 
 const PLANS = [
   { id: "free", name: "Free", price: 0, tagline: "Get started with the basics.", companies: 1, logins: 3, features: ["1 company", "3 people", "CRM & HR basics", "Community support"] },
-  { id: "starter", name: "Starter", price: 999, tagline: "For a small team running one company.", companies: 2, logins: 15, features: ["2 companies", "15 people", "All workspaces", "Email support"] },
+  { id: "starter", name: "Starter", price: 999, tagline: "For a small team running up to two companies.", companies: 2, logins: 15, features: ["2 companies", "15 people", "All workspaces", "Email support"] },
   { id: "growth", name: "Growth", price: 2999, tagline: "The plan most growing businesses choose.", companies: 10, logins: 100, features: ["10 companies", "100 people", "Janus Intelligence", "Priority support", "Compliance calendar"] },
   { id: "enterprise", name: "Enterprise", price: null as number | null, tagline: "For groups that need everything.", companies: null as number | null, logins: null as number | null, features: ["Unlimited companies", "Unlimited people", "Dedicated support", "Custom integrations", "SLA guarantee"] },
 ];

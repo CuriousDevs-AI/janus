@@ -15,8 +15,9 @@ export function insightsFor(list: CompanySummary[]): Insight[] {
     const top = [...crm].sort((a, b) => (b.crm?.pipeline ?? 0) - (a.crm?.pipeline ?? 0))[0];
     out.push({ tone: "watch", title: "Pipeline is concentrated", detail: `${name(top)} holds ${pct(top.crm!.pipeline, pipeline)}% of the open pipeline (${inr(top.crm!.pipeline)} of ${inr(pipeline)}).` });
   }
-  if (crm.length > 1) {
-    const best = [...crm].sort((a, b) => (b.crm?.winRate ?? 0) - (a.crm?.winRate ?? 0))[0];
+  const withWinRate = crm.filter((item) => item.crm && item.crm.winRate >= 0);
+  if (withWinRate.length > 1) {
+    const best = [...withWinRate].sort((a, b) => (b.crm?.winRate ?? 0) - (a.crm?.winRate ?? 0))[0];
     out.push({ tone: "positive", title: "Strongest closer", detail: `${name(best)} wins ${best.crm!.winRate}% of the deals it closes, the highest in the portfolio.` });
   }
   const heavy = [...list].filter((item) => item.crm && item.crm.wonValue > 0).sort((a, b) => b.hr.monthlyPay / Math.max(1, b.crm!.wonValue) - a.hr.monthlyPay / Math.max(1, a.crm!.wonValue))[0];
@@ -37,7 +38,7 @@ export function answerFor(question: string, list: CompanySummary[]): Answer {
   const crm = withCrm(list);
   if (!list.length) return { text: "There are no companies yet. Add one and I can start answering from its records." };
   if (/pipeline|deal|revenue|won|sales/.test(q)) {
-    const rows = crm.map((item): [string, string] => [name(item), `${inr(item.crm!.pipeline)} open · ${inr(item.crm!.wonValue)} won · ${item.crm!.winRate}% win rate`]);
+    const rows = crm.map((item): [string, string] => [name(item), `${inr(item.crm!.pipeline)} open · ${inr(item.crm!.wonValue)} won · ${item.crm!.winRate >= 0 ? `${item.crm!.winRate}% win rate` : "no closed deals"}`]);
     return { text: crm.length ? `Across ${crm.length} compan${crm.length === 1 ? "y" : "ies"} with CRM, the open pipeline is ${inr(crm.reduce((s, i) => s + i.crm!.pipeline, 0))} and ${inr(crm.reduce((s, i) => s + i.crm!.wonValue, 0))} has been won.` : "No company has CRM records yet.", rows };
   }
   if (/payroll|salary|cost|people|headcount|staff|employee/.test(q)) {
@@ -48,7 +49,7 @@ export function answerFor(question: string, list: CompanySummary[]): Answer {
     return { text: items.length ? `${items.length} thing${items.length === 1 ? "" : "s"} need you, most urgent first.` : "Nothing is waiting on you in any company.", rows: items.slice(0, 8) };
   }
   if (/compare|best|worst|strong|weak|win rate|perform/.test(q)) {
-    const rows = [...crm].sort((a, b) => b.crm!.winRate - a.crm!.winRate).map((item): [string, string] => [name(item), `${item.crm!.winRate}% win rate · ${item.crm!.leads} leads · ${item.crm!.openDeals} open deals`]);
+    const rows = [...crm].filter((item) => item.crm!.winRate >= 0).sort((a, b) => b.crm!.winRate - a.crm!.winRate).map((item): [string, string] => [name(item), `${item.crm!.winRate}% win rate · ${item.crm!.leads} leads · ${item.crm!.openDeals} open deals`]);
     return { text: rows.length ? `${rows[0][0]} leads on win rate.` : "I need at least one company with CRM records to compare.", rows };
   }
   if (/setup|unfinished|workspace|connect/.test(q)) {
