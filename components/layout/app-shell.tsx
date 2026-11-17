@@ -15,8 +15,10 @@ import { homeFor, personaMayOpen, useDemoAccount } from "@/lib/demo-persona";
 import { businessHome, readCompanies } from "@/lib/company";
 import { WorkspaceProvider, useWorkspace } from "@/components/layout/workspace-context";
 import { homeForPermissions, mayOpenWorkspace } from "@/lib/access";
-import { VoiceCallProvider } from "@/components/team/voice-call";
+import { VoiceCallProvider, useVoiceCall } from "@/components/team/voice-call";
 import { AnnouncementWatcher } from "@/components/team/team-posts";
+import { useAutoAway, useCallStatus, useStatusExpiry } from "@/lib/hooks/use-auto-status";
+import { useProfileStore } from "@/lib/stores/profile-store";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -117,6 +119,17 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       </div>
       <CommandPalette />
       <AnnouncementWatcher />
+      <StatusAutoManager />
     </div>
   );
+}
+
+function StatusAutoManager() {
+  useAutoAway();
+  const call = useVoiceCall();
+  useCallStatus(Boolean(call.spaceId), call.spaceName);
+  const clearAt = useProfileStore((s) => s.statusClearAt);
+  const clearCustomStatus = useProfileStore((s) => s.clearCustomStatus);
+  useStatusExpiry(clearAt, clearCustomStatus);
+  return null;
 }

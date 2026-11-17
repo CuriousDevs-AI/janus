@@ -22,6 +22,8 @@ interface UserProfile {
   status: UserStatus;
   customStatus: string;
   statusEmoji: string;
+  /** ISO timestamp when the custom status should auto-clear, or null for no expiry. */
+  statusClearAt: string | null;
   updatedAt: string;
 }
 
@@ -33,6 +35,8 @@ interface ProfileState extends UserProfile {
   setStatus: (status: UserStatus) => void;
   setCustomStatus: (text: string) => void;
   setStatusEmoji: (emoji: string) => void;
+  setStatusClearAt: (at: string | null) => void;
+  clearCustomStatus: () => void;
 }
 
 function stamp(): string {
@@ -49,6 +53,7 @@ export const useProfileStore = create<ProfileState>()(
       status: "online",
       customStatus: "",
       statusEmoji: "",
+      statusClearAt: null,
       updatedAt: "",
       setAvatar: (url) => set({ avatarUrl: url, updatedAt: stamp() }),
       setBio: (bio) => set({ bio, updatedAt: stamp() }),
@@ -57,6 +62,8 @@ export const useProfileStore = create<ProfileState>()(
       setStatus: (status) => set({ status, updatedAt: stamp() }),
       setCustomStatus: (text) => set({ customStatus: text, updatedAt: stamp() }),
       setStatusEmoji: (emoji) => set({ statusEmoji: emoji, updatedAt: stamp() }),
+      setStatusClearAt: (at) => set({ statusClearAt: at, updatedAt: stamp() }),
+      clearCustomStatus: () => set({ customStatus: "", statusEmoji: "", statusClearAt: null, updatedAt: stamp() }),
     }),
     {
       name: userScoped("janus.user-profile.v1"),
