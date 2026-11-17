@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useProfileStore } from "@/lib/stores/profile-store";
 import { cn, initials } from "@/lib/utils";
 
 const COLORS = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
@@ -17,19 +18,6 @@ const STATUS_DOTS: Record<string, string> = {
   away: "bg-amber-500",
   offline: "bg-gray-400",
 };
-
-const PROFILE_KEY = "janus.user-profile.v1";
-
-function readOwnAvatar(): string | null {
-  try {
-    const raw = window.localStorage.getItem(PROFILE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { state?: { avatarUrl?: string } };
-    return parsed?.state?.avatarUrl ?? null;
-  } catch {
-    return null;
-  }
-}
 
 const SIZE_MAP = {
   xs: "size-5 text-[9px]",
@@ -54,7 +42,8 @@ interface TeamAvatarProps {
 }
 
 export function TeamAvatar({ person, size = "md", showStatus, className, onClick }: TeamAvatarProps) {
-  const avatarUrl = person.avatarUrl || (typeof window !== "undefined" ? readOwnAvatar() : null);
+  const ownAvatar = useProfileStore((s) => s.avatarUrl);
+  const avatarUrl = person.avatarUrl || ownAvatar;
   const dot = showStatus && person.status ? STATUS_DOTS[person.status] : null;
 
   return (

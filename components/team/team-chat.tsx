@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { api, message as errorText } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import { demoMode } from "@/lib/demo-mode";
-import { cn, initials } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
+import { TeamAvatar } from "@/components/team/team-avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -956,16 +956,7 @@ function PeopleDialog({
                   onClick={() => toggle(person.id)}
                   className={cn("flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2", on && "bg-accent-muted")}
                 >
-                  <span className="relative">
-                    <Avatar className="size-8">
-                      <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
-                    </Avatar>
-                    {person.status === "online" ? (
-                      <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-green-500" />
-                    ) : person.status === "away" ? (
-                      <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-yellow-500" />
-                    ) : null}
-                  </span>
+                  <TeamAvatar person={person} showStatus />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{person.name}</span>
                     {person.statusText ? (
@@ -1340,9 +1331,7 @@ function AddMemberDialog({
                 disabled={busy}
                 className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-2"
               >
-                <Avatar className="size-7">
-                  <AvatarFallback className="text-[10px]">{initials(person.name)}</AvatarFallback>
-                </Avatar>
+                <TeamAvatar person={person} size="sm" />
                 <span className="min-w-0 flex-1 truncate">{person.name}</span>
                 <UserPlus className="size-3.5 text-muted-foreground" />
               </button>
@@ -1737,16 +1726,7 @@ function ChannelDetailPanel({
               <ul className="space-y-1">
                 {detail.members.map((m) => (
                   <li key={m.userId} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-surface-2">
-                    <span className="relative">
-                      <Avatar className="size-7">
-                        <AvatarFallback className="text-[10px]">{initials(m.name)}</AvatarFallback>
-                      </Avatar>
-                      {m.status === "online" ? (
-                        <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-green-500" />
-                      ) : m.status === "away" ? (
-                        <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-yellow-500" />
-                      ) : null}
-                    </span>
+                    <TeamAvatar person={{ id: m.userId, name: m.name, avatarUrl: m.avatarUrl, status: m.status }} size="sm" showStatus />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-foreground">
                         {m.name}
@@ -2009,9 +1989,7 @@ function ProfileCard({
         </DialogHeader>
         {person ? (
           <div className="flex flex-col items-center gap-3 py-2">
-            <Avatar className="size-16">
-              <AvatarFallback className="text-xl">{initials(person.name)}</AvatarFallback>
-            </Avatar>
+            <TeamAvatar person={person} size="lg" showStatus />
             <div className="text-center">
               <p className="text-lg font-semibold">{person.name}</p>
             </div>
