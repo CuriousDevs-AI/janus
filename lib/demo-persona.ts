@@ -39,8 +39,8 @@ export function readView(): DemoAccount | undefined {
   const viewed = accountById(read(VIEW_KEY));
   return login.hrRole === "owner" && viewed ? viewed : login;
 }
-export function signIn(accountId: string) { write(VIEW_KEY, null); write(LOGIN_COMPANY_KEY, activeCompany().id); write(LOGIN_KEY, accountId); }
-export function signOut() { write(VIEW_KEY, null); write(LOGIN_KEY, null); write(LOGIN_COMPANY_KEY, null); }
+export function signIn(accountId: string) { write(VIEW_KEY, null); write("janus.login", accountId); write(LOGIN_COMPANY_KEY, activeCompany().id); write(LOGIN_KEY, accountId); }
+export function signOut() { write(VIEW_KEY, null); write(LOGIN_KEY, null); write(LOGIN_COMPANY_KEY, null); write("janus.login", null); }
 export function viewAs(accountId: string) { write(VIEW_KEY, accountId); }
 
 const idOf = (account: DemoAccount | undefined) => account?.id ?? "";

@@ -49,7 +49,7 @@ const titles: Record<string, [string, string]> = {
   work: ["Work inbox", "Everything that needs someone to act, across your companies."],
   activity: ["Activity", "What happened lately, in every company."],
   people: ["Portfolio access", "Who else sees these companies together, and how much."],
-  "ai-keys": ["AI models & keys", "Keys kept by the Portfolio, the companies that use them, and each company's own keys."],
+  "ai-keys": ["AI Models & Keys", "Providers, models, keys and routing for AI features across your portfolio."],
   billing: ["Plan and billing", "One plan for your account, covering every company you own."],
 };
 // The views that report on a period, and so show the period bar and the board pack.

@@ -3,7 +3,7 @@
 import { APIError } from "@/lib/api/client";
 import type { Contact, Deal, DealEvent, Lead } from "@/lib/api/types";
 import { canSeeOwner } from "@/lib/crm-scope";
-import { demoAccounts } from "@/lib/demo-accounts";
+import { demoAccounts, checkLogin, registerAccount } from "@/lib/demo-accounts";
 import { conversations } from "@/lib/demo-universe";
 import { personaPermissions, readView } from "@/lib/demo-persona";
 import { activeCompany, updateCompany } from "@/lib/company";
@@ -153,6 +153,22 @@ export async function demoRequest(path: string, init: RequestInit = {}): Promise
   if (parts[0] === "business" && parts[1] === "setup" && parts.length === 2) {
     const company = activeCompany();
     return { businessName: company.name, industry: company.industry, companySize: company.size ?? "11–50 employees", timezone: company.timezone ?? "Asia/Kolkata", setupCompleted: company.setupDone, completedSteps: company.workspaces.length ? ["business_details", "workspaces"] : ["business_details"], nextStep: company.setupDone ? null : "workspaces" };
+  }
+  if (parts[0] === "auth") {
+    if (parts[1] === "signup" && method === "POST") {
+      const data = body(init);
+      const problem = registerAccount({ name: text(data.name), username: text(data.username), email: text(data.email), password: text(data.password) });
+      if (problem) throw new APIError(problem, 409, "account_unavailable");
+      return { message: "Account created." };
+    }
+    if (parts[1] === "login" && method === "POST") {
+      const data = body(init);
+      const account = checkLogin(text(data.email), text(data.password));
+      if (!account) throw new APIError("Invalid email, name or password.", 401, "invalid_credentials");
+      return { message: "Signed in." };
+    }
+    if (parts[1] === "logout") return { message: "Signed out." };
+    if (parts[1] === "forgot-password") return { message: "If that email exists, a reset link was sent." };
   }
   return NOT_HANDLED;
 }

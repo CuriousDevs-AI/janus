@@ -4,6 +4,7 @@ import { scoped, type CompanyRecord } from "@/lib/company";
 import { specForRecord } from "@/lib/companies";
 import { buildDealRows, buildLeadRows, DEMO_TODAY } from "@/lib/demo-universe";
 import { acme_hrExpenseClaims, acme_hrLeaveRequests, acmeEmployees } from "@/lib/mock-data/hr-people";
+import { inr } from "@/features/portfolio/lib/format";
 
 export interface AttentionItem { severity: "high" | "medium" | "low"; text: string; to: string }
 export interface CompanySummary {
@@ -62,6 +63,6 @@ export function summarise(record: CompanyRecord): CompanySummary {
   if (pendingLeave > 0) summary.attention.push({ severity: pendingLeave > 2 ? "high" : "medium", text: `${pendingLeave} leave request${pendingLeave === 1 ? "" : "s"} open, pending or needing clarification`, to: to("/workspace/hr-people?view=approvals&workspace=hr-people") });
   if (summary.crm && summary.crm.quiet > 0) summary.attention.push({ severity: summary.crm.quiet > 4 ? "high" : "medium", text: `${summary.crm.quiet} open lead${summary.crm.quiet === 1 ? "" : "s"} with no activity for 4+ days`, to: to("/leads?workspace=crm-sales") });
   const waiting = deals.filter((item) => ["proposal", "negotiation"].includes(item.stage));
-  if (summary.crm && waiting.length) summary.attention.push({ severity: "low", text: `${waiting.length} deal${waiting.length === 1 ? "" : "s"} in proposal or negotiation worth ₹${(waiting.reduce((sum, item) => sum + Number(item.amount), 0) / 100000).toFixed(1).replace(/\.0$/, "")}L`, to: to("/deals?workspace=crm-sales") });
+  if (summary.crm && waiting.length) summary.attention.push({ severity: "low", text: `${waiting.length} deal${waiting.length === 1 ? "" : "s"} in proposal or negotiation worth ${inr(waiting.reduce((sum, item) => sum + Number(item.amount), 0))}`, to: to("/deals?workspace=crm-sales") });
   return summary;
 }

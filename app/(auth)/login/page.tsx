@@ -13,14 +13,16 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { api, message } from "@/lib/api/client";
 import { demoMode } from "@/lib/demo-mode";
-import { demoAccounts, checkLogin } from "@/lib/demo-accounts";
+import { checkLogin } from "@/lib/demo-accounts";
 import { homeFor, signIn } from "@/lib/demo-persona";
+import { newCompanyId, readCompanies, saveCompanies, seedCompanies, switchCompany } from "@/lib/company";
+import type { CompanyRecord } from "@/lib/company";
 import type { Me } from "@/lib/api/types";
 import { PORTFOLIO_ROLES, homeForPermissions, managesBusiness } from "@/lib/access";
 
 const schema = z.object({
   // An email, or the username chosen at signup. The preview's accounts sign in by email only.
-  email: z.string().trim().min(3, "Enter your email or username"),
+  email: z.string().trim().min(3, "Enter your email or name"),
   password: z.string().min(1, "Password is required"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -29,7 +31,6 @@ export default function LoginPage() {
   const router = useRouter();
   const {
     register,
-    setValue,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -40,9 +41,20 @@ export default function LoginPage() {
   async function onSubmit(values: FormValues) {
     if (demoMode) {
       const account = checkLogin(values.email, values.password);
-      if (!account) { toast.error("That email and password don't match. Pick one of the accounts below."); return; }
+      if (!account) { toast.error("No match. Use the email or full name with the right password."); return; }
       signIn(account.id);
-      router.replace(homeFor(account));
+      if (account.registered) {
+        let companies = readCompanies();
+        let own = companies.find((c) => c.template === "blank");
+        if (!own) {
+          const id = newCompanyId(account.name, seedCompanies);
+          own = { id, name: `${account.name}'s Company`, industry: "", city: "", template: "blank", workspaces: [], setupDone: false, createdAt: new Date().toISOString() };
+          saveCompanies([own]);
+        }
+        switchCompany(own.id, own.setupDone ? "/portfolio?view=overview" : "/setup");
+      } else {
+        router.replace(homeFor(account));
+      }
       return;
     }
     try {
@@ -93,11 +105,11 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">{demoMode ? "Email" : "Email or username"}</Label>
+          <Label htmlFor="email">{demoMode ? "Email or name" : "Email or username"}</Label>
           <Input
             id="email"
             autoComplete="username"
-            placeholder={demoMode ? "you@company.com" : "you@company.com or your username"}
+            placeholder={demoMode ? "you@company.com or full name" : "you@company.com or your username"}
             {...register("email")}
           />
           {errors.email && (
@@ -137,25 +149,6 @@ export default function LoginPage() {
           Create account
         </Link>
       </p>
-      {demoMode && (
-        <section aria-label="Test accounts" className="flex flex-col gap-2 border-t border-border pt-5">
-          <h2 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">Test accounts</h2>
-          <p className="text-[12px] text-muted-foreground">Each role sees a different slice of the same company. Pick one to fill the form.</p>
-          <ul className="flex flex-col divide-y divide-border border border-border">
-            {demoAccounts.map((account) => (
-              <li key={account.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] font-medium">{account.name} <span className="font-normal text-muted-foreground">· {account.title}</span></p>
-                  <p className="truncate text-[11px] text-muted-foreground">{account.email} · {account.password}</p>
-                  <p className="text-[11px] text-muted-foreground">{account.blurb}</p>
-                </div>
-                <Button type="button" size="sm" variant="outline" onClick={() => { setValue("email", account.email, { shouldValidate: true }); setValue("password", account.password, { shouldValidate: true }); }}>Use</Button>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className="self-start text-[12px] text-accent hover:underline" onClick={() => { try { Object.keys(window.localStorage).filter((key) => key.startsWith("janus.")).forEach((key) => window.localStorage.removeItem(key)); } catch { /* storage blocked */ } toast.success("Test data reset to how it started."); }}>Reset the test data</button>
-        </section>
-      )}
     </div>
   );
 }

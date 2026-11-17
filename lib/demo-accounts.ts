@@ -24,6 +24,8 @@ export interface DemoAccount {
   crm: CrmScope;
   /** What they can try, in a line. */
   blurb: string;
+  /** True for accounts created through the signup form, not seeded. */
+  registered?: boolean;
 }
 
 /** Test sign-ins exist only in the preview. In a live build this list is empty and the passwords below are dropped from the bundle. */
@@ -43,8 +45,44 @@ const acmeAccounts: DemoAccount[] = !demoMode ? [] : [
 /** The people who can sign in to the company on show. */
 export const demoAccounts: DemoAccount[] = activeSpec.accounts ?? acmeAccounts;
 
-export const accountById = (id: string | null | undefined) => demoAccounts.find((item) => item.id === id);
-export const accountByEmployee = (employeeId: string) => demoAccounts.find((item) => item.employeeId === employeeId);
-export function checkLogin(email: string, password: string) {
-  return demoAccounts.find((item) => item.email.toLowerCase() === email.trim().toLowerCase() && item.password === password);
+export const accountById = (id: string | null | undefined) => allAccounts().find((item) => item.id === id);
+export const accountByEmployee = (employeeId: string) => allAccounts().find((item) => item.employeeId === employeeId);
+
+const REGISTERED_KEY = "janus.registered-accounts";
+
+function loadRegistered(): DemoAccount[] {
+  if (!demoMode) return [];
+  try { return JSON.parse(localStorage.getItem(REGISTERED_KEY) || "[]"); } catch { return []; }
+}
+
+function allAccounts(): DemoAccount[] {
+  return [...demoAccounts, ...loadRegistered()];
+}
+
+export function checkLogin(emailOrName: string, password: string) {
+  const input = emailOrName.trim().toLowerCase();
+  return allAccounts().find((item) => (item.email.toLowerCase() === input || item.name.toLowerCase() === input || item.id.toLowerCase() === input) && item.password === password);
+}
+
+export function registerAccount(opts: { name: string; username: string; email: string; password: string }): string | null {
+  const all = allAccounts();
+  if (all.some((a) => a.email.toLowerCase() === opts.email.trim().toLowerCase())) return "This email is already registered. Try signing in.";
+  if (all.some((a) => a.id === opts.username.trim().toLowerCase())) return "This username is taken.";
+  const account: DemoAccount = {
+    id: opts.username.trim().toLowerCase(),
+    email: opts.email.trim().toLowerCase(),
+    password: opts.password,
+    name: opts.name.trim(),
+    title: "Team Member",
+    employeeId: `emp-reg-${Date.now()}`,
+    crmUserId: `u-reg-${Date.now()}`,
+    hrRole: "owner",
+    crm: "all",
+    blurb: "Full access to all workspaces.",
+    registered: true,
+  };
+  const registered = loadRegistered();
+  registered.push(account);
+  try { localStorage.setItem(REGISTERED_KEY, JSON.stringify(registered)); } catch { return "Could not save. Storage may be full."; }
+  return null;
 }

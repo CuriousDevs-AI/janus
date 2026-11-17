@@ -52,14 +52,6 @@ type BusinessWorkflow = {
 type BusinessFolder = { id: string; name: string; count?: number };
 type BusinessTemplate = WorkflowStarter;
 
-const demoWorkflowRows: BusinessWorkflow[] = [
-  { id: "demo-workflow-lead-follow-up", name: "New lead follow-up", description: "Qualify a new lead, draft a reply and create a follow-up task.", folderId: "demo-sales", status: "active", trigger: { type: "lead_created", module: "crm_sales" }, actions: [{ module: "crm_sales", action: "qualify_lead" }, { module: "whatsapp", action: "draft_reply" }, { module: "crm_sales", action: "create_task" }], modulesUsed: ["crm_sales", "whatsapp"], requiresApproval: true, ownerId: "Pankaj Neema", updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), lastRunAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), runs7d: 34, errors7d: 1 },
-  { id: "demo-workflow-missed-call", name: "Missed call callback", description: "Create a callback task when a new missed call is captured.", folderId: "demo-sales", status: "draft", trigger: { type: "missed_call", module: "crm_sales" }, actions: [{ module: "crm_sales", action: "create_task" }, { module: "crm_sales", action: "assign_owner" }], modulesUsed: ["crm_sales"], requiresApproval: false, ownerId: "Sales team", updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), runs7d: 8, errors7d: 0 },
-  { id: "demo-workflow-overdue", name: "Payment overdue reminder", description: "Review overdue invoices and prepare a reminder for owner approval.", folderId: "demo-finance", status: "paused", trigger: { type: "invoice_overdue", module: "finance_accounting" }, actions: [{ module: "finance_accounting", action: "find_risk" }, { module: "whatsapp", action: "draft_reply" }], modulesUsed: ["finance_accounting", "whatsapp"], requiresApproval: true, ownerId: "Finance team", updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), runs7d: 12, errors7d: 0 },
-];
-const demoFolderRows: BusinessFolder[] = [{ id: "demo-sales", name: "Sales operations", count: 2 }, { id: "demo-finance", name: "Finance controls", count: 1 }];
-const demoTemplateRows: BusinessTemplate[] = [{ id: "demo-template-lead", name: "New lead follow-up", description: "Qualify and follow up with new enquiries.", trigger: { type: "lead_created", module: "crm_sales" }, steps: [{ module: "crm_sales", action: "qualify_lead" }, { module: "whatsapp", action: "draft_reply" }], modules: ["CRM & Sales", "WhatsApp"] }, { id: "demo-template-call", name: "Missed call callback", description: "Create a callback task for a missed call.", trigger: { type: "missed_call", module: "crm_sales" }, steps: [{ module: "crm_sales", action: "create_task" }], modules: ["CRM & Sales"] }];
-
 function BusinessAutomationCenter() {
   const router = useRouter();
   const search = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
@@ -82,17 +74,15 @@ function BusinessAutomationCenter() {
   const [saving, setSaving] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [copyWorkflow, setCopyWorkflow] = React.useState<BusinessWorkflow | null>(null);
-  const [demoRows, setDemoRows] = React.useState<BusinessWorkflow[]>(demoWorkflowRows);
+  const [demoRows, setDemoRows] = React.useState<BusinessWorkflow[]>([]);
   const demoSequenceRef = React.useRef(0);
 
   // Runs, failures and approvals come from the workflows' recent runs.
   const stats = React.useMemo(() => runStats(runs.data ?? []), [runs.data]);
   const data = React.useMemo(() => demoMode ? demoRows : (workflows.data ?? []).map((item) => { const seen: RunStats | undefined = stats.get(item.id); return { ...item, runs7d: seen?.runs7d ?? 0, errors7d: seen?.failed7d ?? 0, waiting: seen?.waiting ?? 0, lastRunAt: seen?.lastRunAt ?? null, lastError: seen?.lastError ?? null }; }), [demoRows, workflows.data, stats]);
   const names = React.useMemo(() => new Map(data.map((item) => [item.id, item.name])), [data]);
-  const folderRows = demoMode
-    ? demoFolderRows.map((item) => ({ ...item, count: demoRows.filter((workflow) => workflow.folderId === item.id).length }))
-    : folders.data ?? [];
-  const templateRows = demoMode ? demoTemplateRows : templates.data ?? [];
+  const folderRows = demoMode ? [] as BusinessFolder[] : folders.data ?? [];
+  const templateRows = demoMode ? [] as BusinessTemplate[] : templates.data ?? [];
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [newFolderId, setNewFolderId] = React.useState("");

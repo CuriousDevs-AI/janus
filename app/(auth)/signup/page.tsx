@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { rememberVerificationSent } from "@/components/auth/verify-waiting";
+import { demoMode } from "@/lib/demo-mode";
+import { registerAccount } from "@/lib/demo-accounts";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter your full name"),
@@ -32,6 +34,13 @@ export default function SignupPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   async function onSubmit(values: FormValues) {
+    if (demoMode) {
+      const problem = registerAccount({ name: values.name, username: values.username, email: values.email, password: values.password });
+      if (problem) { toast.error(problem); return; }
+      toast.success("Account created. Sign in to get started.");
+      router.replace("/login");
+      return;
+    }
     try {
       await api("/auth/signup", {
         method: "POST",
@@ -42,14 +51,18 @@ export default function SignupPage() {
           password: values.password,
         }),
       });
-      // The signup email just went out, so the verify screen waits 30 seconds before offering another.
       rememberVerificationSent(values.email);
       toast.success(
         "Account created. Check your email to verify it, then sign in and set up your company.",
       );
       router.replace("/login");
     } catch (error) {
-      toast.error(message(error));
+      const msg = message(error);
+      if (msg.includes("Unable to create") || msg.includes("account_unavailable")) {
+        toast.error("This email or username is already registered. Try signing in instead.");
+      } else {
+        toast.error(msg);
+      }
     }
   }
 

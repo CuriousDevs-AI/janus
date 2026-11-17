@@ -7,9 +7,7 @@ import { useUIStore } from "@/lib/stores/ui-store";
 import { useSession, useSignOut } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { Button } from "@/components/ui/button";
-import { demoMode } from "@/lib/demo-mode";
-import { demoAccounts } from "@/lib/demo-accounts";
-import { useDemoAccount, useLoginAccount, viewAs } from "@/lib/demo-persona";
+import { useDemoAccount, useLoginAccount } from "@/lib/demo-persona";
 import { toast } from "sonner";
 import { CallPill } from "@/components/team/voice-stage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -92,6 +90,9 @@ export function Topbar() {
   function setCustomStatus(text: string) {
     updateProfileField("customStatus", text);
   }
+  function setStatusEmoji(e: string) {
+    updateProfileField("statusEmoji", e);
+  }
 
   function updateProfileField<K extends keyof ProfileSnapshot>(key: K, value: ProfileSnapshot[K]) {
     setProfile((prev) => {
@@ -132,7 +133,7 @@ export function Topbar() {
           <Search className="size-3.5" />
           <span className="hidden sm:inline">Go to… ⌘K</span>
         </Button>
-        {demoMode && login?.hrRole === "owner" && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="hidden sm:inline">View as</span><select aria-label="View as" title="See the app the way another person sees it" value={account?.id ?? ""} onChange={(event) => { viewAs(event.target.value); const next = demoAccounts.find((item) => item.id === event.target.value); toast.success(next?.id === "owner" ? "Back to your own view" : `Viewing as ${next?.name}`); }} className="h-8 max-w-[150px] border border-border bg-surface px-2 text-xs text-foreground">{demoAccounts.map((item) => <option key={item.id} value={item.id}>{item.id === "owner" ? "Myself (Owner)" : `${item.name} · ${item.title}`}</option>)}</select></label>}
+
 
         {/* Profile dropdown */}
         <DropdownMenu>
@@ -209,14 +210,48 @@ export function Topbar() {
             </div>
             {/* Custom status */}
             <div className="px-3 pb-2">
-              <input
-                type="text"
-                placeholder="What's on your mind?"
-                value={customStatus}
-                onChange={(e) => setCustomStatus(e.target.value)}
-                maxLength={80}
-                className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-              />
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const emojis = ["\u{1F60A}", "\u{1F3E0}", "✈️", "\u{1F912}", "\u{1F4BB}", "\u{1F389}", "\u{1F4DE}", "\u{1F37D}️", "\u{1F3C3}", "\u{1F4DA}", "☕", "\u{1F4A4}", "\u{1F3A7}", "\u{1F9D8}", "\u{1F680}", "\u{1F4AC}"];
+                    const current = profile.statusEmoji;
+                    const idx = current ? emojis.indexOf(current) : -1;
+                    setStatusEmoji(emojis[(idx + 1) % emojis.length]);
+                  }}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-sm hover:bg-surface-2/80"
+                  aria-label="Pick status emoji"
+                >
+                  {profile.statusEmoji || <span className="text-muted-foreground text-xs">+</span>}
+                </button>
+                <input
+                  type="text"
+                  placeholder="What's on your mind?"
+                  value={customStatus}
+                  onChange={(e) => setCustomStatus(e.target.value)}
+                  maxLength={80}
+                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                {(customStatus || profile.statusEmoji) && (
+                  <button type="button" onClick={() => { setCustomStatus(""); setStatusEmoji(""); }} className="text-[10px] text-muted-foreground hover:text-foreground" aria-label="Clear status">✕</button>
+                )}
+              </div>
+            </div>
+            {/* Emoji picker grid */}
+            <div className="grid grid-cols-[repeat(8,2rem)] gap-0.5 px-3 pb-2">
+              {["\u{1F60A}", "\u{1F3E0}", "✈️", "\u{1F912}", "\u{1F4BB}", "\u{1F389}", "\u{1F4DE}", "\u{1F37D}️", "\u{1F3C3}", "\u{1F4DA}", "☕", "\u{1F4A4}", "\u{1F3A7}", "\u{1F9D8}", "\u{1F680}", "\u{1F4AC}"].map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setStatusEmoji(profile.statusEmoji === e ? "" : e)}
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded text-base transition-colors",
+                    profile.statusEmoji === e ? "bg-accent-muted ring-1 ring-accent/30" : "hover:bg-surface-2",
+                  )}
+                >
+                  {e}
+                </button>
+              ))}
             </div>
             <DropdownMenuSeparator />
 

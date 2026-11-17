@@ -122,23 +122,7 @@ function AskYourBusinessPageInner() {
     unavailable: string[];
   }>(demoMode && workspaceId === "business" && intelligenceView === "performance" ? "/business/reports/summary" : null);
 
-  const [turns, setTurns] = React.useState<Turn[]>(() => {
-    if (!demoMode || (!departmentChat && !crmAssistant)) return [];
-    return [
-      {
-        id: "demo-assistant-turn-1",
-        question: "Which leads need attention today?",
-        status: "done",
-        result: demoCrmAnswer("Which leads need attention today?"),
-      },
-      {
-        id: "demo-assistant-turn-2",
-        question: "What is our open pipeline?",
-        status: "done",
-        result: demoCrmAnswer("What is our open pipeline?"),
-      },
-    ];
-  });
+  const [turns, setTurns] = React.useState<Turn[]>([]);
   const [inputValue, setInputValue] = React.useState("");
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
@@ -210,80 +194,11 @@ type ChatMessage = { id: string; role: "user" | "assistant"; text: string; day: 
 type ChatThread = { id: string; title: string; date: string; stored: boolean; ownerId: string; messages: ChatMessage[] };
 
 const initialChatThreads: ChatThread[] = [
-  {
-    id: "chat-weekly-review",
-    title: "Weekly business review",
-    date: "Today",
-    stored: true,
-    ownerId: AI_VIEWER_ID,
-    messages: [
-      { id: "m-1", role: "user", text: "What should I focus on this week?", day: "Today", time: "09:18" },
-      { id: "m-2", role: "assistant", text: "Focus on the 6 deals that have been in Proposal for more than 10 days. They represent ₹14.2L of pipeline. Collections are also behind by ₹3.1L, so reviewing overdue invoices is the second priority.", day: "Today", time: "09:19" },
-    ],
-  },
-  {
-    id: "chat-pipeline-risk",
-    title: "Pipeline risk scan",
-    date: "Yesterday",
-    stored: true,
-    ownerId: AI_VIEWER_ID,
-    messages: [
-      { id: "m-3", role: "user", text: "Which deals need attention?", day: "Yesterday", time: "17:35" },
-      { id: "m-4", role: "assistant", text: stalledText(), day: "Yesterday", time: "17:36" },
-    ],
-  },
-  {
-    id: "chat-new",
-    title: "New conversation",
-    date: "Earlier",
-    stored: false,
-    ownerId: AI_VIEWER_ID,
-    messages: [],
-  },
+  { id: "chat-new", title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] },
 ];
 
 const initialCrmChatThreads: ChatThread[] = [
-  {
-    id: "crm-chat-priority",
-    title: "Lead follow-up priorities",
-    date: "Today",
-    stored: true,
-    ownerId: AI_VIEWER_ID,
-    messages: [
-      { id: "crm-m-1", role: "user", text: "Which leads need attention today?", day: "Today", time: "09:42" },
-      { id: "crm-m-2", role: "assistant", text: demoCrmAnswer("Which leads need attention today?").answer, day: "Today", time: "09:42" },
-    ],
-  },
-  {
-    id: "crm-chat-pipeline",
-    title: "Open pipeline review",
-    date: "Yesterday",
-    stored: true,
-    ownerId: AI_VIEWER_ID,
-    messages: [
-      { id: "crm-m-3", role: "user", text: "What is our open pipeline?", day: "Yesterday", time: "16:18" },
-      { id: "crm-m-4", role: "assistant", text: demoCrmAnswer("What is our open pipeline?").answer, day: "Yesterday", time: "16:18" },
-    ],
-  },
-  {
-    id: "crm-chat-support",
-    title: "Support triage",
-    date: "22 Oct",
-    stored: true,
-    ownerId: AI_VIEWER_ID,
-    messages: [
-      { id: "crm-m-5", role: "user", text: "What support needs attention?", day: "22 Oct", time: "11:06" },
-      { id: "crm-m-6", role: "assistant", text: demoCrmAnswer("What support needs attention?").answer, day: "22 Oct", time: "11:06" },
-    ],
-  },
-  {
-    id: "crm-chat-new",
-    title: "New conversation",
-    date: "Just now",
-    stored: false,
-    ownerId: AI_VIEWER_ID,
-    messages: [],
-  },
+  { id: "crm-chat-new", title: "New conversation", date: "Just now", stored: false, ownerId: AI_VIEWER_ID, messages: [] },
 ];
 
 type WorkspaceConfig = { title: string; subtitle: string; scope: string; suggestions: string[]; stats: Array<{ label: string; value: string; detail: string; tone: "success" | "neutral" | "warning" }>; threads: Array<{ title: string; question: string; answer: string; date: string }>; answers: Record<string, string> };
@@ -294,18 +209,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about employees, leave, attendance, payroll, policies and HR compliance.",
     scope: "HR scope",
     suggestions: ["Who is on leave today?", "Show pending leave requests", "What is the headcount trend?", "Any compliance deadlines?"],
-    stats: [{ label: "Employees", value: "24", detail: "Active headcount", tone: "success" }, { label: "Pending requests", value: "6", detail: "Leave and reimbursements", tone: "warning" }, { label: "Open positions", value: "3", detail: "Recruitment pipeline", tone: "neutral" }],
-    threads: [
-      { title: "Leave requests today", question: "Who is on leave today?", answer: "3 employees are on leave today: Priya Sharma (casual leave, back tomorrow), Amit Verma (sick leave since Monday, expected back Wednesday), and Neha Gupta (planned leave, returning next Monday). No critical coverage gaps — Priya's deliverables are covered by Ravi.", date: "Today" },
-      { title: "Headcount review", question: "What is the headcount trend?", answer: "Current headcount is 24 active employees across 5 departments. Engineering has the most at 9. You hired 3 people in the last quarter and had 1 resignation (Deepak from Sales, last working day was 2 weeks ago). Attrition rate is 4.2% — below industry average of 8%.", date: "Yesterday" },
-    ],
+    stats: [{ label: "Employees", value: "—", detail: "Active headcount", tone: "neutral" }, { label: "Pending requests", value: "—", detail: "Leave and reimbursements", tone: "neutral" }, { label: "Open positions", value: "—", detail: "Recruitment pipeline", tone: "neutral" }],
+    threads: [],
     answers: {
-      leave: "3 employees are on leave today. Priya Sharma (casual leave, returns tomorrow), Amit Verma (sick leave since Monday), and Neha Gupta (planned leave until next Monday). The pending leave queue has 6 requests — 2 are from this week, 4 are for next month. I recommend approving the 2 urgent ones first.",
-      pending: "There are 6 pending requests: 4 leave applications (2 urgent for this week), 1 reimbursement claim from Ravi for ₹4,200 (client travel), and 1 work-from-home request. The oldest pending request is 3 days old — Meera's leave for a family event next Friday.",
-      headcount: "Current headcount is 24 across 5 departments. Engineering: 9, Sales: 5, Operations: 4, Finance: 3, HR: 3. Net change this quarter: +2 (3 hired, 1 resigned). Three positions are open: Senior Developer, Sales Executive, and Operations Associate.",
-      compliance: "2 compliance items need attention: (1) PF returns for October are due in 5 days — payroll data is ready but the filing hasn't started. (2) Annual POSH training is overdue for 6 employees who joined after July. I recommend starting the PF filing today.",
-      attendance: "Today's attendance: 21 of 24 employees present (3 on leave). Average attendance this month is 91%. 2 employees have had irregular check-in times this week — worth a check-in with their managers.",
-      default: "Based on HR records: 24 active employees, 6 pending requests (leave and reimbursements), 3 open positions in recruitment. Attendance this month is at 91%. Ask about specific topics like leave, attendance, compliance deadlines, or recruitment for detailed answers.",
+      default: "Connect your HR data to get answers about employees, leave, attendance, payroll and compliance. Ask about specific topics once your workspace is set up.",
     },
   },
   "finance-accounting": {
@@ -313,17 +220,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about invoices, payments, expenses, cash flow and GST compliance.",
     scope: "Finance scope",
     suggestions: ["What invoices are overdue?", "Show this month's cash flow", "Any GST filing deadlines?", "What expenses need approval?"],
-    stats: [{ label: "Receivables", value: "₹9.6L", detail: "₹3.1L overdue", tone: "warning" }, { label: "Cash in bank", value: "₹18.4L", detail: "Current balance", tone: "success" }, { label: "Pending bills", value: "12", detail: "Awaiting payment", tone: "neutral" }],
-    threads: [
-      { title: "Overdue invoices", question: "What invoices are overdue?", answer: "4 invoices are overdue totalling ₹3.1L. The largest is INV-1047 to Sharma Enterprises for ₹1.4L (38 days overdue). Next is INV-1052 to Kapoor Trading for ₹82,000 (22 days). I recommend calling Sharma Enterprises today — they typically pay within a week of a reminder.", date: "Today" },
-      { title: "Monthly cash flow", question: "Show this month's cash flow", answer: "November cash flow: ₹14.2L received, ₹11.8L paid out, net positive ₹2.4L. Largest inflow was ₹4.6L from Patel Industries (INV-1038). Largest outflow was ₹3.2L for vendor payments. Cash in bank: ₹18.4L. Projected month-end balance: ₹16.9L after pending payables.", date: "Yesterday" },
-    ],
+    stats: [{ label: "Receivables", value: "—", detail: "Outstanding amount", tone: "neutral" }, { label: "Cash in bank", value: "—", detail: "Current balance", tone: "neutral" }, { label: "Pending bills", value: "—", detail: "Awaiting payment", tone: "neutral" }],
+    threads: [],
     answers: {
-      overdue: "4 invoices are overdue totalling ₹3.1L: (1) INV-1047 to Sharma Enterprises — ₹1.4L, 38 days overdue, (2) INV-1052 to Kapoor Trading — ₹82K, 22 days, (3) INV-1055 to Mehta Corp — ₹51K, 15 days, (4) INV-1058 to Singh & Sons — ₹37K, 8 days. Sharma Enterprises has the highest amount — a phone call usually resolves it within a week.",
-      cash: "November cash flow: ₹14.2L in, ₹11.8L out, net +₹2.4L. Bank balance is ₹18.4L. Upcoming outflows this week: ₹2.8L (vendor payments) and ₹1.5L (salary advance). Projected week-end balance: ₹14.1L. No liquidity risk this month.",
-      gst: "GST filing deadlines: GSTR-3B for October is due on 20th November (4 days away). Data is 90% ready — 3 purchase invoices from last week still need classification. GSTR-1 was filed on time. I recommend completing the invoice classification today to stay on schedule.",
-      expenses: "5 expense claims pending approval totalling ₹28,400: Ravi's client travel (₹4,200), Priya's conference registration (₹12,000), Amit's office supplies (₹3,800), team lunch reimbursement (₹6,200), and courier charges (₹2,200). The conference registration is time-sensitive — early bird pricing expires Friday.",
-      default: "Finance snapshot: ₹9.6L in receivables (₹3.1L overdue), ₹18.4L cash in bank, 12 pending bills. This month's collections are on track at ₹14.2L received. GST filing deadline approaching in 4 days. Ask about invoices, cash flow, GST, or expenses for details.",
+      default: "Connect your finance data to get answers about invoices, payments, cash flow and GST compliance. Ask about specific topics once your workspace is set up.",
     },
   },
   "projects-delivery": {
@@ -331,17 +231,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about project status, milestones, timesheets and delivery schedules.",
     scope: "Projects scope",
     suggestions: ["Which projects are behind schedule?", "Show this week's milestones", "Who has unlogged timesheets?", "Any delivery risks?"],
-    stats: [{ label: "Active projects", value: "9", detail: "2 delayed", tone: "warning" }, { label: "This week", value: "4 milestones", detail: "Due this week", tone: "neutral" }, { label: "Team utilization", value: "78%", detail: "Billable hours", tone: "success" }],
-    threads: [
-      { title: "Delayed projects", question: "Which projects are behind schedule?", answer: "2 of 9 active projects are behind schedule: (1) 'Kapoor CRM Migration' — 8 days behind, blocked on data export from their legacy system. Client escalated yesterday. (2) 'Patel E-commerce Phase 2' — 3 days behind, the payment gateway integration took longer than estimated. I recommend a status call with Kapoor today.", date: "Today" },
-      { title: "Timesheet gaps", question: "Who has unlogged timesheets?", answer: "4 team members have gaps this week: Ravi (Monday and Tuesday blank), Neha (Tuesday blank), Amit (no entries since last Thursday — he may be on the Sharma project without logging), and Deepak (Friday blank from last week). Total unlogged: ~38 hours. This affects billing accuracy for 2 client projects.", date: "Yesterday" },
-    ],
+    stats: [{ label: "Active projects", value: "—", detail: "Current projects", tone: "neutral" }, { label: "This week", value: "—", detail: "Milestones due", tone: "neutral" }, { label: "Team utilization", value: "—", detail: "Billable hours", tone: "neutral" }],
+    threads: [],
     answers: {
-      behind: "2 of 9 projects are behind schedule: (1) Kapoor CRM Migration — 8 days behind, blocked on legacy data export. Client escalated. (2) Patel E-commerce Phase 2 — 3 days behind on payment gateway integration. The other 7 projects are on track. Recommend a priority call with Kapoor's team today.",
-      milestones: "4 milestones due this week: (1) Sharma project — UI review sign-off (Wednesday), (2) Mehta project — API integration complete (Thursday), (3) Singh project — user acceptance testing starts (Friday), (4) Internal — sprint demo for Patel Phase 2 (Friday). The Sharma sign-off is the most critical — it gates the next billing milestone.",
-      timesheets: "4 people have unlogged timesheets this week totalling ~38 hours. This affects billing on 2 client projects (Sharma and Kapoor). Ravi and Amit have the largest gaps. I recommend sending timesheet reminders today before the weekly billing run on Friday.",
-      risks: "3 delivery risks: (1) Kapoor migration — client escalation, needs immediate attention. (2) Patel Phase 2 — payment gateway vendor is slow to respond, may need an alternative. (3) Resource crunch next week — 2 people are on leave while 3 projects have milestones due. Consider redistributing Deepak's bandwidth.",
-      default: "Projects overview: 9 active projects, 2 delayed, 4 milestones due this week. Team utilization is at 78% billable hours. Main risks are the Kapoor migration (client escalated) and a resource gap next week. Ask about specific projects, milestones, timesheets, or risks.",
+      default: "Connect your project data to get answers about status, milestones, timesheets and delivery schedules. Ask about specific topics once your workspace is set up.",
     },
   },
   "customer-support": {
@@ -349,17 +242,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about tickets, SLAs, customer feedback and support workload.",
     scope: "Support scope",
     suggestions: ["What tickets need attention?", "Show SLA breaches", "Which customers are at risk?", "What is the resolution rate?"],
-    stats: [{ label: "Open tickets", value: "18", detail: "4 urgent", tone: "warning" }, { label: "Avg response", value: "2.4h", detail: "Within SLA", tone: "success" }, { label: "CSAT score", value: "4.2/5", detail: "Last 30 days", tone: "success" }],
-    threads: [
-      { title: "Urgent tickets", question: "What tickets need attention?", answer: "4 urgent tickets need attention: TKT-892 (Sharma Enterprises — billing discrepancy, escalated 2 hours ago), TKT-887 (Kapoor Trading — delivery not received, waiting 3 days), TKT-901 (Patel Industries — integration error, production impact), and TKT-895 (Singh & Sons — refund request, SLA breach in 4 hours). Start with TKT-901 — it has production impact.", date: "Today" },
-      { title: "SLA review", question: "What is the resolution rate?", answer: "Resolution rate this month: 84% within SLA (target: 90%). Average first response: 2.4 hours. Average resolution time: 18 hours. 3 SLA breaches this week — all on complex integration tickets. The team is handling 4.5 tickets per person per day. Consider adding a dedicated integration support slot.", date: "Yesterday" },
-    ],
+    stats: [{ label: "Open tickets", value: "—", detail: "Current tickets", tone: "neutral" }, { label: "Avg response", value: "—", detail: "Response time", tone: "neutral" }, { label: "CSAT score", value: "—", detail: "Customer satisfaction", tone: "neutral" }],
+    threads: [],
     answers: {
-      attention: "4 urgent tickets: TKT-892 (billing discrepancy, escalated), TKT-887 (delivery issue, 3 days waiting), TKT-901 (integration error, production impact), TKT-895 (refund, SLA breach in 4 hours). Start with TKT-901 for production impact, then TKT-895 before it breaches SLA.",
-      sla: "3 SLA breaches this week, all on integration-related tickets (average resolution: 36 hours vs 24-hour SLA). Overall SLA compliance: 84% this month (target 90%). First response SLA is healthy at 96%. The pattern suggests integration tickets need a dedicated queue or higher initial priority.",
-      risk: "2 customers at risk based on ticket patterns: (1) Sharma Enterprises — 3 tickets in 2 weeks, latest was escalated, they mentioned considering alternatives. (2) Kapoor Trading — NPS score dropped from 8 to 5 last survey, unresolved delivery complaint. Recommend a proactive call to both this week.",
-      resolution: "This month: 67 tickets received, 52 resolved, 18 open. Resolution rate: 84% within SLA. Average first response: 2.4h. Average resolution: 18h. Top categories: billing (28%), delivery (22%), technical (18%), general (32%). CSAT: 4.2/5. The main drag is technical tickets at 31h average resolution.",
-      default: "Support snapshot: 18 open tickets (4 urgent), average response time 2.4h (within SLA), CSAT 4.2/5. This month: 67 tickets received, 84% resolved within SLA. 2 customers showing risk signals. Ask about specific tickets, SLA breaches, at-risk customers, or workload distribution.",
+      default: "Connect your support data to get answers about tickets, SLAs, customer feedback and workload. Ask about specific topics once your workspace is set up.",
     },
   },
   "operations-inventory": {
@@ -367,17 +253,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about stock levels, orders, procurement and warehouse operations.",
     scope: "Operations scope",
     suggestions: ["What stock is running low?", "Show pending purchase orders", "Any delivery delays?", "What needs restocking?"],
-    stats: [{ label: "SKUs tracked", value: "342", detail: "Active products", tone: "success" }, { label: "Low stock", value: "8 items", detail: "Below reorder point", tone: "warning" }, { label: "Pending orders", value: "14", detail: "Fulfillment queue", tone: "neutral" }],
-    threads: [
-      { title: "Low stock alert", question: "What stock is running low?", answer: "8 items are below reorder point: (1) Premium Widget A — 12 units left (reorder at 50, lead time 7 days), (2) Connector Cable Type-C — 23 units (reorder at 100), (3) Packaging Box Large — 45 units (reorder at 200). The Premium Widget A is critical — it's in 3 pending orders. I recommend placing a restock order today.", date: "Today" },
-      { title: "Pending orders review", question: "Show pending purchase orders", answer: "14 purchase orders pending: 6 awaiting vendor confirmation, 5 in transit, 3 at receiving dock. Largest pending: PO-2847 from Mehta Suppliers for ₹2.8L (electrical components, expected Thursday). 2 orders are delayed: PO-2831 from Singh Materials (5 days late) and PO-2839 from Kapoor Parts (2 days late).", date: "Yesterday" },
-    ],
+    stats: [{ label: "SKUs tracked", value: "—", detail: "Active products", tone: "neutral" }, { label: "Low stock", value: "—", detail: "Below reorder point", tone: "neutral" }, { label: "Pending orders", value: "—", detail: "Fulfillment queue", tone: "neutral" }],
+    threads: [],
     answers: {
-      low: "8 items below reorder point. Most critical: Premium Widget A (12 left, 50 needed, 7-day lead time — in 3 pending orders), Connector Cable Type-C (23 left, 100 needed), Packaging Box Large (45 left, 200 needed). Recommend placing restock orders for the top 3 today to avoid fulfillment delays next week.",
-      orders: "14 purchase orders: 6 awaiting vendor confirmation, 5 in transit, 3 at receiving. Total pending value: ₹8.4L. 2 orders are delayed — PO-2831 from Singh Materials (5 days late, ₹1.2L of raw materials) and PO-2839 from Kapoor Parts (2 days late). Follow up with Singh Materials — they haven't responded to the last reminder.",
-      delays: "2 delivery delays: (1) PO-2831 from Singh Materials — 5 days late, ₹1.2L of raw materials affecting production line B. No response to 2 reminders. (2) PO-2839 from Kapoor Parts — 2 days late, minor components, vendor says shipping tomorrow. The Singh delay is the priority — it blocks 3 customer orders.",
-      restock: "Recommended restock list (by urgency): Premium Widget A (order 200 units, ₹48K), Connector Cable Type-C (order 500, ₹15K), Packaging Box Large (order 1000, ₹8K), Motor Assembly Kit (order 50, ₹1.2L), Safety Gloves Industrial (order 200, ₹6K). Total restock cost: ~₹2L. All have approved vendors on file.",
-      default: "Operations snapshot: 342 active SKUs, 8 items below reorder point, 14 pending purchase orders (2 delayed). Warehouse utilization is at 73%. This week: 23 orders fulfilled, 14 pending. Main concern is 2 delayed vendor shipments affecting production. Ask about stock, orders, delays, or restocking.",
+      default: "Connect your inventory data to get answers about stock levels, orders, procurement and warehouse operations. Ask about specific topics once your workspace is set up.",
     },
   },
   "it-infrastructure": {
@@ -385,17 +264,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about IT assets, helpdesk tickets, licenses and security compliance.",
     scope: "IT scope",
     suggestions: ["What IT tickets are open?", "Show expiring licenses", "Any security incidents?", "What assets need attention?"],
-    stats: [{ label: "IT assets", value: "156", detail: "Tracked devices", tone: "success" }, { label: "Open tickets", value: "7", detail: "IT helpdesk", tone: "neutral" }, { label: "Expiring soon", value: "3 licenses", detail: "Next 30 days", tone: "warning" }],
-    threads: [
-      { title: "Open IT tickets", question: "What IT tickets are open?", answer: "7 IT helpdesk tickets open: (1) IT-445 — Priya's laptop screen flickering (reported yesterday, parts ordered), (2) IT-448 — VPN not connecting for remote team (3 people affected, investigating), (3) IT-451 — Printer on 2nd floor offline (since this morning). The VPN issue is highest priority — it's blocking 3 remote workers.", date: "Today" },
-      { title: "License audit", question: "Show expiring licenses", answer: "3 licenses expiring in the next 30 days: (1) Microsoft 365 Business — 24 seats, renews Nov 28, ₹1.8L/year (auto-renewal is ON but needs budget approval), (2) Zoom Pro — 10 seats, expires Dec 2, ₹42K/year, (3) Adobe Creative Cloud — 3 seats, expires Dec 15, ₹36K/year. Total renewal cost: ₹2.58L. The M365 renewal needs approval by Nov 25.", date: "Yesterday" },
-    ],
+    stats: [{ label: "IT assets", value: "—", detail: "Tracked devices", tone: "neutral" }, { label: "Open tickets", value: "—", detail: "IT helpdesk", tone: "neutral" }, { label: "Expiring soon", value: "—", detail: "Next 30 days", tone: "neutral" }],
+    threads: [],
     answers: {
-      tickets: "7 open IT tickets. Priority: (1) VPN issue — 3 remote workers blocked (IT-448, investigating). (2) Priya's laptop screen (IT-445, parts ordered, ETA Thursday). (3) 2nd floor printer offline (IT-451, checking today). The other 4 are routine: password resets (2), software install request (1), new employee setup (1). VPN fix is the top priority.",
-      licenses: "3 licenses expiring within 30 days: Microsoft 365 (₹1.8L, Nov 28 — needs budget approval by Nov 25), Zoom Pro (₹42K, Dec 2), Adobe CC (₹36K, Dec 15). Total: ₹2.58L. The M365 renewal is auto-set but needs your budget sign-off this week. I'd also recommend reviewing whether all 10 Zoom seats are still needed — usage shows only 7 active users.",
-      security: "No active security incidents. Last incident was 3 weeks ago (phishing email caught by filter, no impact). Current posture: all endpoints have updated antivirus, 2 devices need OS patches (flagged for this weekend's maintenance window), MFA is enabled for 100% of accounts. Next security review is scheduled for Dec 1.",
-      assets: "156 tracked assets: 42 laptops, 28 desktops, 18 monitors, 12 printers, 8 servers, 48 peripherals. 3 assets need attention: (1) Priya's laptop (screen issue, repair in progress), (2) Server-04 — disk usage at 87% (needs cleanup or expansion), (3) 2 laptops from last quarter's hires still showing as 'in setup'. Server-04 disk is the most time-sensitive.",
-      default: "IT overview: 156 tracked assets, 7 open helpdesk tickets, 3 licenses expiring within 30 days (₹2.58L renewal). No security incidents. Main priorities: VPN issue blocking 3 remote workers, and M365 license renewal needs budget approval by Nov 25. Ask about tickets, licenses, security, or asset status.",
+      default: "Connect your IT data to get answers about assets, helpdesk tickets, licenses and security compliance. Ask about specific topics once your workspace is set up.",
     },
   },
   "team-chat": {
@@ -403,17 +275,10 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about conversations, team activity and communication insights.",
     scope: "Chat scope",
     suggestions: ["Summarize today's activity", "What needs my reply?", "Show unread mentions", "Any announcements?"],
-    stats: [{ label: "Active channels", value: "12", detail: "Team channels", tone: "success" }, { label: "Unread", value: "23", detail: "Messages for you", tone: "warning" }, { label: "Team online", value: "8", detail: "Currently active", tone: "neutral" }],
-    threads: [
-      { title: "Today's activity", question: "Summarize today's activity", answer: "Today across 12 channels: 47 messages from 14 team members. Most active: #sales (12 messages — deal update discussion), #engineering (9 messages — sprint planning), #general (8 messages — office event coordination). 3 threads have pending decisions: budget approval in #finance, vendor selection in #operations, and feature priority in #product.", date: "Today" },
-      { title: "Pending replies", question: "What needs my reply?", answer: "4 messages mention you or need your input: (1) Ravi in #sales asked about the Kapoor deal discount approval (2 hours ago), (2) Neha in #engineering tagged you on the deployment schedule (yesterday), (3) Finance team asked about Q3 expense report sign-off in #finance (yesterday), (4) Amit shared a client proposal draft in DM for your review (this morning).", date: "Today" },
-    ],
+    stats: [{ label: "Active channels", value: "—", detail: "Team channels", tone: "neutral" }, { label: "Unread", value: "—", detail: "Messages for you", tone: "neutral" }, { label: "Team online", value: "—", detail: "Currently active", tone: "neutral" }],
+    threads: [],
     answers: {
-      activity: "Today: 47 messages across 12 channels from 14 team members. Most active: #sales (12 msgs, deal discussions), #engineering (9 msgs, sprint planning), #general (8 msgs, office event). 3 pending decisions in threads. Quiet channels: #hr, #support (2 messages each). Team engagement is 58% — slightly below the 65% weekly average.",
-      reply: "4 items need your reply: (1) Ravi in #sales — Kapoor deal discount approval (2h ago, time-sensitive), (2) Neha in #engineering — deployment schedule confirmation (yesterday), (3) #finance — Q3 expense sign-off (yesterday), (4) Amit's DM — client proposal review (this morning). The discount approval is most urgent — Ravi is waiting to send the quote.",
-      mentions: "5 unread mentions: @you in #sales (Kapoor discount), @you in #engineering (deployment), @all in #general (office event RSVP), @you in #finance (expense report), @team-leads in #product (feature prioritization). The @all RSVP deadline is today at 5 PM.",
-      announcements: "2 announcements this week: (1) Office will be closed on Nov 22 for a local holiday — work-from-home is optional (posted in #general, 18 reactions). (2) New expense policy: claims above ₹5,000 now need manager approval before submission (posted in #finance, 6 reactions, 2 questions pending answers).",
-      default: "Team Chat summary: 12 active channels, 23 unread messages for you, 8 team members currently online. Today: 47 messages from 14 people. 4 items need your reply — the most urgent is a discount approval in #sales. Ask about activity, pending replies, mentions, or announcements.",
+      default: "Connect your team chat data to get answers about conversations, activity and communication insights. Ask about specific topics once your workspace is set up.",
     },
   },
   portfolio: {
@@ -421,25 +286,17 @@ const workspaceAssistantConfig: Record<string, WorkspaceConfig> = {
     subtitle: "Ask about all your companies, cross-company performance, risks and strategic decisions.",
     scope: "Portfolio scope",
     suggestions: ["How are my companies performing?", "What needs my attention?", "Show revenue across companies", "Any compliance risks?"],
-    stats: [{ label: "Companies", value: "3", detail: "Active portfolio", tone: "success" }, { label: "Total revenue", value: "₹1.2Cr", detail: "This quarter", tone: "success" }, { label: "Action items", value: "5", detail: "Across companies", tone: "warning" }],
-    threads: [
-      { title: "Portfolio overview", question: "How are my companies performing?", answer: "Across your 3 companies: Total quarterly revenue is ₹1.2Cr (+8% QoQ). NexGen Solutions leads at ₹68L with strong CRM pipeline. Sharma Trading is steady at ₹34L. TechBridge Consulting is growing fastest at +15% but has 2 delivery delays. Overall: healthy growth, but TechBridge needs attention on project timelines.", date: "Today" },
-      { title: "Attention items", question: "What needs my attention?", answer: "5 items across your portfolio: (1) NexGen — ₹3.1L overdue receivables from Sharma Enterprises, (2) TechBridge — Kapoor CRM Migration 8 days behind, client escalated, (3) Sharma Trading — GST 3B filing due in 4 days, (4) NexGen — 3 open positions unfilled for 30+ days, (5) TechBridge — Microsoft 365 license renewal needs budget approval by Nov 25. Items 2 and 3 are time-sensitive.", date: "Today" },
-    ],
+    stats: [{ label: "Companies", value: "—", detail: "Active portfolio", tone: "neutral" }, { label: "Total revenue", value: "—", detail: "This quarter", tone: "neutral" }, { label: "Action items", value: "—", detail: "Across companies", tone: "neutral" }],
+    threads: [],
     answers: {
-      performing: "Portfolio performance: 3 active companies, ₹1.2Cr quarterly revenue (+8% QoQ). NexGen Solutions: ₹68L revenue, 9 active projects, strong sales pipeline. Sharma Trading: ₹34L, steady operations, GST filing approaching. TechBridge Consulting: ₹18L, fastest growth (+15%), but 2 projects behind schedule. Cash reserves across all: ₹42L. No liquidity concerns.",
-      attention: "5 items need your attention: (1) ₹3.1L overdue receivables at NexGen (call Sharma Enterprises), (2) Kapoor migration delay at TechBridge (client escalated), (3) GST filing due in 4 days at Sharma Trading, (4) 3 unfilled positions at NexGen (30+ days open), (5) M365 license renewal at TechBridge (approval needed by Nov 25). Start with items 2 and 3 — they're time-critical.",
-      revenue: "Cross-company revenue this quarter: NexGen Solutions ₹68L (56% of portfolio), Sharma Trading ₹34L (28%), TechBridge Consulting ₹18L (15%). Total: ₹1.2Cr. QoQ growth: +8% overall. NexGen has the strongest pipeline at ₹7.5L in open deals. TechBridge is growing fastest at +15%. Sharma is stable with consistent repeat business.",
-      compliance: "Compliance status: Sharma Trading — GST 3B filing due Nov 20 (4 days, 90% ready). NexGen — PF returns due Nov 25 (data ready, filing not started). TechBridge — POSH training overdue for 6 employees. All companies: MCA annual filings complete, audit reports submitted. No critical compliance gaps — the GST and PF deadlines are the near-term priorities.",
-      risk: "Portfolio risks: (1) Delivery — TechBridge has 2 projects behind schedule, 1 with client escalation. (2) Cash — NexGen has ₹3.1L overdue receivables aging past 30 days. (3) People — NexGen has 3 unfilled positions creating resource strain. (4) Compliance — Sharma GST filing approaching. (5) Vendor — TechBridge has delayed supplier shipments. No systemic risks — all are actionable this week.",
-      default: "Portfolio overview: 3 companies, ₹1.2Cr quarterly revenue, 5 items needing attention. NexGen Solutions (CRM & services), Sharma Trading (trading operations), TechBridge Consulting (IT delivery). Cash reserves: ₹42L across the portfolio. Ask about performance, revenue, compliance, risks, or specific companies for details.",
+      default: "Connect your portfolio data to get answers about company performance, revenue, compliance and strategic decisions. Ask about specific topics once your workspace is set up.",
     },
   },
 };
 
 function demoWorkspaceAnswer(question: string, wsId: string, workspaceName: string): string {
   const config = workspaceAssistantConfig[wsId];
-  if (!config) return `I found relevant information in your ${workspaceName} records. There are 24 active items across the workspace, with 6 requiring action this week. Ask about specific topics for detailed answers.`;
+  if (!config) return `Connect your ${workspaceName} data to get grounded answers. Ask about specific topics once your workspace is set up.`;
   const q = question.toLowerCase();
   const answers = config.answers;
   for (const [key, answer] of Object.entries(answers)) {
@@ -668,11 +525,11 @@ function CrmAssistantView() {
               <form onSubmit={ask} className="mt-5 border-t border-border pt-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-end"><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about leads, pipeline, customers or support…" aria-label="Ask the CRM assistant" rows={2} className="min-h-[70px] resize-none text-sm" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(e); } }} /><Button type="submit" className="h-10 shrink-0" disabled={!question.trim() || thinking}><Send className="size-3.5" />Ask Janus</Button></div><p className="mt-2 text-[10px] text-muted-foreground">Answers use CRM records only. Consequential actions still require your approval.</p></form>
             </div>
           </SectionCard>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["Which leads need attention?", "What is our open pipeline?", "What support needs attention?", "Draft a follow-up for Riya"].map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2">{["Which leads need attention?", "What is our open pipeline?", "What support needs attention?", "Draft a follow-up message"].map((item) => <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent-border hover:text-accent">{item}</button>)}</div><Button variant="secondary" onClick={storeChat}><Bookmark className="size-3.5" />{activeThread.stored ? "Stored" : "Store chat"}</Button></div>
         </main>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="CRM records" value="3 leads" detail="Ready for assistant questions" tone="success" /><KnowledgeStat label="Open pipeline" value="₹7.55L" detail="Across 2 active deals" tone="neutral" /><KnowledgeStat label="Support queue" value="8 tickets" detail="4 currently need attention" tone="warning" /></div>
+      <div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="CRM records" value={`${leadRows.length} leads`} detail="Ready for assistant questions" tone={leadRows.length ? "success" : "neutral"} /><KnowledgeStat label="Open pipeline" value={lakh(dealRows.filter((d) => !["won", "lost"].includes(d.stage)).reduce((s, d) => s + Number(d.amount), 0))} detail={`Across ${dealRows.filter((d) => !["won", "lost"].includes(d.stage)).length} active deals`} tone="neutral" /><KnowledgeStat label="Support queue" value={`${tickets.length} tickets`} detail={`${tickets.filter((t) => t.priority === "urgent" || t.status === "escalated").length} currently need attention`} tone={tickets.some((t) => t.priority === "urgent") ? "warning" : "neutral"} /></div>
     </div>
   );
 }
@@ -747,54 +604,35 @@ type BusinessMemory = { id: string; title: string; detail: string; source: strin
 type KnowledgeDialog = "menu" | "upload" | "write" | "website" | "app" | "qa" | "collection";
 type KnowledgeForm = { title: string; content: string; url: string; app: string; question: string; answer: string; collection: string; description: string };
 
-const initialKnowledgeSources: KnowledgeSource[] = [
-  { name: "Price list, October 2026", detail: "price-list-oct-2026.xlsx", type: "Excel", collection: "Products & pricing", access: "Sales, Owner", status: "Ready", updated: "Today" },
-  { name: "Refund and returns policy", detail: "Conflicts with the Customer FAQ on bulk orders", type: "Page", collection: "Company & policies", access: "Everyone", status: "Needs review", updated: "3 days ago" },
-  { name: `${company.domain}/products`, detail: "Reading 42 pages", type: "Website", collection: "Products & pricing", access: "Everyone", status: "Processing", updated: "10 min ago" },
-  { name: "Employee handbook v3", detail: "employee-handbook-v3.pdf", type: "PDF", collection: "HR handbook", access: "HR, Owner", status: "Ready", updated: "2 weeks ago" },
-  { name: "GST invoicing rules", detail: "Written by Finance", type: "Page", collection: "Finance & tax rules", access: "Finance, Owner", status: "Ready", updated: "1 month ago" },
-  { name: "Distributor onboarding SOP", detail: "Not updated in 9 months", type: "Word", collection: "Processes & SOPs", access: "Everyone", status: "Outdated", updated: "Jan 2026" },
-];
+const initialKnowledgeSources: KnowledgeSource[] = [];
 
-const initialKnowledgeCollections: KnowledgeCollection[] = [
-  { name: "Company & policies", detail: "18 sources · updated 3 days ago", access: "Everyone" },
-  { name: "Products & pricing", detail: "34 sources · updated today", access: "Sales, Owner" },
-  { name: "Sales playbook", detail: "12 sources · updated 1 week ago", access: "Sales" },
-  { name: "Customer FAQs", detail: "41 sources · updated 2 days ago", access: "Everyone" },
-  { name: "HR handbook", detail: "15 sources · updated 2 weeks ago", access: "HR, Owner" },
-  { name: "Finance & tax rules", detail: "9 sources · updated 1 month ago", access: "Finance, Owner" },
-  { name: "Processes & SOPs", detail: "19 sources · updated 5 days ago", access: "Everyone" },
-];
+const initialKnowledgeCollections: KnowledgeCollection[] = [];
 
-const initialBusinessMemory: BusinessMemory[] = [
-  { id: "memory-1", title: "Pankaj prefers concise owner briefs", detail: "Keep daily summaries to the top three risks and next actions.", source: "Saved from Business AI Chat", ownerId: AI_VIEWER_ID, updated: "Today" },
-  { id: "memory-2", title: "Review WhatsApp spend before outbound campaigns", detail: "Use email or phone when the expected value does not justify message cost.", source: "Saved from Planning", ownerId: AI_VIEWER_ID, updated: "Yesterday" },
-  { id: "memory-3", title: `${topDeal?.company ?? "The largest account"} needs a 48-hour follow-up`, detail: "Owner note linked to the stalled proposal and next best action.", source: "Saved from CRM context", ownerId: AI_VIEWER_ID, updated: "2 days ago" },
-];
+const initialBusinessMemory: BusinessMemory[] = [];
 
-const emptyKnowledgeForm: KnowledgeForm = { title: "", content: "", url: "", app: "Google Drive", question: "", answer: "", collection: "Company & policies", description: "" };
+const emptyKnowledgeForm: KnowledgeForm = { title: "", content: "", url: "", app: "Google Drive", question: "", answer: "", collection: "", description: "" };
 
 function BusinessKnowledgeView() {
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState("All");
-  const [question, setQuestion] = React.useState("Can we give a distributor a 20% discount?");
-  const [asked, setAsked] = React.useState(demoMode);
+  const [question, setQuestion] = React.useState("");
+  const [asked, setAsked] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [facts, setFacts] = React.useState<Record<string, "approved" | "rejected">>({});
   const [sources, setSources] = React.useState<KnowledgeSource[]>(() => demoMode ? initialKnowledgeSources : []);
   const [collections, setCollections] = React.useState<KnowledgeCollection[]>(() => demoMode ? initialKnowledgeCollections : []);
-  const [unanswered, setUnanswered] = React.useState(() => demoMode ? [["What is the refund window for bulk orders?", "Asked 7 times · WhatsApp and team chat"], [`Do we deliver to ${company.city.split(",")[0]} on Sundays?`, "Asked 4 times · WhatsApp"], ["What is the minimum order quantity for festive packs?", "Asked 3 times · Sales team"], ["Who approves travel expenses above ₹10,000?", "Asked 2 times · HR"]] : []);
+  const [unanswered, setUnanswered] = React.useState<string[][]>(() => []);
   const [dialog, setDialog] = React.useState<KnowledgeDialog | null>(null);
   const [form, setForm] = React.useState<KnowledgeForm>(emptyKnowledgeForm);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
   const [dialogError, setDialogError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [answeringQuestion, setAnsweringQuestion] = React.useState<string | null>(null);
-  const initialSuggested = [["Distributor payment terms are 45 days", "Seen in 3 chats by Riya · would go to Finance & tax rules"], ["Free delivery on orders above ₹25,000", "Seen in 5 WhatsApp replies · would go to Customer FAQs"], ["Office is closed on the second Saturday", "Seen in 2 HR messages · would go to HR handbook"]];
+  const initialSuggested: string[][] = [];
   const visibleSources = sources.filter((source) => (filter === "All" || source.status === filter) && `${source.name} ${source.detail} ${source.collection}`.toLowerCase().includes(query.toLowerCase()));
   const addedSources = Math.max(0, sources.length - initialKnowledgeSources.length);
-  const readySources = 139 + sources.slice(initialKnowledgeSources.length).filter((source) => source.status === "Ready").length;
-  const reviewSources = 6 + sources.slice(initialKnowledgeSources.length).filter((source) => source.status === "Needs review").length;
+  const readySources = sources.filter((source) => source.status === "Ready").length;
+  const reviewSources = sources.filter((source) => source.status === "Needs review").length;
   function updateForm(field: keyof KnowledgeForm, value: string) { setForm((current) => ({ ...current, [field]: value })); }
   function closeDialog() { setDialog(null); setSaving(false); setDialogError(null); setSelectedFiles([]); setAnsweringQuestion(null); }
   function openDialog(kind: KnowledgeDialog) { setDialog(kind); setForm(emptyKnowledgeForm); setDialogError(null); setSelectedFiles([]); setNotice(null); }
@@ -888,7 +726,7 @@ function BusinessMemoryView() {
       <div className="flex items-center gap-2"><Badge variant="success">Owner scope</Badge><Badge variant="outline">Private to you</Badge></div>
     </div>
     <BusinessIntelligenceNav active="memory" />
-    <div className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent"><span className="font-semibold">Private to Pankaj Neema · Owner</span><span className="ml-2 text-accent/80">Only you can see and use these saved memories.</span></div>
+    <div className="rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent"><span className="font-semibold">Private to you · Owner</span><span className="ml-2 text-accent/80">Only you can see and use these saved memories.</span></div>
     <SectionCard title="Your AI memory" description="Saved preferences and context used by Business AI Chat. Other members cannot see these items.">
       <div className="flex flex-col divide-y divide-border">
         {visibleMemory.map((item) => <div key={item.id} className="flex flex-wrap items-start gap-3 py-3 first:pt-1 last:pb-1"><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.source} · {item.updated}</p></div><Badge variant="neutral">Private</Badge></div>)}
@@ -992,32 +830,19 @@ function BusinessIntelligenceDemo({ view }: { view: string }) {
 }
 
 function InsightsDemo() {
-  const [notice, setNotice] = React.useState<string | null>(null);
-  const insights = [
-    ["Sales momentum is healthy", "New leads are up 18% this month, with WhatsApp contributing the most volume.", "Positive", "Growth"],
-    ["Proposal stage is slowing conversion", "6 deals worth ₹14.2L have had no logged activity for more than 10 days.", "Attention", "Sales"],
-    ["Collections need an owner review", "₹3.1L is overdue by more than 30 days across 4 invoices.", "Risk", "Finance"],
-  ];
-  return <div className="flex flex-col gap-4">{notice && <DemoNotice>{notice}</DemoNotice>}<div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Business insights</h2><p className="text-sm text-muted-foreground">Findings Janus identified from your business records.</p></div><Button variant="secondary" onClick={() => setNotice("Insights refreshed from your workspace records.")}>Refresh insights</Button></div><div className="grid gap-4 lg:grid-cols-3">{insights.map(([title, detail, tone, area]) => <SectionCard key={title} title={title} description={area + " · " + tone}><p className="text-sm leading-6 text-muted-foreground">{detail}</p><Button variant="secondary" size="sm" className="mt-4" onClick={() => setNotice(`Evidence opened for “${title}”. Demo records are shown in this preview.`)}>View evidence</Button></SectionCard>)}</div><SectionCard title="What changed" description="Comparison with the previous reporting period."><div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="Lead volume" value="+18%" detail="Month over month" tone="success" /><KnowledgeStat label="Pipeline at risk" value="₹14.2L" detail="6 stalled proposals" tone="warning" /><KnowledgeStat label="Open approvals" value="3" detail="Owner review" tone="neutral" /></div></SectionCard></div>;
+  return <div className="flex flex-col gap-4"><div><h2 className="text-lg font-semibold">Business insights</h2><p className="text-sm text-muted-foreground">Findings Janus identifies from your connected workspace records.</p></div><SectionCard title="No insights yet" description="Connect your workspaces to start seeing findings."><p className="text-sm leading-6 text-muted-foreground">Insights are generated from CRM deals, HR records, finance ledgers and other connected data. Add knowledge sources or connect a workspace to get started.</p></SectionCard></div>;
 }
 
 function PerformanceDemo() {
-  const departments = [["CRM & Sales", "On track", "27 won · 8.7% conversion"], ["Finance & Accounting", "Watch", "₹3.1L overdue · cash down 6%"], ["Projects & Delivery", "Problem", "2 of 9 projects delayed"], ["Customer Support", "Watch", "18 open tickets · 2 SLA breaches"]];
-  return <div className="flex flex-col gap-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><KnowledgeStat label="Revenue" value="₹42.8L" detail="86% of ₹50L target" tone="success" /><KnowledgeStat label="Net profit" value="₹6.9L" detail="16% net margin" tone="success" /><KnowledgeStat label="Cash in bank" value="₹18.4L" detail="About 7 months runway" tone="warning" /><KnowledgeStat label="Receivables" value="₹9.6L" detail="₹3.1L overdue" tone="warning" /></div><div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Department performance" description="Comparison across workspaces."><div className="flex flex-col gap-3">{departments.map(([name, status, detail]) => <div key={name} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"><div><p className="text-sm font-medium">{name}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Badge variant={status === "On track" ? "success" : status === "Problem" ? "danger" : "warning"}>{status}</Badge></div>)}</div></SectionCard><SectionCard title="Revenue vs target" description="Trend for the current business period."><div className="rounded-lg bg-surface-2 p-3"><div className="flex items-end gap-2" style={{ height: 170 }}>{[42, 49, 45, 58, 64, 78].map((height, index) => <div key={index} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-md bg-accent" style={{ height: String(height) + "%" }} /><span className="text-[10px] text-muted-foreground">{["May", "Jun", "Jul", "Aug", "Sep", "Oct"][index]}</span></div>)}</div></div></SectionCard></div></div>;
+  return <div className="flex flex-col gap-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><KnowledgeStat label="Revenue" value="—" detail="Connect finance data" tone="neutral" /><KnowledgeStat label="Net profit" value="—" detail="Connect finance data" tone="neutral" /><KnowledgeStat label="Cash in bank" value="—" detail="Connect finance data" tone="neutral" /><KnowledgeStat label="Receivables" value="—" detail="Connect finance data" tone="neutral" /></div><SectionCard title="Department performance" description="Comparison across workspaces."><p className="text-sm text-muted-foreground">Performance data will appear here once workspaces are connected and have activity.</p></SectionCard></div>;
 }
 
 function RisksDemo() {
-  const [notice, setNotice] = React.useState<string | null>(null);
-  const risks = [["High", "6 deals stuck in Proposal", "₹14.2L pipeline has no activity for 10+ days.", "Review deals"], ["High", "Collections overdue", "4 invoices are more than 30 days overdue.", "Open receivables"], ["Medium", "SLA breaches rising", "2 support tickets have crossed their response target.", "Review support"], ["Low", "Automation failed overnight", "WhatsApp welcome flow was rejected by the provider.", "View execution"]];
-  return <div className="flex flex-col gap-4">{notice && <DemoNotice>{notice}</DemoNotice>}<div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="High risk" value="2" detail="Needs action today" tone="danger" /><KnowledgeStat label="Medium risk" value="1" detail="Monitor this week" tone="warning" /><KnowledgeStat label="Low risk" value="1" detail="Review when convenient" tone="neutral" /></div><SectionCard title="Risk & alerts" description="Risks identified from connected business activity."><div className="flex flex-col divide-y divide-border">{risks.map(([severity, title, detail, action]) => <div key={title} className="flex flex-wrap items-center gap-3 py-4 first:pt-0 last:pb-0"><Badge variant={severity === "High" ? "danger" : severity === "Medium" ? "warning" : "neutral"}>{severity}</Badge><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Button size="sm" variant="secondary" onClick={() => setNotice(`${action} opened for “${title}”. This demo keeps the approval step visible before any action runs.`)}>{action}</Button></div>)}</div></SectionCard></div>;
+  return <div className="flex flex-col gap-4"><div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="High risk" value="0" detail="No items" tone="neutral" /><KnowledgeStat label="Medium risk" value="0" detail="No items" tone="neutral" /><KnowledgeStat label="Low risk" value="0" detail="No items" tone="neutral" /></div><SectionCard title="Risks and alerts" description="Risks identified from connected business activity."><p className="text-sm text-muted-foreground">No risks detected. Connect workspaces and add knowledge sources so Janus can monitor your business activity.</p></SectionCard></div>;
 }
 
 function ForecastsDemo() {
-  const [notice, setNotice] = React.useState<string | null>(null);
-  const [reviewed, setReviewed] = React.useState<string[]>([]);
-  const scenarios = [["Conservative", "₹39.2L", 62, "warning"], ["Base", "₹48.6L", 78, "success"], ["Upside", "₹57.4L", 91, "info"]];
-  const recommendations = [["Prioritise stalled proposals", "Assign the 6 inactive proposals to owners and create a 48-hour follow-up task.", "Sales", "High impact"], ["Start a collections sprint", "Send approved reminders for the 4 invoices overdue by more than 30 days.", "Finance", "High impact"], ["Review support routing", "Move the two SLA-risk tickets to the senior support queue.", "Support", "Medium impact"]];
-  return <div className="flex flex-col gap-4">{notice && <DemoNotice>{notice}</DemoNotice>}<div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="Next-month revenue" value="₹48.6L" detail="Base scenario" tone="success" /><KnowledgeStat label="Expected cash" value="₹21.6L" detail="31 Jan forecast" tone="neutral" /><KnowledgeStat label="Confidence" value="78%" detail="Weighted pipeline + history" tone="success" /></div><div className="grid gap-4 lg:grid-cols-2"><SectionCard title="Revenue scenarios" description="Planning scenarios based on the weighted pipeline."><div className="flex flex-col gap-4">{scenarios.map(([name, value, percent, tone]) => <div key={name}><div className="flex justify-between text-sm"><span className="font-medium">{name}</span><span>{value}</span></div><div className="mt-2 h-2 rounded-full bg-[#efefea]"><div className={tone === "warning" ? "h-2 rounded-full bg-warning" : tone === "info" ? "h-2 rounded-full bg-info" : "h-2 rounded-full bg-success"} style={{ width: String(percent) + "%" }} /></div></div>)}</div></SectionCard><SectionCard title="Planning notes" description="The owner can turn forecasts into approved plans."><div className="flex flex-col gap-3 text-sm text-muted-foreground"><p>• Closing the stalled proposals moves the base scenario closer to the upside case.</p><p>• Collecting the overdue invoices protects the cash forecast.</p><p>• Forecasts improve as Finance and CRM history builds up.</p><Button className="w-fit" variant="secondary" onClick={() => setNotice("Planning action staged for Owner approval. No business record was changed.")}>Create planning action</Button></div></SectionCard></div><SectionCard title="Recommended next actions" description="Forecast signals and practical recommendations in one planning view."><div className="flex flex-col divide-y divide-border">{recommendations.map(([title, detail, area, impact]) => <div key={title} className="flex flex-wrap items-start gap-4 py-4 first:pt-0 last:pb-0"><span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"><Sparkles className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{title}</p><Badge variant="neutral">{area}</Badge><Badge variant={impact === "High impact" ? "success" : "warning"}>{impact}</Badge></div><p className="mt-1 text-sm leading-6 text-muted-foreground">{detail}</p></div><Button size="sm" onClick={() => setReviewed((current) => current.includes(title) ? current : [...current, title])}>{reviewed.includes(title) ? "Queued for approval" : "Review"}</Button></div>)}</div></SectionCard></div>;
+  return <div className="flex flex-col gap-4"><div className="grid gap-3 sm:grid-cols-3"><KnowledgeStat label="Next-month revenue" value="—" detail="Connect finance data" tone="neutral" /><KnowledgeStat label="Expected cash" value="—" detail="Connect finance data" tone="neutral" /><KnowledgeStat label="Confidence" value="—" detail="Not enough data" tone="neutral" /></div><SectionCard title="Revenue scenarios" description="Planning scenarios based on the weighted pipeline."><p className="text-sm text-muted-foreground">Forecasts will appear once your CRM pipeline and finance history have enough data to model scenarios.</p></SectionCard><SectionCard title="Recommended next actions" description="Forecast signals and practical recommendations."><p className="text-sm text-muted-foreground">No recommendations yet. Janus generates these from connected workspace activity.</p></SectionCard></div>;
 }
 
 function DemoNotice({ children }: { children: React.ReactNode }) {

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SWITCHABLE_WORKSPACES, getWorkspaceDefinition, type WorkspaceId } from "@/lib/workspace-config";
-import { ArrowRight, Building2, Check, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, ArrowUp, BellOff, Building2, Check, Plus, RotateCcw, Send, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,22 +14,29 @@ import { LogoPicker } from "@/components/shared/logo-picker";
 import { SectionCard } from "@/components/settings/section-ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
+import { DemoAiModelsKeys } from "@/features/portfolio/demo/demo-ai-keys";
 import { activeCompanyId, readCompanies, removeCompany, seedCompanies, subscribeCompanies, switchCompany, updateCompany, type CompanyRecord } from "@/lib/company";
 import { summarise, type CompanySummary } from "@/features/portfolio/demo/group-summary";
 import { answerFor, insightsFor, type Answer } from "@/features/portfolio/demo/insights";
 import { Bars, Kpi, palette } from "@/features/portfolio/components/figures";
-import { lakh } from "@/lib/demo-universe";
+import { inr } from "@/features/portfolio/lib/format";
 import { useLoginAccount } from "@/lib/demo-persona";
 import { useSession } from "@/components/auth/session-provider";
+import { userScoped } from "@/lib/stores/user-scoped";
 
 const titles: Record<string, [string, string]> = {
   overview: ["Overview", "Every company you run, at a glance."],
   analytics: ["Analytics", "The same measures for every company, side by side."],
   finance: ["Finance", "What the people and the pipeline cost and bring in, by company."],
+  work: ["Work Inbox", "Everything that needs someone to act, across your companies."],
+  activity: ["Activity", "What changed across your companies, most recent first."],
   companies: ["Companies", "Set up, switch on workspaces, open or remove a company."],
   intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
+  "ai-keys": ["AI Models & Keys", "Providers, models, keys and routing for AI features across your portfolio."],
   notifications: ["Notifications", "What needs you, from every company."],
+  compliance: ["Compliance", "Policy acknowledgments, document expiry and audit status by company."],
   people: ["Portfolio access", "Who else can see the Portfolio. Each company's own people and roles are in its Business Management."],
+  billing: ["Plan & Billing", "Your plan, usage and billing across all companies."],
 };
 const tone = { high: "danger", medium: "warning", low: "neutral" } as const;
 const workspaceName = (id: string) => getWorkspaceDefinition(id as WorkspaceId).name;
@@ -43,18 +50,29 @@ function usePortfolio() {
 }
 const open = (id: string, to?: string) => id === activeCompanyId() && to ? window.location.assign(to) : switchCompany(id, to);
 
-/** The preview's Portfolio: the demo companies kept in this browser. A real account never sees it. */
 export function DemoPortfolio() {
   const view = useSearchParams().get("view") ?? "overview";
   const login = useLoginAccount();
   const { summaries, hydrated } = usePortfolio();
   const [title, description] = titles[view] ?? titles.overview;
   if (login && login.hrRole !== "owner") return <div className="p-8 text-sm text-muted-foreground" role="status">The Portfolio is for the Owner and the people they add under Portfolio access.</div>;
+  const content = !hydrated ? <p className="text-sm text-muted-foreground" role="status">Loading your companies…</p>
+    : summaries.length === 0 && view !== "people" ? <FirstCompany />
+    : view === "analytics" ? <Analytics list={summaries} />
+    : view === "finance" ? <Finance list={summaries} />
+    : view === "work" ? <WorkInbox list={summaries} />
+    : view === "activity" ? <Activity list={summaries} />
+    : view === "companies" ? <Companies list={summaries} />
+    : view === "intelligence" ? <Intelligence list={summaries} />
+    : view === "ai-keys" ? <DemoAiModelsKeys list={summaries} />
+    : view === "notifications" ? <Notifications list={summaries} />
+    : view === "compliance" ? <Compliance list={summaries} />
+    : view === "people" ? <People list={summaries} />
+    : view === "billing" ? <PlanBilling list={summaries} />
+    : <Overview list={summaries} />;
   return <div className="mx-auto flex max-w-[1240px] flex-col">
-    <PageHeader title={title} description={description} actions={<Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button>} />
-    <div className="flex flex-col gap-6 px-6 pb-10">
-      {!hydrated ? <p className="text-sm text-muted-foreground" role="status">Loading your companies…</p> : summaries.length === 0 && view !== "people" ? <FirstCompany /> : view === "analytics" ? <Analytics list={summaries} /> : view === "finance" ? <Finance list={summaries} /> : view === "companies" ? <Companies list={summaries} /> : view === "intelligence" ? <Intelligence list={summaries} /> : view === "notifications" ? <Notifications list={summaries} /> : view === "people" ? <People list={summaries} /> : <Overview list={summaries} />}
-    </div>
+    <PageHeader title={title} description={description} />
+    <div className="flex flex-col gap-6 px-6 pb-10">{content}</div>
   </div>;
 }
 
@@ -72,12 +90,13 @@ function Overview({ list }: { list: CompanySummary[] }) {
   const attention = list.flatMap((item) => item.attention.map((entry) => ({ ...entry, company: item.company }))).sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.severity] - ({ high: 0, medium: 1, low: 2 })[b.severity]);
   const insights = insightsFor(list);
   return <>
+    <div className="flex justify-end"><Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button></div>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <Kpi label="Companies" value={String(list.length)} detail="Under your login" />
       <Kpi label="People" value={String(total.people)} detail="Across all companies" />
-      <Kpi label="Open pipeline" value={lakh(total.pipeline)} detail="Companies with CRM" />
-      <Kpi label="Won so far" value={lakh(total.won)} detail="Closed deals" />
-      <Kpi label="Monthly payroll" value={lakh(total.pay)} detail="All companies" />
+      <Kpi label="Open pipeline" value={inr(total.pipeline)} detail="Companies with CRM" />
+      <Kpi label="Won so far" value={inr(total.won)} detail="Closed deals" />
+      <Kpi label="Monthly payroll" value={inr(total.pay)} detail="All companies" />
     </div>
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
       <SectionCard title="Needs your attention" description="Most urgent first. Open an item to go straight to it.">
@@ -102,7 +121,7 @@ function CompanyCards({ list }: { list: CompanySummary[] }) {
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div><dt className="text-[11px] text-muted-foreground">People</dt><dd className="font-semibold tabular-nums">{item.hr.people}</dd></div>
         <div><dt className="text-[11px] text-muted-foreground">On leave today</dt><dd className="font-semibold tabular-nums">{item.hr.onLeaveToday}</dd></div>
-        {item.crm ? <><div><dt className="text-[11px] text-muted-foreground">Open pipeline</dt><dd className="font-semibold tabular-nums">{lakh(item.crm.pipeline)}</dd></div><div><dt className="text-[11px] text-muted-foreground">Win rate</dt><dd className="font-semibold tabular-nums">{item.crm.winRate}%</dd></div></> : <div className="col-span-2 text-xs text-muted-foreground">CRM & Sales is not switched on.</div>}
+        {item.crm ? <><div><dt className="text-[11px] text-muted-foreground">Open pipeline</dt><dd className="font-semibold tabular-nums">{inr(item.crm.pipeline)}</dd></div><div><dt className="text-[11px] text-muted-foreground">Win rate</dt><dd className="font-semibold tabular-nums">{item.crm.winRate}%</dd></div></> : <div className="col-span-2 text-xs text-muted-foreground">CRM & Sales is not switched on.</div>}
       </dl>
       <Button variant="secondary" size="sm" className="self-start" onClick={() => open(item.company.id)}>Open {item.company.name.split(" ")[0]}<ArrowRight className="ml-1 size-4" /></Button>
     </section>)}
@@ -120,8 +139,8 @@ function Analytics({ list }: { list: CompanySummary[] }) {
   return <>
     {crm.length === 0 ? <SectionCard title="Sales analytics" description="Needs CRM records."><p className="text-sm text-muted-foreground">No company has CRM & Sales switched on yet.</p></SectionCard> : <>
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars format={lakh} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.pipeline, color: colors.get(item.company.id)! }))} /></SectionCard>
-        <SectionCard title="Won so far" description="Closed deals by company."><Bars format={lakh} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.wonValue, color: colors.get(item.company.id)! }))} /></SectionCard>
+        <SectionCard title="Open pipeline" description="Value of deals still in play."><Bars format={inr} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.pipeline, color: colors.get(item.company.id)! }))} /></SectionCard>
+        <SectionCard title="Won so far" description="Closed deals by company."><Bars format={inr} rows={crm.map((item) => ({ id: item.company.id, label: item.company.name, value: item.crm!.wonValue, color: colors.get(item.company.id)! }))} /></SectionCard>
       </div>
       <SectionCard title="Leads captured by month" description="Counted from each company's leads, by the month they came in.">
         <svg viewBox="0 0 560 200" role="img" aria-label="Leads captured per month for each company" className="h-auto w-full">
@@ -132,10 +151,10 @@ function Analytics({ list }: { list: CompanySummary[] }) {
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">{crm.map((item) => <span key={item.company.id} className="flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ background: colors.get(item.company.id) }} />{item.company.name}</span>)}</div>
       </SectionCard>
       <SectionCard title="Pipeline by stage" description="Leads at each stage, with the value of their deals.">
-        <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Stage</th>{crm.map((item) => <th key={item.company.id} className="px-3 py-2">{item.company.name.split(" ")[0]}</th>)}</tr></thead><tbody>{Object.keys(stageLabel).map((stage) => <tr key={stage} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{stageLabel[stage]}</td>{crm.map((item) => { const row = item.crm!.byStage.find((entry) => entry.stage === stage)!; return <td key={item.company.id} className="px-3 py-2.5 tabular-nums">{row.count}{row.value ? <span className="text-muted-foreground"> · {lakh(row.value)}</span> : null}</td>; })}</tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Stage</th>{crm.map((item) => <th key={item.company.id} className="px-3 py-2">{item.company.name.split(" ")[0]}</th>)}</tr></thead><tbody>{Object.keys(stageLabel).map((stage) => <tr key={stage} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{stageLabel[stage]}</td>{crm.map((item) => { const row = item.crm!.byStage.find((entry) => entry.stage === stage) ?? { count: 0, value: 0 }; return <td key={item.company.id} className="px-3 py-2.5 tabular-nums">{row.count}{row.value ? <span className="text-muted-foreground"> · {inr(row.value)}</span> : null}</td>; })}</tr>)}</tbody></table></div>
       </SectionCard>
       <SectionCard title="Where leads come from" description="Leads and how many were won, by channel.">
-        <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Channel</th>{crm.map((item) => <th key={item.company.id} className="px-3 py-2">{item.company.name.split(" ")[0]}</th>)}</tr></thead><tbody>{["whatsapp", "website", "phone_call"].map((source) => <tr key={source} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{source === "phone_call" ? "Phone calls" : source === "whatsapp" ? "WhatsApp" : "Website"}</td>{crm.map((item) => { const row = item.crm!.bySource.find((entry) => entry.source === source)!; return <td key={item.company.id} className="px-3 py-2.5 tabular-nums">{row.count}<span className="text-muted-foreground"> · {row.won} won</span></td>; })}</tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Channel</th>{crm.map((item) => <th key={item.company.id} className="px-3 py-2">{item.company.name.split(" ")[0]}</th>)}</tr></thead><tbody>{["whatsapp", "website", "phone_call"].map((source) => <tr key={source} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{source === "phone_call" ? "Phone calls" : source === "whatsapp" ? "WhatsApp" : "Website"}</td>{crm.map((item) => { const row = item.crm!.bySource.find((entry) => entry.source === source) ?? { count: 0, won: 0 }; return <td key={item.company.id} className="px-3 py-2.5 tabular-nums">{row.count}<span className="text-muted-foreground"> · {row.won} won</span></td>; })}</tr>)}</tbody></table></div>
       </SectionCard>
     </>}
     <SectionCard title="People" description="Headcount and payroll by company."><Bars format={(value) => `${value} people`} rows={list.map((item) => ({ id: item.company.id, label: item.company.name, value: item.hr.people, color: colors.get(item.company.id)! }))} /></SectionCard>
@@ -144,13 +163,13 @@ function Analytics({ list }: { list: CompanySummary[] }) {
 
 function Finance({ list }: { list: CompanySummary[] }) {
   const t = { pay: list.reduce((s, i) => s + i.hr.monthlyPay, 0), won: list.reduce((s, i) => s + (i.crm?.wonValue ?? 0), 0), pipe: list.reduce((s, i) => s + (i.crm?.pipeline ?? 0), 0), claims: list.reduce((s, i) => s + i.hr.claimsValue, 0), claimCount: list.reduce((s, i) => s + i.hr.claimsPending, 0) };
-  const rows: [string, (item: CompanySummary) => string][] = [["Monthly payroll", (item) => lakh(item.hr.monthlyPay)], ["Payroll per year", (item) => lakh(item.hr.monthlyPay * 12)], ["Won so far", (item) => item.crm ? lakh(item.crm.wonValue) : "—"], ["Open pipeline", (item) => item.crm ? lakh(item.crm.pipeline) : "—"], ["Monthly payroll as % of won", (item) => item.crm && item.crm.wonValue ? `${Math.round((item.hr.monthlyPay / item.crm.wonValue) * 100)}%` : "—"], ["Reimbursements waiting", (item) => item.hr.claimsPending ? `${item.hr.claimsPending} · ₹${item.hr.claimsValue.toLocaleString("en-IN")}` : "None"], ["Finance & Accounting", () => "Not connected"]];
+  const rows: [string, (item: CompanySummary) => string][] = [["Monthly payroll", (item) => inr(item.hr.monthlyPay)], ["Payroll per year", (item) => inr(item.hr.monthlyPay * 12)], ["Won so far", (item) => item.crm ? inr(item.crm.wonValue) : "—"], ["Open pipeline", (item) => item.crm ? inr(item.crm.pipeline) : "—"], ["Monthly payroll as % of won", (item) => item.crm && item.crm.wonValue ? `${Math.round((item.hr.monthlyPay / item.crm.wonValue) * 100)}%` : "—"], ["Reimbursements waiting", (item) => item.hr.claimsPending ? `${item.hr.claimsPending} · ${inr(item.hr.claimsValue)}` : "None"], ["Finance & Accounting", () => "Not connected"]];
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Kpi label="Monthly payroll" value={lakh(t.pay)} detail="All companies" />
-      <Kpi label="Won so far" value={lakh(t.won)} detail="Closed deals" />
-      <Kpi label="Open pipeline" value={lakh(t.pipe)} detail="Still to close" />
-      <Kpi label="Reimbursements waiting" value={String(t.claimCount)} detail={`₹${t.claims.toLocaleString("en-IN")} to approve`} />
+      <Kpi label="Monthly payroll" value={inr(t.pay)} detail="All companies" />
+      <Kpi label="Won so far" value={inr(t.won)} detail="Closed deals" />
+      <Kpi label="Open pipeline" value={inr(t.pipe)} detail="Still to close" />
+      <Kpi label="Reimbursements waiting" value={String(t.claimCount)} detail={`${inr(t.claims)} to approve`} />
     </div>
     <SectionCard title="By company" description="Taken from each company's HR and CRM records.">
       <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Measure</th>{list.map((item) => <th key={item.company.id} className="px-3 py-2">{item.company.name.split(" ")[0]}</th>)}</tr></thead><tbody>{rows.map(([label, fn]) => <tr key={label} className="border-b border-border last:border-0"><td className="py-2.5 pr-4 font-medium">{label}</td>{list.map((item) => <td key={item.company.id} className="px-3 py-2.5 tabular-nums">{fn(item)}</td>)}</tr>)}</tbody></table></div>
@@ -163,12 +182,13 @@ function Companies({ list }: { list: CompanySummary[] }) {
   const [editing, setEditing] = React.useState<CompanyRecord | null>(null);
   const [removing, setRemoving] = React.useState<CompanyRecord | null>(null);
   return <>
+    <div className="flex justify-end"><Button size="sm" asChild><Link href="/setup?new=1"><Plus className="mr-1 size-4" />Add company</Link></Button></div>
     <div className="grid gap-4 lg:grid-cols-2">
       {list.map((item) => { const company = item.company; return <section key={company.id} aria-label={company.name} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{company.industry} · {company.city} · since {company.createdAt}</p></div></div><Badge variant={company.setupDone ? "success" : "warning"}>{company.setupDone ? "Set up" : "Setup unfinished"}</Badge></div>
-        <fieldset className="grid gap-2"><legend className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</legend>
-          {SWITCHABLE_WORKSPACES.map((id) => { const on = company.workspaces.includes(id); return <label key={id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} disabled={on && company.workspaces.length === 1} onChange={() => updateCompany(company.id, { workspaces: on ? company.workspaces.filter((entry) => entry !== id) : [...company.workspaces, id] })} />{workspaceName(id)}</label>; })}
-        </fieldset>
+        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><CompanyLogo company={company} size={36} className="rounded-lg" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{company.name}</h3><p className="text-xs text-muted-foreground">{company.industry} · {company.city} · since {company.createdAt}</p></div></div>{company.setupDone ? <Badge variant="success">Set up</Badge> : <Link href={`/setup?finish=${company.id}`}><Badge variant="warning" className="cursor-pointer hover:opacity-80">Setup unfinished</Badge></Link>}</div>
+        <div className="grid gap-1.5"><p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</p>
+          <div className="flex flex-wrap gap-1.5">{SWITCHABLE_WORKSPACES.map((id) => { const on = company.workspaces.includes(id); return <Badge key={id} variant={on ? "success" : "neutral"}>{workspaceName(id)}</Badge>; })}</div>
+        </div>
         <p className="text-xs text-muted-foreground">{item.hr.people} people{item.crm ? ` · ${item.crm.leads} leads · ${item.crm.openDeals} open deals` : ""}</p>
         <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => open(company.id)}>Open<ArrowRight className="ml-1 size-4" /></Button>{!company.setupDone && <Button size="sm" variant="secondary" asChild><Link href={`/setup?finish=${company.id}`}>Finish setup</Link></Button>}<Button size="sm" variant="outline" onClick={() => setEditing(company)}>Edit details</Button><Button size="sm" variant="ghost" aria-label={`Remove ${company.name}`} onClick={() => setRemoving(company)}><Trash2 className="size-4" /></Button></div>
       </section>; })}
@@ -211,8 +231,8 @@ function Intelligence({ list }: { list: CompanySummary[] }) {
   </SectionCard>;
 }
 
-const readKey = "janus.portfolio-read";
 function Notifications({ list }: { list: CompanySummary[] }) {
+  const readKey = userScoped("janus.portfolio-read");
   const [filter, setFilter] = React.useState("all");
   const [read, setRead] = React.useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(readKey) ?? "[]"); } catch { return []; } });
   const items = list.flatMap((item) => item.attention.map((entry, index) => ({ ...entry, company: item.company, key: `${item.company.id}:${index}:${entry.text}` }))).filter((item) => filter === "all" || item.company.id === filter).sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.severity] - ({ high: 0, medium: 1, low: 2 })[b.severity]);
@@ -225,9 +245,9 @@ function Notifications({ list }: { list: CompanySummary[] }) {
 }
 
 type Person = { id: string; name: string; email: string; role: string; companies: string[] };
-const accessKey = "janus.portfolio-access";
 const roles: [string, string][] = [["Co-owner", "Sees everything in the Portfolio and can add companies."], ["Group finance", "Sees Analytics and Finance, not people or notifications."], ["Group analyst", "Sees Overview and Analytics, read only."]];
 function People({ list }: { list: CompanySummary[] }) {
+  const accessKey = userScoped("janus.portfolio-access");
   const { user } = useSession();
   const [people, setPeople] = React.useState<Person[]>(() => { try { return JSON.parse(window.localStorage.getItem(accessKey) ?? "[]"); } catch { return []; } });
   const [adding, setAdding] = React.useState(false);
@@ -249,3 +269,171 @@ function People({ list }: { list: CompanySummary[] }) {
       <DialogFooter><Button variant="outline" onClick={() => setAdding(false)}>Cancel</Button><Button disabled={Boolean(error)} onClick={() => { save([...people, { id: crypto.randomUUID(), name: form.name.trim(), email: form.email.trim(), role: form.role, companies: form.companies }]); toast.success(`${form.name.trim()} was invited.`); setForm({ name: "", email: "", role: roles[1][0], companies: [] }); setAdding(false); }}>Send invitation</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }
+
+type DemoWorkKind = "approve" | "follow_up" | "claims" | "setup" | "leads";
+const demoWorkKinds: Record<DemoWorkKind, string> = { approve: "Approve", follow_up: "Follow up", claims: "Expense claims", setup: "Finish setup", leads: "Leads going quiet" };
+type DemoWorkItem = { key: string; company: CompanyRecord; kind: DemoWorkKind; priority: "high" | "medium" | "low"; title: string; detail: string; to: string };
+const DAY = 864e5;
+const priorityOrder = { high: 0, medium: 1, low: 2 };
+
+function demoWorkFor(list: CompanySummary[]): DemoWorkItem[] {
+  const items: DemoWorkItem[] = [];
+  for (const s of list) {
+    const add = (item: Omit<DemoWorkItem, "company" | "key">) => items.push({ ...item, company: s.company, key: `${s.company.id}:${item.kind}:${item.title}` });
+    if (s.hr.pendingLeave > 0) add({ kind: "approve", priority: s.hr.pendingLeave > 2 ? "high" : "medium", title: `${s.hr.pendingLeave} leave request${s.hr.pendingLeave !== 1 ? "s" : ""} pending`, detail: "Decide in the company, where the policy applies.", to: "/workspace/hr-people?view=approvals&workspace=hr-people" });
+    if (s.hr.claimsPending > 0) add({ kind: "claims", priority: s.hr.claimsValue > 10000 ? "high" : "medium", title: `${s.hr.claimsPending} expense claim${s.hr.claimsPending !== 1 ? "s" : ""} to review`, detail: `${inr(s.hr.claimsValue)} total across submitted claims.`, to: "/workspace/hr-people?view=expenses&workspace=hr-people" });
+    if (s.crm && s.crm.quiet > 0) add({ kind: "leads", priority: s.crm.quiet > 4 ? "high" : "medium", title: `${s.crm.quiet} lead${s.crm.quiet !== 1 ? "s" : ""} with no activity for 4+ days`, detail: "Follow up or close them before they go cold.", to: "/leads?workspace=crm-sales" });
+    if (s.crm) {
+      const proposals = s.crm.byStage.find((r) => r.stage === "proposal");
+      const negotiations = s.crm.byStage.find((r) => r.stage === "negotiation");
+      const waiting = (proposals?.count ?? 0) + (negotiations?.count ?? 0);
+      const waitingValue = (proposals?.value ?? 0) + (negotiations?.value ?? 0);
+      if (waiting > 0) add({ kind: "follow_up", priority: waiting > 3 ? "high" : "medium", title: `${waiting} deal${waiting !== 1 ? "s" : ""} in proposal or negotiation`, detail: `${inr(waitingValue)} in the pipeline waiting for a decision.`, to: "/deals?workspace=crm-sales" });
+    }
+    if (!s.company.setupDone) add({ kind: "setup", priority: "low", title: "Finish company setup", detail: "Some workspaces are off until setup is complete.", to: `/setup?finish=${s.company.id}` });
+  }
+  return items.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+}
+
+function WorkInbox({ list }: { list: CompanySummary[] }) {
+  const [company, setCompany] = React.useState("all");
+  const [kind, setKind] = React.useState<DemoWorkKind | "all">("all");
+  const [urgentOnly, setUrgentOnly] = React.useState(false);
+  const [snoozed, setSnoozed] = React.useState<Record<string, number>>({});
+  const [openedAt] = React.useState(() => Date.now());
+  const all = React.useMemo(() => demoWorkFor(list), [list]);
+  const live = all.filter((item) => !(snoozed[item.key] > openedAt));
+  const shown = live.filter((item) => (company === "all" || item.company.id === company) && (kind === "all" || item.kind === kind) && (!urgentOnly || item.priority === "high"));
+  const kinds = [...new Set(live.map((item) => item.kind))];
+  const hidden = all.length - live.length;
+  const snooze = (key: string) => setSnoozed((prev) => ({ ...prev, [key]: Date.now() + DAY }));
+  const unsnoozeAll = () => setSnoozed({});
+  return <>
+    <div className="grid grid-cols-3 gap-3">
+      <Kpi label="To do" value={String(live.length)} detail="Show everything" active={!urgentOnly && company === "all" && kind === "all"} onSelect={() => { setUrgentOnly(false); setCompany("all"); setKind("all"); }} />
+      <Kpi label="Urgent" value={String(live.filter((item) => item.priority === "high").length)} tone="danger" detail={urgentOnly ? "Showing only these" : "Show only these"} active={urgentOnly} onSelect={() => setUrgentOnly(!urgentOnly)} />
+      <Kpi label="Companies" value={String(list.length)} detail="In your portfolio" />
+    </div>
+    <SectionCard title={`${shown.length} ${shown.length === 1 ? "thing" : "things"} to do`} description="Most urgent first. Open one to do it in its company." action={hidden > 0 ? <Button size="sm" variant="ghost" onClick={unsnoozeAll}><RotateCcw className="size-3.5" />Show {hidden} snoozed</Button> : undefined}>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {list.length > 1 && <select aria-label="Company" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={company} onChange={(e) => setCompany(e.target.value)}><option value="all">All companies</option>{list.map((item) => <option key={item.company.id} value={item.company.id}>{item.company.name}</option>)}</select>}
+        <select aria-label="Kind of work" className="h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px]" value={kind} onChange={(e) => setKind(e.target.value as DemoWorkKind | "all")}><option value="all">Every kind</option>{kinds.map((k) => <option key={k} value={k}>{demoWorkKinds[k]}</option>)}</select>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={urgentOnly} onChange={() => setUrgentOnly(!urgentOnly)} />Urgent only</label>
+      </div>
+      {shown.length === 0 ? <p className="text-sm text-muted-foreground">{live.length === 0 ? (list.length > 1 ? "Nothing needs doing in any company. Well done." : "Nothing needs doing right now. Well done.") : "Nothing matches these filters."}</p>
+        : <ul className="flex flex-col divide-y divide-border">{shown.map((item) => <li key={item.key} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+          <Badge variant={item.priority === "high" ? "danger" : item.priority === "medium" ? "warning" : "neutral"}>{item.priority === "high" ? "Urgent" : item.priority === "medium" ? "Soon" : "When free"}</Badge>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm"><span className="font-medium">{item.title}</span> <span className="text-muted-foreground">{list.length > 1 ? `· ${item.company.name} ` : ""}· {demoWorkKinds[item.kind]}</span></p>
+            <p className="text-xs text-muted-foreground">{item.detail}</p>
+          </div>
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" aria-label={`Snooze ${item.title} for a day`} title="Hide for a day" onClick={() => snooze(item.key)}><BellOff className="size-3.5" /></Button>
+            <Button size="sm" variant="secondary" onClick={() => open(item.company.id, item.to)}>Open</Button>
+          </div>
+        </li>)}</ul>}
+    </SectionCard>
+  </>;
+}
+
+function Activity({ list }: { list: CompanySummary[] }) {
+  const events: { company: CompanyRecord; text: string; time: string; to: string }[] = [];
+  for (const item of list) {
+    events.push({ company: item.company, text: `${item.hr.people} people on the team, ${item.hr.departments} department${item.hr.departments !== 1 ? "s" : ""}`, time: "Current", to: "/workspace/hr-people?view=directory&workspace=hr-people" });
+    if (item.crm) {
+      if (item.crm.wonValue > 0) events.push({ company: item.company, text: `${inr(item.crm.wonValue)} in closed deals`, time: "Recent", to: "/deals?workspace=crm-sales" });
+      if (item.crm.leads > 0) events.push({ company: item.company, text: `${item.crm.leads} leads captured`, time: "Recent", to: "/leads?workspace=crm-sales" });
+    }
+    if (item.hr.pendingLeave > 0) events.push({ company: item.company, text: `${item.hr.pendingLeave} leave request${item.hr.pendingLeave !== 1 ? "s" : ""} submitted`, time: "Recent", to: "/workspace/hr-people?view=approvals&workspace=hr-people" });
+    if (item.hr.claimsPending > 0) events.push({ company: item.company, text: `${item.hr.claimsPending} expense claim${item.hr.claimsPending !== 1 ? "s" : ""} submitted`, time: "Recent", to: "/workspace/hr-people?view=expenses&workspace=hr-people" });
+    if (!item.company.setupDone) events.push({ company: item.company, text: "Company setup started, not yet finished", time: "Pending", to: `/setup?finish=${item.company.id}` });
+  }
+  return <SectionCard title="Recent activity" description="What happened across your companies.">
+    {events.length === 0 ? <p className="text-sm text-muted-foreground">No activity yet. Add a company and start working.</p> : <ul className="flex flex-col divide-y divide-border">{events.map((event, index) => <li key={`${event.company.id}-${index}`} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+      <Badge variant="neutral">{event.time}</Badge>
+      <div className="flex min-w-0 flex-1 items-center gap-2"><CompanyLogo company={event.company} size={20} className="rounded" /><span className="text-sm"><span className="font-medium">{event.company.name}</span> · {event.text}</span></div>
+      <Button size="sm" variant="secondary" onClick={() => open(event.company.id, event.to)}>Open</Button>
+    </li>)}</ul>}
+  </SectionCard>;
+}
+
+
+function Compliance({ list }: { list: CompanySummary[] }) {
+  const complianceItems: { company: CompanyRecord; category: string; item: string; status: "compliant" | "attention" | "overdue"; due?: string }[] = [];
+  for (const item of list) {
+    if (!item.company.setupDone) complianceItems.push({ company: item.company, category: "Setup", item: "Company setup", status: "overdue", due: "Incomplete" });
+    complianceItems.push({ company: item.company, category: "HR", item: "Employee agreements", status: item.hr.people > 0 ? "compliant" : "attention", due: item.hr.people > 0 ? "On file" : "No employees" });
+    complianceItems.push({ company: item.company, category: "Policy", item: "Leave policy", status: "compliant" });
+    if (item.crm) complianceItems.push({ company: item.company, category: "Data", item: "CRM data handling", status: "compliant" });
+  }
+  const overdue = complianceItems.filter((i) => i.status === "overdue").length;
+  const attention = complianceItems.filter((i) => i.status === "attention").length;
+  return <>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Kpi label="Companies" value={String(list.length)} detail="Under compliance review" />
+      <Kpi label="Compliant" value={String(complianceItems.filter((i) => i.status === "compliant").length)} detail="Items up to date" />
+      <Kpi label="Needs attention" value={String(attention)} detail="Review required" />
+      <Kpi label="Overdue" value={String(overdue)} detail="Action needed" />
+    </div>
+    <SectionCard title="Compliance status by company" description="Policy acknowledgments, document expiry and setup status.">
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Company</th><th className="px-3 py-2">Category</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Note</th></tr></thead>
+        <tbody>{complianceItems.map((ci, index) => <tr key={`${ci.company.id}-${index}`} className="border-b border-border last:border-0"><td className="py-2.5 pr-4"><div className="flex items-center gap-2"><CompanyLogo company={ci.company} size={20} className="rounded" /><span className="font-medium">{ci.company.name}</span></div></td><td className="px-3 py-2.5 text-muted-foreground">{ci.category}</td><td className="px-3 py-2.5">{ci.item}</td><td className="px-3 py-2.5"><Badge variant={ci.status === "compliant" ? "success" : ci.status === "attention" ? "warning" : "danger"}>{ci.status === "compliant" ? "Compliant" : ci.status === "attention" ? "Attention" : "Overdue"}</Badge></td><td className="px-3 py-2.5 text-xs text-muted-foreground">{ci.due ?? "—"}</td></tr>)}</tbody></table></div>
+    </SectionCard>
+  </>;
+}
+
+
+const PLANS = [
+  { id: "free", name: "Free", price: 0, tagline: "Get started with the basics.", companies: 1, logins: 3, features: ["1 company", "3 people", "CRM & HR basics", "Community support"] },
+  { id: "starter", name: "Starter", price: 999, tagline: "For a small team running one company.", companies: 2, logins: 15, features: ["2 companies", "15 people", "All workspaces", "Email support"] },
+  { id: "growth", name: "Growth", price: 2999, tagline: "The plan most growing businesses choose.", companies: 10, logins: 100, features: ["10 companies", "100 people", "Janus Intelligence", "Priority support", "Compliance calendar"] },
+  { id: "enterprise", name: "Enterprise", price: null as number | null, tagline: "For groups that need everything.", companies: null as number | null, logins: null as number | null, features: ["Unlimited companies", "Unlimited people", "Dedicated support", "Custom integrations", "SLA guarantee"] },
+];
+
+function PlanBilling({ list }: { list: CompanySummary[] }) {
+  const billingKey = userScoped("janus.portfolio-plan");
+  const [currentPlan, setCurrentPlan] = React.useState(() => { try { return window.localStorage.getItem(billingKey) ?? "free"; } catch { return "free"; } });
+  const [upgrading, setUpgrading] = React.useState<typeof PLANS[number] | null>(null);
+  const totalPeople = list.reduce((s, i) => s + i.hr.people, 0);
+  const current = PLANS.find((p) => p.id === currentPlan) ?? PLANS[0];
+  const changePlan = (planId: string) => { setCurrentPlan(planId); try { window.localStorage.setItem(billingKey, planId); } catch {} setUpgrading(null); toast.success(`Plan changed to ${PLANS.find((p) => p.id === planId)?.name}.`); };
+  const rank = (id: string) => PLANS.findIndex((p) => p.id === id);
+  return <>
+    <SectionCard title="Your plan" description="One plan covers every company you own.">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="rounded-lg border-2 border-accent bg-accent-muted px-4 py-3">
+          <p className="text-lg font-semibold">{current.name}</p>
+          <p className="text-sm text-muted-foreground">{current.price === null ? "Custom pricing" : current.price === 0 ? "Free" : `₹${current.price.toLocaleString("en-IN")}/mo + GST`}</p>
+        </div>
+        <dl className="grid grid-cols-3 gap-6 text-sm">
+          <div><dt className="text-[11px] text-muted-foreground">Companies</dt><dd className="font-semibold tabular-nums">{list.length}{current.companies ? ` / ${current.companies}` : ""}</dd></div>
+          <div><dt className="text-[11px] text-muted-foreground">People</dt><dd className="font-semibold tabular-nums">{totalPeople}{current.logins ? ` / ${current.logins}` : ""}</dd></div>
+          <div><dt className="text-[11px] text-muted-foreground">Workspaces</dt><dd className="font-semibold tabular-nums">{list.reduce((s, i) => s + i.company.workspaces.length, 0)}</dd></div>
+        </dl>
+      </div>
+    </SectionCard>
+    <div>
+      <h2 className="mb-3 text-sm font-semibold">Plans</h2>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{PLANS.map((plan) => {
+        const here = plan.id === currentPlan;
+        const up = rank(plan.id) > rank(currentPlan);
+        return <section key={plan.id} className={`flex flex-col rounded-xl border bg-surface p-4 ${here ? "border-accent ring-2 ring-accent/20" : "border-border"}`}>
+          <div className="flex items-center justify-between gap-2"><h3 className="text-base font-semibold">{plan.name}</h3>{here && <Badge variant="success">Your plan</Badge>}{plan.id === "growth" && !here && <Badge variant="neutral">Most groups</Badge>}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{plan.tagline}</p>
+          <p className="mt-3 text-2xl font-semibold tabular-nums">{plan.price === null ? "Custom" : plan.price === 0 ? "Free" : `₹${plan.price.toLocaleString("en-IN")}`}{plan.price !== null && plan.price > 0 && <span className="text-xs font-normal text-muted-foreground"> / month + GST</span>}</p>
+          <ul className="mt-3 flex flex-1 flex-col gap-1.5 text-[13px]">{plan.features.map((f) => <li key={f} className="flex items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" />{f}</li>)}</ul>
+          <div className="mt-4">{here ? <Button size="sm" variant="secondary" className="w-full" disabled>Current plan</Button>
+            : plan.id === "enterprise" ? <Button size="sm" variant="outline" className="w-full" onClick={() => toast.message("Enterprise is set up with the Janus team.", { description: "Tell us how many companies and people you run." })}>Talk to us</Button>
+            : <Button size="sm" variant={up ? "default" : "outline"} className="w-full" onClick={() => setUpgrading(plan)}>{up ? <><ArrowUp className="size-3.5" />Upgrade to {plan.name}</> : <>Move to {plan.name}</>}</Button>}</div>
+        </section>;
+      })}</div>
+    </div>
+    <SectionCard title="Billing by company" description="Usage breakdown per company.">
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-4">Company</th><th className="px-3 py-2">People</th><th className="px-3 py-2">Workspaces</th><th className="px-3 py-2">Status</th></tr></thead>
+        <tbody>{list.map((item) => <tr key={item.company.id} className="border-b border-border last:border-0"><td className="py-2.5 pr-4"><div className="flex items-center gap-2"><CompanyLogo company={item.company} size={20} className="rounded" /><span className="font-medium">{item.company.name}</span></div></td><td className="px-3 py-2.5 tabular-nums">{item.hr.people}</td><td className="px-3 py-2.5 tabular-nums">{item.company.workspaces.length}</td><td className="px-3 py-2.5"><Badge variant={item.company.setupDone ? "success" : "warning"}>{item.company.setupDone ? "Active" : "Setup pending"}</Badge></td></tr>)}</tbody></table></div>
+    </SectionCard>
+    {upgrading && <Dialog open onOpenChange={() => setUpgrading(null)}><DialogContent><DialogHeader><DialogTitle>{rank(upgrading.id) > rank(currentPlan) ? "Upgrade" : "Move"} to {upgrading.name}</DialogTitle><DialogDescription>{upgrading.price === null ? "We will get in touch." : upgrading.price === 0 ? "Move to the free plan. Your companies and data stay." : `₹${upgrading.price.toLocaleString("en-IN")}/month + GST. ${upgrading.companies} companies, ${upgrading.logins} people.`}</DialogDescription></DialogHeader>
+      <DialogFooter><Button variant="outline" onClick={() => setUpgrading(null)}>Cancel</Button><Button onClick={() => changePlan(upgrading.id)}>{rank(upgrading.id) > rank(currentPlan) ? "Confirm upgrade" : "Confirm change"}</Button></DialogFooter></DialogContent></Dialog>}
+  </>;
+}
+

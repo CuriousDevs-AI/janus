@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { userScoped } from "@/lib/stores/user-scoped";
 
 export type NoteKind = "note" | "task" | "reminder";
 
@@ -130,7 +131,7 @@ export const usePersonalTasksStore = create<PersonalTasksState>()(
       },
     }),
     {
-      name: "janus.personal-tasks.v1",
+      name: userScoped("janus.personal-tasks.v1"),
       storage: createJSONStorage(() => localStorage),
     },
   ),

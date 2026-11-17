@@ -228,7 +228,7 @@ export function ProfileCard() {
               {statusEmoji || <span className="text-muted-foreground">+</span>}
             </button>
             {showEmojiPicker && (
-              <div className="absolute left-0 top-10 z-10 grid grid-cols-8 gap-0.5 rounded-lg border border-border bg-surface p-2 shadow-lg">
+              <div className="absolute left-0 top-10 z-10 grid grid-cols-[repeat(8,2rem)] gap-0.5 rounded-lg border border-border bg-surface p-2 shadow-lg">
                 {STATUS_EMOJI_PICKER.map((e) => (
                   <button key={e} type="button" onClick={() => { setStatusEmoji(e); setShowEmojiPicker(false); }} className="flex size-8 items-center justify-center rounded hover:bg-surface-2 text-base">{e}</button>
                 ))}

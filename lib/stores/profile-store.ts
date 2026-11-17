@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { userScoped } from "@/lib/stores/user-scoped";
 
 export type UserStatus = "online" | "busy" | "away" | "offline";
 
@@ -58,7 +59,7 @@ export const useProfileStore = create<ProfileState>()(
       setStatusEmoji: (emoji) => set({ statusEmoji: emoji, updatedAt: stamp() }),
     }),
     {
-      name: "janus.user-profile.v1",
+      name: userScoped("janus.user-profile.v1"),
       storage: createJSONStorage(() => localStorage),
     },
   ),

@@ -27,27 +27,8 @@ type Execution = { id: string; workflowId: string; status: string; event: Record
 type Workspace = { id: string; type: string; name: string; status: string };
 type Tab = "agents" | "approvals" | "activity";
 
-const demoAgents: Agent[] = [
-  { id: "demo-agent-health", key: "business-health", name: "Business Health Monitor", department: "business", status: "active", workspaceId: null, configuration: { description: "Prepares a daily owner brief from connected CRM activity.", ownerName: "Pankaj Neema", approvalMode: "Ask before sensitive actions", lastRunAt: "Today · 09:00", actionsThisWeek: 18, waitingApprovals: 2, successRate: "96%", instructions: "Review verified business signals and highlight the next best action.", readScopes: ["pipeline", "customers"], actions: ["create_task", "assign_owner"] } },
-  { id: "demo-agent-lead", key: "lead-follow-up", name: "Lead Follow-up Agent", department: "crm_sales", status: "active", workspaceId: null, configuration: { description: "Qualifies new enquiries and prepares follow-ups for approval.", ownerName: "Sales team", approvalMode: "Ask before every action", lastRunAt: "Today · 08:42", actionsThisWeek: 34, waitingApprovals: 4, successRate: "92%", instructions: "Summarise new leads, recommend the next action and draft a reply.", readScopes: ["leads", "conversations"], actions: ["draft_reply", "create_task"] } },
-  { id: "demo-agent-support", key: "support-triage", name: "Support Triage Agent", department: "customer_support", status: "paused", workspaceId: null, configuration: { description: "Classifies incoming support requests and routes urgent issues.", ownerName: "Support team", approvalMode: "Ask before every action", lastRunAt: "Yesterday · 17:20", actionsThisWeek: 11, waitingApprovals: 0, successRate: "98%", instructions: "Classify customer issues and escalate anything requiring a human.", readScopes: ["tickets", "customers"], actions: ["assign_owner", "create_task"] } },
-];
-
-const demoWorkflows: Workflow[] = [
-  { id: "demo-workflow-lead", name: "New lead follow-up", description: "Qualify a new lead, draft a reply and create a follow-up task.", status: "active", trigger: { type: "lead_created" }, actions: ["qualify_lead", "draft_reply", "create_task"], requiresApproval: true, workspaceId: null },
-  { id: "demo-workflow-call", name: "Missed call callback", description: "Create a callback task whenever a new missed call is captured.", status: "draft", trigger: { type: "missed_call" }, actions: ["create_task", "assign_owner"], requiresApproval: false, workspaceId: null },
-  { id: "demo-workflow-collections", name: "Overdue payment reminder", description: "Review overdue invoices and prepare a reminder for owner approval.", status: "paused", trigger: { type: "invoice_overdue" }, actions: ["find_risk", "draft_reply"], requiresApproval: true, workspaceId: null },
-];
-
-const demoExecutions: Execution[] = [
-  { id: "demo-execution-1", workflowId: "demo-workflow-lead", status: "pending_approval", event: { preview: "Draft WhatsApp follow-up for Sharma Logistics" }, result: { side_effects: false }, approvedBy: null, createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(), completedAt: null },
-  { id: "demo-execution-2", workflowId: "demo-workflow-lead", status: "completed", event: { preview: "Lead qualification completed" }, result: { side_effects: false }, approvedBy: "owner", createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), completedAt: new Date(Date.now() - 3.9 * 60 * 60 * 1000).toISOString() },
-  { id: "demo-execution-3", workflowId: "demo-workflow-collections", status: "failed", event: { preview: "Invoice reminder for Nova Clinics" }, result: { error: "Approval window expired" }, approvedBy: null, createdAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), completedAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString() },
-];
-
 const workspaceNames: Record<string, string> = { crm_sales: "CRM & Sales", finance_accounting: "Finance & Accounting", customer_support: "Customer Support & Success", operations_inventory: "Operations & Inventory", hr_people: "HR & People", projects_delivery: "Projects & Delivery", it_infrastructure: "IT & Infrastructure", business: "Business" };
 export default function AgentsPage() {
-  // A real business gets agents that run; the demo keeps its preview.
   return demoMode ? <AgentsPreview /> : <LiveAgents />;
 }
 
@@ -56,9 +37,9 @@ function AgentsPreview() {
   const router = useRouter(); const params = useSearchParams();
   const agents = useApi<Agent[]>(null); const workflows = useApi<Workflow[]>("/business/automations"); const executions = useApi<Execution[]>("/business/automations/executions"); const workspaces = useApi<Workspace[]>("/workspaces");
   const [newAgent, setNewAgent] = React.useState(false); const [template, setTemplate] = React.useState<string | null>(null); const [newWorkflow, setNewWorkflow] = React.useState(false); const [settings, setSettings] = React.useState(false); const [detail, setDetail] = React.useState<Agent | null>(null); const [editAgent, setEditAgent] = React.useState<Agent | null>(null); const [editWorkflow, setEditWorkflow] = React.useState<Workflow | null>(null); const [notice, setNotice] = React.useState(""); const [copyAgent, setCopyAgent] = React.useState<Agent | null>(null);
-  const [demoAgentRows, setDemoAgentRows] = React.useState<Agent[]>(demoAgents);
-  const [demoWorkflowRows, setDemoWorkflowRows] = React.useState<Workflow[]>(demoWorkflows);
-  const [demoExecutionRows, setDemoExecutionRows] = React.useState<Execution[]>(demoExecutions);
+  const [demoAgentRows, setDemoAgentRows] = React.useState<Agent[]>([]);
+  const [demoWorkflowRows, setDemoWorkflowRows] = React.useState<Workflow[]>([]);
+  const [demoExecutionRows, setDemoExecutionRows] = React.useState<Execution[]>([]);
   const legacy = params.get("section"); const raw = params.get("tab"); const workflowRoute = raw === "workflows" || legacy === "workflows" || legacy === "triggers"; const tab: Tab = raw === "approvals" || legacy === "approvals" ? "approvals" : raw === "activity" || legacy === "history" ? "activity" : "agents";
   const [now] = React.useState(() => Date.now());
   React.useEffect(() => { if (workflowRoute) router.replace(`/automations?workspace=${workspaceId}`); }, [workflowRoute, router, workspaceId]);

@@ -1,5 +1,5 @@
 import type { CompanySummary } from "@/features/portfolio/demo/group-summary";
-import { lakh } from "@/lib/demo-universe";
+import { inr } from "@/features/portfolio/lib/format";
 
 export interface Insight { tone: "positive" | "watch" | "action"; title: string; detail: string }
 const pct = (part: number, whole: number) => whole ? Math.round((part / whole) * 100) : 0;
@@ -13,14 +13,14 @@ export function insightsFor(list: CompanySummary[]): Insight[] {
   const pipeline = crm.reduce((sum, item) => sum + (item.crm?.pipeline ?? 0), 0);
   if (crm.length > 1 && pipeline > 0) {
     const top = [...crm].sort((a, b) => (b.crm?.pipeline ?? 0) - (a.crm?.pipeline ?? 0))[0];
-    out.push({ tone: "watch", title: "Pipeline is concentrated", detail: `${name(top)} holds ${pct(top.crm!.pipeline, pipeline)}% of the open pipeline (${lakh(top.crm!.pipeline)} of ${lakh(pipeline)}).` });
+    out.push({ tone: "watch", title: "Pipeline is concentrated", detail: `${name(top)} holds ${pct(top.crm!.pipeline, pipeline)}% of the open pipeline (${inr(top.crm!.pipeline)} of ${inr(pipeline)}).` });
   }
   if (crm.length > 1) {
     const best = [...crm].sort((a, b) => (b.crm?.winRate ?? 0) - (a.crm?.winRate ?? 0))[0];
     out.push({ tone: "positive", title: "Strongest closer", detail: `${name(best)} wins ${best.crm!.winRate}% of the deals it closes, the highest in the portfolio.` });
   }
   const heavy = [...list].filter((item) => item.crm && item.crm.wonValue > 0).sort((a, b) => b.hr.monthlyPay / Math.max(1, b.crm!.wonValue) - a.hr.monthlyPay / Math.max(1, a.crm!.wonValue))[0];
-  if (heavy) out.push({ tone: "watch", title: "Payroll against won revenue", detail: `${name(heavy)} spends ${lakh(heavy.hr.monthlyPay)} a month on payroll against ${lakh(heavy.crm!.wonValue)} won so far.` });
+  if (heavy) out.push({ tone: "watch", title: "Payroll against won revenue", detail: `${name(heavy)} spends ${inr(heavy.hr.monthlyPay)} a month on payroll against ${inr(heavy.crm!.wonValue)} won so far.` });
   const unfinished = list.filter((item) => !item.company.setupDone);
   if (unfinished.length) out.push({ tone: "action", title: "Finish setting up", detail: `${unfinished.map(name).join(" and ")} ${unfinished.length === 1 ? "is" : "are"} not fully set up, so some workspaces are off.` });
   const waiting = list.reduce((sum, item) => sum + item.hr.pendingLeave, 0);
@@ -37,11 +37,11 @@ export function answerFor(question: string, list: CompanySummary[]): Answer {
   const crm = withCrm(list);
   if (!list.length) return { text: "There are no companies yet. Add one and I can start answering from its records." };
   if (/pipeline|deal|revenue|won|sales/.test(q)) {
-    const rows = crm.map((item): [string, string] => [name(item), `${lakh(item.crm!.pipeline)} open · ${lakh(item.crm!.wonValue)} won · ${item.crm!.winRate}% win rate`]);
-    return { text: crm.length ? `Across ${crm.length} compan${crm.length === 1 ? "y" : "ies"} with CRM, the open pipeline is ${lakh(crm.reduce((s, i) => s + i.crm!.pipeline, 0))} and ${lakh(crm.reduce((s, i) => s + i.crm!.wonValue, 0))} has been won.` : "No company has CRM records yet.", rows };
+    const rows = crm.map((item): [string, string] => [name(item), `${inr(item.crm!.pipeline)} open · ${inr(item.crm!.wonValue)} won · ${item.crm!.winRate}% win rate`]);
+    return { text: crm.length ? `Across ${crm.length} compan${crm.length === 1 ? "y" : "ies"} with CRM, the open pipeline is ${inr(crm.reduce((s, i) => s + i.crm!.pipeline, 0))} and ${inr(crm.reduce((s, i) => s + i.crm!.wonValue, 0))} has been won.` : "No company has CRM records yet.", rows };
   }
   if (/payroll|salary|cost|people|headcount|staff|employee/.test(q)) {
-    return { text: `The portfolio has ${list.reduce((s, i) => s + i.hr.people, 0)} people and a monthly payroll of ${lakh(list.reduce((s, i) => s + i.hr.monthlyPay, 0))}.`, rows: list.map((item): [string, string] => [name(item), `${item.hr.people} people · ${lakh(item.hr.monthlyPay)} a month · ${item.hr.onLeaveToday} on leave today`]) };
+    return { text: `The portfolio has ${list.reduce((s, i) => s + i.hr.people, 0)} people and a monthly payroll of ${inr(list.reduce((s, i) => s + i.hr.monthlyPay, 0))}.`, rows: list.map((item): [string, string] => [name(item), `${item.hr.people} people · ${inr(item.hr.monthlyPay)} a month · ${item.hr.onLeaveToday} on leave today`]) };
   }
   if (/attention|urgent|need|wait|pending|leave|approval/.test(q)) {
     const items = list.flatMap((item) => item.attention.map((entry): [string, string] => [name(item), entry.text]));

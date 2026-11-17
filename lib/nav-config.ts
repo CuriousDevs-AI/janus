@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   MessageCircle,
+  OctagonAlert,
   Package,
   Plug,
   Radio,
@@ -159,7 +160,6 @@ export const portfolioNavSections: NavSection[] = [
   { title: "Manage", items: [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
     { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
-    { label: "AI models & keys", href: "/portfolio?view=ai-keys", icon: KeyRound },
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
     { label: "Compliance", href: "/portfolio?view=compliance", icon: CalendarCheck },
   ] },
@@ -168,6 +168,7 @@ export const portfolioNavSections: NavSection[] = [
     { label: "AI Agents", href: "/agents?workspace=portfolio", icon: Bot, requiredPermission: "ai:manage" },
     { label: "Workflows", href: "/automations?workspace=portfolio", icon: Workflow, requiredPermission: "ai:manage" },
     { label: "AI Dashboard", href: "/evaluations?workspace=portfolio", icon: FlaskConical, requiredPermission: "ai:manage" },
+    { label: "AI Models & Keys", href: "/portfolio?view=ai-keys", icon: KeyRound, requiredPermission: "ai:manage" },
   ] },
   { title: "Access", items: [
     { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
@@ -389,16 +390,30 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   "it-infrastructure": [
     { title: "IT & Infrastructure", items: [
       { label: "IT Overview", href: "/workspace/it-infrastructure", icon: LayoutDashboard },
-      { label: "IT Assets", href: "/workspace/it-infrastructure?view=assets", icon: Database },
       { label: "IT Helpdesk", href: "/workspace/it-infrastructure?view=helpdesk", icon: LifeBuoy },
+      { label: "Incidents", href: "/workspace/it-infrastructure?view=incidents", icon: OctagonAlert },
+      { label: "Problem Management", href: "/workspace/it-infrastructure?view=problems", icon: GitMerge },
+      { label: "Change Management", href: "/workspace/it-infrastructure?view=changes", icon: Workflow },
+      { label: "Infrastructure Monitoring", href: "/workspace/it-infrastructure?view=monitoring", icon: Gauge },
+    ] },
+    { title: "Assets & Access", items: [
+      { label: "IT Assets", href: "/workspace/it-infrastructure?view=assets", icon: Database },
       { label: "Access Management", href: "/workspace/it-infrastructure?view=access", icon: ShieldCheck },
       { label: "Software & Licenses", href: "/workspace/it-infrastructure?view=licenses", icon: Plug },
-      { label: "Infrastructure Monitoring", href: "/workspace/it-infrastructure?view=monitoring", icon: Gauge },
-      { label: "Incidents", href: "/workspace/it-infrastructure?view=incidents", icon: LifeBuoy },
-      { label: "Change Management", href: "/workspace/it-infrastructure?view=changes", icon: Workflow },
-      { label: "Security & Compliance", href: "/settings?tab=security", icon: ShieldCheck, requiredPermission: "settings:manage" },
+      { label: "Software Requests", href: "/workspace/it-infrastructure?view=software-requests", icon: ClipboardList },
+    ] },
+    { title: "Vendors & Network", items: [
+      { label: "Vendors & Contracts", href: "/workspace/it-infrastructure?view=vendor-contracts", icon: Handshake },
+      { label: "Network & Domains", href: "/workspace/it-infrastructure?view=network", icon: Monitor },
+    ] },
+    { title: "People & Policies", items: [
+      { label: "IT Onboarding", href: "/workspace/it-infrastructure?view=onboarding-checklists", icon: UserRoundPlus },
+      { label: "IT Policies", href: "/workspace/it-infrastructure?view=it-policies", icon: FileCheck2 },
+      { label: "Knowledge Base", href: "/workspace/it-infrastructure?view=kb", icon: BookOpen },
+    ] },
+    { title: "Reports & Settings", items: [
       { label: "IT Reports", href: "/workspace/it-infrastructure?view=reports", icon: BarChart3 },
-      { label: "IT Settings", href: "/settings?tab=security", icon: Settings2, requiredPermission: "settings:manage" },
+      { label: "IT Settings", href: "/workspace/it-infrastructure?view=it-settings", icon: Settings2 },
     ] },
     { title: "AI", items: [
       { label: "AI Assistant", href: "/ai?workspace=it-infrastructure", icon: Sparkles, requiredPermission: "ai:manage" },

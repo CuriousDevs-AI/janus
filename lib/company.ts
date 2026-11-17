@@ -49,16 +49,23 @@ function migrateWorkspaces(list: CompanyRecord[]): CompanyRecord[] {
   return migrated;
 }
 
+function userRegistryKey(): string {
+  const uid = read("janus.login");
+  return uid ? `${REGISTRY_KEY}.${uid}` : REGISTRY_KEY;
+}
 export function readCompanies(): CompanyRecord[] {
   if (typeof window === "undefined") return seedCompanies;
   try {
-    // An empty list is a real state (every company removed). Only a missing key means "first visit".
-    const stored = JSON.parse(read(REGISTRY_KEY) ?? "null") as CompanyRecord[] | null;
+    const key = userRegistryKey();
+    const raw = read(key);
+    if (!raw && key !== REGISTRY_KEY) return seedCompanies;
+    const stored = JSON.parse(raw ?? "null") as CompanyRecord[] | null;
     return stored ? migrateWorkspaces(stored) : seedCompanies;
   } catch { return seedCompanies; }
 }
 export function saveCompanies(list: CompanyRecord[]) {
-  try { window.localStorage.setItem(REGISTRY_KEY, JSON.stringify(list)); } catch { /* private mode */ }
+  const json = JSON.stringify(list);
+  try { window.localStorage.setItem(userRegistryKey(), json); } catch { /* private mode */ }
   window.dispatchEvent(new Event(EVENT));
 }
 
