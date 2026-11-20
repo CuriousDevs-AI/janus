@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Banknote, CalendarOff, Clock, Coins, FileCheck2, Handshake, Landmark, PackageX, Receipt, Scale, Siren, Timer, TrendingDown, TriangleAlert, Users, Wallet } from "lucide-react";
 import { FilterChips } from "@/components/shared/stat-tile";
+import { AiPageShell } from "@/components/ai/ai-shell";
 import { Intelligence, usePortfolioApi, type DepartmentChat, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 /**
@@ -34,6 +35,13 @@ export const departmentChats: Record<string, DepartmentChat> = {
     ["Which projects are late?", Timer], ["How many projects are active?", Handshake], ["What needs my attention?", TriangleAlert],
     ["What approvals are waiting?", Clock],
   ] },
+  "team-chat": { name: "Team Chat", placeholder: "Ask about what needs the team, approvals or who is away…", questions: [
+    ["What needs my attention?", TriangleAlert], ["What approvals are waiting?", Clock], ["Who is on leave today?", CalendarOff],
+    ["How many people do we have?", Users],
+  ] },
+  "it-infrastructure": { name: "IT & Infrastructure", placeholder: "Ask about what needs attention, approvals or people…", questions: [
+    ["What needs my attention?", TriangleAlert], ["What approvals are waiting?", Clock], ["How many people do we have?", Users],
+  ] },
 };
 
 const periods: { value: PortfolioPeriodKey; label: string }[] = [
@@ -48,17 +56,11 @@ export function DepartmentIntelligence({ workspaceId, workspaceName }: { workspa
   const [period, setPeriod] = React.useState<PortfolioPeriodKey>("month");
   const summary = usePortfolioApi<PortfolioSummary>(`/portfolio/summary?period=${period}`, { keepPrevious: true });
   const company = summary.data?.companies.find((item) => item.current);
-  return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">{department.name} AI chat</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Ask {department.name}</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Answers come from the records of {company?.name ?? "your business"}, with the figure behind each one. Janus does not guess, and says when the records cannot answer.</p>
-      </div>
-      <FilterChips label="Period" value={period} options={periods} onChange={setPeriod} />
-    </div>
+  return <AiPageShell page="assistant" title="AI Assistant"
+    description={`Ask ${department.name} questions in plain words. Answers come from the records of ${company?.name ?? "your business"}, with the figure behind each one. Janus does not guess, and says when the records cannot answer.`}
+    actions={<FilterChips label="Period" value={period} options={periods} onChange={setPeriod} />}>
     {summary.error && !summary.data ? <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">Janus could not read this company&apos;s records: {summary.error}</p>
       : !company ? <p className="text-sm text-muted-foreground" role="status">{summary.loading ? "Reading your records…" : "Your role does not include this company's figures, so Janus has nothing to answer from. Ask the Owner for access."}</p>
       : <Intelligence key={workspaceId} list={[company]} company={company} period={summary.data?.period} department={department} />}
-  </div>;
+  </AiPageShell>;
 }

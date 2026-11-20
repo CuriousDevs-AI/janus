@@ -6,7 +6,7 @@
  */
 export { PortfolioPage } from "@/features/portfolio/portfolio-page";
 export { ChoosePlan } from "@/features/portfolio/components/choose-plan";
-export type { PortfolioCompany, PortfolioPeriod, PortfolioPeriodKey, PortfolioRetention, PortfolioSummary, PortfolioTrends } from "@/features/portfolio/types";
+export type { PortfolioAsked, PortfolioCompany, PortfolioPeriod, PortfolioPeriodKey, PortfolioRetention, PortfolioSummary, PortfolioTrends } from "@/features/portfolio/types";
 // Business Management shows one company with the Portfolio's figures and words for them.
 export { change, day, healthName, healthTone, inr, todayIst } from "@/features/portfolio/lib/format";
 export { usePortfolioApi, invalidatePortfolioCache } from "@/features/portfolio/lib/use-portfolio-api";

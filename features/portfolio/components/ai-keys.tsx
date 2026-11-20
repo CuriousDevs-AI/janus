@@ -13,6 +13,7 @@ import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
 import { isFree, providerName } from "@/features/portfolio/lib/ai";
 import { inr } from "@/features/portfolio/lib/format";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
+import { PreviewRole } from "@/features/portfolio/lib/companies";
 import type { AiProvider, PortfolioAiCompany, PortfolioAiKey, PortfolioAsked, PortfolioKey, PortfolioModels } from "@/features/portfolio/types";
 
 type CompanyRow = { company: PortfolioAiCompany; key: PortfolioAiKey };
@@ -35,9 +36,11 @@ export function AiKeys() {
   const [moving, setMoving] = React.useState<CompanyRow | null>(null);
   const [removing, setRemoving] = React.useState<CompanyRow | null>(null);
   const [testing, setTesting] = React.useState<string | null>(null);
+  // While an Owner previews a group role, the page is as that role sees it: no keys to add or change.
+  const preview = React.useContext(PreviewRole);
   if (models.loading) return <div role="status" aria-label="Loading AI keys" className="h-64 animate-pulse rounded-xl border border-border bg-surface-2" />;
   if (models.error || !models.data) return <div role="alert" className="flex items-center gap-3 text-sm text-danger">{models.error}<Button size="sm" variant="secondary" onClick={models.reload}>Try again</Button></div>;
-  const data = models.data;
+  const data = preview ? { ...models.data, canAddKeys: false } : models.data;
   const companyRows: CompanyRow[] = data.companies.flatMap((company) => company.keys.map((key) => ({ company, key })));
   const copyOf = (row: CompanyRow) => data.portfolioKeys.some((key) => key.provider === row.key.provider && key.copiedTo.some((item) => item.id === row.company.id));
   async function test(id: string, path: string) {
@@ -49,7 +52,7 @@ export function AiKeys() {
   const done = () => { setSharing(null); setRevoking(null); setMoving(null); setRemoving(null); setSetup(null); models.reload(); };
 
   return <>
-    <SectionCard title="Portfolio keys" description="Kept by the Portfolio for your account. Janus Intelligence asks with them, and you choose which companies use each one too." action={data.canAddKeys && <Button size="sm" onClick={() => setSetup("new")}><Plus className="size-3.5" />Add a key</Button>}>
+    <SectionCard title="Portfolio keys" description="Kept by the Portfolio for your account. Janus Intelligence asks with them, and you choose which companies use each one too." action={data.canAddKeys ? <Button size="sm" onClick={() => setSetup("new")}><Plus className="size-3.5" />Add a key</Button> : data.portfolioKeys.length > 0 ? <p className="text-xs text-muted-foreground">Only an Owner adds or changes Portfolio keys.</p> : undefined}>
       {data.portfolioKeys.length === 0 ? <div className="flex flex-col items-center gap-3 py-8 text-center">
         <span className="flex size-10 items-center justify-center rounded-xl bg-accent-muted text-accent"><KeyRound className="size-5" aria-hidden /></span>
         <p className="max-w-md text-sm text-muted-foreground">No Portfolio keys yet. Janus rules answer without one. Add a key, free or paid, to ask in your own words and to share it with your companies.</p>
@@ -63,7 +66,7 @@ export function AiKeys() {
           <td className="px-3 py-2.5">{key.copiedTo.length ? <span className="flex flex-wrap gap-1">{key.copiedTo.map((item) => <Badge key={item.id} variant="neutral"><Building2 className="mr-1 size-3" />{item.name}</Badge>)}</span> : <span className="text-xs text-muted-foreground">Portfolio only</span>}</td>
           <td className="py-2 pl-3"><div className="flex justify-end gap-1">
             <Button size="sm" variant="ghost" disabled={testing === id} onClick={() => void test(id, `/portfolio/ai-keys/${key.provider}/test`)}><Plug className="size-3.5" />{testing === id ? "Testing…" : "Test"}</Button>
-            <DropdownMenu>
+            {data.canAddKeys && <DropdownMenu>
               <DropdownMenuTrigger asChild><Button size="sm" variant="outline" aria-label={`More for the ${nameOf(key.provider)} key`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => setSetup({ provider: key.provider })}><Pencil className="size-3.5" />Change model or key</DropdownMenuItem>
@@ -71,7 +74,7 @@ export function AiKeys() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-danger" onSelect={() => setRevoking(key)}><Trash2 className="size-3.5" />Revoke</DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+            </DropdownMenu>}
           </div></td>
         </tr>; })}</tbody>
       </table></div>}

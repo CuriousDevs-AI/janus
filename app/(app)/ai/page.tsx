@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { JanusIntelligence } from "@/components/business/janus-intelligence";
 import { DepartmentIntelligence } from "@/components/business/department-chat";
@@ -16,18 +16,13 @@ export default function AskYourBusinessPage() {
 
 function AskYourBusinessPageInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { workspaceId, workspace } = useWorkspace();
-  const departmentChat = workspaceId !== "business" && workspaceId !== "crm-sales";
-  const crmAssistant = workspaceId === "crm-sales";
-  const requestedIntelligenceView = searchParams.get("view");
+  const portfolio = workspaceId === "portfolio";
+  // The Portfolio's assistant answers across every company, on the Portfolio's own page.
+  React.useEffect(() => { if (portfolio) router.replace("/portfolio?view=intelligence"); }, [portfolio, router]);
 
-  if (workspaceId === "business") {
-    return <JanusIntelligence requested={requestedIntelligenceView} />;
-  }
-
-  if (departmentChat || crmAssistant) {
-    return <DepartmentIntelligence workspaceId={workspaceId} workspaceName={workspace.name} />;
-  }
-
+  if (portfolio) return <p className="px-6 py-8 text-sm text-muted-foreground" role="status">Opening the Portfolio&apos;s AI Assistant…</p>;
+  if (workspaceId === "business") return <JanusIntelligence requested={searchParams.get("view")} />;
   return <DepartmentIntelligence workspaceId={workspaceId} workspaceName={workspace.name} />;
 }

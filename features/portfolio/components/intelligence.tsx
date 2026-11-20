@@ -52,6 +52,12 @@ type Turn = { q: string; rules?: Answer; ai?: PortfolioAsked; pending?: boolean;
 
 /** This page load's conversation, per person, so moving to another Portfolio page and back keeps it. */
 const conversations = new Map<string, Turn[]>();
+/** Conversations started afresh with "New chat": earlier saved answers stay saved, but out of view. */
+const freshThreads = new Set<string>();
+/** The model each person last answered with, kept in this browser so a reload or another tab keeps it. */
+const modelKey = (who: string) => `janus.ai-model.${who}`;
+function readModel(who: string) { try { return window.localStorage.getItem(modelKey(who)); } catch { return null; } }
+function writeModel(who: string, id: string) { try { window.localStorage.setItem(modelKey(who), id); } catch { /* storage blocked: kept for this page only */ } }
 
 /**
  * Janus answers questions from the Portfolio's figures and what it was told. Given one `company`
@@ -59,14 +65,17 @@ const conversations = new Map<string, Turn[]>();
  */
 export function Intelligence({ list: all, period, company, department }: { list: PortfolioCompany[]; period?: PortfolioPeriod; company?: PortfolioCompany; department?: DepartmentChat }) {
   const list = company ? [company] : all;
-  const preview = React.useContext(PreviewRole);
+  const previewRole = React.useContext(PreviewRole);
   const who = useSession().user.id;
-  const models = usePortfolioApi<PortfolioModels>(preview ? null : "/portfolio/intelligence/models");
-  const history = usePortfolioApi<PortfolioAsked[]>(preview ? null : "/portfolio/intelligence/history");
+  const models = usePortfolioApi<PortfolioModels>(previewRole ? null : "/portfolio/intelligence/models");
+  const history = usePortfolioApi<PortfolioAsked[]>(previewRole ? null : "/portfolio/intelligence/history");
   const available = models.data ?? rulesOnly;
   // Janus rules answer from the records first, then from the facts and documents the owner approved.
-  const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>(preview ? null : "/portfolio/knowledge");
-  const [chosen, setChosen] = React.useState(RULES);
+  const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>(previewRole ? null : "/portfolio/knowledge");
+  const [chosen, setChosenState] = React.useState(RULES);
+  // After the first paint, so the server and the browser draw the same page first.
+  React.useEffect(() => { const saved = readModel(who); if (saved) setChosenState(saved); }, [who]);
+  const setChosen = (id: string) => { setChosenState(id); writeModel(who, id); };
   const model = available.options.find((option) => option.id === chosen) ?? available.options[0];
   // Each department keeps its own conversation, apart from Janus Intelligence's.
   const thread = `${who}:${department?.name ?? ""}`;
@@ -74,13 +83,17 @@ export function Intelligence({ list: all, period, company, department }: { list:
   const setTurns = (change: (current: Turn[]) => Turn[]) => setTurnsState((current) => { const next = change(current); conversations.set(thread, next); return next; });
   const [q, setQ] = React.useState("");
   const [cleared, setCleared] = React.useState(false);
+  const [fresh, setFresh] = React.useState(() => freshThreads.has(`${who}:${department?.name ?? ""}`));
   const [panel, setPanel] = React.useState<"knowledge" | null>(null);
   const [settingUp, setSettingUp] = React.useState(false);
   const [focus, setFocus] = React.useState<string | null>(null);
   const focused = company ?? list.find((item) => item.id === focus);
   const tries = department ? department.questions.map(([text]) => text) : company ? ownSuggestions.map(([text]) => text) : focused ? about(focused.name) : suggestions.map(([text]) => text);
   // Saved questions are the whole business's; a department chat starts from its own.
-  const earlier = cleared || department ? [] : (history.data ?? []);
+  // An answer asked on this page is also in the saved history once it is reloaded: show it once.
+  const asked = new Set(turns.map((turn) => turn.ai?.id).filter(Boolean));
+  const earlier = cleared || fresh || department ? [] : (history.data ?? []).filter((item) => !asked.has(item.id));
+  const preview = Boolean(previewRole);
   const shown: Turn[] = [...earlier.map((item) => ({ q: item.question, ai: item })), ...turns];
   const busy = turns.some((turn) => turn.pending);
 
@@ -139,7 +152,7 @@ export function Intelligence({ list: all, period, company, department }: { list:
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"><Sparkles className="size-4" aria-hidden /></span>
             <div className="min-w-0"><p className="text-sm font-semibold">{department ? `Janus · ${department.name}` : "Janus"}</p><p className="truncate text-xs text-muted-foreground">{company ? company.name : `Across ${list.length} ${list.length === 1 ? "company" : "companies"}`}{period ? ` · ${period.label}` : ""} · answers only from your figures</p></div>
           </div>
-          {turns.length > 0 && <Button size="sm" variant="ghost" onClick={() => setTurns(() => [])} title="Start a new conversation"><MessageSquarePlus className="size-4" />New chat</Button>}
+          {shown.length > 0 && <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setTurns(() => []); freshThreads.add(thread); setFresh(true); }} title="Start a new conversation. Earlier answers stay saved until you choose Forget."><MessageSquarePlus className="size-4" />New chat</Button>}
         </header>
 
         <div ref={scroller} className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
@@ -174,7 +187,7 @@ export function Intelligence({ list: all, period, company, department }: { list:
       <aside className="flex flex-col gap-4">
         <div className="rounded-xl border border-border bg-surface p-4">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Cpu className="size-3.5" aria-hidden />Answer with</p>
-          <Select value={model.id} onValueChange={setChosen}>
+          <Select value={model.id} onValueChange={setChosen} disabled={preview}>
             <SelectTrigger aria-label="Answer with"><SelectValue /></SelectTrigger>
             <SelectContent>{available.options.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}{option.company ? ` · ${option.company}` : ""}{option.free ? " · free" : ""}</SelectItem>)}</SelectContent>
           </Select>
@@ -198,7 +211,7 @@ export function Intelligence({ list: all, period, company, department }: { list:
           <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><BookOpen className="size-3.5" aria-hidden />What Janus knows</p>
           <p className="text-xs text-muted-foreground">Facts and documents you approved, used beside your records. Janus never remembers anything on its own.</p>
           <Button size="sm" variant="outline" className="mt-3 w-full" aria-expanded={panel === "knowledge"} onClick={() => setPanel(panel === "knowledge" ? null : "knowledge")}>{panel === "knowledge" ? "Hide knowledge" : "See and add knowledge"}</Button>
-          {earlier.length > 0 && <Button size="sm" variant="ghost" className="mt-1 w-full text-muted-foreground" onClick={forget}><Trash2 className="size-3.5" />Forget earlier questions</Button>}
+          {(history.data ?? []).length > 0 && !cleared && <Button size="sm" variant="ghost" className="mt-1 w-full text-muted-foreground" onClick={forget}><Trash2 className="size-3.5" />Forget earlier questions</Button>}
         </div>}
       </aside>
     </div>

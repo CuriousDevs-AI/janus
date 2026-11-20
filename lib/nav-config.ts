@@ -8,7 +8,6 @@ import {
   BookOpen,
   CalendarCheck,
   Bot,
-  BrainCircuit,
   Building2,
   CalendarClock,
   ClipboardList,
@@ -59,6 +58,27 @@ export interface NavSection {
   items: NavItem[];
 }
 
+/**
+ * The AI pages, the same in every workspace: the assistant, agents, workflows, the AI dashboard and
+ * what the model costs. Each page opens on the workspace it was reached from. The Portfolio's
+ * assistant is the one across every company, and it also keeps the AI keys.
+ * The permissions match what the API checks for each page.
+ */
+export function aiNavItems(workspaceId: WorkspaceId): NavItem[] {
+  const portfolio = workspaceId === "portfolio";
+  const items: NavItem[] = [
+    { label: "AI Assistant", href: portfolio ? "/portfolio?view=intelligence" : `/ai?workspace=${workspaceId}`, icon: Sparkles, requiredPermission: portfolio ? undefined : "ai:manage" },
+    { label: "AI Agents", href: `/agents?workspace=${workspaceId}`, icon: Bot, requiredPermission: "agents:manage" },
+    { label: "Workflows", href: `/automations?workspace=${workspaceId}`, icon: Workflow, requiredPermission: "automations:manage" },
+    { label: "AI Dashboard", href: `/evaluations?workspace=${workspaceId}`, icon: FlaskConical, requiredPermission: "ai:manage" },
+    { label: "AI Usage & Cost", href: `/usage?workspace=${workspaceId}`, icon: Gauge, requiredPermission: "ai:manage" },
+  ];
+  if (portfolio) items.push({ label: "AI Models & Keys", href: "/portfolio?view=ai-keys", icon: KeyRound, requiredPermission: "ai:manage" });
+  return items;
+}
+
+const aiSection = (workspaceId: WorkspaceId): NavSection => ({ title: "AI", items: aiNavItems(workspaceId) });
+
 /** CRM navigation stays on the existing routes and is never duplicated. */
 export const crmNavSections: NavSection[] = [
   {
@@ -78,20 +98,11 @@ export const crmNavSections: NavSection[] = [
       { label: "Web Forms", href: "/web-forms", icon: ClipboardList, requiredPermission: "sources:manage" },
       { label: "Sequences", href: "/sequences", icon: Mail, requiredPermission: "settings:manage" },
       { label: "Quotes", href: "/quotes", icon: FileCheck2, requiredPermission: "leads:write" },
-      { label: "Automations", href: "/automations", icon: Workflow, requiredPermission: "automations:manage" },
       { label: "Knowledge", href: "/knowledge", icon: Database, requiredPermission: "agents:manage" },
       { label: "Analytics", href: "/analytics", icon: BarChart3, requiredPermission: "reports:read" },
     ],
   },
-  {
-    title: "AI",
-    items: [
-      { label: "AI Assistant", href: "/ai?workspace=crm-sales", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "Agents", href: "/agents?workspace=crm-sales", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage", demoOnly: true },
-      { label: "AI Dashboard", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ],
-  },
+  aiSection("crm-sales"),
   {
     title: "CRM Management",
     items: [
@@ -101,7 +112,6 @@ export const crmNavSections: NavSection[] = [
       { label: "Approvals", href: "/approvals", icon: ShieldCheck, requiredPermission: "approvals:manage" },
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Audit Logs", href: "/audit", icon: ScrollText, requiredPermission: "settings:manage" },
-      { label: "Usage", href: "/usage", icon: Gauge, requiredPermission: "billing:manage" },
     ],
   },
 ];
@@ -111,7 +121,6 @@ export const businessNavSections: NavSection[] = [
     title: "Business",
     items: [
       { label: "Business Overview", href: "/settings?tab=workspace&view=overview", icon: LayoutDashboard, requiredPermission: "settings:manage" },
-      { label: "Janus Intelligence", href: "/ai", icon: Sparkles, requiredPermission: "ai:manage" },
     ],
   },
   {
@@ -124,20 +133,12 @@ export const businessNavSections: NavSection[] = [
     ],
   },
   {
-    title: "Intelligence",
+    title: "Reports",
     items: [
       { label: "Business Reports", href: "/analytics", icon: BarChart3, requiredPermission: "settings:manage" },
-      { label: "AI Agents", href: "/agents", icon: Bot, requiredPermission: "agents:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=business", icon: FlaskConical, requiredPermission: "ai:manage" },
-      { label: "AI Usage & Cost", href: "/usage?workspace=business", icon: Gauge, requiredPermission: "ai:manage" },
     ],
   },
-  {
-    title: "Automation",
-    items: [
-      { label: "Workflows", href: "/automations?workspace=business", icon: Workflow, requiredPermission: "agents:manage" },
-    ],
-  },
+  aiSection("business"),
   // Your own profile, password and notifications are in My account (the menu on your name), the
   // same in every workspace; this menu keeps the company's settings.
   {
@@ -159,17 +160,10 @@ export const portfolioNavSections: NavSection[] = [
   ] },
   { title: "Manage", items: [
     { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
-    { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: Sparkles },
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
     { label: "Compliance", href: "/portfolio?view=compliance", icon: CalendarCheck },
   ] },
-  { title: "AI", items: [
-    { label: "AI Assistant", href: "/ai?workspace=portfolio", icon: Sparkles, requiredPermission: "ai:manage" },
-    { label: "AI Agents", href: "/agents?workspace=portfolio", icon: Bot, requiredPermission: "ai:manage" },
-    { label: "Workflows", href: "/automations?workspace=portfolio", icon: Workflow, requiredPermission: "ai:manage" },
-    { label: "AI Dashboard", href: "/evaluations?workspace=portfolio", icon: FlaskConical, requiredPermission: "ai:manage" },
-    { label: "AI Models & Keys", href: "/portfolio?view=ai-keys", icon: KeyRound, requiredPermission: "ai:manage" },
-  ] },
+  aiSection("portfolio"),
   { title: "Access", items: [
     { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
     { label: "Plan and billing", href: "/portfolio?view=billing", icon: CreditCard },
@@ -181,12 +175,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
     { title: "Team Chat", items: [
       { label: "Chat", href: "/team?workspace=team-chat", icon: Hash },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=team-chat", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=team-chat", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=team-chat", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=team-chat", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("team-chat"),
   ],
   "hr-people": [
     { title: "My HR", items: [
@@ -242,12 +231,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "HR Compliance", href: "/workspace/hr-people?view=compliance", icon: ShieldCheck, requiredPermission: "hr:read" },
       { label: "PF, ESI & Challans", href: "/workspace/hr-people?view=statutory", icon: FileCheck2, requiredPermission: "hr:payroll:read" },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=hr-people", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=hr-people", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=hr-people", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=hr-people", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("hr-people"),
     { title: "Admin", items: [
       { label: "Departments & roles", href: "/workspace/hr-people?view=organization", icon: Users, requiredPermission: "hr:manage" },
       { label: "HR Settings", href: "/workspace/hr-people?view=settings", icon: Settings2, requiredPermission: "hr:manage" },
@@ -315,12 +299,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "FY Closing", href: "/workspace/finance-accounting?view=fy-closing", icon: ShieldCheck },
       { label: "Audit Trail Export", href: "/workspace/finance-accounting?view=audit-export", icon: FileCheck2 },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=finance-accounting", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=finance-accounting", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=finance-accounting", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=finance-accounting", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("finance-accounting"),
   ],
   "projects-delivery": [
     { title: "Projects & Delivery", items: [
@@ -337,12 +316,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Project Reports", href: "/workspace/projects-delivery?view=reports", icon: BarChart3 },
       { label: "Project Settings", href: "/settings?tab=workspace", icon: Settings2, requiredPermission: "settings:manage" },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=projects-delivery", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=projects-delivery", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=projects-delivery", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=projects-delivery", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("projects-delivery"),
   ],
   "customer-support": [
     { title: "Customer Support & Success", items: [
@@ -357,12 +331,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Support Reports", href: "/workspace/customer-support?view=reports", icon: BarChart3 },
       { label: "Support Settings", href: "/settings?tab=notifications", icon: Settings2, requiredPermission: "settings:manage" },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=customer-support", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=customer-support", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=customer-support", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=customer-support", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("customer-support"),
   ],
   "operations-inventory": [
     { title: "Operations & Inventory", items: [
@@ -380,12 +349,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Operations Reports", href: "/workspace/operations-inventory?view=reports", icon: BarChart3 },
       { label: "Operations Settings", href: "/settings?tab=automation", icon: Settings2, requiredPermission: "settings:manage" },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=operations-inventory", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=operations-inventory", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=operations-inventory", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=operations-inventory", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("operations-inventory"),
   ],
   "it-infrastructure": [
     { title: "IT & Infrastructure", items: [
@@ -415,12 +379,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "IT Reports", href: "/workspace/it-infrastructure?view=reports", icon: BarChart3 },
       { label: "IT Settings", href: "/workspace/it-infrastructure?view=it-settings", icon: Settings2 },
     ] },
-    { title: "AI", items: [
-      { label: "AI Assistant", href: "/ai?workspace=it-infrastructure", icon: Sparkles, requiredPermission: "ai:manage" },
-      { label: "AI Agents", href: "/agents?workspace=it-infrastructure", icon: Bot, requiredPermission: "ai:manage" },
-      { label: "Workflows", href: "/automations?workspace=it-infrastructure", icon: Workflow, requiredPermission: "ai:manage" },
-      { label: "AI Dashboard", href: "/evaluations?workspace=it-infrastructure", icon: FlaskConical, requiredPermission: "ai:manage" },
-    ] },
+    aiSection("it-infrastructure"),
   ],
 };
 
