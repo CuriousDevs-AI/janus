@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Banknote, CalendarOff, Clock, Coins, FileCheck2, Handshake, Landmark, PackageX, Receipt, Scale, Siren, Timer, TrendingDown, TriangleAlert, Users, Wallet } from "lucide-react";
 import { FilterChips } from "@/components/shared/stat-tile";
-import { AiPageShell } from "@/components/ai/ai-shell";
+import { AiNoCompany, AiPageShell } from "@/components/ai/ai-shell";
 import { Intelligence, usePortfolioApi, type DepartmentChat, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
 /**
@@ -60,7 +60,7 @@ export function DepartmentIntelligence({ workspaceId, workspaceName }: { workspa
     description={`Ask ${department.name} questions in plain words. Answers come from the records of ${company?.name ?? "your business"}, with the figure behind each one. Janus does not guess, and says when the records cannot answer.`}
     actions={<FilterChips label="Period" value={period} options={periods} onChange={setPeriod} />}>
     {summary.error && !summary.data ? <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">Janus could not read this company&apos;s records: {summary.error}</p>
-      : !company ? <p className="text-sm text-muted-foreground" role="status">{summary.loading ? "Reading your records…" : "Your role does not include this company's figures, so Janus has nothing to answer from. Ask the Owner for access."}</p>
+      : !company ? <AiNoCompany loading={summary.loading} onRetry={summary.reload} />
       : <Intelligence key={workspaceId} list={[company]} company={company} period={summary.data?.period} department={department} />}
   </AiPageShell>;
 }

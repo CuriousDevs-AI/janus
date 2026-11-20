@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AiPageShell } from "@/components/ai/ai-shell";
+import { AiNoCompany, AiPageShell } from "@/components/ai/ai-shell";
 import { FilterChips } from "@/components/shared/stat-tile";
 import { Advisor, Intelligence, KnowledgeCard, usePortfolioApi, WorkInbox, type PortfolioPeriodKey, type PortfolioSummary } from "@/features/portfolio";
 
@@ -41,12 +41,12 @@ export function JanusIntelligence({ requested }: { requested: string | null }) {
       : view === "todo" ? "Everything waiting on someone, most urgent first: overdue money, approvals, filings and late work. Open one to deal with it."
       : "What Janus may use beside your records: facts you told it, documents you added and the plan you keep in Advisor. Everyone who can see the company's figures can see it, and Janus never remembers anything on its own."}
     actions={view === "ask" ? <FilterChips label="Period" value={period} options={periods} onChange={setPeriod} /> : undefined}>
-    <nav className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1" aria-label="Janus Intelligence sections">
+    <nav className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1" aria-label="AI Assistant sections">
       {views.map((item) => <Link key={item.value} replace scroll={false} href={`/ai?workspace=business&view=${item.value}`} aria-current={item.value === view ? "page" : undefined}
         className={`shrink-0 rounded-sm px-3 py-2 text-xs transition-colors ${item.value === view ? "bg-surface font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-surface/70 hover:text-foreground"}`}>{item.label}</Link>)}
     </nav>
     {summary.error && !summary.data ? <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">Janus could not read this company&apos;s records: {summary.error}</p>
-      : !company ? <p className="text-sm text-muted-foreground" role="status">{summary.loading ? "Reading your records…" : "Your role does not include this company's figures, so Janus has nothing to answer from. Ask the Owner for access."}</p>
+      : !company ? <AiNoCompany loading={summary.loading} onRetry={summary.reload} />
       : view === "ask" ? <Intelligence list={[company]} company={company} period={summary.data?.period} />
       : view === "advisor" ? <Advisor company={company} />
       : view === "todo" ? <WorkInbox list={[company]} />

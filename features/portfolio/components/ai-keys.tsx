@@ -52,7 +52,7 @@ export function AiKeys() {
   const done = () => { setSharing(null); setRevoking(null); setMoving(null); setRemoving(null); setSetup(null); models.reload(); };
 
   return <>
-    <SectionCard title="Portfolio keys" description="Kept by the Portfolio for your account. Janus Intelligence asks with them, and you choose which companies use each one too." action={data.canAddKeys ? <Button size="sm" onClick={() => setSetup("new")}><Plus className="size-3.5" />Add a key</Button> : data.portfolioKeys.length > 0 ? <p className="text-xs text-muted-foreground">Only an Owner adds or changes Portfolio keys.</p> : undefined}>
+    <SectionCard title="Portfolio keys" description="Kept by the Portfolio for your account. the AI Assistant asks with them, and you choose which companies use each one too." action={data.canAddKeys ? <Button size="sm" onClick={() => setSetup("new")}><Plus className="size-3.5" />Add a key</Button> : data.portfolioKeys.length > 0 ? <p className="text-xs text-muted-foreground">Only an Owner adds or changes Portfolio keys.</p> : undefined}>
       {data.portfolioKeys.length === 0 ? <div className="flex flex-col items-center gap-3 py-8 text-center">
         <span className="flex size-10 items-center justify-center rounded-xl bg-accent-muted text-accent"><KeyRound className="size-5" aria-hidden /></span>
         <p className="max-w-md text-sm text-muted-foreground">No Portfolio keys yet. Janus rules answer without one. Add a key, free or paid, to ask in your own words and to share it with your companies.</p>

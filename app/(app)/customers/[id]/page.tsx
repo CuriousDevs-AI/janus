@@ -217,7 +217,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           </section>
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <main className="flex min-w-0 flex-col gap-5">
+            <div className="flex min-w-0 flex-col gap-5">
               <CustomerAccount contactId={contact.data.id} />
 
               <section className="rounded-lg border border-border bg-surface p-5">
@@ -317,7 +317,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               </section>
 
               <section className="rounded-lg border border-border bg-surface p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Linked deals</h2><p className="mt-1 text-xs text-muted-foreground">Open, won and lost opportunities for this customer.</p></div><CircleDollarSign className="size-4 text-success" /></div>{customerDeals.length === 0 ? <p className="mt-5 text-sm text-muted-foreground">No deals linked yet.</p> : <div className="mt-4 divide-y divide-border">{customerDeals.map((deal) => <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-3 py-3 hover:text-accent"><span className="min-w-0"><span className="block truncate text-sm font-medium">{deal.name}</span><span className="mt-1 block text-xs text-muted-foreground">{label(deal.stage)} · Updated {formatRelativeTime(deal.updatedAt)}</span></span><span className="shrink-0 text-sm font-semibold">{formatCurrencyINR(Number(deal.amount))}</span></Link>)}</div>}</section>
-            </main>
+            </div>
 
             <aside className="flex min-w-0 flex-col gap-5">
               <section className="rounded-lg border border-border bg-surface p-5"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><UserRound className="size-4 text-accent" /><h2 className="text-sm font-semibold">Contact details</h2></div><Button size="icon" variant="ghost" aria-label="Edit contact" onClick={openEdit}><Pencil className="size-3.5" /></Button></div><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Company</dt><dd className="mt-1 flex items-center gap-1.5">{contact.data.company ? <><Building2 className="size-3.5 text-muted-foreground" />{contact.data.company}</> : "—"}</dd></div><div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Phone</dt><dd className="mt-1">{contact.data.phone ? <a href={`tel:${contact.data.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 text-accent hover:underline"><Phone className="size-3.5" />{contact.data.phone}</a> : "—"}</dd></div><div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Email</dt><dd className="mt-1 break-all">{contact.data.email ? <a href={`mailto:${encodeURIComponent(contact.data.email)}`} className="inline-flex items-center gap-1.5 text-accent hover:underline"><Mail className="size-3.5 shrink-0" />{contact.data.email}</a> : "—"}</dd></div><div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Customer ID</dt><dd className="mt-1 font-mono text-xs">{contact.data.id}</dd></div></dl></section>

@@ -45,7 +45,7 @@ const titles: Record<string, [string, string]> = {
   analytics: ["Analytics", "The same measures for every company, side by side."],
   finance: ["Finance", "Money in and out, by company."],
   companies: ["Companies", "Every company: its details, people and standing. Add, edit or open one."],
-  intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
+  intelligence: ["AI Assistant", "Ask a question across all your companies."],
   notifications: ["Notifications", "What needs you, from every company."],
   compliance: ["Compliance", "What each company must file, what is missing, and recording filings."],
   work: ["Work inbox", "Everything that needs someone to act, across your companies."],
