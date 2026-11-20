@@ -13,6 +13,11 @@ import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { useRoles } from "@/features/portfolio/lib/companies";
 import type { PortfolioCompany, PortfolioKnowledgeItem } from "@/features/portfolio/types";
 
+/** Fired after a fact or document is added, approved or removed, so every open chat answers with
+ * what Janus knows now instead of the list it read when it opened. */
+export const knowledgeChanged = "janus-knowledge-changed";
+export const announceKnowledge = () => window.dispatchEvent(new Event(knowledgeChanged));
+
 /** What Janus knows about each company beyond its records: facts the owner approved, facts Janus
  * suggested that wait for approval, and documents kept in passages. */
 /** `bare` drops the card's own heading, for a page that already names it. */
@@ -30,14 +35,14 @@ export function KnowledgeCard({ list, bare = false }: { list: PortfolioCompany[]
     setSaving(true);
     try {
       await api("/portfolio/knowledge", { method: "POST", body: JSON.stringify({ companyId, kind, title: title.trim() || (kind === "fact" ? "Fact" : "Document"), body }) });
-      setTitle(""); setBody(""); items.reload();
+      setTitle(""); setBody(""); items.reload(); announceKnowledge();
       toast.success(kind === "fact" ? "Janus will use this fact in answers." : "Document added. Janus finds the parts that answer a question.");
     } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   };
   const decide = async (item: PortfolioKnowledgeItem, approve: boolean) => {
     try {
       await api(`/portfolio/companies/${item.companyId}/knowledge/${item.id}${approve ? "/approve" : ""}`, { method: approve ? "PUT" : "DELETE" });
-      items.reload();
+      items.reload(); announceKnowledge();
     } catch (error) { toast.error(message(error)); }
   };
 

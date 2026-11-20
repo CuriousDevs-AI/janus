@@ -11,7 +11,7 @@ import { answerFromKnowledge, answerLive, type Answer } from "@/features/portfol
 import { isAdviceQuestion, type AdvisorOut } from "@/features/portfolio/lib/advisor";
 import { PreviewRole } from "@/features/portfolio/lib/companies";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
-import { KnowledgeCard } from "@/features/portfolio/components/intelligence-setup";
+import { KnowledgeCard, knowledgeChanged } from "@/features/portfolio/components/intelligence-setup";
 import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
 import type { PortfolioAsked, PortfolioCompany, PortfolioKnowledgeItem, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
 
@@ -72,6 +72,8 @@ export function Intelligence({ list: all, period, company, department }: { list:
   const available = models.data ?? rulesOnly;
   // Janus rules answer from the records first, then from the facts and documents the owner approved.
   const knowledge = usePortfolioApi<PortfolioKnowledgeItem[]>(previewRole ? null : "/portfolio/knowledge");
+  const reloadKnowledge = knowledge.reload;
+  React.useEffect(() => { window.addEventListener(knowledgeChanged, reloadKnowledge); return () => window.removeEventListener(knowledgeChanged, reloadKnowledge); }, [reloadKnowledge]);
   const [chosen, setChosenState] = React.useState(RULES);
   // After the first paint, so the server and the browser draw the same page first.
   React.useEffect(() => { const saved = readModel(who); if (saved) setChosenState(saved); }, [who]);
