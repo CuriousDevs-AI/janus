@@ -127,6 +127,7 @@ async def health() -> dict[str, str]:
 @app.get("/health/db")
 async def health_db() -> dict[str, str]:
     import os
+    import traceback
     from janus_api.core.db import session_factory
     from sqlalchemy import text as sa_text
     info: dict[str, str] = {}
@@ -137,8 +138,23 @@ async def health_db() -> dict[str, str]:
         async with factory() as db:
             row = await db.execute(sa_text("SELECT 1"))
             info["db"] = "connected" if row else "no result"
+            tables = await db.execute(sa_text(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 20"
+            ))
+            info["tables"] = ",".join(r[0] for r in tables)
+            has_rls = await db.execute(sa_text(
+                "SELECT tablename, policyname FROM pg_policies WHERE schemaname='public' LIMIT 5"
+            ))
+            info["rls_policies"] = ",".join(f"{r[0]}:{r[1]}" for r in has_rls) or "none"
+            role = await db.scalar(sa_text("SELECT current_user"))
+            info["role"] = str(role)
+            superuser = await db.scalar(sa_text(
+                "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
+            ))
+            info["superuser"] = str(superuser)
     except Exception as exc:
         info["db"] = f"error: {type(exc).__name__}: {exc}"
+        info["trace"] = traceback.format_exc()[-500:]
     return info
 
 
