@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth import schemas
+from janus_api.core.config import get_settings
 from janus_api.auth.models import (
     EmailChange,
     EmailVerification,
@@ -118,15 +119,19 @@ async def verification_email(db: AsyncSession, user: User, *, resend: bool = Fal
 
 
 async def signup(db: AsyncSession, data: schemas.Signup, ip: str) -> schemas.Message:
+    dev = get_settings().environment == "development"
     user = await create_user(
-        db, data.name, str(data.email).casefold(), data.password, username=data.username
+        db, data.name, str(data.email).casefold(), data.password,
+        username=data.username, verified=dev,
     )
     # The first company is named after the person until setup gives it its real name.
     company = (data.business_name or "").strip() or f"{user.name}'s company"[:160]
     tenant_id = await org.create_workspace(db, user.id, company)
-    await verification_email(db, user)
+    if not dev:
+        await verification_email(db, user)
     record(db, "auth.signup", user_id=user.id, tenant_id=tenant_id, ip=ip)
-    return schemas.Message(message="Account created. Check your email to verify it.")
+    msg = "Account created. You can sign in now." if dev else "Account created. Check your email to verify it."
+    return schemas.Message(message=msg)
 
 
 async def issue_session(
