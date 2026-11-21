@@ -25,8 +25,16 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   if (/^\s*(hi|hello|hey|namaste|good (morning|afternoon|evening))\b[\s!.?]*$/.test(q)) {
     return { text: `Hello. Ask me about ${named ? named.name : "your companies"} in plain words, for example: what needs my attention, how is my sales team doing, what is our conversion this month, or how much do customers owe.` };
   }
+  // Janus reads records; it never changes them. Say so before "invoices" matches a figure or a fact.
+  if (/^\s*(please\s+)?(delete|remove|erase|wipe|cancel|void|edit|change|update|create|add|send|pay|approve|reject|mark|close)\b/.test(q)) {
+    return { text: "I only read your records; I cannot change, send or delete anything. Do it in the workspace it belongs to, where it is checked and asked for approval where needed." };
+  }
+  // Markets and other businesses are not in the records: say so instead of matching "stock" to inventory.
+  if (/\b(share|stock) (price|market)|\bstock exchange\b|\bsensex\b|\bnifty\b|\bnasdaq\b|\b[a-z]+ inc\b/.test(q)) {
+    return { text: `That is not in ${named ? `${named.name}'s` : "your companies'"} records. I answer only from what your companies record, not from markets or other businesses.` };
+  }
   // Advice comes from the Advisor, which reads one company at a time.
-  if (isAdviceQuestion(q)) return { text: `I advise on one company at a time. Open ${named ? named.name : "a company"} in Business Management and choose Janus Intelligence, Advisor: it lists what to fix first, why, and a plan I check against your figures.` };
+  if (isAdviceQuestion(q)) return { text: `I advise on one company at a time. Open ${named ? named.name : "a company"} in Business Management and choose AI Assistant, Advisor: it lists what to fix first, why, and a plan I check against your figures.` };
   // Janus does not forecast: say so before anything else can match "sales" or "pipeline".
   if (/forecast|predict|next (month|quarter|year)|will (we|it|sales|revenue)|going to (sell|make|earn)/.test(q)) {
     const open = scope.reduce((sum, item) => sum + Number(item.crm.pipelineValue), 0);

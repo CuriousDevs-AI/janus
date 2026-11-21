@@ -54,13 +54,13 @@ export function WorkspaceSection() {
   return (
     <div className="flex flex-col gap-5">
       <SectionTabs items={settingsSections} value={settingsSection} onChange={setSettingsSection} />
-      <main className="min-w-0">
+      <div className="min-w-0">
           {settingsSection === "profile" && <CompanyProfileSection />}
           {settingsSection === "structure" && <SectionCard title="Organization structure" description="Organize your teams, departments and workspace ownership."><RealStructure /></SectionCard>}
           {settingsSection === "locale" && <LiveHours />}
           {settingsSection === "security" && <SectionCard title="Who can get in" description="Everyone with access to this business, from its member list. Check it whenever someone leaves."><LiveAccessReview /></SectionCard>}
           {settingsSection === "data" && <SectionCard title="Export your records" description="Everything your business keeps in Janus, as spreadsheets you own."><LiveDataExport /></SectionCard>}
-      </main>
+      </div>
     </div>
   );
 }

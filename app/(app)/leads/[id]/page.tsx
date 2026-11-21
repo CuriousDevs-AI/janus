@@ -340,7 +340,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5">
           <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -399,7 +399,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               {leadData.requirement || "No requirement recorded yet."}
             </p>
           </section>
-        </main>
+        </div>
 
         <aside className="flex min-w-0 flex-col gap-5">
           <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">

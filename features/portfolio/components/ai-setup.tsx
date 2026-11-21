@@ -51,7 +51,7 @@ export function SetupModelDialog({ models, start, onClose, onSaved }: { models: 
     try {
       const answer = await api<PortfolioAsked>(`/portfolio/ai-keys/${choice.provider}/test`, { method: "POST" });
       setResult({ ok: true, text: `${answer.model} answered: "${answer.answer.slice(0, 120)}"` });
-      toast.success(`${choice.name} is ready. Ask with it in Janus Intelligence, or use it in companies from AI models & keys.`);
+      toast.success(`${choice.name} is ready. Ask with it in the AI Assistant, or use it in companies from AI models & keys.`);
       onSaved(`portfolio:${choice.provider}`);
     } catch (error) {
       setResult({ ok: false, text: `Saved, but the test did not go through. ${message(error)}` });

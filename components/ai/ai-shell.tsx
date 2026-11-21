@@ -54,3 +54,17 @@ export function AiPageShell({ page, title, description, actions, children, class
     {children}
   </div>;
 }
+
+/**
+ * What an AI page says when it has no figures for the company open now: still reading, a role that
+ * leaves the figures out, or a read that came back without them (with a way to try again).
+ */
+export function AiNoCompany({ loading, onRetry }: { loading: boolean; onRetry: () => void }) {
+  const { permissions, role } = useSession();
+  if (loading) return <p className="text-sm text-muted-foreground" role="status">Reading your records…</p>;
+  const sees = permissions.includes("*") || role === "owner" || role === "admin";
+  return <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
+    {sees ? "Janus could not read this company's figures just now." : "Your role does not include this company's figures, so Janus has nothing to answer from. Ask the Owner for access."}
+    {sees && <button type="button" onClick={onRetry} className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-surface-2">Try again</button>}
+  </div>;
+}

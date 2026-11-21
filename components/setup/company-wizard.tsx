@@ -79,7 +79,7 @@ export function CompanyWizard({ finishId }: { finishId?: string }) {
       <nav aria-label="Setup steps" className="flex gap-1 overflow-x-auto lg:grid lg:content-start lg:gap-2">
         {steps.map((item, index) => <button key={item.id} type="button" aria-current={step === index ? "step" : undefined} disabled={index > step && Boolean(stepError)} onClick={() => setStep(index)} className={`flex min-w-36 items-center gap-3 border px-3 py-2 text-left text-sm lg:min-w-0 ${step === index ? "border-accent bg-accent-muted/40" : "border-border bg-surface"} disabled:opacity-50`}><span className={`flex size-6 shrink-0 items-center justify-center text-xs font-semibold ${index < step ? "bg-success text-background" : "bg-surface-3"}`}>{index < step ? <Check className="size-3.5" /> : index + 1}</span><span>{item.label}</span></button>)}
       </nav>
-      <main className="min-w-0">
+      <div className="min-w-0">
         <SectionCard title={`${step + 1}. ${steps[step].label}`} description={steps[step].description}>
           {step === 0 && <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2"><LogoPicker id={finishId ?? "new"} name={name} value={logo} onChange={setLogo} /></div>
@@ -119,7 +119,7 @@ export function CompanyWizard({ finishId }: { finishId?: string }) {
             {step < 4 ? <Button type="button" disabled={Boolean(stepError)} onClick={() => setStep(step + 1)}>{step === 3 && team.length === 0 ? "Skip for now" : "Continue"}<ArrowRight className="ml-1 size-4" /></Button> : <Button type="button" onClick={finish}>{finishing ? "Finish setup" : "Create company"}</Button>}
           </div>
         </SectionCard>
-      </main>
+      </div>
     </div>
   </div>;
 }
