@@ -1,0 +1,91 @@
+# Render Blueprint — deploy at https://render.com/deploy
+#
+# Free tier: Postgres expires after 90 days; web services sleep after 15 min idle.
+# For always-on, use the Starter plan ($7/mo per service, $7/mo for Postgres).
+#
+# After deploy, set these in the Render dashboard (Environment tab):
+#   janus-api  → JANUS_FRONTEND_URL = https://janus-web-XXXX.onrender.com
+#                 JANUS_PUBLIC_API_URL = https://janus-api-XXXX.onrender.com
+#   janus-web  → JANUS_API_URL = https://janus-api-XXXX.onrender.com
+#                 JANUS_PUBLIC_API_URL = https://janus-api-XXXX.onrender.com
+#                 JANUS_APP_ORIGIN = https://janus-web-XXXX.onrender.com
+
+databases:
+  - name: janus-db
+    plan: free
+    databaseName: janus
+    user: janus
+    postgresMajorVersion: "16"
+
+services:
+  # --- Python API ---
+  - type: web
+    name: janus-api
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    healthCheckPath: /health
+    dockerCommand: sh /app/docker/render-start.sh /app/.venv/bin/uvicorn janus_api.main:app --host 0.0.0.0 --port 8000
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: janus-db
+          property: connectionString
+      - key: JANUS_JWT_SECRET
+        generateValue: true
+      - key: JANUS_ENCRYPTION_KEY
+        generateValue: true
+      - key: JANUS_ENVIRONMENT
+        value: development
+      - key: JANUS_FRONTEND_URL
+        value: https://replace-after-deploy.onrender.com
+      - key: JANUS_PUBLIC_API_URL
+        value: https://replace-after-deploy.onrender.com
+      - key: JANUS_EMAIL_BACKEND
+        value: console
+      - key: JANUS_EMAIL_FROM
+        value: "Janus <noreply@example.com>"
+      - key: JANUS_FORM_LIMIT_PER_MINUTE
+        value: "10"
+      - key: JANUS_AI_ALLOWED_BASE_URLS
+        value: "[]"
+
+  # --- Background worker ---
+  - type: worker
+    name: janus-worker
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    dockerCommand: sh /app/docker/render-start.sh /app/.venv/bin/python -m janus_api.worker.main
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: janus-db
+          property: connectionString
+      - key: JANUS_JWT_SECRET
+        sync: false
+      - key: JANUS_ENCRYPTION_KEY
+        sync: false
+      - key: JANUS_ENVIRONMENT
+        value: development
+      - key: JANUS_EMAIL_BACKEND
+        value: console
+      - key: JANUS_EMAIL_FROM
+        value: "Janus <noreply@example.com>"
+
+  # --- Next.js web app ---
+  - type: web
+    name: janus-web
+    runtime: docker
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: JANUS_API_URL
+        value: https://replace-after-deploy.onrender.com
+      - key: JANUS_PUBLIC_API_URL
+        value: https://replace-after-deploy.onrender.com
+      - key: JANUS_APP_ORIGIN
+        value: https://replace-after-deploy.onrender.com
