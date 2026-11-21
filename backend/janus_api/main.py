@@ -124,6 +124,23 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/health/migrate")
+async def health_migrate() -> dict[str, str]:
+    import subprocess
+    info: dict[str, str] = {}
+    try:
+        result = subprocess.run(
+            ["/app/.venv/bin/alembic", "-c", "/app/alembic.ini", "upgrade", "head"],
+            capture_output=True, text=True, timeout=120, cwd="/app",
+        )
+        info["exit_code"] = str(result.returncode)
+        info["stdout"] = result.stdout[-1000:] if result.stdout else ""
+        info["stderr"] = result.stderr[-1000:] if result.stderr else ""
+    except Exception as exc:
+        info["error"] = f"{type(exc).__name__}: {exc}"
+    return info
+
+
 @app.get("/health/db")
 async def health_db() -> dict[str, str]:
     import os
