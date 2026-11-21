@@ -1,5 +1,6 @@
 "use client";
 
+import { announceKnowledge } from "@/features/portfolio/components/intelligence-setup";
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, CircleCheck, Target } from "lucide-react";
@@ -51,12 +52,12 @@ export function Advisor({ company }: { company: PortfolioCompany }) {
     const due = addDays(todayIst(), 30);
     try {
       await api("/portfolio/knowledge", { method: "POST", body: JSON.stringify({ companyId: company.id, kind: "fact", title: planTitle(finding, due), body: `Plan to ${day(due)}: ${finding.plan} On ${day(todayIst())} ${finding.measure.label} was ${measured(finding, finding.measure.now)}; the target is ${measured(finding, finding.measure.target)}.` }) });
-      knowledge.reload();
+      knowledge.reload(); announceKnowledge();
       toast.success("Added to your plan. Janus checks it against your figures each time you open Advisor.");
     } catch (error) { toast.error(message(error)); } finally { setSaving(null); }
   }
   async function drop(item: PortfolioKnowledgeItem) {
-    try { await api(`/portfolio/companies/${item.companyId}/knowledge/${item.id}`, { method: "DELETE" }); knowledge.reload(); } catch (error) { toast.error(message(error)); }
+    try { await api(`/portfolio/companies/${item.companyId}/knowledge/${item.id}`, { method: "DELETE" }); knowledge.reload(); announceKnowledge(); } catch (error) { toast.error(message(error)); }
   }
 
   if (advice.loading) return <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" role="status" aria-label="Reading your records">{[0, 1, 2, 3, 4].map((item) => <div key={item} className="h-[76px] animate-pulse rounded-lg border border-border bg-surface" />)}</div>;
