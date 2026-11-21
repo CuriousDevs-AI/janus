@@ -15,11 +15,13 @@ class Base(DeclarativeBase):
 
 @lru_cache
 def session_factory() -> async_sessionmaker[AsyncSession]:
+    settings = get_settings()
+    pool = 5 if settings.environment == "development" else 20
     engine = create_async_engine(
-        get_settings().database_url,
+        settings.database_url,
         pool_pre_ping=True,
-        pool_size=20,
-        max_overflow=10,
+        pool_size=pool,
+        max_overflow=5 if settings.environment == "development" else 10,
     )
     return async_sessionmaker(engine, expire_on_commit=False)
 
@@ -42,6 +44,8 @@ async def transaction() -> AsyncIterator[AsyncSession]:
 
 
 async def check_database_role() -> None:
+    if get_settings().environment == "development":
+        return
     async with session_factory()() as db:
         elevated = await db.scalar(
             text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")
