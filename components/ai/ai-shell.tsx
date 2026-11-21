@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { aiNavItems } from "@/lib/nav-config";
@@ -10,7 +9,6 @@ import { cn } from "@/lib/utils";
 /** The AI pages every workspace has, in the order the sidebar lists them. */
 export type AiPage = "assistant" | "agents" | "workflows" | "dashboard" | "usage" | "keys";
 const pageOf: Record<string, AiPage> = { "AI Assistant": "assistant", "AI Agents": "agents", Workflows: "workflows", "AI Dashboard": "dashboard", "AI Usage & Cost": "usage", "AI Models & Keys": "keys" };
-const shortLabel: Record<AiPage, string> = { assistant: "Assistant", agents: "Agents", workflows: "Workflows", dashboard: "Dashboard", usage: "Usage & cost", keys: "Models & keys" };
 
 /**
  * One frame for every AI page in every workspace: which workspace it is for, the page's title and
@@ -41,16 +39,6 @@ export function AiPageShell({ page, title, description, actions, children, class
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
-    {items.length > 1 && <nav aria-label="AI pages" className="janus-tab-strip -mt-1 flex gap-1 overflow-x-auto border-b border-border print:hidden">
-      {items.map((item) => {
-        const key = pageOf[item.label];
-        const active = key === page;
-        return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined}
-          className={cn("flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-xs transition-colors", active ? "border-accent font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
-          <item.icon className="size-3.5" aria-hidden />{shortLabel[key]}
-        </Link>;
-      })}
-    </nav>}
     {children}
   </div>;
 }
