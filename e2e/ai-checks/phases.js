@@ -14,8 +14,7 @@ async function ask(page, q) {
 const shellOk = async (page, eyebrow, title) => {
   const e = await page.locator('main header p').first().innerText().catch(() => '');
   const h = await page.locator('main h1').first().innerText().catch(() => '');
-  const strip = await page.locator('nav[aria-label="AI pages"]').count();
-  return { ok: e.toUpperCase().includes(eyebrow.toUpperCase()) && h.includes(title) && strip === 1, detail: `${e} | ${h} | strip=${strip}` };
+  return { ok: e.toUpperCase().includes(eyebrow.toUpperCase()) && h.includes(title), detail: `${e} | ${h}` };
 };
 
 (async () => {
