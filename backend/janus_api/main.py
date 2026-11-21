@@ -156,19 +156,29 @@ async def health_db() -> dict[str, str]:
             row = await db.execute(sa_text("SELECT 1"))
             info["db"] = "connected" if row else "no result"
             tables = await db.execute(sa_text(
-                "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 20"
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 30"
             ))
-            info["tables"] = ",".join(r[0] for r in tables)
-            has_rls = await db.execute(sa_text(
-                "SELECT tablename, policyname FROM pg_policies WHERE schemaname='public' LIMIT 5"
-            ))
-            info["rls_policies"] = ",".join(f"{r[0]}:{r[1]}" for r in has_rls) or "none"
-            role = await db.scalar(sa_text("SELECT current_user"))
-            info["role"] = str(role)
-            superuser = await db.scalar(sa_text(
-                "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
-            ))
-            info["superuser"] = str(superuser)
+            tbl_list = [r[0] for r in tables]
+            info["tables"] = ",".join(tbl_list)
+            info["table_count"] = str(len(tbl_list))
+            if not tbl_list:
+                info["auto_migrate"] = "starting"
+                try:
+                    from alembic.config import Config as AlembicConfig
+                    from alembic import command as alembic_cmd
+                    cfg = AlembicConfig("/app/alembic.ini")
+                    cfg.set_main_option("script_location", "/app/migrations")
+                    alembic_cmd.upgrade(cfg, "head")
+                    tables2 = await db.execute(sa_text(
+                        "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 30"
+                    ))
+                    tbl_list2 = [r[0] for r in tables2]
+                    info["auto_migrate"] = f"done, {len(tbl_list2)} tables"
+                    info["tables"] = ",".join(tbl_list2)
+                    info["table_count"] = str(len(tbl_list2))
+                except Exception as mig_exc:
+                    info["auto_migrate"] = f"failed: {type(mig_exc).__name__}: {mig_exc}"
+                    info["migrate_trace"] = traceback.format_exc()[-800:]
     except Exception as exc:
         info["db"] = f"error: {type(exc).__name__}: {exc}"
         info["trace"] = traceback.format_exc()[-500:]
