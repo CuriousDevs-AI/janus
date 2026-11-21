@@ -51,29 +51,29 @@ services:
       - key: JANUS_AI_ALLOWED_BASE_URLS
         value: "[]"
 
-  # --- Background worker ---
-  - type: worker
-    name: janus-worker
-    runtime: docker
-    dockerfilePath: backend/Dockerfile
-    dockerContext: backend
-    plan: free
-    dockerCommand: sh /app/docker/render-start.sh /app/.venv/bin/python -m janus_api.worker.main
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: janus-db
-          property: connectionString
-      - key: JANUS_JWT_SECRET
-        sync: false
-      - key: JANUS_ENCRYPTION_KEY
-        sync: false
-      - key: JANUS_ENVIRONMENT
-        value: development
-      - key: JANUS_EMAIL_BACKEND
-        value: console
-      - key: JANUS_EMAIL_FROM
-        value: "Janus <noreply@example.com>"
+  # --- Background worker (needs Starter plan, $7/mo) ---
+  # - type: worker
+  #   name: janus-worker
+  #   runtime: docker
+  #   dockerfilePath: backend/Dockerfile
+  #   dockerContext: backend
+  #   plan: starter
+  #   dockerCommand: sh /app/docker/render-start.sh /app/.venv/bin/python -m janus_api.worker.main
+  #   envVars:
+  #     - key: DATABASE_URL
+  #       fromDatabase:
+  #         name: janus-db
+  #         property: connectionString
+  #     - key: JANUS_JWT_SECRET
+  #       sync: false
+  #     - key: JANUS_ENCRYPTION_KEY
+  #       sync: false
+  #     - key: JANUS_ENVIRONMENT
+  #       value: development
+  #     - key: JANUS_EMAIL_BACKEND
+  #       value: console
+  #     - key: JANUS_EMAIL_FROM
+  #       value: "Janus <noreply@example.com>"
 
   # --- Next.js web app ---
   - type: web
