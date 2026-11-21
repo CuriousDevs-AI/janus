@@ -680,7 +680,14 @@ def invalidate_summary(user_id: int) -> None:
         _summary_cache.pop(k, None)
         _summary_locks.pop(k, None)
 
-_warm_users: dict[int, float] = {}
+# Each recently active person, when they last asked and which company they had open, so the
+# warm-up refreshes the summary they will read next (the open company is marked in it).
+_warm_users: dict[int, tuple[float, int | None]] = {}
+
+
+def _cache_key(user_id: int, current_tenant: int | None, period_key: str, detail: bool) -> str:
+    # The open company is part of the answer (it is marked current), so it is part of the key.
+    return f"{user_id}:{current_tenant}:{period_key}:{detail}"
 _WARM_INTERVAL = 60
 _WARM_USER_TTL = 300
 
@@ -701,10 +708,15 @@ async def summary(
     Each is read on its own connection, in parallel, never across companies. Money is included
     only where the person's role there holds portfolio:finance.
 
-    Results are cached for 15 seconds per user+period so concurrent requests coalesce.
+    Results are cached for 15 seconds per person, open company and period so concurrent requests
+    coalesce. A summary for another day (`today` or `as_of`, as reports use) is never cached.
     """
-    _warm_users[user_id] = time.monotonic()
-    cache_key = f"{user_id}:{period_key}:{detail}"
+    if today is not None or as_of is not None:
+        return await _summary_uncached(
+            db, user_id, current_tenant, ip, period_key, today, detail=detail, as_of=as_of
+        )
+    _warm_users[user_id] = (time.monotonic(), current_tenant)
+    cache_key = _cache_key(user_id, current_tenant, period_key, detail)
     now = time.monotonic()
     cached = _summary_cache.get(cache_key)
     if cached and now - cached[0] < _SUMMARY_TTL:
@@ -808,17 +820,17 @@ async def _warm_loop() -> None:
     while True:
         await asyncio.sleep(_WARM_INTERVAL)
         now = time.monotonic()
-        stale = [uid for uid, ts in _warm_users.items() if now - ts > _WARM_USER_TTL]
+        stale = [uid for uid, (ts, _) in _warm_users.items() if now - ts > _WARM_USER_TTL]
         for uid in stale:
             _warm_users.pop(uid, None)
-        for user_id in list(_warm_users):
+        for user_id, (_, tenant) in list(_warm_users.items()):
             for period_key in ("month",):
-                cache_key = f"{user_id}:{period_key}:True"
+                cache_key = _cache_key(user_id, tenant, period_key, True)
                 cached = _summary_cache.get(cache_key)
                 if cached and now - cached[0] < _SUMMARY_TTL:
                     continue
                 try:
-                    result = await _summary_uncached(None, user_id, None, None, period_key)
+                    result = await _summary_uncached(None, user_id, tenant, None, period_key)
                     _summary_cache[cache_key] = (time.monotonic(), result)
                 except Exception:
                     log.debug("portfolio warm-up failed for user %s", user_id, exc_info=True)
