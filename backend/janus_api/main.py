@@ -124,6 +124,24 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/health/db")
+async def health_db() -> dict[str, str]:
+    import os
+    from janus_api.core.db import session_factory
+    from sqlalchemy import text as sa_text
+    info: dict[str, str] = {}
+    info["DATABASE_URL"] = "set" if os.environ.get("DATABASE_URL") else "missing"
+    info["JANUS_DATABASE_URL"] = "set" if os.environ.get("JANUS_DATABASE_URL") else "missing"
+    try:
+        factory = session_factory()
+        async with factory() as db:
+            row = await db.execute(sa_text("SELECT 1"))
+            info["db"] = "connected" if row else "no result"
+    except Exception as exc:
+        info["db"] = f"error: {type(exc).__name__}: {exc}"
+    return info
+
+
 @app.middleware("http")
 async def request_metadata(request: Request, call_next: RequestResponseEndpoint) -> Response:
     request.state.request_id = uuid4().hex
