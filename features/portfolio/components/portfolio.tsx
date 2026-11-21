@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterChips } from "@/components/shared/stat-tile";
+import { AiPageShell } from "@/components/ai/ai-shell";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useSession } from "@/components/auth/session-provider";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
@@ -52,6 +54,7 @@ const titles: Record<string, [string, string]> = {
   "ai-keys": ["AI Models & Keys", "Providers, models, keys and routing for AI features across your portfolio."],
   billing: ["Plan and billing", "One plan for your account, covering every company you own."],
 };
+const periodChoices: { value: PortfolioPeriodKey; label: string }[] = [{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }];
 // The views that report on a period, and so show the period bar and the board pack.
 const periodViews = ["overview", "analytics", "finance"];
 
@@ -79,6 +82,9 @@ export function Portfolio() {
   // An Owner or a Portfolio administrator shares the Portfolio.
   const shares = !preview && session.tenants.some((item) => (item.role === "owner" || item.role === "group_admin") && item.status === "active");
   const [title, base] = titles[view] ?? titles.overview;
+  // The assistant and the AI keys are AI pages: they wear the same frame as every workspace's.
+  const aiView = view === "intelligence" ? "assistant" as const : view === "ai-keys" ? "keys" as const : null;
+  const choosePeriod = (key: PortfolioPeriodKey) => { const next = new URLSearchParams(params.toString()); next.set("period", key); router.replace(`/portfolio?${next.toString()}`, { scroll: false }); };
   const description = !owner && view === "overview" ? "Every company shared with you, at a glance." : base;
   const list = (summary.data?.companies ?? []).map((item) => preview === "group_analyst" ? withoutMoney(item) : item);
   const withMoney = list.filter((item): item is WithMoney => item.money !== null);
@@ -109,11 +115,16 @@ export function Portfolio() {
 
   return <PreviewRole.Provider value={preview}><div className="mx-auto flex max-w-[1240px] flex-col">
     {preview && <div role="status" className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-sm print:hidden"><span>You are seeing the Portfolio as a <strong>{roleLabel(preview)}</strong> would, on every page until you exit. {preview === "group_analyst" ? "Money from the books is hidden: sales, costs, profit, what customers owe, bills and salaries. Deal values from CRM stay visible, as they are for this role." : "Money is shown."} They cannot open the companies or change anything.</span><Button size="sm" variant="secondary" onClick={() => { writePreview(null); router.replace("/portfolio?view=people"); }}>Exit preview</Button></div>}
+    {aiView ? <AiPageShell page={aiView} title={aiView === "assistant" ? "AI Assistant" : "AI Models & Keys"}
+      description={aiView === "assistant" ? "Ask across every company in plain words. Janus answers from their records, names the company and the figure behind each answer, and says when the records cannot answer." : base}
+      actions={aiView === "assistant" && list.length > 0 ? <FilterChips label="Period" value={period} options={periodChoices} onChange={choosePeriod} /> : undefined}>
+      <div aria-busy={summary.stale} className={`flex flex-col gap-6 transition-opacity duration-200 ${summary.stale ? "pointer-events-none opacity-50" : ""}`}>{body()}</div>
+    </AiPageShell> : <>
     <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && periodViews.includes(view) && <ExportButtons list={list} period={summary.data.period} />}</div>} />
     <div className="flex flex-col gap-6 px-6 pb-10">
       {!summary.loading && !summary.error && summary.data && list.length > 0 && periodViews.includes(view) && <PeriodBar period={summary.data.period} chosen={period} updating={summary.stale} />}
       <div aria-busy={summary.stale} className={`flex flex-col gap-6 transition-opacity duration-200 ${summary.stale ? "pointer-events-none opacity-50" : ""}`}>{body()}</div>
-    </div>
+    </div></>}
     {adding && <AddCompany onClose={() => setAdding(false)} />}
   </div></PreviewRole.Provider>;
 }

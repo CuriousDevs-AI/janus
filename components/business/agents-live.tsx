@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SectionCard } from "@/components/settings/section-ui";
+import { AiPageShell } from "@/components/ai/ai-shell";
+import { useWorkspace } from "@/components/layout/workspace-context";
 import { SchedulesPanel, type ReportSchedule } from "@/components/business/report-keeping";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
@@ -41,12 +43,9 @@ export function LiveAgents() {
   const mine = (schedules.data ?? []).filter((item) => agentReports.has(item.report));
   const [setting, setSetting] = React.useState<(typeof agents)[number] | null>(null);
   const [previewing, setPreviewing] = React.useState<(typeof agents)[number] | null>(null);
+  const { workspaceId } = useWorkspace();
 
-  return <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7">
-    <div>
-      <h1 className="text-2xl font-semibold tracking-tight">AI Agents</h1>
-      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Each agent reads your records on a schedule and emails what it finds. Every person gets only the figures their own role can see, read the morning it goes out.</p>
-    </div>
+  return <AiPageShell page="agents" title="AI Agents" description="Each agent reads your records on a schedule and emails what it finds. Every person gets only the figures their own role can see, read the morning it goes out.">
 
     <div className="grid gap-3 md:grid-cols-2">{agents.map((agent) => {
       const running = mine.filter((item) => item.report === agent.report);
@@ -68,12 +67,12 @@ export function LiveAgents() {
     <SchedulesPanel schedules={mine} loading={schedules.loading} error={schedules.error} demo={false} onNew={() => setSetting(agents[0])} onChanged={() => schedules.reload()} words={{ title: "Your agents", description: "Each runs at 9 in the morning, India time. Send one now to see exactly what it emails.", emptyTitle: "No agent is running yet", emptyText: "Set up the Business Health Monitor above to start your mornings with what needs you.", action: "Set up an agent", hidePeriod: true }} />
 
     <SectionCard title="Agents that act when something happens" description="Telling approvers about a spend request, flagging a credit note or write-off, alerting the team to a new lead or ticket: these run the moment it happens, as Workflows.">
-      <Button size="sm" variant="outline" asChild><Link href="/automations?workspace=business"><Workflow className="size-3.5" />Open Workflows<ArrowRight className="size-3.5" /></Link></Button>
+      <Button size="sm" variant="outline" asChild><Link href={`/automations?workspace=${workspaceId}`}><Workflow className="size-3.5" />Open Workflows<ArrowRight className="size-3.5" /></Link></Button>
     </SectionCard>
 
     {previewing && <PreviewDialog agent={previewing} onClose={() => setPreviewing(null)} onSetUp={() => { setSetting(previewing); setPreviewing(null); }} />}
     {setting && <SetupDialog agent={setting} onClose={() => setSetting(null)} onDone={() => { setSetting(null); schedules.reload(); }} />}
-  </div>;
+  </AiPageShell>;
 }
 
 function SetupDialog({ agent, onClose, onDone }: { agent: (typeof agents)[number]; onClose: () => void; onDone: () => void }) {

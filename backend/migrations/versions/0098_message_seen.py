@@ -16,6 +16,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # 0093 already creates this table; a database built from scratch has it by now, so this only
+    # adds it where 0093 ran before the table was part of it.
+    if sa.inspect(op.get_bind()).has_table("team_message_seen"):
+        return
     op.create_table(
         "team_message_seen",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
@@ -51,4 +55,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("team_message_seen")
+    # 0093's downgrade drops the table.
+    pass

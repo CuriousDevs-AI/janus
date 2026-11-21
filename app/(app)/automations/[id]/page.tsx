@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspace } from "@/components/layout/workspace-context";
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
@@ -59,6 +60,7 @@ const emptyWorkflow: WorkflowRecord = {
 export default function AutomationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const { workspaceId } = useWorkspace();
   const search = useSearchParams();
   const isNew = id === "new";
   const rawTab = search.get("tab") as PageTab | null;
@@ -186,7 +188,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   async function archive() {
     if (isNew || !window.confirm("Archive this workflow? Run history will be kept for audit.")) return;
-    try { await api("/business/automations/" + id, { method: "DELETE" }); toast.success("Workflow archived"); router.push("/automations?workspace=business"); }
+    try { await api("/business/automations/" + id, { method: "DELETE" }); toast.success("Workflow archived"); router.push("/automations?workspace=" + workspaceId); }
     catch (error) { toast.error(message(error)); }
   }
 
@@ -194,12 +196,12 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
     try {
       const created = await api<WorkflowRecord>("/business/automations", { method: "POST", body: JSON.stringify({ name: draft.name + " copy", description: draft.description, scope: "business", trigger: draft.trigger, steps: draft.steps, actions: draft.steps, requiresApproval: hasApproval(draft) }) });
       toast.success("Workflow duplicated");
-      router.push("/automations/" + created.id + "?workspace=business&mode=edit");
+      router.push("/automations/" + created.id + "?workspace=" + workspaceId + "&mode=edit");
     } catch (error) { toast.error(message(error)); }
   }
 
-  function selectTab(value: PageTab) { router.replace("/automations/" + id + "?workspace=business&tab=" + value + (editing ? "&mode=edit" : "")); }
-  function enterEdit() { setEditing(true); router.replace("/automations/" + id + "?workspace=business&tab=editor&mode=edit"); }
+  function selectTab(value: PageTab) { router.replace("/automations/" + id + "?workspace=" + workspaceId + "&tab=" + value + (editing ? "&mode=edit" : "")); }
+  function enterEdit() { setEditing(true); router.replace("/automations/" + id + "?workspace=" + workspaceId + "&tab=editor&mode=edit"); }
   function updateStep(stepId: string, patch: Partial<BusinessWorkflowStep>) { updateDraft({ ...draft, steps: draft.steps.map((step) => step.id === stepId ? { ...step, ...patch } : step) }); }
   function addStep(kind: string, module?: string, action?: string) {
     const step: BusinessWorkflowStep = { id: "step-" + Date.now(), type: kind, module, action: action ?? kind, title: action === "workspace_data" ? moduleLabel(module ?? "workspace") + " data" : action ? action.replaceAll("_", " ") : kind, config: { ...(action === "workspace_data" ? { workspace: module, operation: "read_records" } : {}) }, disabled: false };
@@ -224,7 +226,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
 
   return <div className="mx-auto flex max-w-[1500px] flex-col">
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 px-5 py-4 backdrop-blur sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><Link href="/automations?workspace=business" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Business Management / Workflows{draft.folderId ? " / " + draft.folderId : ""}</Link>{editing ? <div className="flex items-center gap-2"><Input value={draft.name} onChange={(e) => updateDraft({ ...draft, name: e.target.value })} className="h-9 max-w-[420px] text-lg font-semibold" aria-label="Workflow name" /><Badge variant="outline">Draft</Badge></div> : <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{draft.name}</h1><StatusBadge status={draft.status} /></div>}<p className="mt-1 text-xs text-muted-foreground">{draft.liveVersion ? "v" + draft.liveVersion : "Unpublished draft"}{draft.updatedAt ? " · Updated " + formatDate(draft.updatedAt) : ""}</p></div><div className="flex flex-wrap items-center gap-2">{editing && <><Button size="icon" variant="ghost" aria-label="Undo draft change" title="Undo draft change" disabled={!draftHistory.length} onClick={undoDraft}><Undo2 className="size-4" /></Button><Button size="icon" variant="ghost" aria-label="Redo draft change" title="Redo draft change" disabled={!draftFuture.length} onClick={redoDraft}><Redo2 className="size-4" /></Button></>}{!isNew && <Button size="sm" variant="secondary" onClick={() => void testWorkflow()}><FlaskConical className="size-3.5" />Test workflow</Button>}{!editing && <Button size="sm" variant="secondary" onClick={() => setCopyOpen(true)}><Copy className="size-3.5" />Copy to workspace</Button>}{!editing && <Button size="sm" variant="secondary" onClick={enterEdit}><Pencil className="size-3.5" />Edit</Button>}{editing && <Button size="sm" variant="secondary" onClick={() => void saveDraft()} disabled={saveState === "Saving…"}><Save className="size-3.5" />Save draft</Button>}{editing ? <Button size="sm" onClick={() => setReviewOpen(true)} disabled={isNew}><Check className="size-3.5" />Review & publish</Button> : <Button size="sm" variant={live ? "secondary" : "default"} onClick={() => void toggle()} disabled={isNew}>{live ? "Turn off" : "Turn on"}</Button>}<Button size="icon" variant="ghost" aria-label="Workflow actions" onClick={() => setMoreOpen((value) => !value)}><MoreHorizontal className="size-4" /></Button></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><Link href={`/automations?workspace=${workspaceId}`} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Business Management / Workflows{draft.folderId ? " / " + draft.folderId : ""}</Link>{editing ? <div className="flex items-center gap-2"><Input value={draft.name} onChange={(e) => updateDraft({ ...draft, name: e.target.value })} className="h-9 max-w-[420px] text-lg font-semibold" aria-label="Workflow name" /><Badge variant="outline">Draft</Badge></div> : <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{draft.name}</h1><StatusBadge status={draft.status} /></div>}<p className="mt-1 text-xs text-muted-foreground">{draft.liveVersion ? "v" + draft.liveVersion : "Unpublished draft"}{draft.updatedAt ? " · Updated " + formatDate(draft.updatedAt) : ""}</p></div><div className="flex flex-wrap items-center gap-2">{editing && <><Button size="icon" variant="ghost" aria-label="Undo draft change" title="Undo draft change" disabled={!draftHistory.length} onClick={undoDraft}><Undo2 className="size-4" /></Button><Button size="icon" variant="ghost" aria-label="Redo draft change" title="Redo draft change" disabled={!draftFuture.length} onClick={redoDraft}><Redo2 className="size-4" /></Button></>}{!isNew && <Button size="sm" variant="secondary" onClick={() => void testWorkflow()}><FlaskConical className="size-3.5" />Test workflow</Button>}{!editing && <Button size="sm" variant="secondary" onClick={() => setCopyOpen(true)}><Copy className="size-3.5" />Copy to workspace</Button>}{!editing && <Button size="sm" variant="secondary" onClick={enterEdit}><Pencil className="size-3.5" />Edit</Button>}{editing && <Button size="sm" variant="secondary" onClick={() => void saveDraft()} disabled={saveState === "Saving…"}><Save className="size-3.5" />Save draft</Button>}{editing ? <Button size="sm" onClick={() => setReviewOpen(true)} disabled={isNew}><Check className="size-3.5" />Review & publish</Button> : <Button size="sm" variant={live ? "secondary" : "default"} onClick={() => void toggle()} disabled={isNew}>{live ? "Turn off" : "Turn on"}</Button>}<Button size="icon" variant="ghost" aria-label="Workflow actions" onClick={() => setMoreOpen((value) => !value)}><MoreHorizontal className="size-4" /></Button></div></div>
       {moreOpen && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3"><Button size="sm" variant="ghost" onClick={duplicate}><Copy className="size-3.5" />Duplicate</Button><Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(JSON.stringify(draft, null, 2)).then(() => toast.success("Workflow JSON copied"))}><Download className="size-3.5" />Export JSON</Button><Button size="sm" variant="ghost" onClick={archive}><Trash2 className="size-3.5" />Archive</Button><Button size="sm" variant="ghost" disabled><X className="size-3.5" />Delete after archive</Button></div>}
     </header>
     {editing && !isNew && <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:mx-6"><span><strong>Editing.</strong> {live ? "This workflow is on: saved changes apply from its next run. If a change leaves it unable to run, saving switches it off and says why." : "This workflow is off. Save your changes, then publish to switch it on."}</span><Button size="sm" variant="secondary" onClick={() => { workflowApi.reload(); setEditing(false); }}>Undo unsaved changes</Button></div>}

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/shared/page-header";
+import { AiPageShell } from "@/components/ai/ai-shell";
 import { StatTile } from "@/components/shared/stat-tile";
 import { useApi } from "@/lib/api/use-api";
 import { useSession } from "@/components/auth/session-provider";
@@ -38,12 +38,11 @@ export function LiveUsage() {
   const tokens = thisMonth.reduce((sum, row) => sum + (row.inputTokens ?? 0) + (row.outputTokens ?? 0), 0);
   const failed = thisMonth.filter((row) => row.status === "failed").length;
   const sections: [string, Group[]][] = [["By model", grouped(thisMonth, (row) => `${row.model} · ${row.provider}`)], ["By what it was used for", grouped(thisMonth, (row) => words(row.feature))]];
-  return <div className="mx-auto flex max-w-[1200px] flex-col pb-10">
-    <PageHeader title="Usage & Cost" description={`What the AI model ${company} set up has cost this month, call by call. Answers with Janus rules are free and are not counted here.`} />
-    <div className="flex flex-col gap-5 px-6">
+  return <AiPageShell page="usage" title="AI Usage & Cost" description={`What the AI model ${company} set up has cost this month, call by call. Answers with Janus rules are free and are not counted here.`}>
+    <div className="flex flex-col gap-5">
       {usage.loading ? <p className="text-sm text-muted-foreground">Reading usage…</p>
         : usage.error ? <p role="alert" className="text-sm text-danger">{usage.error}</p>
-        : !rows.length ? <p className="rounded-lg border border-border bg-surface px-4 py-6 text-sm text-muted-foreground">No AI model has been used yet. Janus answers with its own rules for free; set up a model in <Link href="/ai?workspace=business" className="text-accent hover:underline">Janus Intelligence</Link> and each answer it gives is counted here.</p>
+        : !rows.length ? <p className="rounded-lg border border-border bg-surface px-4 py-6 text-sm text-muted-foreground">No AI model has been used yet. Janus answers with its own rules for free; set up a model in <Link href="/ai?workspace=business" className="text-accent hover:underline">the AI Assistant</Link> and each answer it gives is counted here.</p>
         : <>
           <div className="grid gap-3 sm:grid-cols-3">
             <StatTile label="Cost this month" value={usd(cost)} detail={thisMonth.some((row) => row.costEstimated) ? "Some calls are estimated from token counts" : "As the provider bills it"} />
@@ -57,5 +56,5 @@ export function LiveUsage() {
           {rows.length === 100 && <p className="text-xs text-muted-foreground">Showing the latest 100 calls.</p>}
         </>}
     </div>
-  </div>;
+  </AiPageShell>;
 }
