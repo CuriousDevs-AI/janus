@@ -117,14 +117,17 @@ export default function LeadSourcesPage() {
   const unverified = can(session, "sources:manage") && !session.user.email_verified_at;
 
   const votes = useApi<ChannelVote[]>("/channel-votes");
+  const reloadVotes = votes.reload;
   const voteMap = new Map((votes.data ?? []).map((v) => [v.channel, v]));
   const handleVote = useCallback(async (channel: string, patch: { notify?: boolean; requested?: boolean; requestMessage?: string }) => {
-    await api<ChannelVote>("/channel-votes", {
-      method: "POST",
-      body: JSON.stringify({ channel, ...patch }),
-    });
-    votes.reload();
-  }, [votes]);
+    try {
+      await api<ChannelVote>("/channel-votes", {
+        method: "POST",
+        body: JSON.stringify({ channel, ...patch }),
+      });
+      reloadVotes();
+    } catch { /* silent — button state reverts on next reload */ }
+  }, [reloadVotes]);
 
   const connected = sourceRows.filter((s) => s.status === "connected");
   const paused = sourceRows.filter((s) => s.status !== "connected");

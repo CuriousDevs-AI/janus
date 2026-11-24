@@ -1,4 +1,4 @@
-import { Building2, FileSpreadsheet, Globe, Key, MessageCircle, Phone, Users, Webhook, type LucideIcon } from "lucide-react";
+import { FileSpreadsheet, Globe, Key, Megaphone, MessageCircle, Phone, ShoppingBag, Webhook, type LucideIcon } from "lucide-react";
 
 /** The kinds of lead source Janus connects today, each with where it is set up. */
 export const sourceOptions: readonly (readonly [name: string, description: string, icon: LucideIcon, href: string])[] = [
@@ -12,8 +12,8 @@ export const sourceOptions: readonly (readonly [name: string, description: strin
 
 /** Sources Janus does not connect yet: shown as such, never as connectable. */
 export const comingSoonSources: readonly (readonly [name: string, description: string, icon: LucideIcon])[] = [
-  ["Meta Lead Ads", "Facebook and Instagram Instant Forms in one connection.", Users],
-  ["IndiaMART", "Pull enquiries using the seller's CRM API key.", Building2],
+  ["Meta Lead Ads", "Facebook and Instagram Instant Forms in one connection.", Megaphone],
+  ["IndiaMART", "Pull enquiries using the seller's CRM API key.", ShoppingBag],
 ];
 
 const PROVIDERS: Record<string, string> = {
