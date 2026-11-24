@@ -35,6 +35,8 @@ def connection_out(
             connection.kind
         ]
         url = f"/v1/ingest/{route}/{connection.public_key}"
+    base = str(get_settings().public_api_url).rstrip("/")
+    callback = base + url if connection.kind != "csv" else None
     return schemas.ConnectionOut.model_validate(
         {
             "id": str(connection.id),
@@ -44,6 +46,7 @@ def connection_out(
             "fieldMapping": connection.field_mapping,
             "webhookUrl": url if connection.kind == "webhook" else None,
             "ingestUrl": url,
+            "callbackUrl": callback,
             "connectionKind": connection.kind,
             "source": source_value(connection.kind, connection.preset),
             "preset": connection.preset,

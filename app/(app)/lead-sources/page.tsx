@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime, cn } from "@/lib/utils";
 import { sourceMeta } from "@/lib/lead-sources";
-import { toast } from "sonner";
 
 function UpcomingChannelCard({ name, description, Icon }: { name: string; description: string; Icon: React.ComponentType<{ className?: string }> }) {
   const [notifyMe, setNotifyMe] = useState(false);
@@ -41,10 +40,7 @@ function UpcomingChannelCard({ name, description, Icon }: { name: string; descri
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => {
-            setNotifyMe(!notifyMe);
-            toast.success(notifyMe ? "Notification removed" : "We'll notify you when this is ready!");
-          }}
+          onClick={() => setNotifyMe(!notifyMe)}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors",
             notifyMe
@@ -54,50 +50,42 @@ function UpcomingChannelCard({ name, description, Icon }: { name: string; descri
         >
           {notifyMe ? <><BellOff className="size-3" /> Subscribed</> : <><Bell className="size-3" /> Notify me</>}
         </button>
-        <button
-          type="button"
-          onClick={() => setShowChat(!showChat)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-surface-2/80 hover:text-foreground"
-        >
-          <MessageSquare className="size-3" /> {showChat ? "Close" : "Request this"}
-        </button>
+        {sent ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-success/10 px-2.5 py-1.5 text-[11px] font-medium text-success">
+            <Check className="size-3" /> Requested
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowChat(!showChat)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-surface-2/80 hover:text-foreground"
+          >
+            <MessageSquare className="size-3" /> {showChat ? "Close" : "Request this"}
+          </button>
+        )}
       </div>
 
-      {showChat && (
+      {showChat && !sent && (
         <div className="flex flex-col gap-2 rounded-md border border-border/50 bg-surface p-3">
           <p className="text-[11px] text-muted-foreground">Tell us what you need from {name} — we prioritise based on requests</p>
-          {sent ? (
-            <div className="flex items-center gap-2 py-2 text-xs text-success">
-              <Check className="size-3.5" /> Thanks! We&apos;ll consider your request.
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={msg}
-                onChange={(e) => setMsg(e.target.value)}
-                placeholder={`e.g. "Need ${name} to auto-import enquiries daily"`}
-                className="flex-1 rounded-md border border-border/50 bg-surface-2/50 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && msg.trim()) {
-                    setSent(true);
-                    toast.success("Request sent!");
-                  }
-                }}
-              />
-              <button
-                type="button"
-                disabled={!msg.trim()}
-                onClick={() => {
-                  setSent(true);
-                  toast.success("Request sent!");
-                }}
-                className="flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-[11px] font-medium text-white transition-opacity disabled:opacity-40"
-              >
-                <Send className="size-3" /> Send
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={msg}
+              onChange={(e) => setMsg(e.target.value)}
+              placeholder={`e.g. "Need ${name} to auto-import enquiries daily"`}
+              className="flex-1 rounded-md border border-border/50 bg-surface-2/50 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none"
+              onKeyDown={(e) => { if (e.key === "Enter" && msg.trim()) setSent(true); }}
+            />
+            <button
+              type="button"
+              disabled={!msg.trim()}
+              onClick={() => setSent(true)}
+              className="flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-[11px] font-medium text-white transition-opacity disabled:opacity-40"
+            >
+              <Send className="size-3" /> Send
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -146,7 +134,7 @@ export default function LeadSourcesPage() {
         </p>
       )}
 
-      <div className="flex flex-col gap-8 px-6 pb-8">
+      <div className="flex flex-col gap-8 px-6 pb-24">
         {/* ── Summary strip ── */}
         {sourceRows.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border/50 pb-4 text-sm">

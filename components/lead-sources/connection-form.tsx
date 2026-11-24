@@ -226,11 +226,14 @@ export function ConnectionForm({
                   )
                 }
               >
-                {targets.map((target) => (
-                  <option key={target} value={target}>
-                    {target.replaceAll("_", " ")}
-                  </option>
-                ))}
+                {targets.map((target) => {
+                  const taken = mapping.some((r, i) => i !== index && r.mapsTo === target);
+                  return (
+                    <option key={target} value={target} disabled={taken}>
+                      {target.replaceAll("_", " ")}{taken ? " (mapped)" : ""}
+                    </option>
+                  );
+                })}
               </select>
               <Button
                 variant="ghost"

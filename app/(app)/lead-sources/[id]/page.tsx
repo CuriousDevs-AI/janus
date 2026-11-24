@@ -8,7 +8,6 @@ import { ConnectionForm } from "@/components/lead-sources/connection-form";
 import { SourceTools, EventList } from "@/components/lead-sources/source-tools";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatDateTime } from "@/lib/utils";
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return <Detail key={id} id={id} />;
@@ -31,14 +30,26 @@ function Detail({ id }: { id: string }) {
         ← Lead Sources
       </Link>
       {!source.data ? (
-        <p role="status">
-          {source.error || "Loading connection…"}{" "}
-          {source.error && (
-            <button className="text-accent" onClick={source.reload}>
-              Retry
-            </button>
-          )}
-        </p>
+        source.error ? (
+          <p role="alert" className="text-sm text-danger">
+            {source.error}{" "}
+            <button className="text-accent" onClick={source.reload}>Retry</button>
+          </p>
+        ) : (
+          <div className="grid items-start gap-5 lg:grid-cols-2 animate-pulse">
+            <div className="flex flex-col gap-4 border border-border p-4">
+              <div className="h-4 w-28 rounded bg-surface-2" />
+              <div className="h-8 rounded bg-surface-2" />
+              <div className="h-8 rounded bg-surface-2" />
+              <div className="h-8 w-40 rounded bg-surface-2" />
+            </div>
+            <div className="flex flex-col gap-4 border border-border p-4">
+              <div className="h-4 w-36 rounded bg-surface-2" />
+              <div className="h-8 rounded bg-surface-2" />
+              <div className="h-8 rounded bg-surface-2" />
+            </div>
+          </div>
+        )
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">

@@ -151,6 +151,7 @@ export default function WhatsAppSetup() {
                     name="wabaId"
                     inputMode="numeric"
                     pattern="[0-9]{5,40}"
+                    autoComplete="off"
                     required
                     defaultValue={current?.wabaId}
                     readOnly={!!current}
@@ -163,6 +164,7 @@ export default function WhatsAppSetup() {
                     name="phoneNumberId"
                     inputMode="numeric"
                     pattern="[0-9]{5,40}"
+                    autoComplete="off"
                     required
                     defaultValue={current?.phoneNumberId}
                     readOnly={!!current}
@@ -175,7 +177,7 @@ export default function WhatsAppSetup() {
                   id="access-token"
                   name="accessToken"
                   type="password"
-                  autoComplete="off"
+                  autoComplete="new-password"
                   required
                   minLength={20}
                   maxLength={4096}
@@ -187,7 +189,7 @@ export default function WhatsAppSetup() {
                   id="app-secret"
                   name="appSecret"
                   type="password"
-                  autoComplete="off"
+                  autoComplete="new-password"
                   required
                   minLength={16}
                   maxLength={256}

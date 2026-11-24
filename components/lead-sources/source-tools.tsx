@@ -9,7 +9,27 @@ import { SecretValue } from "./secret-value";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime, formatRelativeTime } from "@/lib/utils";
+
+const RESULT_LABELS: Record<string, string> = {
+  new_profile: "New profile",
+  merged: "Matched existing",
+};
+
+const FAILURE_LABELS: Record<string, string> = {
+  missing_contact_identity: "No phone or email — map a phone/email field",
+  contact_identity_conflict: "Phone and email belong to different contacts",
+  invalid_email: "Invalid email address",
+  invalid_contact_fields: "Could not parse contact fields",
+  processing_failed: "Processing error — will retry automatically",
+};
+
+function eventLabel(event: IngestEvent): string {
+  if (event.status === "pending") return "Awaiting processing";
+  if (event.status === "failed") return FAILURE_LABELS[event.reason ?? ""] ?? event.reason?.replaceAll("_", " ") ?? "Failed";
+  const base = RESULT_LABELS[event.result ?? ""] ?? event.result?.replaceAll("_", " ") ?? "Processed";
+  return base;
+}
 
 export function SourceTools({
   source,
@@ -59,9 +79,9 @@ export function SourceTools({
     <section className="flex flex-col gap-4 border border-border p-4">
       <h2 className="text-sm font-semibold">Capture setup</h2>
       {source.connectionKind !== "csv" && (
-        <SecretValue title="Ingestion URL" value={source.ingestUrl} />
+        <SecretValue title="Ingestion URL" value={source.callbackUrl || source.ingestUrl} />
       )}
-      {source.connectionKind === "webhook" && source.preset === "custom" && <CustomWebhookRecipe url={source.ingestUrl} />}
+      {source.connectionKind === "webhook" && source.preset === "custom" && <CustomWebhookRecipe url={source.callbackUrl || source.ingestUrl} />}
       {source.connectionKind === "webhook" && (
         <>
           <p className="text-xs text-muted-foreground">
@@ -258,18 +278,7 @@ export function SourceTools({
           )}
           <div className="flex flex-col gap-3">
             {imports.data?.map((row) => (
-              <div key={row.id} className="border-t border-border pt-3">
-                <p className="text-sm font-medium">{row.fileName}</p>
-                <p className="text-xs text-muted-foreground">
-                  {row.processedRows} processed · {row.failedRows} failed ·{" "}
-                  {row.pendingRows} pending · {row.totalRows} total
-                </p>
-                <ImportRows
-                  sourceId={source.id}
-                  importId={row.id}
-                  pending={row.pendingRows > 0}
-                />
-              </div>
+              <ImportSummary key={row.id} source={source} row={row} />
             ))}
           </div>
         </>
@@ -277,14 +286,47 @@ export function SourceTools({
     </section>
   );
 }
+function ImportSummary({ source, row }: { source: Source; row: Import }) {
+  const [filter, setFilter] = useState<"all" | "failed">("all");
+
+  return (
+    <div className="border-t border-border pt-3">
+      <p className="text-sm font-medium">{row.fileName}</p>
+      <p className="text-xs text-muted-foreground">
+        {row.processedRows} processed ·{" "}
+        {row.failedRows > 0 ? (
+          <button
+            type="button"
+            className="text-danger hover:underline"
+            onClick={() => setFilter((f) => f === "failed" ? "all" : "failed")}
+          >
+            {row.failedRows} failed{filter === "failed" ? " ✕" : ""}
+          </button>
+        ) : (
+          <>{row.failedRows} failed</>
+        )}
+        {" "}· {row.pendingRows} pending · {row.totalRows} total
+      </p>
+      <ImportRows
+        sourceId={source.id}
+        importId={row.id}
+        pending={row.pendingRows > 0}
+        filter={filter}
+      />
+    </div>
+  );
+}
+
 function ImportRows({
   sourceId,
   importId,
   pending,
+  filter = "all",
 }: {
   sourceId: string;
   importId: string;
   pending: boolean;
+  filter?: "all" | "failed";
 }) {
   const [open, setOpen] = useState(false);
   const [after, setAfter] = useState("0");
@@ -298,6 +340,9 @@ function ImportRows({
     const timer = setInterval(rows.reload, 5000);
     return () => clearInterval(timer);
   }, [open, pending, rows.reload]);
+
+  const filtered = filter === "failed" ? rows.data?.filter((r) => r.status === "failed") : rows.data;
+
   return (
     <div className="mt-2">
       <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)}>
@@ -312,20 +357,24 @@ function ImportRows({
           )}
           {rows.loading && <p className="text-xs">Loading rows…</p>}
           <div className="max-h-64 overflow-auto text-xs">
-            {rows.data?.map((row) => (
-              <p key={row.id} className="border-t border-border py-2">
-                Row {row.rowNumber}: {row.status}
-                {row.reason ? ` · ${row.reason.replaceAll("_", " ")}` : ""}
+            {filtered?.map((row) => (
+              <p key={row.id} className="flex items-center gap-1.5 border-t border-border py-2">
+                <span className="text-muted-foreground">Row {row.rowNumber}:</span>
+                <span className={cn(
+                  row.status === "failed" ? "text-danger" : row.status === "pending" ? "text-muted-foreground" : "text-foreground",
+                )}>
+                  {eventLabel(row)}
+                </span>
                 {row.leadId && (
-                  <Link
-                    className="ml-2 text-accent"
-                    href={`/leads/${row.leadId}`}
-                  >
+                  <Link className="ml-1 text-accent" href={`/leads/${row.leadId}`}>
                     Open lead
                   </Link>
                 )}
               </p>
             ))}
+            {filtered?.length === 0 && (
+              <p className="py-2 text-muted-foreground">No {filter === "failed" ? "failed" : ""} rows on this page.</p>
+            )}
           </div>
           <Button
             size="sm"
@@ -366,15 +415,19 @@ export function EventList({ events }: { events: IngestEvent[] }) {
         <tbody>
           {events.map((event) => (
             <tr key={event.id} className="border-t border-border">
-              <td className="p-3">{formatDateTime(event.receivedAt)}</td>
-              <td className="p-3">{event.status}</td>
+              <td className="p-3" title={formatRelativeTime(event.receivedAt)}>{formatDateTime(event.receivedAt)}</td>
               <td className="p-3">
-                {(
-                  event.reason ||
-                  event.result ||
-                  "Awaiting processing"
-                ).replaceAll("_", " ")}
+                <span className={cn(
+                  "inline-flex items-center gap-1",
+                  event.status === "failed" ? "text-danger" : event.status === "pending" ? "text-muted-foreground" : "",
+                )}>
+                  <span className={cn("size-1.5 shrink-0 rounded-full",
+                    event.status === "processed" ? "bg-success" : event.status === "failed" ? "bg-danger" : "bg-warning",
+                  )} />
+                  {event.status}
+                </span>
               </td>
+              <td className="p-3">{eventLabel(event)}</td>
               <td className="p-3">
                 {event.leadId ? (
                   <Link href={`/leads/${event.leadId}`} className="text-accent">

@@ -37,6 +37,9 @@ def parse_rows(body: bytes, mapping: list[dict[str, str]]) -> list[tuple[int, di
             raise ValueError("Use 1–64 unique, non-empty column headers (up to 200 characters).")
         if not any(m["mapsTo"] in {"phone", "email"} and m["rawField"] in headers for m in mapping):
             raise ValueError("Map a CSV column to phone or email before uploading.")
+        contact_columns = {
+            m["rawField"] for m in mapping if m["mapsTo"] in {"phone", "email"}
+        }
         rows: list[tuple[int, dict[str, object]]] = []
         for number, cells in enumerate(reader, start=2):
             if not cells:
@@ -44,6 +47,10 @@ def parse_rows(body: bytes, mapping: list[dict[str, str]]) -> list[tuple[int, di
             if len(cells) != len(headers):
                 raise ValueError(f"Row {number} must have {len(headers)} columns.")
             payload: dict[str, object] = dict(zip(headers, cells, strict=True))
+            if not any(str(payload.get(col, "")).strip() for col in contact_columns):
+                raise ValueError(
+                    f"Row {number} has no phone or email. Every row needs at least one."
+                )
             if len(json.dumps(payload, ensure_ascii=False).encode()) > MAX_PAYLOAD:
                 raise ValueError(f"Row {number} exceeds 256 KB.")
             rows.append((number, payload))

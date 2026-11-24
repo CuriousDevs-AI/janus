@@ -50,7 +50,8 @@ grep -v -e '^JANUS_EMAIL_BACKEND=' -e '^JANUS_FRONTEND_URL=' -e '^JANUS_ENVIRONM
 } >> "$RUN_ENV"
 worker_password="$(grep '^WORKER_DB_PASSWORD=' "$BACKEND/.env" | cut -d= -f2-)"
 # The worker signs in as janus_worker and never gets the migration login.
-sed "s#^JANUS_DATABASE_URL=postgresql+asyncpg://[^:]*:[^@]*@#JANUS_DATABASE_URL=postgresql+asyncpg://janus_worker:${worker_password:-local-worker-password}@#" "$RUN_ENV" \
+# The sed handles both user:password@host and user@host (no password) URL formats.
+sed -E "s#^(JANUS_DATABASE_URL=postgresql\+asyncpg://)([^:/@]+)(:[^@]+)?@#\1janus_worker:${worker_password:-local-worker-password}@#" "$RUN_ENV" \
   | grep -v '^JANUS_MIGRATION_DATABASE_URL=' > "$WORKER_ENV"
 
 pids=()

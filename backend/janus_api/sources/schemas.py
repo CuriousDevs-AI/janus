@@ -120,6 +120,7 @@ class ConnectionOut(BaseModel):
     fieldMapping: list[FieldMapping]
     webhookUrl: str | None = None
     ingestUrl: str
+    callbackUrl: str | None = None
     allowedOrigins: list[str]
     eventIdField: str | None
     lastEventAt: datetime | None
