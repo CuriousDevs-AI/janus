@@ -733,7 +733,7 @@ function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName,
 
       <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
         <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-muted-foreground">
-          <OwnerAvatar name={ownerDisplay} />
+          <OwnerAvatar />
           <span className="truncate">{ownerDisplay}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -753,13 +753,8 @@ function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName,
   );
 }
 
-function OwnerAvatar({ name }: { name: string }) {
-  const initial = name.charAt(0).toUpperCase();
-  return (
-    <span className={cn("flex size-5 shrink-0 items-center justify-center text-[9px] font-semibold text-white", avatarColor(name))}>
-      {initial}
-    </span>
-  );
+function OwnerAvatar() {
+  return <User className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
 /* ── Deal Detail Sheet ── */
