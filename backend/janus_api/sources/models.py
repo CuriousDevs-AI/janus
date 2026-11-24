@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -163,3 +164,21 @@ class CsvImport(Base):
     file_hash: Mapped[str] = mapped_column(String(64))
     total_rows: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChannelVote(Base):
+    __tablename__ = "channel_votes"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "user_id", "channel",
+            name="uq_channel_votes_tenant_user_channel",
+        ),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"))
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    channel: Mapped[str] = mapped_column(String(120))
+    notify: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    request_message: Mapped[str] = mapped_column(String(1000), server_default=text("''"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

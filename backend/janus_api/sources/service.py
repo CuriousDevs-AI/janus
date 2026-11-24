@@ -10,7 +10,7 @@ from janus_api.crm.models import Lead
 from janus_api.crm.service import capture
 from janus_api.org.service import lock_workspace
 from janus_api.sources import schemas
-from janus_api.sources.models import IngestReceipt, RawEvent, SourceConnection
+from janus_api.sources.models import ChannelVote, IngestReceipt, RawEvent, SourceConnection
 from janus_api.sources.presets import PRESETS, contact_payload, source_value, value_at
 
 
@@ -334,3 +334,50 @@ def list_presets() -> list[schemas.PresetOut]:
         )
         for key, preset in PRESETS.items()
     ]
+
+
+async def list_channel_votes(
+    db: AsyncSession, tenant_id: int, user_id: int
+) -> list[schemas.ChannelVoteOut]:
+    rows = (
+        await db.execute(
+            select(ChannelVote).where(
+                ChannelVote.tenant_id == tenant_id,
+                ChannelVote.user_id == user_id,
+            )
+        )
+    ).scalars().all()
+    return [
+        schemas.ChannelVoteOut(channel=r.channel, notify=r.notify, requested=r.requested)
+        for r in rows
+    ]
+
+
+async def upsert_channel_vote(
+    db: AsyncSession, tenant_id: int, user_id: int, data: schemas.ChannelVoteInput
+) -> schemas.ChannelVoteOut:
+    row = (
+        await db.execute(
+            select(ChannelVote).where(
+                ChannelVote.tenant_id == tenant_id,
+                ChannelVote.user_id == user_id,
+                ChannelVote.channel == data.channel,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = ChannelVote(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            channel=data.channel,
+        )
+        db.add(row)
+    if data.notify is not None:
+        row.notify = data.notify
+    if data.requested is not None:
+        row.requested = data.requested
+    if data.requestMessage:
+        row.request_message = data.requestMessage
+    row.updated_at = now()
+    await db.flush()
+    return schemas.ChannelVoteOut(channel=row.channel, notify=row.notify, requested=row.requested)

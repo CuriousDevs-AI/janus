@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
-from janus_api.core.deps import Db, request_ip, require
+from janus_api.core.deps import CurrentActor, Db, request_ip, require
 from janus_api.sources import api_keys, csv_imports, ingest, schemas, service, website
 
 router = APIRouter(prefix="/v1", tags=["Lead sources"])
@@ -224,3 +224,15 @@ async def import_rows(
     limit: Limit = 100,
 ) -> list[schemas.EventOut]:
     return await csv_imports.list_rows(db, connection_id, import_id, after_id, limit)
+
+
+@router.get("/channel-votes", response_model=list[schemas.ChannelVoteOut])
+async def channel_votes(actor: CurrentActor, db: Db) -> list[schemas.ChannelVoteOut]:
+    return await service.list_channel_votes(db, actor.session.tenant_id, actor.user.id)
+
+
+@router.post("/channel-votes", response_model=schemas.ChannelVoteOut)
+async def vote_channel(
+    data: schemas.ChannelVoteInput, actor: CurrentActor, db: Db
+) -> schemas.ChannelVoteOut:
+    return await service.upsert_channel_vote(db, actor.session.tenant_id, actor.user.id, data)

@@ -205,3 +205,16 @@ class CsvImportOut(BaseModel):
 
 class CsvImportReceipt(CsvImportOut):
     duplicate: bool
+
+
+class ChannelVoteOut(BaseModel):
+    channel: str
+    notify: bool
+    requested: bool
+
+
+class ChannelVoteInput(BaseModel):
+    channel: str = Field(max_length=120, pattern=r"^[a-z0-9-]+$")
+    notify: bool | None = None
+    requested: bool | None = None
+    requestMessage: str = Field(default="", max_length=1000)

@@ -7,6 +7,7 @@ import {
   MessageSquare, Plus, RefreshCw, Send, Settings2, Sparkles, Zap,
 } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
+import { api } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { Source } from "@/lib/api/types";
 import { sourceKindLabel, sourceOptions, comingSoonSources } from "@/lib/lead-source-options";
@@ -16,33 +17,26 @@ import { Badge } from "@/components/ui/badge";
 import { formatDateTime, cn } from "@/lib/utils";
 import { sourceMeta } from "@/lib/lead-sources";
 
-function readFlag(key: string): boolean {
-  try { return localStorage.getItem(key) === "1"; } catch { return false; }
-}
-function writeFlag(key: string, on: boolean) {
-  try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch {}
-}
+interface ChannelVote { channel: string; notify: boolean; requested: boolean }
 
-function UpcomingChannelCard({ name, description, Icon, userId }: { name: string; description: string; Icon: React.ComponentType<{ className?: string }>; userId: string }) {
+function UpcomingChannelCard({ name, description, Icon, vote, onVote }: {
+  name: string; description: string; Icon: React.ComponentType<{ className?: string }>;
+  vote: ChannelVote | undefined;
+  onVote: (channel: string, patch: { notify?: boolean; requested?: boolean; requestMessage?: string }) => void;
+}) {
   const slug = name.toLowerCase().replace(/\s+/g, "-");
-  const notifyKey = `janus:notify:${userId}:${slug}`;
-  const requestKey = `janus:requested:${userId}:${slug}`;
-
-  const [notifyMe, setNotifyMe] = useState(() => readFlag(notifyKey));
+  const notifyMe = vote?.notify ?? false;
+  const sent = vote?.requested ?? false;
   const [showChat, setShowChat] = useState(false);
   const [msg, setMsg] = useState("");
-  const [sent, setSent] = useState(() => readFlag(requestKey));
 
   const toggleNotify = useCallback(() => {
-    const next = !notifyMe;
-    setNotifyMe(next);
-    writeFlag(notifyKey, next);
-  }, [notifyMe, notifyKey]);
+    onVote(slug, { notify: !notifyMe });
+  }, [slug, notifyMe, onVote]);
 
   const submitRequest = useCallback(() => {
-    setSent(true);
-    writeFlag(requestKey, true);
-  }, [requestKey]);
+    onVote(slug, { requested: true, requestMessage: msg });
+  }, [slug, msg, onVote]);
 
   return (
     <div className="group relative flex flex-col gap-3 rounded-md border border-dashed border-border/70 bg-surface-2/20 p-4 transition-colors hover:border-border hover:bg-surface-2/40">
@@ -121,6 +115,16 @@ export default function LeadSourcesPage() {
   const sources = useApi<Source[]>(allowed ? `/sources?limit=50&after_id=${after}` : null);
   const sourceRows = sources.data ?? [];
   const unverified = can(session, "sources:manage") && !session.user.email_verified_at;
+
+  const votes = useApi<ChannelVote[]>("/channel-votes");
+  const voteMap = new Map((votes.data ?? []).map((v) => [v.channel, v]));
+  const handleVote = useCallback(async (channel: string, patch: { notify?: boolean; requested?: boolean; requestMessage?: string }) => {
+    await api<ChannelVote>("/channel-votes", {
+      method: "POST",
+      body: JSON.stringify({ channel, ...patch }),
+    });
+    votes.reload();
+  }, [votes]);
 
   const connected = sourceRows.filter((s) => s.status === "connected");
   const paused = sourceRows.filter((s) => s.status !== "connected");
@@ -318,9 +322,12 @@ export default function LeadSourcesPage() {
             <span className="text-[10px] text-muted-foreground">Vote to help us prioritise</span>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {comingSoonSources.map(([name, description, Icon]) => (
-              <UpcomingChannelCard key={name} name={name} description={description} Icon={Icon} userId={session.user.id} />
-            ))}
+            {comingSoonSources.map(([name, description, Icon]) => {
+              const slug = name.toLowerCase().replace(/\s+/g, "-");
+              return (
+                <UpcomingChannelCard key={name} name={name} description={description} Icon={Icon} vote={voteMap.get(slug)} onVote={handleVote} />
+              );
+            })}
           </div>
         </section>
       </div>
