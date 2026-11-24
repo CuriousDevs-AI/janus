@@ -19,24 +19,25 @@ export function DealCard({ deal, writable, busy, today, sessionUserId, sessionUs
   const customerDisplay = deal.company || deal.customerName || "";
 
   return (
-    <article
+    <Link
+      href={`/deals/${deal.id}`}
       draggable={writable && !busy}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md"
+      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
     >
       <div className="flex items-start justify-between gap-1.5">
         <div className="min-w-0 flex-1">
-          <Link href={`/deals/${deal.id}`} className="truncate text-[13px] font-semibold text-foreground hover:text-accent block">{deal.name}</Link>
+          <p className="truncate text-[13px] font-semibold text-foreground">{deal.name}</p>
           {customerDisplay && <p className="truncate text-[11px] text-muted-foreground">{customerDisplay}</p>}
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground">
+            <button type="button" onClick={(e) => e.preventDefault()} className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground">
               <MoreHorizontal className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" onClick={(e) => e.preventDefault()}>
             {writable && (
               <>
                 {stages.filter((s) => s.key !== deal.stage).map((s) => (
@@ -78,6 +79,6 @@ export function DealCard({ deal, writable, busy, today, sessionUserId, sessionUs
           </span>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
