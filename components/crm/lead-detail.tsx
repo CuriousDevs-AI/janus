@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Phone, Mail, MessageCircle, Handshake, Building2,
-  CalendarClock, User, Plus, Video,
+  CalendarClock, User, Plus, Video, ExternalLink,
   ClipboardList, StickyNote,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -133,7 +134,12 @@ function LeadDetailContent({
             <User className="size-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <SheetTitle className="text-base truncate">{lead.contactName || lead.phone || lead.email || "Lead"}</SheetTitle>
+            <div className="flex items-start justify-between gap-2">
+              <SheetTitle className="text-base truncate">{lead.contactName || lead.phone || lead.email || "Lead"}</SheetTitle>
+              <Link href={`/leads/${lead.id}`} className="shrink-0 text-xs font-medium text-accent hover:underline flex items-center gap-1">
+                <ExternalLink className="size-3" /> Full page
+              </Link>
+            </div>
             {lead.company && <p className="text-sm text-muted-foreground flex items-center gap-1"><Building2 className="size-3" /> {lead.company}</p>}
             <div className="flex items-center gap-2 mt-1.5">
               <Badge variant={stageMeta.tone}>{stageMeta.label}</Badge>

@@ -1,5 +1,6 @@
+import Link from "next/link";
 import {
-  CalendarClock, Clock, MoreHorizontal, Phone, User,
+  CalendarClock, Clock, Eye, MoreHorizontal, Phone, User,
 } from "lucide-react";
 import { cn, formatCurrencyINR, formatRelativeTime } from "@/lib/utils";
 import type { Deal } from "@/lib/api/types";
@@ -37,8 +38,10 @@ export function DealCard({ deal, writable, busy, today, sessionUserId, sessionUs
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" />View details</Link></DropdownMenuItem>
             {writable && (
               <>
+                <DropdownMenuSeparator />
                 {stages.filter((s) => s.key !== deal.stage).map((s) => (
                   <DropdownMenuItem key={s.key} onSelect={() => onMove(s.key)}>
                     <span className={cn("size-2 rounded-full mr-2", s.color)} />

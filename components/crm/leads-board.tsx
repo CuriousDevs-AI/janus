@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
+  Eye,
   CalendarClock,
   Clock,
   Mail,
@@ -202,8 +204,10 @@ function LeadCard({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem asChild><Link href={`/leads/${lead.id}`}><Eye className="size-3.5 mr-2" />View details</Link></DropdownMenuItem>
             {canWrite && (
               <>
+                <DropdownMenuSeparator />
                 {stages.filter((s) => s !== lead.stage).map((s) => (
                   <DropdownMenuItem key={s} onSelect={() => onMove(s)}>
                     <span className={cn("size-2 rounded-full mr-2", STAGE_STYLE[s]?.dot ?? "bg-muted")} />
