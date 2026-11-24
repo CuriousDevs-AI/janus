@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   RefreshCw, Building2, Loader2, Search, CalendarClock, Zap,
   LayoutGrid, List, Settings2, ArrowUpDown, ArrowUp, ArrowDown,
-  Eye, MoreHorizontal, Pencil, X, SlidersHorizontal,
+  Eye, MoreHorizontal, Pencil, X, SlidersHorizontal, Clock,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -68,7 +68,7 @@ export default function DealsPage() {
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [editing, setEditing] = useState<Deal | null>(null);
   const [busy, setBusy] = useState(false);
-  const [closeFilter, setCloseFilter] = useState<"all" | "closing" | "slipped" | "undated" | "mine">("all");
+  const [closeFilter, setCloseFilter] = useState<"all" | "closing" | "slipped" | "undated" | "mine" | "stale">("all");
   const [sortKey, setSortKey] = useState<SortKey>("updatedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -83,9 +83,12 @@ export default function DealsPage() {
   const closing = open.filter((d) => d.expectedCloseAt && d.expectedCloseAt >= today && d.expectedCloseAt <= monthEnd);
   const slipped = open.filter((d) => d.expectedCloseAt && d.expectedCloseAt < today);
   const undated = open.filter((d) => !d.expectedCloseAt);
+  const staleDays = 7;
+  const staleCutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
+  const stale = open.filter((d) => d.updatedAt < staleCutoff);
   const sumOf = (list: Deal[]) => list.reduce((s, d) => s + Number(d.amount), 0);
 
-  const inView = closeFilter === "closing" ? closing : closeFilter === "slipped" ? slipped : closeFilter === "undated" ? undated : closeFilter === "mine" ? allDeals.filter((d) => d.ownerId === session.user.id) : deals;
+  const inView = closeFilter === "closing" ? closing : closeFilter === "slipped" ? slipped : closeFilter === "undated" ? undated : closeFilter === "mine" ? allDeals.filter((d) => d.ownerId === session.user.id) : closeFilter === "stale" ? stale : deals;
   const searched = inView.filter((d) => `${d.name} ${d.customerName} ${d.company}`.toLowerCase().includes(query.toLowerCase()));
   const filtered = stageFilter === "all" ? searched : searched.filter((d) => d.stage === stageFilter);
 
@@ -151,15 +154,18 @@ export default function DealsPage() {
 
   const myDeals = allDeals.filter((d) => d.ownerId === session.user.id);
   const wonCount = allDeals.filter((d) => d.stage === "won").length;
-  const wonPct = allDeals.length ? Math.round((wonCount / allDeals.length) * 100) : 0;
+  const lostCount = allDeals.filter((d) => d.stage === "lost").length;
+  const closedCount = wonCount + lostCount;
+  const winRate = closedCount ? Math.round((wonCount / closedCount) * 100) : 0;
+  const avgDealSize = open.length ? Math.round(sumOf(open) / open.length) : 0;
   const filtersActive = query !== "" || stageFilter !== "all" || closeFilter !== "all" || crmFilter !== "all";
   const clearFilters = () => { setQuery(""); setStageFilter("all"); setCloseFilter("all"); setCrmFilter("all"); };
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Deal Pipeline"
-        description="Your sales pipeline at a glance."
+        title="Sales Pipeline"
+        description="Track, manage and close your deals."
         actions={<>
           <Button size="sm" variant="secondary" onClick={reload} disabled={refreshing} aria-label="Refresh">
             {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
@@ -170,7 +176,7 @@ export default function DealsPage() {
 
       {result.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{result.error}</p>}
 
-      {/* ── Toolbar (matches leads) ── */}
+      {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-border px-6 pb-2.5">
         <div className="relative mr-2 w-full sm:w-52">
           <Search className="pointer-events-none absolute left-0 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -178,6 +184,7 @@ export default function DealsPage() {
           {query && <button type="button" onClick={() => setQuery("")} className="absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="size-3" /></button>}
         </div>
 
+        {/* Stage */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", stageFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
@@ -188,31 +195,44 @@ export default function DealsPage() {
             <DropdownMenuItem onSelect={() => setStageFilter("all")} className={stageFilter === "all" ? "font-semibold" : ""}>All stages</DropdownMenuItem>
             {stages.map((s) => (
               <DropdownMenuItem key={s.key} onSelect={() => setStageFilter(s.key)} className={stageFilter === s.key ? "font-semibold" : ""}>
-                <span className={cn("size-2 rounded-full", s.color)} /> {s.label}
+                <span className={cn("size-2 rounded-full", s.color)} /> {s.label} <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{allDeals.filter((d) => d.stage === s.key).length}</span>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Owner */}
+        <button type="button" aria-pressed={closeFilter === "mine"} onClick={() => setCloseFilter(closeFilter === "mine" ? "all" : "mine")} className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter === "mine" ? "font-semibold text-accent" : "text-muted-foreground hover:text-foreground")}>
+          My pipeline{myDeals.length > 0 && <span className="ml-0.5 tabular-nums">({myDeals.length})</span>}
+        </button>
+
+        {/* Expected close */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
-              <CalendarClock className="size-3" />{closeFilter === "all" ? "Close date" : closeFilter === "closing" ? "This month" : closeFilter === "slipped" ? "Past due" : closeFilter === "undated" ? "No date" : "My deals"}
+            <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter !== "all" && closeFilter !== "mine" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
+              <CalendarClock className="size-3" />{closeFilter === "closing" ? "Closing soon" : closeFilter === "slipped" ? "Slipped" : closeFilter === "undated" ? "No date" : closeFilter === "stale" ? "Follow-up" : "Expected close"}
               {closeFilter === "all" && slipped.length > 0 && <span className="ml-0.5 tabular-nums text-warning">({slipped.length})</span>}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onSelect={() => setCloseFilter("all")} className={closeFilter === "all" ? "font-semibold" : ""}>All</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setCloseFilter("closing")} className={closeFilter === "closing" ? "font-semibold" : ""}>Closing this month <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{closing.length}</span></DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setCloseFilter("slipped")} className={cn(closeFilter === "slipped" ? "font-semibold" : "", slipped.length > 0 && "text-warning")}>Past close date <span className="ml-auto text-[10px] tabular-nums">{slipped.length}</span></DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setCloseFilter("slipped")} className={cn(closeFilter === "slipped" ? "font-semibold" : "", slipped.length > 0 && "text-warning")}>Slipped past due <span className="ml-auto text-[10px] tabular-nums">{slipped.length}</span></DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setCloseFilter("undated")} className={closeFilter === "undated" ? "font-semibold" : ""}>No close date <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{undated.length}</span></DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setCloseFilter("stale")} className={closeFilter === "stale" ? "font-semibold" : ""}>Needs follow-up <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{stale.length}</span></DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <button type="button" aria-pressed={closeFilter === "mine"} onClick={() => setCloseFilter(closeFilter === "mine" ? "all" : "mine")} className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter === "mine" ? "font-semibold text-accent" : "text-muted-foreground hover:text-foreground")}>
-          My deals{myDeals.length > 0 && <span className="ml-0.5 tabular-nums">({myDeals.length})</span>}
-        </button>
+
+        {/* At risk — slipped deals */}
         <button type="button" aria-pressed={closeFilter === "slipped"} onClick={() => setCloseFilter(closeFilter === "slipped" ? "all" : "slipped")} className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter === "slipped" ? "font-semibold text-warning" : "text-muted-foreground hover:text-foreground")}>
-          <Zap className="size-3" />Overdue{slipped.length > 0 && <span className="ml-0.5 tabular-nums text-warning">({slipped.length})</span>}
+          <Zap className="size-3" />At risk{slipped.length > 0 && <span className="ml-0.5 tabular-nums text-warning">({slipped.length})</span>}
         </button>
+
+        {/* Follow-up needed — stale deals (no activity 7+ days) */}
+        <button type="button" aria-pressed={closeFilter === "stale"} onClick={() => setCloseFilter(closeFilter === "stale" ? "all" : "stale")} className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter === "stale" ? "font-semibold text-accent" : "text-muted-foreground hover:text-foreground")}>
+          <Clock className="size-3" />Follow-up{stale.length > 0 && <span className="ml-0.5 tabular-nums">({stale.length})</span>}
+        </button>
+
         {multiCrm && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -239,11 +259,11 @@ export default function DealsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
-                <ArrowUpDown className="size-3" />{sortKey === "updatedAt" ? "Newest" : sortKey === "amount" ? "Value" : sortKey === "name" ? "Name" : sortKey === "expectedCloseAt" ? "Close date" : "Stage"}
+                <ArrowUpDown className="size-3" />{sortKey === "updatedAt" ? "Last activity" : sortKey === "amount" ? "Deal value" : sortKey === "name" ? "Deal name" : sortKey === "expectedCloseAt" ? "Close date" : "Pipeline stage"}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {([["updatedAt", "Newest"], ["amount", "Value"], ["name", "Name"], ["expectedCloseAt", "Close date"], ["stage", "Stage"]] as const).map(([k, l]) => (
+              {([["updatedAt", "Last activity"], ["amount", "Deal value"], ["name", "Deal name"], ["expectedCloseAt", "Close date"], ["stage", "Pipeline stage"]] as const).map(([k, l]) => (
                 <DropdownMenuItem key={k} onSelect={() => toggleSort(k)} className={sortKey === k ? "font-semibold" : ""}>{l}</DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -258,12 +278,14 @@ export default function DealsPage() {
       {/* ── Stats strip ── */}
       {result.data && filtered.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-1.5 text-[11px] tabular-nums text-muted-foreground">
-          <span><span className="font-semibold text-foreground">{open.length}</span> open</span>
-          <span><span className="font-semibold text-foreground">{formatCurrencyINR(openValue)}</span> pipeline</span>
-          <span><span className="font-semibold text-foreground">{formatCurrencyINR(weightedValue)}</span> weighted</span>
-          <span><span className="font-semibold text-foreground">{wonPct}%</span> won</span>
-          {slipped.length > 0 && <span className="text-warning"><span className="font-semibold">{slipped.length}</span> overdue</span>}
-          {closing.length > 0 && <span className="text-success"><span className="font-semibold">{closing.length}</span> closing this month</span>}
+          <span><span className="font-semibold text-foreground">{open.length}</span> open deals</span>
+          <span><span className="font-semibold text-foreground">{formatCurrencyINR(openValue)}</span> pipeline value</span>
+          <span><span className="font-semibold text-foreground">{formatCurrencyINR(weightedValue)}</span> weighted forecast</span>
+          <span><span className="font-semibold text-foreground">{winRate}%</span> win rate</span>
+          {avgDealSize > 0 && <span>avg <span className="font-semibold text-foreground">{formatCurrencyINR(avgDealSize)}</span></span>}
+          {slipped.length > 0 && <span className="text-warning"><span className="font-semibold">{slipped.length}</span> at risk</span>}
+          {stale.length > 0 && <span className="text-accent"><span className="font-semibold">{stale.length}</span> need follow-up</span>}
+          {closing.length > 0 && <span className="text-success"><span className="font-semibold">{closing.length}</span> in forecast</span>}
         </div>
       )}
 
@@ -390,14 +412,14 @@ export default function DealsPage() {
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                     <th className="w-8 pb-2 pr-2"><Checkbox checked={allSelected} onCheckedChange={(c) => setSelectedIds(c ? new Set(sorted.map((d) => d.id)) : new Set())} /></th>
-                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("name")}><span className="inline-flex items-center gap-1">Deal {sortIcon("name")}</span></th>
-                    {multiCrm && <th className="pb-2 pr-3">CRM</th>}
-                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("customerName")}><span className="inline-flex items-center gap-1">Customer {sortIcon("customerName")}</span></th>
-                    <th className="cursor-pointer select-none pb-2 pr-3 text-right" onClick={() => toggleSort("amount")}><span className="inline-flex items-center gap-1 justify-end">Value {sortIcon("amount")}</span></th>
-                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("stage")}><span className="inline-flex items-center gap-1">Stage {sortIcon("stage")}</span></th>
-                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("expectedCloseAt")}><span className="inline-flex items-center gap-1">Close {sortIcon("expectedCloseAt")}</span></th>
-                    <th className="pb-2 pr-3">Assignment</th>
-                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("updatedAt")}><span className="inline-flex items-center gap-1">Updated {sortIcon("updatedAt")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("name")}><span className="inline-flex items-center gap-1">Deal name {sortIcon("name")}</span></th>
+                    {multiCrm && <th className="pb-2 pr-3">Workspace</th>}
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("customerName")}><span className="inline-flex items-center gap-1">Account {sortIcon("customerName")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3 text-right" onClick={() => toggleSort("amount")}><span className="inline-flex items-center gap-1 justify-end">Deal value {sortIcon("amount")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("stage")}><span className="inline-flex items-center gap-1">Pipeline stage {sortIcon("stage")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("expectedCloseAt")}><span className="inline-flex items-center gap-1">Expected close {sortIcon("expectedCloseAt")}</span></th>
+                    <th className="pb-2 pr-3">Owner</th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("updatedAt")}><span className="inline-flex items-center gap-1">Last activity {sortIcon("updatedAt")}</span></th>
                     <th className="w-10 pb-2" />
                   </tr>
                 </thead>
