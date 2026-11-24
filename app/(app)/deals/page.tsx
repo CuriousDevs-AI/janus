@@ -164,7 +164,7 @@ export default function DealsPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Sales Pipeline"
+        title="Deal Pipeline"
         description="Track, manage and close your deals."
         actions={<>
           <Button size="sm" variant="secondary" onClick={reload} disabled={refreshing} aria-label="Refresh">
@@ -418,7 +418,7 @@ export default function DealsPage() {
                     <th className="cursor-pointer select-none pb-2 pr-3 text-right" onClick={() => toggleSort("amount")}><span className="inline-flex items-center gap-1 justify-end">Deal value {sortIcon("amount")}</span></th>
                     <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("stage")}><span className="inline-flex items-center gap-1">Pipeline stage {sortIcon("stage")}</span></th>
                     <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("expectedCloseAt")}><span className="inline-flex items-center gap-1">Expected close {sortIcon("expectedCloseAt")}</span></th>
-                    <th className="pb-2 pr-3">Owner</th>
+                    <th className="pb-2 pr-3">Assignment</th>
                     <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("updatedAt")}><span className="inline-flex items-center gap-1">Last activity {sortIcon("updatedAt")}</span></th>
                     <th className="w-10 pb-2" />
                   </tr>
