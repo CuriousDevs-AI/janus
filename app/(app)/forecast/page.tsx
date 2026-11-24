@@ -169,10 +169,12 @@ export default function ForecastPage() {
           </div>
         )}
 
+        <p className="text-xs text-muted-foreground md:hidden">Swipe the table sideways to see more columns.</p>
         <section className="rounded-lg border border-border bg-surface">
           <div className="border-b border-border px-4 py-3">
             <h3 className="text-[13px] font-semibold">Pipeline by Stage (Weighted)</h3>
           </div>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -207,6 +209,7 @@ export default function ForecastPage() {
               })()}
             </TableBody>
           </Table>
+          </div>
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
@@ -216,6 +219,7 @@ export default function ForecastPage() {
           {(reps.data ?? []).length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">No rep data for this period.</p>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -228,7 +232,7 @@ export default function ForecastPage() {
               </TableHeader>
               <TableBody>
                 {(reps.data ?? []).map((r) => (
-                  <TableRow key={r.ownerId}>
+                  <TableRow key={r.ownerId} className="hover:bg-surface-2">
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-right">{formatCurrencyINR(Number(r.target))}</TableCell>
                     <TableCell className="text-right">{formatCurrencyINR(Number(r.won))}</TableCell>
@@ -252,6 +256,7 @@ export default function ForecastPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </section>
       </div>

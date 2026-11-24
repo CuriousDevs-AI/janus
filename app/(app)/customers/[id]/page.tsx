@@ -1,7 +1,7 @@
 "use client";
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, CalendarClock, ChevronRight, CircleDollarSign, Mail, MessageSquareText, Pencil, Phone, RefreshCw, UserRound } from "lucide-react";
+import { Building2, CalendarClock, ChevronRight, CircleDollarSign, Loader2, Mail, MessageSquareText, Pencil, Phone, RefreshCw, UserRound } from "lucide-react";
 import { useApi } from "@/lib/api/use-api";
 import { CustomerAccount } from "@/components/crm/customer-account";
 import { useAllRows } from "@/lib/api/use-all-rows";
@@ -326,7 +326,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           </div>
         </>
       ) : (
-        <p role={contact.error ? "alert" : "status"} className={contact.error ? "text-sm text-danger" : "text-sm"}>{contact.error || "Loading customer…"}</p>
+        <p role={contact.error ? "alert" : "status"} className={contact.error ? "text-sm text-danger" : "text-sm"}>{contact.error || <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading customer…</span>}</p>
       )}
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent>

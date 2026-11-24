@@ -7,6 +7,7 @@ import {
   CalendarClock,
   ChevronLeft,
   List,
+  Loader2,
   Maximize2,
   Minimize2,
   Mail,
@@ -46,7 +47,7 @@ type TimelineItem = {
 
 export default function InboxPage() {
   return (
-      <Suspense fallback={<p className="p-6">Opening chats…</p>}>
+      <Suspense fallback={<div className="flex h-64 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>}>
       <Inbox />
     </Suspense>
   );
@@ -297,7 +298,7 @@ function Conversation({
             </div>
           ) : (
             <p role="status" className="text-sm">
-              {liveThread.error || "Loading customer…"}
+              {liveThread.error || <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading customer…</span>}
             </p>
           )}
         </div>

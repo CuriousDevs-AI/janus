@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Bell, Eye, Globe, LockKeyhole, Monitor, Moon, Palette, PanelLeft, Sparkles, Sun, Type, UserRound } from "lucide-react";
+import { Bell, Eye, Globe, Loader2, LockKeyhole, Monitor, Moon, Palette, PanelLeft, Sparkles, Sun, Type, UserRound } from "lucide-react";
 import { PrismColorPicker } from "@/components/shared/prism-color-picker";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
@@ -28,7 +28,7 @@ const tabDefs = [
 type Tab = (typeof tabDefs)[number]["value"];
 
 export default function AccountPage() {
-  return <React.Suspense fallback={null}><Account /></React.Suspense>;
+  return <React.Suspense fallback={<div className="flex h-64 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>}><Account /></React.Suspense>;
 }
 
 function Account() {

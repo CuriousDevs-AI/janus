@@ -132,7 +132,7 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           )}
-          {allowed && !blocked ? children : <div className="p-8 text-sm text-muted-foreground" role="status">You do not have access to this page. Taking you to your home…</div>}
+          {allowed && !blocked ? <div key={pathname} style={{ animation: "var(--animate-slide-in)" }}>{children}</div> : <div className="p-8 text-sm text-muted-foreground" role="status">You do not have access to this page. Taking you to your home…</div>}
         </main>
       </div>
       <CommandPalette />

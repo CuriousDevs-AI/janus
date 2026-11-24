@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { useWorkspace } from "@/components/layout/workspace-context";
 import { JanusIntelligence } from "@/components/business/janus-intelligence";
 import { DepartmentIntelligence } from "@/components/business/department-chat";
 
 export default function AskYourBusinessPage() {
   return (
-    <React.Suspense fallback={null}>
+    <React.Suspense fallback={<div className="flex h-64 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>}>
       <AskYourBusinessPageInner />
     </React.Suspense>
   );

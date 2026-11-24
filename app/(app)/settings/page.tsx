@@ -12,6 +12,7 @@ import {
   Bell,
   Lock,
   CreditCard,
+  Loader2,
   ScrollText,
   type LucideIcon,
 } from "lucide-react";
@@ -108,7 +109,7 @@ function AuditLogSectionLive() {
 
 export default function SettingsPage() {
   return (
-    <React.Suspense fallback={null}>
+    <React.Suspense fallback={<div className="flex h-64 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>}>
       <SettingsPageInner />
     </React.Suspense>
   );

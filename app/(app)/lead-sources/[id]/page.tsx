@@ -6,6 +6,7 @@ import { useApi } from "@/lib/api/use-api";
 import type { IngestEvent, Preset, Source } from "@/lib/api/types";
 import { ConnectionForm } from "@/components/lead-sources/connection-form";
 import { SourceTools, EventList } from "@/components/lead-sources/source-tools";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -85,7 +86,7 @@ function Detail({ id }: { id: string }) {
                   }}
                 />
               ) : (
-                <p role="status">{presets.error || "Loading settings…"}</p>
+                <p role="status">{presets.error || <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading settings…</span>}</p>
               )}
             </section>
           </div>

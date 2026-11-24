@@ -10,13 +10,14 @@ import { useApi } from "@/lib/api/use-api";
 import type { Preset, Source, SourceKind } from "@/lib/api/types";
 import { ConnectionForm } from "@/components/lead-sources/connection-form";
 import { SecretValue } from "@/components/lead-sources/secret-value";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 const comingSoon = comingSoonSources;
 
 export default function Page() {
-  return <Suspense fallback={<p className="p-6">Loading…</p>}><Setup /></Suspense>;
+  return <Suspense fallback={<div className="flex h-64 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>}><Setup /></Suspense>;
 }
 
 function Setup() {
@@ -71,7 +72,7 @@ function Setup() {
           <StepIndicator step={2} />
           <ConnectionForm kind={kind as Exclude<SourceKind, "oauth">} presets={presets.data} callsOnly={params.get("calls") === "1"} initialPreset={presets.data.find((p) => p.value === params.get("preset"))?.value} onSaved={setCreated} />
         </>
-      ) : <p role="status">{presets.error || "Loading presets…"}</p>}
+      ) : <p role="status">{presets.error || <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading presets…</span>}</p>}
     </div>
   );
 }

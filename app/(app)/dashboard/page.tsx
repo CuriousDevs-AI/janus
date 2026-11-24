@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { can } from "@/lib/permissions";
 import { TeamToday } from "@/components/crm/team-today";
 import { LostReasonsCard } from "@/components/crm/lost-reasons-card";
@@ -14,9 +15,21 @@ import { useApi } from "@/lib/api/use-api";
 import { useAllRows } from "@/lib/api/use-all-rows";
 import type { DashboardStats, DailyPoint, FunnelData, RepData, Deal, Lead, Source } from "@/lib/api/types";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
-import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
+import { formatCurrencyINR, formatDateTime, formatRelativeTime, cn } from "@/lib/utils";
 import { sourceLabel, sourceMeta, sourceChartColor } from "@/lib/lead-sources";
 import { SourceBadge } from "@/components/shared/source-badge";
+import { EmptyState } from "@/components/shared/empty-state";
+
+function relativeAgo(ts: number): string {
+  const sec = Math.round((Date.now() - ts) / 1000);
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  return `${Math.floor(min / 60)}h ago`;
+}
+
+const MIN_SPIN_MS = 400;
 
 export default function DashboardPage() {
   const session = useSession();
@@ -42,17 +55,62 @@ export default function DashboardPage() {
   const connectedSources = (sources.data ?? []).filter(
     (source) => source.status === "connected",
   );
-  const refresh = () => {
-    stats.reload();
-    daily.reload();
-    funnel.reload();
-    reps.reload();
-    leads.reload();
-    deals.reload();
-    sources.reload();
-  };
   const loading = stats.loading || leads.loading || deals.loading || sources.loading;
+  const anyError = stats.error || daily.error || leads.error || deals.error;
   const growthTrend = daily.data ? daily.data.map((d) => ({ month: d.date.slice(5), leads: d.leads, pipeline: Number(d.wonValue) })) : sixMonths(leadRows, dealRows);
+
+  // ── Refresh state ──
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<number | null>(null);
+  const spinStart = useRef(0);
+  const snapRef = useRef<DashboardStats | undefined>(undefined);
+  const pendingRef = useRef(false);
+  const [, bumpTick] = useReducer((c: number) => c + 1, 0);
+  const agoText = lastRefresh !== null ? relativeAgo(lastRefresh) : "";
+
+  useEffect(() => {
+    if (!pendingRef.current) return;
+    if (stats.data === snapRef.current && !stats.error) return;
+    pendingRef.current = false;
+    const elapsed = Date.now() - spinStart.current;
+    const remaining = Math.max(0, MIN_SPIN_MS - elapsed);
+    setTimeout(() => {
+      setRefreshing(false);
+      if (!stats.error) setLastRefresh(Date.now());
+    }, remaining);
+  }, [stats.data, stats.error]);
+
+  useEffect(() => {
+    if (lastRefresh === null) return;
+    const timer = setInterval(bumpTick, 30_000);
+    return () => clearInterval(timer);
+  }, [lastRefresh]);
+
+  const reloadStats = stats.reload;
+  const reloadDaily = daily.reload;
+  const reloadFunnel = funnel.reload;
+  const reloadReps = reps.reload;
+  const reloadLeads = leads.reload;
+  const reloadDeals = deals.reload;
+  const reloadSources = sources.reload;
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval>;
+    const start = () => { timer = setInterval(() => { if (!document.hidden) { reloadStats(); reloadDaily(); reloadFunnel(); reloadReps(); reloadLeads(); reloadDeals(); reloadSources(); } }, 60_000); };
+    const onVis = () => { clearInterval(timer); if (!document.hidden) start(); };
+    start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVis); };
+  }, [reloadStats, reloadDaily, reloadFunnel, reloadReps, reloadLeads, reloadDeals, reloadSources]);
+
+  const doRefresh = useCallback(() => {
+    if (refreshing) return;
+    snapRef.current = stats.data;
+    pendingRef.current = true;
+    setRefreshing(true);
+    spinStart.current = Date.now();
+    reloadStats(); reloadDaily(); reloadFunnel(); reloadReps(); reloadLeads(); reloadDeals(); reloadSources();
+  }, [refreshing, stats.data, reloadStats, reloadDaily, reloadFunnel, reloadReps, reloadLeads, reloadDeals, reloadSources]);
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-6 py-6">
@@ -61,26 +119,32 @@ export default function DashboardPage() {
         description={`Live CRM & Sales workspace for ${session.tenant.name}.`}
         actions={
           <div className="flex items-center gap-2">
-            
-            <Button size="sm" variant="secondary" onClick={refresh} disabled={loading}>
-              <RefreshCw className="size-3.5" />
-              Refresh
+            {lastRefresh !== null && <span className="text-xs text-muted-foreground">Updated {agoText}</span>}
+            <Button size="sm" variant="secondary" onClick={doRefresh} disabled={refreshing || loading} className="min-w-[7rem]">
+              <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+              {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
           </div>
         }
       />
 
+      {anyError && !refreshing && (
+        <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+          Some data couldn&apos;t load. <button type="button" onClick={doRefresh} className="underline hover:no-underline">Refresh</button> to try again.
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="Leads captured" value={loading ? "…" : String(stats.data?.totalLeads ?? leadRows.length)} />
-        <MetricCard label="Open deals" value={loading ? "…" : String(stats.data?.openDeals ?? openDeals.length)} />
-        <MetricCard label="Open pipeline" value={loading ? "…" : formatCurrencyINR(Number(stats.data?.pipelineValue ?? openValue))} />
-        <MetricCard label="Won this period" value={loading ? "…" : stats.data ? `${stats.data.wonDeals} · ${formatCurrencyINR(Number(stats.data.wonValue))}` : String(connectedSources.length)} />
+        <MetricCard label="Leads captured" value={loading ? "" : String(stats.data?.totalLeads ?? leadRows.length)} skeleton={loading} />
+        <MetricCard label="Open deals" value={loading ? "" : String(stats.data?.openDeals ?? openDeals.length)} skeleton={loading} />
+        <MetricCard label="Open pipeline" value={loading ? "" : formatCurrencyINR(Number(stats.data?.pipelineValue ?? openValue))} skeleton={loading} />
+        <MetricCard label="Won this period" value={loading ? "" : stats.data ? `${stats.data.wonDeals} · ${formatCurrencyINR(Number(stats.data.wonValue))}` : String(connectedSources.length)} skeleton={loading} />
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="New today" value={loading ? "…" : String(stats.data?.newLeadsToday ?? "—")} />
-        <MetricCard label="New this week" value={loading ? "…" : String(stats.data?.newLeadsWeek ?? "—")} />
-        <MetricCard label="Conversion rate" value={loading ? "…" : stats.data?.conversionRate ? `${stats.data.conversionRate}%` : "—"} />
-        <MetricCard label="Avg cycle (days)" value={loading ? "…" : stats.data?.avgCycleDays ?? "—"} />
+        <MetricCard label="New today" value={loading ? "" : String(stats.data?.newLeadsToday ?? "—")} skeleton={loading} />
+        <MetricCard label="New this week" value={loading ? "" : String(stats.data?.newLeadsWeek ?? "—")} skeleton={loading} />
+        <MetricCard label="Conversion rate" value={loading ? "" : stats.data?.conversionRate ? `${stats.data.conversionRate}%` : "—"} skeleton={loading} />
+        <MetricCard label="Avg cycle (days)" value={loading ? "" : stats.data?.avgCycleDays ?? "—"} skeleton={loading} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
@@ -95,8 +159,20 @@ export default function DashboardPage() {
             </Button>
           </div>
           {leadRows.length === 0 && (
-            <div className="min-h-[200px] px-4 py-8 text-sm text-muted-foreground">
-              {loading ? "Loading live data…" : "No leads yet. Connect a source to capture the first enquiry."}
+            <div className="flex min-h-[200px] items-center justify-center px-4 py-8">
+              {loading ? (
+                <div className="space-y-2.5 w-full px-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="h-4 w-32 animate-pulse rounded bg-surface-2" />
+                      <div className="h-4 flex-1 animate-pulse rounded bg-surface-2" />
+                      <div className="h-4 w-16 animate-pulse rounded bg-surface-2" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No leads yet. Connect a source to capture the first enquiry.</p>
+              )}
             </div>
           )}
           {leadRows.length > 0 && (
@@ -174,7 +250,7 @@ export default function DashboardPage() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          ) : <div className="mt-5 flex h-64 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">No leads or deals yet. Each month fills in as they come in.</div>}
+          ) : <div className="mt-5"><EmptyState icon={TrendingUp} title="No data yet" description="Each month fills in as leads and deals come in." /></div>}
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-5">
@@ -194,6 +270,12 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
+      {funnel.data !== undefined && funnel.data.length === 0 && !funnel.loading && (
+        <section className="rounded-lg border border-border bg-surface p-5">
+          <div className="flex items-center gap-2"><TrendingUp className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Pipeline funnel</h2></div>
+          <p className="mt-3 text-sm text-muted-foreground">No pipeline data for the last 30 days. Leads will appear here as they move through stages.</p>
+        </section>
+      )}
       {funnel.data && funnel.data.length > 0 && (
         <section className="rounded-lg border border-border bg-surface p-5">
           <div className="flex items-center gap-2"><TrendingUp className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Pipeline funnel</h2></div>

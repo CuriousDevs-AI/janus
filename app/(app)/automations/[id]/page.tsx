@@ -80,6 +80,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
   const [testOutput, setTestOutput] = React.useState<Record<string, unknown> | null>(null);
   const [reviewOpen, setReviewOpen] = React.useState(false);
   const [changeNote, setChangeNote] = React.useState("");
+  const [confirmAction, setConfirmAction] = React.useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const [draftHistory, setDraftHistory] = React.useState<WorkflowRecord[]>([]);
   const [draftFuture, setDraftFuture] = React.useState<WorkflowRecord[]>([]);
   const draftEndpointRef = React.useRef(true);
@@ -172,24 +173,36 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
     } catch (error) { toast.error("Dry-run endpoint unavailable: " + message(error)); }
   }
 
-  async function toggle() {
+  function toggle() {
     if (isNew) return;
     const next = live ? "off" : "on";
-    if (next === "on" && hasOutboundMessage(draft) && !window.confirm("This workflow can send customer messages. Turn it on?")) return;
-    try {
-      await api("/business/automations/" + id + "/" + next, { method: "POST" });
-      workflowApi.reload();
-      toast.success(next === "on" ? "Workflow turned on" : "Workflow turned off");
-    } catch {
-      try { await api("/business/automations/" + id, { method: "PATCH", body: JSON.stringify({ status: next === "on" ? "active" : "paused" }) }); workflowApi.reload(); toast.success("Workflow status updated"); }
-      catch (error) { toast.error(message(error)); }
+    const doToggle = async () => {
+      try {
+        await api("/business/automations/" + id + "/" + next, { method: "POST" });
+        workflowApi.reload();
+        toast.success(next === "on" ? "Workflow turned on" : "Workflow turned off");
+      } catch {
+        try { await api("/business/automations/" + id, { method: "PATCH", body: JSON.stringify({ status: next === "on" ? "active" : "paused" }) }); workflowApi.reload(); toast.success("Workflow status updated"); }
+        catch (error) { toast.error(message(error)); }
+      }
+    };
+    if (next === "on" && hasOutboundMessage(draft)) {
+      setConfirmAction({ title: "Turn on workflow", description: "This workflow can send customer messages. Turn it on?", onConfirm: doToggle });
+      return;
     }
+    void doToggle();
   }
 
-  async function archive() {
-    if (isNew || !window.confirm("Archive this workflow? Run history will be kept for audit.")) return;
-    try { await api("/business/automations/" + id, { method: "DELETE" }); toast.success("Workflow archived"); router.push("/automations?workspace=" + workspaceId); }
-    catch (error) { toast.error(message(error)); }
+  function archive() {
+    if (isNew) return;
+    setConfirmAction({
+      title: "Archive workflow",
+      description: "Archive this workflow? Run history will be kept for audit.",
+      onConfirm: async () => {
+        try { await api("/business/automations/" + id, { method: "DELETE" }); toast.success("Workflow archived"); router.push("/automations?workspace=" + workspaceId); }
+        catch (error) { toast.error(message(error)); }
+      },
+    });
   }
 
   async function duplicate() {
@@ -209,9 +222,14 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
     updateDraft(next); setSelectedStepId(step.id); setPanelTab("setup");
   }
   function removeStep(stepId: string) {
-    if (!window.confirm("Delete this step? Later steps that use its data may need to be reconfigured.")) return;
-    updateDraft({ ...draft, steps: draft.steps.filter((step) => step.id !== stepId) });
-    setSelectedStepId("trigger");
+    setConfirmAction({
+      title: "Delete step",
+      description: "Delete this step? Later steps that use its data may need to be reconfigured.",
+      onConfirm: () => {
+        updateDraft({ ...draft, steps: draft.steps.filter((step) => step.id !== stepId) });
+        setSelectedStepId("trigger");
+      },
+    });
   }
   function moveStep(index: number, direction: -1 | 1) {
     const target = index + direction;
@@ -233,6 +251,7 @@ export default function AutomationDetailPage({ params }: { params: Promise<{ id:
     {!editing && live && <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 border border-sky-300/70 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:mx-6"><span>This workflow is on. Changes you save apply from its next run.</span><Button size="sm" variant="secondary" onClick={enterEdit}>Edit workflow</Button></div>}
     <div role="tablist" aria-label="Workflow sections" className="janus-tab-strip sticky top-0 z-20 mx-5 mt-4 flex gap-1 overflow-x-auto bg-[#f5f3ee] p-1 sm:mx-6">{pageTabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => selectTab(key)} className={"shrink-0 px-3 py-2 text-xs " + (tab === key ? "bg-white font-medium shadow-sm" : "text-muted-foreground hover:bg-white/70")}>{label}</button>)}</div>
     <div className="px-5 py-5 sm:px-6">{tab === "editor" && <EditorSurface editing={editing} workflow={draft} selectedStepId={selectedStepId} selectedStep={selectedStep} panelTab={panelTab} setPanelTab={setPanelTab} catalog={catalog} catalogError={catalogApi.error} onSelect={setSelectedStepId} onAdd={addStep} onRemove={removeStep} onMove={moveStep} onUpdate={updateStep} onTrigger={(trigger) => updateDraft({ ...draft, trigger })} onTest={testWorkflow} testOutput={testOutput} saveState={saveState} />}{tab === "runs" && <RunsTab api={runsApi} />}{tab === "settings" && <SettingsTab workflow={draft} onArchive={() => void archive()} onChange={updateDraft} onSave={() => void saveDraft()} />}</div>
+    <Dialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}><DialogContent><DialogHeader><DialogTitle>{confirmAction?.title}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">{confirmAction?.description}</p><DialogFooter><Button variant="secondary" onClick={() => setConfirmAction(null)}>Cancel</Button><Button onClick={() => { confirmAction?.onConfirm(); setConfirmAction(null); }}>Confirm</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={reviewOpen} onOpenChange={setReviewOpen}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Review and publish</DialogTitle><DialogDescription>Review the draft before it becomes the live version. Existing enrollments keep running the current version until you publish.</DialogDescription></DialogHeader><div className="grid gap-3 text-sm"><div className="flex items-start gap-2 border border-border bg-surface-2 p-3"><Check className="mt-0.5 size-4 text-success" /><span>{draft.steps.length} workflow step{draft.steps.length === 1 ? "" : "s"} configured</span></div>{!draft.trigger.type && <div className="flex items-start gap-2 border border-danger/30 bg-danger/5 p-3 text-danger"><AlertTriangle className="mt-0.5 size-4" /><span>Add a trigger before publishing.</span></div>}{!draft.goal && <div className="flex items-start gap-2 border border-amber-300/70 bg-amber-50 p-3 text-amber-900"><AlertTriangle className="mt-0.5 size-4" /><span>No goal or exit condition is configured. Long-running workflows may need a stop rule.</span></div>}<Field label="Change note" id="workflow-change-note"><Input id="workflow-change-note" value={changeNote} onChange={(event) => setChangeNote(event.target.value)} placeholder="What changed in this version?" /></Field><p className="text-xs text-muted-foreground">Enrollment preview is unavailable until the preview endpoint is connected.</p></div><DialogFooter><Button variant="secondary" onClick={() => setReviewOpen(false)}>Keep editing</Button><Button onClick={publish} disabled={!draft.trigger.type || !draft.steps.length}>Publish version</Button></DialogFooter></DialogContent></Dialog><WorkspaceCopyDialog open={copyOpen} onOpenChange={setCopyOpen} itemName={draft.name} itemKind="workflow" onCopied={(target) => { const label = workspaceCopyOptions.find(([key]) => key === target)?.[1] ?? target; toast.success(`${draft.name} copied to ${label} as a draft`); }} />
   </div>;
 }
@@ -383,7 +402,7 @@ function SettingsTab({ workflow, onChange, onSave, onArchive }: { workflow: Work
       <label className="flex items-start gap-2 text-sm"><Checkbox checked={workflow.requiresApproval === true} onCheckedChange={(value) => onChange({ ...workflow, requiresApproval: value === true })} /><span>Ask for approval before each run<span className="block text-xs text-muted-foreground">Each run waits on the Workflows page until someone approves it. Leave it off for alerts that should go out at once.</span></span></label>
       <Button size="sm" className="w-fit" onClick={onSave}><Save className="size-3.5" />Save settings</Button>
     </div></section>
-    <section className="border border-border bg-surface p-5"><h2 className="text-sm font-semibold">Archive</h2><p className="mt-2 text-xs text-muted-foreground">An archived workflow stops running and leaves the list. Its run history is kept.</p><Button size="sm" variant="secondary" className="mt-3" onClick={() => { if (window.confirm(`Archive "${workflow.name}"? It stops running.`)) onArchive(); }}>Archive workflow</Button></section>
+    <section className="border border-border bg-surface p-5"><h2 className="text-sm font-semibold">Archive</h2><p className="mt-2 text-xs text-muted-foreground">An archived workflow stops running and leaves the list. Its run history is kept.</p><Button size="sm" variant="secondary" className="mt-3" onClick={onArchive}>Archive workflow</Button></section>
   </div>;
 }
 

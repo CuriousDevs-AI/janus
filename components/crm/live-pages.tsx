@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Megaphone } from "lucide-react";
+import { ArrowRight, Loader2, Megaphone } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { useApi } from "@/lib/api/use-api";
 import { useSession } from "@/components/auth/session-provider";
@@ -67,7 +67,7 @@ export function LiveNotifications() {
       </section>}
       <section className="rounded-lg border border-border bg-surface p-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold"><Megaphone className="size-4 text-accent" aria-hidden />Team announcements</h2>
-        {news.loading ? <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        {news.loading ? <p className="mt-2 inline-flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading…</p>
           : news.error ? <p role="alert" className="mt-2 text-sm text-danger">{news.error}</p>
           : !(news.data ?? []).length ? <p className="mt-2 text-sm text-muted-foreground">No announcements yet. They are posted in Team Chat&apos;s announcements channel.</p>
           : <ul className="mt-2 divide-y divide-border">{news.data!.map((item) => <li key={item.id} className="py-2.5 text-sm"><p className="font-medium">{item.title || item.body.slice(0, 80)}</p>{item.title && <p className="mt-0.5 text-muted-foreground">{item.body}</p>}<p className="mt-1 text-xs text-muted-foreground">{item.author.name} · {when(item.createdAt)}</p></li>)}</ul>}

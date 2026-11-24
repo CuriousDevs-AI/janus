@@ -75,6 +75,7 @@ function BusinessAutomationCenter() {
   const [saving, setSaving] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [copyWorkflow, setCopyWorkflow] = React.useState<BusinessWorkflow | null>(null);
+  const [confirmAction, setConfirmAction] = React.useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
 
   // Runs, failures and approvals come from the workflows' recent runs.
   const stats = React.useMemo(() => runStats(runs.data ?? []), [runs.data]);
@@ -93,13 +94,18 @@ function BusinessAutomationCenter() {
       setFolderOpen(false); setNewFolderName(""); folders.reload(); toast.success("Folder created");
     } catch (error) { toast.error(message(error)); }
   };
-  const deleteFolder = async (item: BusinessFolder) => {
-    if (!window.confirm(`Delete the folder "${item.name}"? Its workflows stay, without a folder.`)) return;
-    try {
-      await api(`/business/automation-folders/${item.id}`, { method: "DELETE" });
-      if (folder === item.id) setFolder("all");
-      folders.reload(); workflows.reload(); toast.success("Folder deleted");
-    } catch (error) { toast.error(message(error)); }
+  const deleteFolder = (item: BusinessFolder) => {
+    setConfirmAction({
+      title: "Delete folder",
+      description: `Delete the folder "${item.name}"? Its workflows stay, without a folder.`,
+      onConfirm: async () => {
+        try {
+          await api(`/business/automation-folders/${item.id}`, { method: "DELETE" });
+          if (folder === item.id) setFolder("all");
+          folders.reload(); workflows.reload(); toast.success("Folder deleted");
+        } catch (error) { toast.error(message(error)); }
+      },
+    });
   };
   const moveToFolder = async (item: BusinessWorkflow, folderId: string | null) => {
     try {
@@ -115,21 +121,31 @@ function BusinessAutomationCenter() {
   }).sort((left, right) => sort === "name" ? left.name.localeCompare(right.name) : sort === "runs" ? (right.runs7d ?? -1) - (left.runs7d ?? -1) : Date.parse(String(right.updatedAt ?? "")) - Date.parse(String(left.updatedAt ?? "")));
 
   const toggleAll = () => setSelected(selected.length === visible.length ? [] : visible.map((item) => item.id));
-  const updateStatus = async (item: BusinessWorkflow, next: "on" | "off") => {
-    if (next === "on" && hasOutboundMessage(item) && !window.confirm("This workflow can send customer messages. Turn it on?")) return;
-    try {
-      await api("/business/automations/" + item.id + "/" + next, { method: "POST" });
-      toast.success(next === "on" ? "Workflow turned on" : "Workflow turned off");
-      workflows.reload();
-    } catch (error) {
-      // A workflow that starts on its own is not switched on until it would run: say why.
-      toast.error(message(error));
+  const updateStatus = (item: BusinessWorkflow, next: "on" | "off") => {
+    const doToggle = async () => {
+      try {
+        await api("/business/automations/" + item.id + "/" + next, { method: "POST" });
+        toast.success(next === "on" ? "Workflow turned on" : "Workflow turned off");
+        workflows.reload();
+      } catch (error) {
+        toast.error(message(error));
+      }
+    };
+    if (next === "on" && hasOutboundMessage(item)) {
+      setConfirmAction({ title: "Turn on workflow", description: "This workflow can send customer messages. Turn it on?", onConfirm: doToggle });
+      return;
     }
+    void doToggle();
   };
-  const archive = async (item: BusinessWorkflow) => {
-    if (!window.confirm("Archive this workflow? Run history will be kept for audit.")) return;
-    try { await api("/business/automations/" + item.id, { method: "DELETE" }); toast.success("Workflow archived"); setSelected((items) => items.filter((id) => id !== item.id)); workflows.reload(); }
-    catch (error) { toast.error(message(error)); }
+  const archive = (item: BusinessWorkflow) => {
+    setConfirmAction({
+      title: "Archive workflow",
+      description: "Archive this workflow? Run history will be kept for audit.",
+      onConfirm: async () => {
+        try { await api("/business/automations/" + item.id, { method: "DELETE" }); toast.success("Workflow archived"); setSelected((items) => items.filter((id) => id !== item.id)); workflows.reload(); }
+        catch (error) { toast.error(message(error)); }
+      },
+    });
   };
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -148,15 +164,23 @@ function BusinessAutomationCenter() {
       setTemplatesOpen(false); toast.success("Workflow created from template"); router.push("/automations/" + created.id + "?workspace=" + workspaceId + "&mode=edit");
     } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   };
-  const bulk = async (action: "on" | "off" | "archive") => {
+  const bulk = (action: "on" | "off" | "archive") => {
     const rows = data.filter((item) => selected.includes(item.id));
     if (!rows.length) return;
-    if (action === "archive" && !window.confirm("Archive the selected workflows?")) return;
-    for (const item of rows) {
-      if (action === "archive") await archive(item);
-      else await updateStatus(item, action);
+    const doBulk = async () => {
+      for (const item of rows) {
+        if (action === "archive") {
+          try { await api("/business/automations/" + item.id, { method: "DELETE" }); toast.success("Workflow archived"); }
+          catch (error) { toast.error(message(error)); }
+        } else await updateStatus(item, action);
+      }
+      setSelected([]); workflows.reload();
+    };
+    if (action === "archive") {
+      setConfirmAction({ title: "Archive workflows", description: "Archive the selected workflows?", onConfirm: doBulk });
+      return;
     }
-    setSelected([]); workflows.reload();
+    void doBulk();
   };
   const copyLabel = (target: WorkspaceCopyTarget) => workspaceCopyOptions.find(([key]) => key === target)?.[1] ?? target;
 
@@ -201,7 +225,7 @@ function BusinessAutomationCenter() {
     </div>
     <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) setCreateError(null); }}><DialogContent><DialogHeader><DialogTitle>Create workflow</DialogTitle><DialogDescription>Business workflows can trigger and act across connected modules. Workspace selection is not used.</DialogDescription></DialogHeader><form onSubmit={create} className="grid gap-4"><div><Label htmlFor="business-workflow-name">Name</Label><Input id="business-workflow-name" value={newName} onChange={(event) => setNewName(event.target.value)} className="mt-1" required /></div><div><Label htmlFor="business-workflow-description">Description</Label><Textarea id="business-workflow-description" value={newDescription} onChange={(event) => setNewDescription(event.target.value)} className="mt-1" /></div>{folderRows.length > 0 && <div><Label htmlFor="business-workflow-folder">Folder</Label><select id="business-workflow-folder" value={newFolderId} onChange={(event) => setNewFolderId(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-surface-2 px-2 text-sm"><option value="">No folder</option>{folderRows.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>}{createError && <p role="alert" className="border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">Could not create workflow: {createError}</p>}<p className="text-xs text-muted-foreground">The workflow opens in the full editor with an empty trigger card.</p><DialogFooter><Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Creating…" : "Create workflow"}</Button></DialogFooter></form></DialogContent></Dialog>
     <Dialog open={folderOpen} onOpenChange={setFolderOpen}><DialogContent><DialogHeader><DialogTitle>New folder</DialogTitle><DialogDescription>File workflows by team or purpose. Deleting a folder keeps its workflows.</DialogDescription></DialogHeader><form onSubmit={createFolder} className="grid gap-4"><div><Label htmlFor="workflow-folder-name">Name</Label><Input id="workflow-folder-name" value={newFolderName} maxLength={80} onChange={(event) => setNewFolderName(event.target.value)} className="mt-1" required /></div><DialogFooter><Button type="button" variant="ghost" onClick={() => setFolderOpen(false)}>Cancel</Button><Button type="submit" disabled={!newFolderName.trim()}>Create folder</Button></DialogFooter></form></DialogContent></Dialog>
-    <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}><DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>Workflow templates</DialogTitle><DialogDescription>Ready-made workflows that run as they are. Pick where each posts or adds tasks.</DialogDescription></DialogHeader><Input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="Search templates…" />{templateRows.length ? <StarterCards starters={templateRows.filter((item) => !templateSearch || (item.name + item.description).toLowerCase().includes(templateSearch.toLowerCase()))} onPick={(item) => { setTemplatesOpen(false); setStarter(item); }} /> : !templateRows.length ? <EmptyState icon={Folder} title="No templates yet" description="Create a workflow from scratch to get started." /> : <div className="grid gap-3 sm:grid-cols-2">{templateRows.filter((item) => !templateSearch || (item.name + item.description).toLowerCase().includes(templateSearch.toLowerCase())).map((item) => <article key={item.id} className="border border-border bg-surface p-4"><h3 className="text-sm font-semibold">{item.name}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p><p className="mt-3 text-xs text-muted-foreground">Trigger: {triggerText(item.trigger ?? {})} · {item.modules?.map(moduleLabel).join(", ") || "Core modules"}</p><Button size="sm" className="mt-4" onClick={() => createFromTemplate(item)} disabled={saving}>Use template</Button></article>)}</div>}</DialogContent></Dialog>{starter && <StarterSetup starter={starter} onClose={() => setStarter(null)} onDone={() => { setStarter(null); workflows.reload(); runs.reload(); }} />}<WorkspaceCopyDialog open={Boolean(copyWorkflow)} onOpenChange={(open) => !open && setCopyWorkflow(null)} itemName={copyWorkflow?.name ?? "Workflow"} itemKind="workflow" onCopied={(target) => { if (!copyWorkflow) return; const label = copyLabel(target); toast.info(`${copyWorkflow.name} is ready to copy to ${label}; the workspace copy endpoint is not connected yet.`); }} />
+    <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}><DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>Workflow templates</DialogTitle><DialogDescription>Ready-made workflows that run as they are. Pick where each posts or adds tasks.</DialogDescription></DialogHeader><Input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="Search templates…" />{templateRows.length ? <StarterCards starters={templateRows.filter((item) => !templateSearch || (item.name + item.description).toLowerCase().includes(templateSearch.toLowerCase()))} onPick={(item) => { setTemplatesOpen(false); setStarter(item); }} /> : !templateRows.length ? <EmptyState icon={Folder} title="No templates yet" description="Create a workflow from scratch to get started." /> : <div className="grid gap-3 sm:grid-cols-2">{templateRows.filter((item) => !templateSearch || (item.name + item.description).toLowerCase().includes(templateSearch.toLowerCase())).map((item) => <article key={item.id} className="border border-border bg-surface p-4"><h3 className="text-sm font-semibold">{item.name}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p><p className="mt-3 text-xs text-muted-foreground">Trigger: {triggerText(item.trigger ?? {})} · {item.modules?.map(moduleLabel).join(", ") || "Core modules"}</p><Button size="sm" className="mt-4" onClick={() => createFromTemplate(item)} disabled={saving}>Use template</Button></article>)}</div>}</DialogContent></Dialog><Dialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}><DialogContent><DialogHeader><DialogTitle>{confirmAction?.title}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">{confirmAction?.description}</p><DialogFooter><Button variant="secondary" onClick={() => setConfirmAction(null)}>Cancel</Button><Button onClick={() => { confirmAction?.onConfirm(); setConfirmAction(null); }}>Confirm</Button></DialogFooter></DialogContent></Dialog>{starter && <StarterSetup starter={starter} onClose={() => setStarter(null)} onDone={() => { setStarter(null); workflows.reload(); runs.reload(); }} />}<WorkspaceCopyDialog open={Boolean(copyWorkflow)} onOpenChange={(open) => !open && setCopyWorkflow(null)} itemName={copyWorkflow?.name ?? "Workflow"} itemKind="workflow" onCopied={(target) => { if (!copyWorkflow) return; const label = copyLabel(target); toast.info(`${copyWorkflow.name} is ready to copy to ${label}; the workspace copy endpoint is not connected yet.`); }} />
   </AiPageShell>;
 }
 

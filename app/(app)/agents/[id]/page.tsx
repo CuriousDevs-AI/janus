@@ -9,6 +9,7 @@ import { ArrowLeft, Check, Copy, Download, FlaskConical, Lock, MoreHorizontal, P
 import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,14 +41,21 @@ function AgentDetail({ params }: { params: Promise<{ id: string }> }) {
   const [menu, setMenu] = React.useState(false);
   const [copyOpen, setCopyOpen] = React.useState(false);
   const [testOutput, setTestOutput] = React.useState<Record<string, unknown> | null>(null);
+  const [confirmAction, setConfirmAction] = React.useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const agent = useApi<Agent>(`/business/agents/${id}`);
   const item = agent.data;
 
   function selectTab(value: Tab) { router.replace(`/agents/${id}?workspace=${workspaceId}&tab=${value}`); }
-  async function archive() {
-    if (!item || !window.confirm(`Archive "${item.name}"? Run history will be retained.`)) return;
-    try { await api(`/business/agents/${id}`, { method: "DELETE" }); toast.success("Agent archived"); router.push("/agents?workspace=${workspaceId}&tab=agents"); }
-    catch (error) { toast.error(message(error)); }
+  function archive() {
+    if (!item) return;
+    setConfirmAction({
+      title: "Archive agent",
+      description: `Archive "${item.name}"? Run history will be retained.`,
+      onConfirm: async () => {
+        try { await api(`/business/agents/${id}`, { method: "DELETE" }); toast.success("Agent archived"); router.push("/agents?workspace=${workspaceId}&tab=agents"); }
+        catch (error) { toast.error(message(error)); }
+      },
+    });
   }
 
   async function testRun() {
@@ -93,7 +101,7 @@ function AgentDetail({ params }: { params: Promise<{ id: string }> }) {
     </div>
     {item.status === "needs_attention" && <div className="mx-6 mt-4 flex items-center gap-2 border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-800"><ShieldAlert className="size-4" />Configuration needs attention. Fix the flagged field before activating this agent.</div>}
     <div role="tablist" aria-label="Agent details" className="mx-6 mt-5 flex gap-1 overflow-x-auto bg-[#f5f3ee] p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{tabLabels.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => selectTab(key)} className={`shrink-0 px-3 py-2 text-xs ${tab === key ? "bg-white font-medium shadow-sm" : "text-muted-foreground hover:bg-white/70"}`}>{label}</button>)}</div>
-    <div className="px-6 py-5">{testOutput && <div role="status" className="mb-4 rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent"><div className="flex items-center justify-between gap-3"><span>Dry run passed. No side effects were performed.</span><button type="button" className="text-xs underline" onClick={() => setTestOutput(null)}>Dismiss</button></div><pre className="mt-2 max-h-40 overflow-auto text-[11px]">{JSON.stringify(testOutput, null, 2)}</pre></div>}{tab === "overview" && <AgentOverview agent={item} />}{tab === "job" && <AgentJob config={config} />}{tab === "triggers" && <AgentTriggers config={config} />}{tab === "permissions" && <AgentPermissions config={config} />}{tab === "activity" && <Unavailable title="Activity is ready for run records" text="The agent runs endpoint is not connected yet. This section will show time, trigger, records, result, actions and duration when it is available." action="Activity endpoint missing" />}{tab === "approvals" && <Unavailable title="No agent approval records returned" text="The agent approvals endpoint is not connected yet. Pending decisions will appear here with their previews and approval controls." action="Approvals endpoint missing" />}{tab === "settings" && <AgentSettings agent={item} onNotice={(text) => toast.info(text)} />}{tab === "versions" && <Unavailable title="Version history is not connected" text="Every save will appear here once the agent versions endpoint is available, including compare and restore controls." action="Versions endpoint missing" />}</div><WorkspaceCopyDialog open={copyOpen} onOpenChange={setCopyOpen} itemName={item.name} itemKind="agent" currentWorkspace={item.department} onCopied={(target) => { const label = workspaceCopyOptions.find(([key]) => key === target)?.[1] ?? target; toast.success(`${item.name} copied to ${label} as a draft`); }} />
+    <div className="px-6 py-5">{testOutput && <div role="status" className="mb-4 rounded-lg border border-accent-border bg-accent-muted px-4 py-3 text-sm text-accent"><div className="flex items-center justify-between gap-3"><span>Dry run passed. No side effects were performed.</span><button type="button" className="text-xs underline" onClick={() => setTestOutput(null)}>Dismiss</button></div><pre className="mt-2 max-h-40 overflow-auto text-[11px]">{JSON.stringify(testOutput, null, 2)}</pre></div>}{tab === "overview" && <AgentOverview agent={item} />}{tab === "job" && <AgentJob config={config} />}{tab === "triggers" && <AgentTriggers config={config} />}{tab === "permissions" && <AgentPermissions config={config} />}{tab === "activity" && <Unavailable title="Activity is ready for run records" text="The agent runs endpoint is not connected yet. This section will show time, trigger, records, result, actions and duration when it is available." action="Activity endpoint missing" />}{tab === "approvals" && <Unavailable title="No agent approval records returned" text="The agent approvals endpoint is not connected yet. Pending decisions will appear here with their previews and approval controls." action="Approvals endpoint missing" />}{tab === "settings" && <AgentSettings agent={item} onNotice={(text) => toast.info(text)} />}{tab === "versions" && <Unavailable title="Version history is not connected" text="Every save will appear here once the agent versions endpoint is available, including compare and restore controls." action="Versions endpoint missing" />}</div><Dialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}><DialogContent><DialogHeader><DialogTitle>{confirmAction?.title}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">{confirmAction?.description}</p><DialogFooter><Button variant="secondary" onClick={() => setConfirmAction(null)}>Cancel</Button><Button onClick={() => { confirmAction?.onConfirm(); setConfirmAction(null); }}>Confirm</Button></DialogFooter></DialogContent></Dialog><WorkspaceCopyDialog open={copyOpen} onOpenChange={setCopyOpen} itemName={item.name} itemKind="agent" currentWorkspace={item.department} onCopied={(target) => { const label = workspaceCopyOptions.find(([key]) => key === target)?.[1] ?? target; toast.success(`${item.name} copied to ${label} as a draft`); }} />
   </div>;
 }
 

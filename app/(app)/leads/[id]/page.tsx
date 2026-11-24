@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileText,
   IndianRupee,
+  Loader2,
   Mail,
   MessageCircle,
   MessageSquareText,
@@ -217,7 +218,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           Leads
         </Link>
         <p role="status" className="mt-8 text-sm">
-          {lead.error || "Loading lead…"}
+          {lead.error || <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading lead…</span>}
         </p>
       </div>
     );
