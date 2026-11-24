@@ -355,7 +355,7 @@ export default function DealsPage() {
                     {/* Cards */}
                     <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2", colBg)}>
                       {items.map((deal) => (
-                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} sessionAvatarUrl={session.user.avatar_url} stageColor={stage.color} stages={stages} onEdit={() => setEditing(deal)} onMove={(s) => move(deal, s)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} />
+                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} stageColor={stage.color} stages={stages} onEdit={() => setEditing(deal)} onMove={(s) => move(deal, s)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} />
                       ))}
                       {items.length === 0 && (
                         <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
@@ -674,16 +674,15 @@ function StageSettingsDialog({ open, onOpenChange, pipeline, allDeals }: {
 const AVATAR_COLORS = ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-rose-500", "bg-violet-500", "bg-cyan-500", "bg-orange-500", "bg-teal-500"];
 const avatarColor = (name: string) => AVATAR_COLORS[Math.abs([...name].reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)) % AVATAR_COLORS.length];
 
-function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, sessionAvatarUrl, stageColor, stages, onEdit, onMove, onDragStart, onDragEnd }: {
+function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, stageColor, stages, onEdit, onMove, onDragStart, onDragEnd }: {
   deal: Deal; writable: boolean; busy: boolean; today: string;
-  sessionUserId: string; sessionUserName: string; sessionAvatarUrl?: string | null; stageColor: string;
+  sessionUserId: string; sessionUserName: string; stageColor: string;
   stages: PipelineStage[];
   onEdit: () => void; onMove: (stage: string) => void;
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const overdue = deal.expectedCloseAt && deal.expectedCloseAt < today && !["won", "lost"].includes(deal.stage);
   const ownerDisplay = deal.ownerId === sessionUserId ? sessionUserName : deal.ownerName || "Unassigned";
-  const isMe = deal.ownerId === sessionUserId;
   const customerDisplay = deal.company || deal.customerName || "";
 
   return (
@@ -734,7 +733,7 @@ function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName,
 
       <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
         <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-muted-foreground">
-          <OwnerAvatar name={ownerDisplay} avatarUrl={isMe ? sessionAvatarUrl : null} />
+          <OwnerAvatar name={ownerDisplay} />
           <span className="truncate">{ownerDisplay}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -754,10 +753,7 @@ function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName,
   );
 }
 
-function OwnerAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
-  if (avatarUrl) {
-    return <img src={avatarUrl} alt="" className="size-5 shrink-0 object-cover" />;
-  }
+function OwnerAvatar({ name }: { name: string }) {
   const initial = name.charAt(0).toUpperCase();
   return (
     <span className={cn("flex size-5 shrink-0 items-center justify-center text-[9px] font-semibold text-white", avatarColor(name))}>

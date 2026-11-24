@@ -53,12 +53,10 @@ export function LeadsBoard({
   leads,
   onStageChanged,
   onLeadClick,
-  sessionAvatarUrl,
 }: {
   leads: Lead[];
   onStageChanged: () => void;
   onLeadClick?: (lead: Lead) => void;
-  sessionAvatarUrl?: string | null;
 }) {
   const session = useSession();
   const canWrite = can(session, "leads:write");
@@ -138,7 +136,8 @@ export function LeadsBoard({
                     onClick={() => onLeadClick?.(lead)}
                     sessionUserId={session.user.id}
                     sessionUserName={session.user.name}
-                    sessionAvatarUrl={sessionAvatarUrl}
+
+
                   />
                 ))}
                 {items.length === 0 && (
@@ -165,7 +164,6 @@ function LeadCard({
   onClick,
   sessionUserId,
   sessionUserName,
-  sessionAvatarUrl,
 }: {
   lead: Lead;
   canDrag: boolean;
@@ -175,12 +173,10 @@ function LeadCard({
   onClick?: () => void;
   sessionUserId: string;
   sessionUserName: string;
-  sessionAvatarUrl?: string | null;
 }) {
   const name = lead.contactName?.trim() || lead.phone || lead.email || `Lead #${lead.id}`;
   const due = isDue(lead.nextFollowUpOn);
   const ownerName = lead.ownerId === sessionUserId ? sessionUserName : lead.ownerName || "Unassigned";
-  const isMe = lead.ownerId === sessionUserId;
 
   return (
     <article
@@ -240,7 +236,7 @@ function LeadCard({
 
       <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
         <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-muted-foreground">
-          <OwnerAvatar name={ownerName} avatarUrl={isMe ? sessionAvatarUrl : null} />
+          <OwnerAvatar name={ownerName} />
           <span className="truncate">{ownerName}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -260,10 +256,7 @@ function LeadCard({
   );
 }
 
-function OwnerAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
-  if (avatarUrl) {
-    return <img src={avatarUrl} alt="" className="size-5 shrink-0 object-cover" />;
-  }
+function OwnerAvatar({ name }: { name: string }) {
   const initial = name.charAt(0).toUpperCase();
   return (
     <span className={cn("flex size-5 shrink-0 items-center justify-center text-[9px] font-semibold text-white", avatarColor(name))}>

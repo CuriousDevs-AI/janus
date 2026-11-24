@@ -655,7 +655,7 @@ export default function LeadsPage() {
       ) : view === "quality" ? (
         <LeadQualityAnalysis rows={rows} />
       ) : view === "board" ? (
-        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => setDrawerLead(lead)} sessionAvatarUrl={session.user.avatar_url} />
+        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => setDrawerLead(lead)} />
       ) : (
         <>
         <div className="isolate overflow-x-auto">
