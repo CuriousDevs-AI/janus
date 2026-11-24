@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { can } from "@/lib/permissions";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ArrowRight, ArrowUpRight, Bell, BellOff, Check, Clock, Lock,
   MessageSquare, Plus, RefreshCw, Send, Settings2, Sparkles, Zap,
@@ -16,11 +16,33 @@ import { Badge } from "@/components/ui/badge";
 import { formatDateTime, cn } from "@/lib/utils";
 import { sourceMeta } from "@/lib/lead-sources";
 
-function UpcomingChannelCard({ name, description, Icon }: { name: string; description: string; Icon: React.ComponentType<{ className?: string }> }) {
-  const [notifyMe, setNotifyMe] = useState(false);
+function readFlag(key: string): boolean {
+  try { return localStorage.getItem(key) === "1"; } catch { return false; }
+}
+function writeFlag(key: string, on: boolean) {
+  try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch {}
+}
+
+function UpcomingChannelCard({ name, description, Icon, userId }: { name: string; description: string; Icon: React.ComponentType<{ className?: string }>; userId: string }) {
+  const slug = name.toLowerCase().replace(/\s+/g, "-");
+  const notifyKey = `janus:notify:${userId}:${slug}`;
+  const requestKey = `janus:requested:${userId}:${slug}`;
+
+  const [notifyMe, setNotifyMe] = useState(() => readFlag(notifyKey));
   const [showChat, setShowChat] = useState(false);
   const [msg, setMsg] = useState("");
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState(() => readFlag(requestKey));
+
+  const toggleNotify = useCallback(() => {
+    const next = !notifyMe;
+    setNotifyMe(next);
+    writeFlag(notifyKey, next);
+  }, [notifyMe, notifyKey]);
+
+  const submitRequest = useCallback(() => {
+    setSent(true);
+    writeFlag(requestKey, true);
+  }, [requestKey]);
 
   return (
     <div className="group relative flex flex-col gap-3 rounded-md border border-dashed border-border/70 bg-surface-2/20 p-4 transition-colors hover:border-border hover:bg-surface-2/40">
@@ -40,7 +62,7 @@ function UpcomingChannelCard({ name, description, Icon }: { name: string; descri
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => setNotifyMe(!notifyMe)}
+          onClick={toggleNotify}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors",
             notifyMe
@@ -75,12 +97,12 @@ function UpcomingChannelCard({ name, description, Icon }: { name: string; descri
               onChange={(e) => setMsg(e.target.value)}
               placeholder={`e.g. "Need ${name} to auto-import enquiries daily"`}
               className="flex-1 rounded-md border border-border/50 bg-surface-2/50 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none"
-              onKeyDown={(e) => { if (e.key === "Enter" && msg.trim()) setSent(true); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && msg.trim()) submitRequest(); }}
             />
             <button
               type="button"
               disabled={!msg.trim()}
-              onClick={() => setSent(true)}
+              onClick={submitRequest}
               className="flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-[11px] font-medium text-white transition-opacity disabled:opacity-40"
             >
               <Send className="size-3" /> Send
@@ -297,7 +319,7 @@ export default function LeadSourcesPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {comingSoonSources.map(([name, description, Icon]) => (
-              <UpcomingChannelCard key={name} name={name} description={description} Icon={Icon} />
+              <UpcomingChannelCard key={name} name={name} description={description} Icon={Icon} userId={session.user.id} />
             ))}
           </div>
         </section>
