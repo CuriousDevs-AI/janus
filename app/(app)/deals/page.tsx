@@ -3,9 +3,9 @@
 import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  RefreshCw, Building2, Loader2,
+  RefreshCw, Building2, Loader2, Search, CalendarClock, Zap,
   LayoutGrid, List, Settings2, ArrowUpDown, ArrowUp, ArrowDown,
-  Eye, MoreHorizontal, Pencil, X,
+  Eye, MoreHorizontal, Pencil, X, SlidersHorizontal,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -149,11 +149,17 @@ export default function DealsPage() {
 
   const stageMeta = (key: string) => stageMap.get(key) ?? { key, label: key, color: "bg-slate-500", probability: 0 };
 
+  const myDeals = allDeals.filter((d) => d.ownerId === session.user.id);
+  const wonCount = allDeals.filter((d) => d.stage === "won").length;
+  const wonPct = allDeals.length ? Math.round((wonCount / allDeals.length) * 100) : 0;
+  const filtersActive = query !== "" || stageFilter !== "all" || closeFilter !== "all" || crmFilter !== "all";
+  const clearFilters = () => { setQuery(""); setStageFilter("all"); setCloseFilter("all"); setCrmFilter("all"); };
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Deal Pipeline"
-        description={result.data ? `${filtered.length} deal${filtered.length === 1 ? "" : "s"} · ${formatCurrencyINR(openValue)} open · ${formatCurrencyINR(weightedValue)} weighted` : "Your sales pipeline"}
+        description="Your sales pipeline at a glance."
         actions={<>
           <Button size="sm" variant="secondary" onClick={reload} disabled={refreshing} aria-label="Refresh">
             {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
@@ -164,96 +170,18 @@ export default function DealsPage() {
 
       {result.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{result.error}</p>}
 
-      {/* Pipeline bar + quick filters */}
-      <div className="px-6 pb-2">
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2">
-          {pipelineStages.map((stage) => {
-            const stageVal = filtered.filter((d) => d.stage === stage.key).reduce((a, d) => a + Number(d.amount), 0);
-            const pct = (stageVal / pipelineTotal) * 100;
-            if (pct < 0.5) return null;
-            return (
-              <button
-                key={stage.key}
-                type="button"
-                onClick={() => setStageFilter(stageFilter === stage.key ? "all" : stage.key)}
-                className={cn("h-full transition-all hover:brightness-110", barColor(stage.color), stageFilter === stage.key && "ring-1 ring-foreground/20")}
-                style={{ width: `${pct}%` }}
-                title={`${stage.label}: ${formatCurrencyINR(stageVal)} (${filtered.filter((d) => d.stage === stage.key).length})`}
-              />
-            );
-          })}
+      {/* ── Toolbar (matches leads) ── */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-border px-6 pb-2.5">
+        <div className="relative mr-2 w-full sm:w-52">
+          <Search className="pointer-events-none absolute left-0 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search deals..." className="h-7 w-full border-0 bg-transparent pl-5 pr-6 text-[13px] text-foreground placeholder:text-muted-foreground/60 outline-none" />
+          {query && <button type="button" onClick={() => setQuery("")} className="absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="size-3" /></button>}
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-          {pipelineStages.map((stage) => {
-            const count = filtered.filter((d) => d.stage === stage.key).length;
-            const active = stageFilter === stage.key;
-            return (
-              <button key={stage.key} type="button" onClick={() => setStageFilter(active ? "all" : stage.key)} className={cn("flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[10px] transition-all", active ? "bg-surface-2 font-bold text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-surface-2/50")}>
-                <span className={cn("size-2 rounded-full transition-transform", stage.color, active && "scale-125")} />
-                {stage.label} <span className="tabular-nums">{count}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Summary cards */}
-      <div className="grid gap-2 px-6 pb-3 sm:grid-cols-4" aria-label="Pipeline summary">
-        {([
-          ["closing", "Closing this month", closing, "bg-emerald-500"],
-          ["slipped", "Past close date", slipped, "bg-amber-500"],
-          ["undated", "No close date", undated, "bg-slate-400"],
-          ["mine", "My deals", allDeals.filter((d) => d.ownerId === session.user.id), "bg-accent"],
-        ] as const).map(([key, title, list, dot]) => {
-          const active = closeFilter === key;
-          return (
-            <button key={key} type="button" aria-pressed={active} onClick={() => setCloseFilter(active ? "all" : key)} className={cn("group/card relative rounded-md p-3 text-left transition-all", active ? "bg-accent/10 shadow-sm ring-1 ring-accent/30" : "bg-surface-2/40 hover:bg-surface-2/70")}>
-              {active && (
-                <span className="absolute top-1.5 right-1.5 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors" aria-label="Clear filter">
-                  <X className="size-3" />
-                </span>
-              )}
-              <div className="flex items-center gap-1.5">
-                <span className={cn("size-1.5 rounded-full transition-transform", dot, active && "scale-150")} />
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{title}</span>
-              </div>
-              <div className="mt-1.5 flex items-baseline gap-2">
-                <span className={cn("text-xl font-bold tabular-nums transition-colors", key === "slipped" && list.length ? "text-warning" : active ? "text-accent" : "")}>{list.length}</span>
-                <span className="text-[11px] text-muted-foreground tabular-nums">{formatCurrencyINR(sumOf(list))}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      {closeFilter !== "all" && (
-        <div className="flex items-center gap-2 px-6 pb-2">
-          <span className="text-xs text-muted-foreground">Filtered:</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
-            {closeFilter === "closing" ? "Closing this month" : closeFilter === "slipped" ? "Past close date" : closeFilter === "undated" ? "No close date" : "My deals"}
-            <button type="button" onClick={() => setCloseFilter("all")} className="rounded-full p-0.5 hover:bg-accent/20 transition-colors"><X className="size-3" /></button>
-          </span>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-border/50 px-6 pb-2">
-        <div className="flex bg-surface-2/60 p-0.5 rounded-md">
-          <button type="button" onClick={() => setView("board")} className={cn("flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors", view === "board" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><LayoutGrid className="size-3" /> Board</button>
-          <button type="button" onClick={() => setView("table")} className={cn("flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors", view === "table" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><List className="size-3" /> Table</button>
-        </div>
-        <span className="mx-1 h-4 w-px bg-border/50" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search deals…"
-          className="w-44 border-0 bg-transparent px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-        />
-        <span className="mx-1 h-4 w-px bg-border/50" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", stageFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
-              {stageFilter === "all" ? "Stage" : stages.find((s) => s.key === stageFilter)?.label ?? "Stage"}
+              <SlidersHorizontal className="size-3" />{stageFilter === "all" ? "Stage" : stages.find((s) => s.key === stageFilter)?.label ?? "Stage"}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
@@ -265,11 +193,31 @@ export default function DealsPage() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
+              <CalendarClock className="size-3" />{closeFilter === "all" ? "Close date" : closeFilter === "closing" ? "This month" : closeFilter === "slipped" ? "Past due" : closeFilter === "undated" ? "No date" : "My deals"}
+              {closeFilter === "all" && slipped.length > 0 && <span className="ml-0.5 tabular-nums text-warning">({slipped.length})</span>}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => setCloseFilter("all")} className={closeFilter === "all" ? "font-semibold" : ""}>All</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setCloseFilter("closing")} className={closeFilter === "closing" ? "font-semibold" : ""}>Closing this month <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{closing.length}</span></DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setCloseFilter("slipped")} className={cn(closeFilter === "slipped" ? "font-semibold" : "", slipped.length > 0 && "text-warning")}>Past close date <span className="ml-auto text-[10px] tabular-nums">{slipped.length}</span></DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setCloseFilter("undated")} className={closeFilter === "undated" ? "font-semibold" : ""}>No close date <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{undated.length}</span></DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <button type="button" aria-pressed={closeFilter === "mine"} onClick={() => setCloseFilter(closeFilter === "mine" ? "all" : "mine")} className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter === "mine" ? "font-semibold text-accent" : "text-muted-foreground hover:text-foreground")}>
+          My deals{myDeals.length > 0 && <span className="ml-0.5 tabular-nums">({myDeals.length})</span>}
+        </button>
+        <button type="button" aria-pressed={closeFilter === "slipped"} onClick={() => setCloseFilter(closeFilter === "slipped" ? "all" : "slipped")} className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", closeFilter === "slipped" ? "font-semibold text-warning" : "text-muted-foreground hover:text-foreground")}>
+          <Zap className="size-3" />Overdue{slipped.length > 0 && <span className="ml-0.5 tabular-nums text-warning">({slipped.length})</span>}
+        </button>
         {multiCrm && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", crmFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                <Building2 className="size-3" /> {crmFilter === "all" ? "CRM" : crms.find((c) => c.id === crmFilter)?.name ?? "CRM"}
+                <Building2 className="size-3" />{crmFilter === "all" ? "CRM" : crms.find((c) => c.id === crmFilter)?.name ?? "CRM"}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -280,7 +228,67 @@ export default function DealsPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        {filtersActive && (
+          <button type="button" onClick={clearFilters} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+            <X className="size-3 inline" /> Clear
+          </button>
+        )}
+
+        <div className="ml-auto flex items-center gap-1">
+          {result.data && <span className="hidden text-[11px] tabular-nums text-muted-foreground sm:inline">{filtered.length} deals</span>}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+                <ArrowUpDown className="size-3" />{sortKey === "updatedAt" ? "Newest" : sortKey === "amount" ? "Value" : sortKey === "name" ? "Name" : sortKey === "expectedCloseAt" ? "Close date" : "Stage"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {([["updatedAt", "Newest"], ["amount", "Value"], ["name", "Name"], ["expectedCloseAt", "Close date"], ["stage", "Stage"]] as const).map(([k, l]) => (
+                <DropdownMenuItem key={k} onSelect={() => toggleSort(k)} className={sortKey === k ? "font-semibold" : ""}>{l}</DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div className="hidden h-4 w-px bg-border sm:block" />
+          {([["board", LayoutGrid], ["table", List]] as const).map(([v, Icon]) => (
+            <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v as ViewMode)} className={cn("p-1 transition-colors", view === v ? "text-foreground" : "text-muted-foreground/50 hover:text-muted-foreground")}><Icon className="size-3.5" /></button>
+          ))}
+        </div>
       </div>
+
+      {/* ── Stats strip ── */}
+      {result.data && filtered.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-1.5 text-[11px] tabular-nums text-muted-foreground">
+          <span><span className="font-semibold text-foreground">{open.length}</span> open</span>
+          <span><span className="font-semibold text-foreground">{formatCurrencyINR(openValue)}</span> pipeline</span>
+          <span><span className="font-semibold text-foreground">{formatCurrencyINR(weightedValue)}</span> weighted</span>
+          <span><span className="font-semibold text-foreground">{wonPct}%</span> won</span>
+          {slipped.length > 0 && <span className="text-warning"><span className="font-semibold">{slipped.length}</span> overdue</span>}
+          {closing.length > 0 && <span className="text-success"><span className="font-semibold">{closing.length}</span> closing this month</span>}
+        </div>
+      )}
+
+      {/* Pipeline bar */}
+      {result.data && view === "board" && (
+        <div className="px-6 pb-2">
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2">
+            {pipelineStages.map((stage) => {
+              const stageVal = filtered.filter((d) => d.stage === stage.key).reduce((a, d) => a + Number(d.amount), 0);
+              const pct = (stageVal / pipelineTotal) * 100;
+              if (pct < 0.5) return null;
+              return (
+                <button
+                  key={stage.key}
+                  type="button"
+                  onClick={() => setStageFilter(stageFilter === stage.key ? "all" : stage.key)}
+                  className={cn("h-full transition-all hover:brightness-110", barColor(stage.color), stageFilter === stage.key && "ring-1 ring-foreground/20")}
+                  style={{ width: `${pct}%` }}
+                  title={`${stage.label}: ${formatCurrencyINR(stageVal)} (${filtered.filter((d) => d.stage === stage.key).length})`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {!result.data && !result.error && (
         <div role="status" className="space-y-1 px-6 py-4">
