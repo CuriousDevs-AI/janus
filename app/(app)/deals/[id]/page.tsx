@@ -333,10 +333,10 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
 
                 {/* Follow-up box */}
                 {canWrite && deal.stage !== "won" && deal.stage !== "lost" && (
-                  <section className="rounded-lg border border-border bg-surface p-4">
+                  <section className="rounded-lg border border-accent/30 bg-accent/5 p-4">
                     <div className="flex items-center gap-2">
                       <CalendarClock className="size-4 text-accent" />
-                      <h2 className="text-sm font-semibold">Log a follow-up</h2>
+                      <h2 className="text-sm font-semibold text-accent">Log a follow-up</h2>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       What happened on the call or meeting, and when to follow up next.

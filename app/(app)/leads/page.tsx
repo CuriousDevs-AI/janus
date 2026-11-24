@@ -566,7 +566,7 @@ export default function LeadsPage() {
       ) : view === "quality" ? (
         <LeadQualityAnalysis rows={rows} />
       ) : view === "board" ? (
-        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => setDrawerLead(lead)} />
+        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} />
       ) : (
         <LeadsTable
           rows={rows}

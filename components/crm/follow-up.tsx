@@ -41,8 +41,8 @@ export function FollowUpBox({ leadId, onSaved }: { leadId: string; onSaved: () =
       onSaved();
     } catch (error) { toast.error(message(error)); } finally { setSaving(false); }
   }
-  return <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-    <div className="flex items-center gap-2"><CalendarClock className="size-4 text-accent" /><h2 className="text-base font-semibold">Log a follow-up</h2></div>
+  return <section className="rounded-xl border border-accent/30 bg-accent/5 p-5 shadow-sm">
+    <div className="flex items-center gap-2"><CalendarClock className="size-4 text-accent" /><h2 className="text-base font-semibold text-accent">Log a follow-up</h2></div>
     <p className="mt-1 text-xs text-muted-foreground">What was said on the call or meeting, and when to follow up next.</p>
     <Textarea aria-label="What happened" value={body} onChange={(event) => setBody(event.target.value)} maxLength={2000} className="mt-3 min-h-20 text-sm" placeholder="Spoke to the buyer. They want a quote for 500 cartons by Friday." />
     <div className="mt-3 flex flex-wrap items-center gap-2">

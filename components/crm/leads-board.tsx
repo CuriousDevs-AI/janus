@@ -5,10 +5,9 @@ import Link from "next/link";
 import {
   CalendarClock,
   Clock,
-  Eye,
+  Mail,
   MoreVertical,
   Phone,
-  Pencil,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SourceBadge } from "@/components/shared/source-badge";
 
 const BOARD_STAGES: LeadStage[] = ["new", "contacted", "qualified", "converted", "lost"];
 
@@ -52,11 +52,9 @@ const avatarColor = (name: string) => AVATAR_COLORS[Math.abs([...name].reduce((h
 export function LeadsBoard({
   leads,
   onStageChanged,
-  onLeadClick,
 }: {
   leads: Lead[];
   onStageChanged: () => void;
-  onLeadClick?: (lead: Lead) => void;
 }) {
   const session = useSession();
   const canWrite = can(session, "leads:write");
@@ -133,11 +131,8 @@ export function LeadsBoard({
                     canWrite={canWrite}
                     stages={BOARD_STAGES}
                     onMove={(s) => move(lead, s)}
-                    onClick={() => onLeadClick?.(lead)}
                     sessionUserId={session.user.id}
                     sessionUserName={session.user.name}
-
-
                   />
                 ))}
                 {items.length === 0 && (
@@ -161,7 +156,6 @@ function LeadCard({
   canWrite,
   stages,
   onMove,
-  onClick,
   sessionUserId,
   sessionUserName,
 }: {
@@ -170,7 +164,6 @@ function LeadCard({
   canWrite: boolean;
   stages: LeadStage[];
   onMove: (stage: LeadStage) => void;
-  onClick?: () => void;
   sessionUserId: string;
   sessionUserName: string;
 }) {
@@ -179,42 +172,34 @@ function LeadCard({
   const ownerName = lead.ownerId === sessionUserId ? sessionUserName : lead.ownerName || "Unassigned";
 
   return (
-    <article
+    <Link
+      href={`/leads/${lead.id}`}
       draggable={canDrag}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", lead.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      className="group flex shrink-0 flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
-      onClick={onClick}
+      className="group flex shrink-0 flex-col gap-2 border border-border bg-surface p-3.5 shadow-sm transition-shadow hover:shadow-md"
     >
+      {/* Header: name + menu */}
       <div className="flex items-start justify-between gap-1.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">{name}</p>
-          {lead.company && <p className="truncate text-[11px] text-muted-foreground">{lead.company}</p>}
+          <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+          {lead.company && <p className="truncate text-xs text-muted-foreground">{lead.company}</p>}
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => e.preventDefault()}
             >
               <MoreVertical className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem asChild>
-              <Link href={`/leads/${lead.id}`}><Eye className="size-3.5 mr-2" />View details</Link>
-            </DropdownMenuItem>
-            {canWrite && (
-              <DropdownMenuItem onClick={onClick}>
-                <Pencil className="size-3.5 mr-2" />Edit
-              </DropdownMenuItem>
-            )}
+          <DropdownMenuContent align="end" onClick={(e) => e.preventDefault()}>
             {canWrite && (
               <>
-                <DropdownMenuSeparator />
                 {stages.filter((s) => s !== lead.stage).map((s) => (
                   <DropdownMenuItem key={s} onSelect={() => onMove(s)}>
                     <span className={cn("size-2 rounded-full mr-2", STAGE_STYLE[s]?.dot ?? "bg-muted")} />
@@ -227,19 +212,35 @@ function LeadCard({
         </DropdownMenu>
       </div>
 
+      {/* Source badge */}
+      <SourceBadge source={lead.source} />
+
+      {/* Contact: phone + email */}
       {lead.phone && (
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Phone className="size-3 shrink-0" />
           <span className="tabular-nums">{lead.phone}</span>
         </div>
       )}
+      {lead.email && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Mail className="size-3 shrink-0" />
+          <span className="truncate">{lead.email}</span>
+        </div>
+      )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
-        <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-muted-foreground">
-          <OwnerAvatar />
+      {/* Requirement preview */}
+      {lead.requirement && (
+        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{lead.requirement}</p>
+      )}
+
+      {/* Footer: owner + follow-up + time */}
+      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2">
+        <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-muted-foreground">
+          <User className="size-3.5 shrink-0" />
           <span className="truncate">{ownerName}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {lead.nextFollowUpOn && (
             <span className={cn("flex items-center gap-0.5 text-[10px] tabular-nums", due ? "font-semibold text-warning" : "text-muted-foreground")}>
               <CalendarClock className="size-2.5" />
@@ -252,10 +253,7 @@ function LeadCard({
           </span>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
 
-function OwnerAvatar() {
-  return <User className="size-3.5 shrink-0 text-muted-foreground" />;
-}
