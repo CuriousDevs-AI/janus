@@ -1310,17 +1310,22 @@ async def bulk_stage(
     for lead in leads:
         if lead.stage == "converted":
             continue
+        old_stage = lead.stage
         lead.stage = data.stage
         lead.last_activity_at = now()
         set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
+        record(
+            db,
+            "lead.updated",
+            user_id=user_id,
+            tenant_id=tenant_id,
+            details={
+                "lead_id": lead.id,
+                "from_stage": old_stage,
+                "to_stage": lead.stage,
+            },
+        )
     await db.flush()
-    record(
-        db,
-        "lead.bulk_stage",
-        user_id=user_id,
-        tenant_id=tenant_id,
-        details={"count": len(leads), "stage": data.stage},
-    )
     return schemas.BulkResult(affected=len(leads))
 
 

@@ -2,7 +2,7 @@
 
 import { ContactConversation } from "@/components/chat/contact-conversation";
 import { CustomerCalls } from "@/components/calls/customer-call";
-import { use, useState, type ReactNode } from "react";
+import React, { cloneElement, use, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -60,15 +60,17 @@ function TimelineItem({
   detail,
   time,
   tone = "accent",
+  isLast = false,
 }: {
   icon: ReactNode;
   title: string;
   detail: string;
   time: string;
   tone?: "accent" | "success" | "info" | "warning";
+  isLast?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const barColor = {
+  const dotColor = {
     accent: "bg-accent",
     success: "bg-success",
     info: "bg-info",
@@ -80,31 +82,33 @@ function TimelineItem({
     info: "text-info",
     warning: "text-warning",
   };
-  const borderColor = {
-    accent: "border-l-accent",
-    success: "border-l-success",
-    info: "border-l-info",
-    warning: "border-l-warning",
-  };
   return (
-    <div className={`border border-border border-l-[3px] ${borderColor[tone]} bg-surface px-3.5 py-2.5 shadow-sm`}>
-      <div className="flex items-start gap-2.5">
-        <div className={`mt-0.5 shrink-0 ${iconColor[tone]}`}>{icon}</div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-[13px] font-medium text-foreground">{title}</p>
-            <time className="text-[11px] text-muted-foreground">{time}</time>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(!open)}
-            className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronDown className={`size-3 transition-transform ${open ? "rotate-180" : ""}`} />
-            {open ? "Hide details" : "Show details"}
-          </button>
-          {open && <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{detail}</p>}
+    <div className="relative flex gap-3.5 pb-5 last:pb-0">
+      {/* Vertical connecting line */}
+      {!isLast && <div className="absolute left-[13px] top-7 bottom-0 w-px bg-border" />}
+      {/* Node dot */}
+      <div className={`relative z-10 mt-0.5 flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 border-background ${dotColor[tone]}/15`}>
+        <div className={`shrink-0 ${iconColor[tone]}`}>{icon}</div>
+      </div>
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-[13px] font-medium text-foreground">{title}</p>
+          <time className="text-[11px] text-muted-foreground">{time}</time>
         </div>
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronDown className={`size-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          {open ? "Hide details" : "Show details"}
+        </button>
+        {open && (
+          <div className="mt-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2">
+            <p className="text-xs leading-5 text-muted-foreground">{detail}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -482,8 +486,10 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             {timeline.length === 0 && !dealEvents.loading ? (
               <p className="mt-4 text-xs text-muted-foreground">No activity recorded yet.</p>
             ) : (
-              <div className="mt-4 flex flex-col gap-2">
-                {timeline.map((item) => item.node)}
+              <div className="mt-4 flex flex-col">
+                {timeline.map((item, i) => (
+                  <div key={item.key}>{typeof item.node === "object" && item.node !== null ? cloneElement(item.node as React.ReactElement<{ isLast?: boolean }>, { isLast: i === timeline.length - 1 }) : item.node}</div>
+                ))}
                 {dealEvents.loading && <p className="pl-11 text-xs text-muted-foreground">Loading deal history…</p>}
                 {dealEvents.error && <p role="alert" className="pl-11 text-xs text-danger">Unable to load deal history: {dealEvents.error}</p>}
               </div>
