@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  Plus, RefreshCw, Building2,
+  RefreshCw, Building2, Loader2,
   LayoutGrid, List, Settings2, ArrowUpDown, ArrowUp, ArrowDown,
-  Eye, MoreHorizontal, Pencil,
+  Eye, MoreHorizontal, Pencil, X,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -74,6 +74,7 @@ export default function DealsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [stageSettingsOpen, setStageSettingsOpen] = useState(false);
   const [stageFilter, setStageFilter] = useState<string>("all");
+  const [refreshing, setRefreshing] = useState(false);
 
   const today = todayIst();
   const monthEnd = `${today.slice(0, 7)}-31`;
@@ -113,7 +114,12 @@ export default function DealsPage() {
   const pipelineStages = stages.filter((s) => s.key !== "won" && s.key !== "lost");
   const pipelineTotal = Math.max(1, pipelineStages.reduce((s, stage) => s + filtered.filter((d) => d.stage === stage.key).reduce((a, d) => a + Number(d.amount), 0), 0));
 
-  function reload() { result.reload(); everyDeal.reload(); }
+  const reload = useCallback(() => {
+    setRefreshing(true);
+    result.reload();
+    everyDeal.reload();
+    setTimeout(() => setRefreshing(false), 600);
+  }, [result, everyDeal]);
 
   async function move(deal: Deal, stage: string) {
     if (!writable || busy || deal.stage === stage) return;
@@ -149,9 +155,10 @@ export default function DealsPage() {
         title="Deal Pipeline"
         description={result.data ? `${filtered.length} deal${filtered.length === 1 ? "" : "s"} · ${formatCurrencyINR(openValue)} open · ${formatCurrencyINR(weightedValue)} weighted` : "Your sales pipeline"}
         actions={<>
-          <Button size="sm" variant="secondary" onClick={reload} aria-label="Refresh"><RefreshCw className="size-3.5" /></Button>
+          <Button size="sm" variant="secondary" onClick={reload} disabled={refreshing} aria-label="Refresh">
+            {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          </Button>
           {canAdmin && <Button size="sm" variant="outline" onClick={() => setStageSettingsOpen(true)}><Settings2 className="size-3.5" /> Stages</Button>}
-          {writable && <Button size="sm" asChild><Link href="/leads" title="Deals are created by converting a lead"><Plus className="size-3.5" /> Convert Lead</Link></Button>}
         </>}
       />
 
@@ -200,7 +207,12 @@ export default function DealsPage() {
         ] as const).map(([key, title, list, dot]) => {
           const active = closeFilter === key;
           return (
-            <button key={key} type="button" aria-pressed={active} onClick={() => setCloseFilter(active ? "all" : key)} className={cn("group/card rounded-md p-3 text-left transition-all", active ? "bg-accent/10 shadow-sm ring-1 ring-accent/30" : "bg-surface-2/40 hover:bg-surface-2/70")}>
+            <button key={key} type="button" aria-pressed={active} onClick={() => setCloseFilter(active ? "all" : key)} className={cn("group/card relative rounded-md p-3 text-left transition-all", active ? "bg-accent/10 shadow-sm ring-1 ring-accent/30" : "bg-surface-2/40 hover:bg-surface-2/70")}>
+              {active && (
+                <span className="absolute top-1.5 right-1.5 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors" aria-label="Clear filter">
+                  <X className="size-3" />
+                </span>
+              )}
               <div className="flex items-center gap-1.5">
                 <span className={cn("size-1.5 rounded-full transition-transform", dot, active && "scale-150")} />
                 <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{title}</span>
@@ -213,6 +225,15 @@ export default function DealsPage() {
           );
         })}
       </div>
+      {closeFilter !== "all" && (
+        <div className="flex items-center gap-2 px-6 pb-2">
+          <span className="text-xs text-muted-foreground">Filtered:</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+            {closeFilter === "closing" ? "Closing this month" : closeFilter === "slipped" ? "Past close date" : closeFilter === "undated" ? "No close date" : "My deals"}
+            <button type="button" onClick={() => setCloseFilter("all")} className="rounded-full p-0.5 hover:bg-accent/20 transition-colors"><X className="size-3" /></button>
+          </span>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1 border-b border-border/50 px-6 pb-2">
