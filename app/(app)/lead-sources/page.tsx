@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { can } from "@/lib/permissions";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
-  ArrowRight, ArrowUpRight, Bell, BellOff, Check, Clock, Lock,
-  MessageSquare, Plus, RefreshCw, Send, Settings2, Sparkles, Zap,
+  Activity, ArrowRight, ArrowUpRight, Bell, BellOff, Check, Clock, Lock,
+  MessageSquare, Plug, Plus, RefreshCw, Send, Settings2, Zap,
 } from "lucide-react";
 import { useSession } from "@/components/auth/session-provider";
 import { api } from "@/lib/api/client";
@@ -18,6 +18,17 @@ import { formatDateTime, cn } from "@/lib/utils";
 import { sourceMeta } from "@/lib/lead-sources";
 
 interface ChannelVote { channel: string; notify: boolean; requested: boolean }
+
+function relativeAgo(ts: number): string {
+  const sec = Math.round((Date.now() - ts) / 1000);
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  return `${Math.floor(min / 60)}h ago`;
+}
+
+const MIN_SPIN_MS = 400;
 
 function UpcomingChannelCard({ name, description, Icon, vote, onVote }: {
   name: string; description: string; Icon: React.ComponentType<{ className?: string }>;
@@ -133,6 +144,83 @@ export default function LeadSourcesPage() {
   const paused = sourceRows.filter((s) => s.status !== "connected");
   const totalLeads = sourceRows.reduce((s, r) => s + (r.capturedLeads ?? 0), 0);
 
+  // ── Refresh state ──
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<number | null>(null);
+  const prevCounts = useRef<Map<string, number>>(new Map());
+  const [changedIds, setChangedIds] = useState<Set<string>>(new Set());
+  const wasLoading = useRef(false);
+  const spinStart = useRef(0);
+
+  useEffect(() => {
+    if (sources.loading && refreshing) {
+      wasLoading.current = true;
+    }
+    if (wasLoading.current && !sources.loading && refreshing) {
+      wasLoading.current = false;
+      const elapsed = Date.now() - spinStart.current;
+      const remaining = Math.max(0, MIN_SPIN_MS - elapsed);
+      setTimeout(() => {
+        setRefreshing(false);
+        if (sources.error) {
+          setRefreshError(true);
+        } else {
+          setRefreshError(false);
+          setLastRefresh(Date.now());
+          const changed = new Set<string>();
+          for (const s of sources.data ?? []) {
+            const prev = prevCounts.current.get(s.id);
+            if (prev !== undefined && prev !== s.capturedLeads) changed.add(s.id);
+          }
+          if (changed.size) {
+            setChangedIds(changed);
+            setTimeout(() => setChangedIds(new Set()), 1200);
+          }
+        }
+      }, remaining);
+    }
+  }, [sources.loading, sources.error, sources.data, refreshing]);
+
+  // Track lead counts for highlight comparison
+  useEffect(() => {
+    if (!sources.data) return;
+    const m = new Map<string, number>();
+    for (const s of sources.data) m.set(s.id, s.capturedLeads ?? 0);
+    prevCounts.current = m;
+  }, [sources.data]);
+
+  // Relative time ticker — bump a counter to recalculate agoText
+  const [, bumpTick] = useReducer((c: number) => c + 1, 0);
+  const agoText = lastRefresh !== null ? relativeAgo(lastRefresh) : "";
+  useEffect(() => {
+    if (lastRefresh === null) return;
+    const timer = setInterval(bumpTick, 30_000);
+    return () => clearInterval(timer);
+  }, [lastRefresh]);
+
+  // Auto-refresh every 60s while visible
+  const reloadSources = sources.reload;
+  useEffect(() => {
+    if (!allowed) return;
+    let timer: ReturnType<typeof setInterval>;
+    const start = () => { timer = setInterval(() => { if (!document.hidden) reloadSources(); }, 60_000); };
+    const onVis = () => { clearInterval(timer); if (!document.hidden) start(); };
+    start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVis); };
+  }, [allowed, reloadSources]);
+
+  const doRefresh = useCallback(() => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshError(false);
+    spinStart.current = Date.now();
+    wasLoading.current = false;
+    setAfter("0");
+    reloadSources();
+  }, [refreshing, reloadSources]);
+
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col">
       <PageHeader
@@ -157,7 +245,7 @@ export default function LeadSourcesPage() {
           Verify your email to set up lead sources. Use the link in the email Janus sent you, or send it again from the banner at the top.
         </p>
       )}
-      {sources.error && (
+      {sources.error && !refreshing && (
         <p role="alert" className="mx-6 mb-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
           Could not load sources: {sources.error}. Refresh to try again.
         </p>
@@ -175,16 +263,20 @@ export default function LeadSourcesPage() {
 
         {/* ── Active sources ── */}
         {(connected.length > 0 || sources.loading) && (
-          <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active sources</h2>
+          <section aria-busy={refreshing || undefined}>
+            <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Activity className="size-3.5" />
+              Active sources
+            </h2>
 
-            {sources.loading && <p className="text-sm text-muted-foreground">Loading...</p>}
+            {sources.loading && !refreshing && <p className="text-sm text-muted-foreground">Loading...</p>}
 
             <div className="grid gap-3 sm:grid-cols-2">
               {connected.map((source) => {
                 const m = sourceMeta(source.source);
                 const Icon = m.icon;
                 const href = source.connectionKind === "oauth" ? "/lead-sources/whatsapp" : `/lead-sources/${source.id}`;
+                const highlight = changedIds.has(source.id);
                 return (
                   <Link
                     key={source.id}
@@ -203,7 +295,10 @@ export default function LeadSourcesPage() {
                     </div>
                     <div className="hidden shrink-0 items-center gap-5 sm:flex">
                       <div className="text-right">
-                        <p className="text-sm font-semibold tabular-nums">{source.capturedLeads}</p>
+                        <p className={cn(
+                          "text-sm font-semibold tabular-nums transition-colors duration-1000",
+                          highlight ? "text-success" : "",
+                        )}>{source.capturedLeads}</p>
                         <p className="text-[10px] text-muted-foreground">leads</p>
                       </div>
                       <div className="text-right">
@@ -248,14 +343,30 @@ export default function LeadSourcesPage() {
           </section>
         )}
 
-        {/* Pagination */}
+        {/* ── Refresh + Pagination ── */}
         {allowed && sourceRows.length > 0 && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <button type="button" onClick={() => { setAfter("0"); sources.reload(); }} className="inline-flex items-center gap-1 hover:text-foreground">
-              <RefreshCw className="size-3" /> Refresh
-            </button>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={refreshing}
+              onClick={doRefresh}
+              className="min-w-[7rem]"
+            >
+              <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+            {refreshError && (
+              <span className="text-danger">
+                Couldn&apos;t refresh —{" "}
+                <button type="button" onClick={doRefresh} className="underline hover:no-underline">Retry</button>
+              </span>
+            )}
+            {!refreshError && lastRefresh !== null && (
+              <span aria-live="polite" className="text-muted-foreground">Updated {agoText}</span>
+            )}
             {sourceRows.length === 50 && (
-              <button type="button" onClick={() => setAfter(sourceRows.at(-1)!.id)} className="inline-flex items-center gap-1 hover:text-foreground">
+              <button type="button" onClick={() => setAfter(sourceRows.at(-1)!.id)} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
                 Next page <ArrowRight className="size-3" />
               </button>
             )}
@@ -279,7 +390,7 @@ export default function LeadSourcesPage() {
         {/* ── Available channels ── */}
         <section>
           <div className="mb-3 flex items-center gap-2">
-            <Sparkles className="size-3.5 text-accent" />
+            <Plug className="size-3.5 text-muted-foreground" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Available channels</h2>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
