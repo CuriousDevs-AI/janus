@@ -150,37 +150,38 @@ export default function LeadSourcesPage() {
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
   const prevCounts = useRef<Map<string, number>>(new Map());
   const [changedIds, setChangedIds] = useState<Set<string>>(new Set());
-  const wasLoading = useRef(false);
   const spinStart = useRef(0);
+  const snapRef = useRef<Source[] | undefined>(undefined);
+  const pendingRef = useRef(false);
 
+  // Complete refresh when sources.data changes from the snapshot
   useEffect(() => {
-    if (sources.loading && refreshing) {
-      wasLoading.current = true;
-    }
-    if (wasLoading.current && !sources.loading && refreshing) {
-      wasLoading.current = false;
-      const elapsed = Date.now() - spinStart.current;
-      const remaining = Math.max(0, MIN_SPIN_MS - elapsed);
-      setTimeout(() => {
-        setRefreshing(false);
-        if (sources.error) {
-          setRefreshError(true);
-        } else {
-          setRefreshError(false);
-          setLastRefresh(Date.now());
-          const changed = new Set<string>();
-          for (const s of sources.data ?? []) {
-            const prev = prevCounts.current.get(s.id);
-            if (prev !== undefined && prev !== s.capturedLeads) changed.add(s.id);
-          }
-          if (changed.size) {
-            setChangedIds(changed);
-            setTimeout(() => setChangedIds(new Set()), 1200);
-          }
+    if (!pendingRef.current) return;
+    if (sources.data === snapRef.current && !sources.error) return;
+    pendingRef.current = false;
+    const elapsed = Date.now() - spinStart.current;
+    const remaining = Math.max(0, MIN_SPIN_MS - elapsed);
+    const err = sources.error;
+    const data = sources.data;
+    setTimeout(() => {
+      setRefreshing(false);
+      if (err) {
+        setRefreshError(true);
+      } else {
+        setRefreshError(false);
+        setLastRefresh(Date.now());
+        const changed = new Set<string>();
+        for (const s of data ?? []) {
+          const prev = prevCounts.current.get(s.id);
+          if (prev !== undefined && prev !== s.capturedLeads) changed.add(s.id);
         }
-      }, remaining);
-    }
-  }, [sources.loading, sources.error, sources.data, refreshing]);
+        if (changed.size) {
+          setChangedIds(changed);
+          setTimeout(() => setChangedIds(new Set()), 1200);
+        }
+      }
+    }, remaining);
+  }, [sources.data, sources.error]);
 
   // Track lead counts for highlight comparison
   useEffect(() => {
@@ -213,13 +214,14 @@ export default function LeadSourcesPage() {
 
   const doRefresh = useCallback(() => {
     if (refreshing) return;
+    snapRef.current = sources.data;
+    pendingRef.current = true;
     setRefreshing(true);
     setRefreshError(false);
     spinStart.current = Date.now();
-    wasLoading.current = false;
     setAfter("0");
     reloadSources();
-  }, [refreshing, reloadSources]);
+  }, [refreshing, reloadSources, sources.data]);
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col">
