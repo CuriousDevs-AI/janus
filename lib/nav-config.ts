@@ -68,8 +68,8 @@ export const crmNavSections: NavSection[] = [
     items: [
       { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write", essential: true },
       { label: "CRM Workspaces", href: "/crm", icon: Building2, requiredPermission: "settings:manage" },
-      { label: "Chats", href: "/inbox", icon: MessageCircle, essential: true },
       { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage", essential: true },
+      { label: "Chats", href: "/inbox", icon: MessageCircle, essential: true },
       { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write", essential: true },
       { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write", essential: true },
       { label: "Contacts", href: "/customers", icon: Users, essential: true },
