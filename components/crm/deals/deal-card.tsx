@@ -1,17 +1,17 @@
 import Link from "next/link";
 import {
-  CalendarClock, Clock, Eye, MoreHorizontal, Pencil, Phone, User,
+  CalendarClock, Clock, MoreHorizontal, Phone, User,
 } from "lucide-react";
 import { cn, formatCurrencyINR, formatRelativeTime } from "@/lib/utils";
 import type { Deal } from "@/lib/api/types";
 import type { PipelineStage } from "@/lib/hooks/use-pipeline-config";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-export function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, stageColor, stages, onEdit, onMove, onDragStart, onDragEnd }: {
+export function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, stageColor, stages, onMove, onDragStart, onDragEnd }: {
   deal: Deal; writable: boolean; busy: boolean; today: string;
   sessionUserId: string; sessionUserName: string; stageColor: string;
   stages: PipelineStage[];
-  onEdit: () => void; onMove: (stage: string) => void;
+  onMove: (stage: string) => void;
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const overdue = deal.expectedCloseAt && deal.expectedCloseAt < today && !["won", "lost"].includes(deal.stage);
@@ -23,26 +23,22 @@ export function DealCard({ deal, writable, busy, today, sessionUserId, sessionUs
       draggable={writable && !busy}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
-      onClick={onEdit}
+      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-1.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">{deal.name}</p>
+          <Link href={`/deals/${deal.id}`} className="truncate text-[13px] font-semibold text-foreground hover:text-accent block">{deal.name}</Link>
           {customerDisplay && <p className="truncate text-[11px] text-muted-foreground">{customerDisplay}</p>}
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" onClick={(e) => e.stopPropagation()} className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground">
+            <button type="button" className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground">
               <MoreHorizontal className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" />View full page</Link></DropdownMenuItem>
-            {writable && <DropdownMenuItem onClick={() => onEdit()}><Pencil className="size-3.5 mr-2" />Edit</DropdownMenuItem>}
+          <DropdownMenuContent align="end">
             {writable && (
               <>
-                <DropdownMenuSeparator />
                 {stages.filter((s) => s.key !== deal.stage).map((s) => (
                   <DropdownMenuItem key={s.key} onSelect={() => onMove(s.key)}>
                     <span className={cn("size-2 rounded-full mr-2", s.color)} />
