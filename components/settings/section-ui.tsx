@@ -41,7 +41,7 @@ export function SettingRow({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-4 border-b border-border/60 py-3 last:border-0", className)}>
+    <div className={cn("flex items-center justify-between gap-4 rounded-md border-b border-border/60 px-2 -mx-2 py-3 last:border-0 transition-colors hover:bg-surface-2/50", className)}>
       <div className="flex flex-col gap-0.5 pr-4">
         <p className="text-[13px] text-foreground">{label}</p>
         {description && <p className="text-[11.5px] text-muted-foreground">{description}</p>}

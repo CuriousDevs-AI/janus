@@ -5,7 +5,8 @@ import { activeSpec } from "@/lib/companies";
 import { useSession } from "@/components/auth/session-provider";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, BarChart3, Bookmark, CalendarClock, Download, Filter, Pin, Search, Share2, Sparkles } from "lucide-react";
+import { ArrowLeft, BarChart3, Bookmark, CalendarClock, Download, Filter, Pin, Search, Share2 } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AcquisitionSection } from "@/components/analytics/acquisition-section";
@@ -35,11 +36,22 @@ type Summary = { leads: number; openDeals: number; wonDeals: number; pipelineVal
 type ReportTab = "library" | "my" | "scheduled";
 export default function AnalyticsPage() {
   const { workspaceId } = useWorkspace();
+  const session = useSession();
   const businessReports = workspaceId === "business";
+  const canReadReports = session.permissions.includes("*") || session.permissions.includes("reports:read");
   // AI and automation figures cover the whole company, so only people with company-wide access see them.
-  const companyWide = useSession().permissions.includes("*");
+  const companyWide = session.permissions.includes("*");
   // Panels stay mounted but hidden, and a hidden chart measures 0×0; draw only the open tab's charts.
   const [tab, setTab] = React.useState("acquisition");
+  if (businessReports && !canReadReports) {
+    return (
+      <div className="mx-auto flex max-w-[1400px] flex-col items-center gap-3 px-6 py-16 text-center">
+        <BarChart3 className="size-8 text-muted-foreground" />
+        <p className="text-sm font-medium">Business Reports</p>
+        <p className="max-w-md text-sm text-muted-foreground">Viewing reports requires the Reports permission. Ask an Admin or Owner to grant you access.</p>
+      </div>
+    );
+  }
   if (businessReports) return <BusinessReports />;
   return <BusinessReports home={workspaceId} startOn="Sales" />;
 }
@@ -122,7 +134,7 @@ function BusinessReports({ home = "business", startOn = "All" }: { home?: string
 }
 
 function ReportSummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) { return <div className="rounded-lg border border-border bg-surface p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs leading-4 text-muted-foreground">{detail}</p></div>; }
-function ReportTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`shrink-0 rounded-sm px-3 py-2 text-[12px] transition-colors ${active ? "bg-white font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"}`}>{children}</button>; }
+function ReportTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`shrink-0 rounded-sm px-3 py-2 text-[12px] transition-colors ${active ? "bg-surface font-medium text-foreground shadow-sm" : "text-muted-foreground hover:bg-surface/70 hover:text-foreground"}`}>{children}</button>; }
 
 /** A report in the library with its headline figure, so the library itself answers "how are we doing?". */
 function ReportCard({ report, figure, pinned, onPin, onOpen }: { report: ReportDefinition; figure?: ReportFigures; pinned: boolean; onPin: () => void; onOpen: () => void }) {
@@ -178,7 +190,7 @@ function ReportView({ definition, found, readable, periodLabel, periodKey, loadi
       <div><button type="button" onClick={onBack} className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground print:hidden"><ArrowLeft className="size-3.5" />Back to Library</button>
         <div className="flex items-center gap-2"><Badge variant="neutral">{definition.department}</Badge>{shown ? <Badge variant="success">From your records</Badge> : !waiting && <Badge variant="warning">Not available</Badge>}</div>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{definition.name}</h1><p className="mt-1 text-sm text-muted-foreground">{definition.description}</p></div>
-      <div className="flex flex-wrap gap-2 print:hidden"><Button size="sm" variant="secondary" disabled={!shown} onClick={() => window.print()}><Download className="size-3.5" />Print or PDF</Button><Button size="sm" variant="secondary" disabled={!shown} onClick={downloadCsv}><Download className="size-3.5" />CSV</Button><Button size="sm" variant="secondary" onClick={onSave}><Bookmark className="size-3.5" />Save</Button><Button size="sm" variant="secondary" disabled={!fromRecords} title={fromRecords ? undefined : "Only a report with figures from your records can be emailed."} onClick={onSchedule}><CalendarClock className="size-3.5" />Schedule</Button><Button size="sm" variant="secondary" onClick={copyLink}><Share2 className="size-3.5" />Copy link</Button><Link href={`/ai?workspace=business&view=chat&report=${definition.id}&period=${periodKey}`}><Button size="sm"><Sparkles className="size-3.5" />Ask Janus</Button></Link></div>
+      <div className="flex flex-wrap gap-2 print:hidden"><Button size="sm" variant="secondary" disabled={!shown} onClick={() => window.print()}><Download className="size-3.5" />Print or PDF</Button><Button size="sm" variant="secondary" disabled={!shown} onClick={downloadCsv}><Download className="size-3.5" />CSV</Button><Button size="sm" variant="secondary" onClick={onSave}><Bookmark className="size-3.5" />Save</Button><Button size="sm" variant="secondary" disabled={!fromRecords} title={fromRecords ? undefined : "Only a report with figures from your records can be emailed."} onClick={onSchedule}><CalendarClock className="size-3.5" />Schedule</Button><Button size="sm" variant="secondary" onClick={copyLink}><Share2 className="size-3.5" />Copy link</Button><Link href={`/ai?workspace=business&view=chat&report=${definition.id}&period=${periodKey}`}><Button size="sm"><CuriousdevsLogo className="size-3.5" />Ask Janus</Button></Link></div>
     </div>
     {shown?.covers === "period" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3"><span className="text-sm text-muted-foreground">{periodLabel ?? "This period"}, against the same days before</span><span className="print:hidden"><FilterChips<ReportPeriod> label="Period" value={periodKey} onChange={setPeriod} options={[{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }]} /></span></div>}
     {shown?.covers === "now" && <p className="text-sm text-muted-foreground">As things stand today.</p>}

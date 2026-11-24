@@ -21,3 +21,4 @@ export type { PortfolioRegistration } from "@/features/portfolio/types";
 export { RATE_MINIMUM } from "@/features/portfolio/lib/rates";
 export { Advisor } from "@/features/portfolio/components/advisor";
 export { KeyRatios } from "@/features/portfolio/components/key-ratios";
+export { fetchPortfolioLogo, readPortfolioLogo, savePortfolioLogo } from "@/features/portfolio/lib/logos";

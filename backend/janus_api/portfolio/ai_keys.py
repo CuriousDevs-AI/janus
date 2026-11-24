@@ -105,13 +105,34 @@ async def save(
     await _owner(db, user_id)
     if provider not in ai.providers() or provider == "openai_compatible":
         raise ApiError("not_found", "Unknown AI provider.", 404)
-    row = await _row(db, user_id, provider)
+    row = await db.scalar(
+        select(PortfolioAiKey)
+        .where(PortfolioAiKey.user_id == user_id, PortfolioAiKey.provider == provider)
+        .with_for_update()
+    )
     if row is None:
         if not data.apiKey:
             raise ApiError("api_key_required", "Paste the provider's API key.", 422)
         row = PortfolioAiKey(user_id=user_id, provider=provider, copied_to=[])
         db.add(row)
     if data.apiKey:
+        try:
+            await ai.converse_with_key(
+                current_tenant or 0,
+                provider,
+                data.model,
+                data.apiKey,
+                None,
+                [("user", ai.connection_test_prompt())],
+                feature="connection_test",
+                max_tokens=64,
+            )
+        except Exception as exc:
+            raise ApiError(
+                "key_invalid",
+                "That key did not work. Check it and try again.",
+                422,
+            ) from exc
         row.secret_encrypted = cipher().encrypt(data.apiKey.encode()).decode()
         row.key_last_four = data.apiKey[-4:]
     row.model, row.updated_at = data.model, now()

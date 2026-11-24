@@ -19,9 +19,49 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from janus_api.core.db import Base
+
+
+class CrmWorkspace(Base):
+    __tablename__ = "crm_workspaces"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_crm_workspaces_tenant_slug"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    slug: Mapped[str] = mapped_column(String(60))
+    description: Mapped[str] = mapped_column(String(1000), default="", server_default="")
+    pipeline_stages: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    win_stage: Mapped[str] = mapped_column(String(40), default="won", server_default="won")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CrmMember(Base):
+    __tablename__ = "crm_members"
+    __table_args__ = (
+        UniqueConstraint("crm_id", "membership_id", name="uq_crm_members_crm_membership"),
+        ForeignKeyConstraint(
+            ["tenant_id", "membership_id"],
+            ["memberships.tenant_id", "memberships.id"],
+            ondelete="CASCADE",
+            name="fk_crm_members_membership",
+        ),
+        CheckConstraint("role IN ('member', 'manager')", name="ck_crm_members_role"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    crm_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("crm_workspaces.id", ondelete="CASCADE")
+    )
+    membership_id: Mapped[int] = mapped_column(BigInteger)
+    role: Mapped[str] = mapped_column(String(20), default="member", server_default="member")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Contact(Base):
@@ -52,8 +92,10 @@ class Lead(Base):
         ForeignKeyConstraint(
             ["tenant_id", "receipt_id"], ["ingest_receipts.tenant_id", "ingest_receipts.id"]
         ),
+        Index("ix_leads_tenant_crm", "tenant_id", "crm_id"),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    crm_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("crm_workspaces.id"))
     contact_id: Mapped[int] = mapped_column(BigInteger)
     receipt_id: Mapped[int] = mapped_column(BigInteger)
     source: Mapped[str] = mapped_column(String(30), default="webhook")
@@ -116,19 +158,16 @@ class Deal(Base):
         UniqueConstraint("tenant_id", "lead_id"),
         ForeignKeyConstraint(["tenant_id", "lead_id"], ["leads.tenant_id", "leads.id"]),
         Index("ix_deals_tenant_id_id", "tenant_id", "id"),
+        Index("ix_deals_tenant_crm", "tenant_id", "crm_id"),
         CheckConstraint("amount >= 0", name="deal_amount_nonnegative"),
         CheckConstraint("version > 0", name="deal_version_positive"),
-        CheckConstraint(
-            "stage IN ('new', 'qualified', 'demo', 'proposal', "
-            "'negotiation', 'approval', 'won', 'lost')",
-            name="deal_stage",
-        ),
         CheckConstraint(
             "stage != 'lost' OR (lost_category IS NOT NULL AND lost_at IS NOT NULL)",
             name="deal_lost_has_reason",
         ),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    crm_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("crm_workspaces.id"))
     lead_id: Mapped[int] = mapped_column(BigInteger)
     name: Mapped[str] = mapped_column(String(200))
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
@@ -157,8 +196,9 @@ class Activity(Base):
         ),
         Index("ix_crm_activities_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_crm_activities_tenant_lead", "tenant_id", "lead_id"),
+        Index("ix_crm_activities_tenant_deal", "tenant_id", "deal_id"),
         CheckConstraint(
-            "kind IN ('call', 'meeting', 'email', 'task')",
+            "kind IN ('call', 'meeting', 'email', 'task', 'note')",
             name="ck_crm_activities_kind",
         ),
     )
@@ -167,6 +207,7 @@ class Activity(Base):
     subject: Mapped[str] = mapped_column(String(500), default="", server_default="")
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     lead_id: Mapped[int | None] = mapped_column(BigInteger)
+    deal_id: Mapped[int | None] = mapped_column(BigInteger)
     contact_id: Mapped[int] = mapped_column(BigInteger)
     owner_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -356,6 +397,7 @@ class SalesTarget(Base):
         ),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    crm_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("crm_workspaces.id"))
     owner_id: Mapped[int | None] = mapped_column(BigInteger)
     period: Mapped[str] = mapped_column(String(7))
     target_amount: Mapped[Decimal] = mapped_column(
@@ -453,6 +495,7 @@ class EmailSequence(Base):
 class WebForm(Base):
     __tablename__ = "crm_web_forms"
     tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    crm_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("crm_workspaces.id"))
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(100), unique=True)
     fields_config: Mapped[list[dict[str, object]]] = mapped_column(

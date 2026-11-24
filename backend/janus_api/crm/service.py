@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy import case, func, literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from janus_api.audit.models import AuditLog
 from janus_api.audit.service import record
 from janus_api.auth.models import User
 from janus_api.business.service import enqueue_event
@@ -41,10 +42,14 @@ async def capture(
     owner_id: int | None,
     source: str = "webhook",
     actor_id: int | None = None,
+    crm_id: int | None = None,
 ) -> tuple[int, int, str]:
     try:
         data = CapturedContact.model_validate(fields)
     except ValidationError as error:
+        for e in error.errors():
+            if "email" in (e.get("loc") or ()):
+                raise ProcessingError("invalid_email") from error
         raise ProcessingError("invalid_contact_fields") from error
     phone = normalize_phone(data.phone)
     email = str(data.email).casefold() if data.email else None
@@ -83,15 +88,20 @@ async def capture(
             email and contact.email and email != contact.email
         ):
             raise ProcessingError("contact_identity_conflict")
-        contact.name = contact.name or data.name
-        contact.company = contact.company or data.company
+        contact.name = data.name or contact.name
+        contact.company = data.company or contact.company
         contact.phone_e164 = contact.phone_e164 or phone
         contact.email = contact.email or email
     await db.flush()
     if owner_id is not None and not await active_member(db, tenant_id, owner_id):
         owner_id = None
+    if crm_id is None:
+        from janus_api.crm.crm_workspace import ensure_default_crm
+
+        crm_id = await ensure_default_crm(db, tenant_id, actor_id or 0)
     lead = Lead(
         tenant_id=tenant_id,
+        crm_id=crm_id,
         contact_id=contact.id,
         receipt_id=receipt_id,
         owner_id=owner_id,
@@ -151,6 +161,7 @@ def canonical_source(value: str) -> LeadSource:
 def lead_out(lead: Lead, contact: Contact | None = None, owner: User | None = None) -> LeadOut:
     return LeadOut(
         id=str(lead.id),
+        crmId=str(lead.crm_id),
         customerId=str(lead.contact_id),
         contactName=contact.name if contact else "",
         phone=contact.phone_e164 if contact else None,
@@ -213,9 +224,15 @@ async def list_leads(
     source: str | None = None,
     owner_id: int | None = None,
     tag_id: int | None = None,
+    crm_id: int | None = None,
+    sort: str | None = None,
 ) -> list[LeadOut]:
     owners = await visible_owners(db, tenant_id, user_id, permissions)
-    query = select(Lead).where(Lead.tenant_id == tenant_id, Lead.id > after_id)
+    query = select(Lead).where(Lead.tenant_id == tenant_id)
+    if after_id:
+        query = query.where(Lead.id > after_id)
+    if crm_id is not None:
+        query = query.where(Lead.crm_id == crm_id)
     if owners is not None:
         query = query.where(Lead.owner_id.in_(owners))
     if lead_id is not None:
@@ -267,7 +284,12 @@ async def list_leads(
             )
             .outerjoin(User, User.id == Lead.owner_id)
             .with_only_columns(Lead, Contact, User)
-            .order_by(Lead.id)
+            .order_by(
+                Lead.next_follow_up_on.asc().nulls_last() if sort == "follow_up"
+                else Lead.last_activity_at.desc() if sort == "last_activity"
+                else Lead.id.asc() if sort == "oldest"
+                else Lead.id.desc()
+            )
             .limit(limit)
         )
     ).all()
@@ -367,8 +389,15 @@ async def update_lead(
     contact.email = email
     contact.company = data.company.strip()
     lead.requirement = data.requirement.strip()
+    old_stage = lead.stage
+    if old_stage == "converted":
+        raise ApiError(
+            "lead_converted",
+            "This lead was converted to a deal. Track progress on the deal instead.",
+            409,
+        )
     lead.stage = data.stage
-    if data.stage in ("won", "lost"):
+    if data.stage == "lost":
         lead.next_follow_up_on = None
     lead.last_activity_at = now()
     set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
@@ -380,12 +409,50 @@ async def update_lead(
         tenant_id=tenant_id,
         details={
             "lead_id": lead.id,
-            "stage": lead.stage,
+            "from_stage": old_stage,
+            "to_stage": lead.stage,
             **({"lost_category": lead.lost_category} if lead.lost_category else {}),
         },
     )
     owner = await db.get(User, lead.owner_id) if lead.owner_id else None
     return lead_out(lead, contact, owner)
+
+
+async def lead_events(
+    db: AsyncSession,
+    tenant_id: int,
+    lead_id: int,
+    limit: int = 50,
+) -> list[schemas.LeadEvent]:
+    rows = (
+        await db.execute(
+            select(AuditLog, User.name)
+            .outerjoin(User, User.id == AuditLog.user_id)
+            .where(
+                AuditLog.tenant_id == tenant_id,
+                AuditLog.action.in_(
+                    ["lead.created", "lead.updated", "lead.captured"]
+                ),
+                AuditLog.details["lead_id"].astext == str(lead_id),
+            )
+            .order_by(AuditLog.id.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        schemas.LeadEvent(
+            id=str(row.id),
+            action=row.action,
+            userId=str(row.user_id) if row.user_id else None,
+            userName=user_name,
+            details={
+                k: str(v) if k == "lead_id" else v
+                for k, v in row.details.items()
+            },
+            createdAt=row.created_at,
+        )
+        for row, user_name in rows
+    ]
 
 
 async def delete_lead(
@@ -644,6 +711,8 @@ async def create_manual_lead(
     permissions: list[str],
     data: ManualLeadIn,
     idempotency_key: str,
+    crm_id: int | None = None,
+    source: str = "manual",
 ) -> tuple[LeadOut, bool]:
     """Creates a lead for the person who typed it in, once per key. Returns (lead, created)."""
     connection = await manual_connection(db, tenant_id)
@@ -691,7 +760,8 @@ async def create_manual_lead(
     await db.flush()
     try:
         _, lead_id, _ = await capture(
-            db, tenant_id, receipt.id, fields, user_id, source="manual", actor_id=user_id
+            db, tenant_id, receipt.id, fields, user_id, source=source, actor_id=user_id,
+            crm_id=crm_id,
         )
     except ProcessingError as error:
         raise ApiError(
@@ -705,6 +775,7 @@ _LEAD_PROBLEMS = {
     "contact_identity_conflict": "Another contact already uses this mobile or email.",
     "invalid_contact_fields": "Check the lead's details.",
     "invalid_phone": "Enter a mobile number with its country code, such as +91 98111 22334.",
+    "invalid_email": "Enter a valid email address, such as name@company.com.",
 }
 
 
@@ -714,11 +785,8 @@ _STAGE_ORDER = {
     "new": 1,
     "contacted": 2,
     "qualified": 3,
-    "demo": 4,
-    "proposal": 5,
-    "negotiation": 6,
-    "approval": 7,
-    "won": 8,
+    "converted": 4,
+    "won": 5,
 }
 
 
@@ -731,6 +799,7 @@ async def list_customers(
     limit: int,
     query: str | None = None,
     filter_kind: str = "all",
+    crm_id: int | None = None,
 ) -> list[schemas.CustomerListRow]:
     """Paged customer list with lead/deal summaries, respecting lead-owner visibility."""
     owners = await visible_owners(db, tenant_id, user_id, permissions)
@@ -762,6 +831,8 @@ async def list_customers(
         )
         .where(Lead.tenant_id == tenant_id)
     )
+    if crm_id is not None:
+        base = base.where(Lead.crm_id == crm_id)
     if owners is not None:
         base = base.where(Lead.owner_id.in_(owners))
 
@@ -1157,6 +1228,7 @@ async def contact_detail(
         )
         summary = schemas.ContactLeadSummary(
             id=str(lead.id),
+            crmId=str(lead.crm_id),
             stage=lead.stage,
             source=lead.source,
             requirement=lead.requirement,
@@ -1181,11 +1253,36 @@ async def contact_detail(
     )
     tags_list = await tag_svc.tags_for_contact(db, tenant_id, contact_id)
 
+    lead_ids = [lead.id for lead in leads_rows]
+    lead_notes_out: list[schemas.LeadNoteWithLead] = []
+    if lead_ids:
+        ln_rows = (
+            await db.execute(
+                select(LeadNote, User.name)
+                .outerjoin(User, User.id == LeadNote.author_id)
+                .where(LeadNote.tenant_id == tenant_id, LeadNote.lead_id.in_(lead_ids))
+                .order_by(LeadNote.created_at.desc())
+                .limit(50)
+            )
+        ).all()
+        lead_notes_out = [
+            schemas.LeadNoteWithLead(
+                id=str(ln.id),
+                leadId=str(ln.lead_id),
+                body=ln.body,
+                author=author_name,
+                nextFollowUpOn=ln.next_follow_up_on,
+                createdAt=ln.created_at,
+            )
+            for ln, author_name in ln_rows
+        ]
+
     return schemas.ContactDetailOut(
         contact=contact_out,
         leads=lead_summaries,
         notes=notes,
         activities=activities_list,
+        leadNotes=lead_notes_out,
         tags=tags_list,
         totalDealValue=format(total_deal_value, ".2f"),
         openDealValue=format(open_deal_value, ".2f"),
@@ -1211,6 +1308,8 @@ async def bulk_stage(
         query = query.where(Lead.owner_id.in_(owners))
     leads = (await db.scalars(query)).all()
     for lead in leads:
+        if lead.stage == "converted":
+            continue
         lead.stage = data.stage
         lead.last_activity_at = now()
         set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)

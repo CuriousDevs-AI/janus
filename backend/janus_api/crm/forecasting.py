@@ -29,6 +29,7 @@ async def set_target(
     tenant_id: int,
     user_id: int,
     data: schemas.TargetIn,
+    crm_id: int | None = None,
 ) -> schemas.TargetOut:
     owner_id = int(data.ownerId) if data.ownerId else None
     existing = await db.scalar(
@@ -49,6 +50,7 @@ async def set_target(
             owner_id=owner_id,
             period=data.period,
             target_amount=data.targetAmount,
+            crm_id=crm_id,
         )
         db.add(t)
         await db.flush()
@@ -74,8 +76,11 @@ async def list_targets(
     db: AsyncSession,
     tenant_id: int,
     period: str | None = None,
+    crm_id: int | None = None,
 ) -> list[schemas.TargetOut]:
     q = select(SalesTarget).where(SalesTarget.tenant_id == tenant_id)
+    if crm_id is not None:
+        q = q.where(SalesTarget.crm_id == crm_id)
     if period:
         q = q.where(SalesTarget.period == period)
     q = q.order_by(SalesTarget.period.desc(), SalesTarget.owner_id)
@@ -104,6 +109,7 @@ async def get_forecast(
     db: AsyncSession,
     tenant_id: int,
     period: str,
+    crm_id: int | None = None,
 ) -> schemas.ForecastOut:
     from calendar import monthrange
     from datetime import datetime as dt
@@ -115,18 +121,20 @@ async def get_forecast(
     last_day = monthrange(y, m)[1]
     month_end = dt(y, m, last_day, 23, 59, 59, tzinfo=utc)
 
+    target_f = [SalesTarget.tenant_id == tenant_id, SalesTarget.period == period]
+    deal_f = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        target_f.append(SalesTarget.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
     target_row = await db.scalar(
-        select(func.coalesce(func.sum(SalesTarget.target_amount), 0)).where(
-            SalesTarget.tenant_id == tenant_id,
-            SalesTarget.period == period,
-        )
+        select(func.coalesce(func.sum(SalesTarget.target_amount), 0)).where(*target_f)
     )
     target_amount = Decimal(target_row) if target_row else Decimal(0)
 
     deal_rows = (
         await db.execute(
             select(Deal.stage, Deal.amount).where(
-                Deal.tenant_id == tenant_id,
+                *deal_f,
                 Deal.stage.not_in(["won", "lost"]),
             )
         )
@@ -150,14 +158,10 @@ async def get_forecast(
         for s, amounts in stage_buckets.items()
     ]
 
+    won_f = [Deal.stage == "won", Deal.updated_at >= month_start, Deal.updated_at <= month_end]
     won_total = Decimal(
         await db.scalar(
-            select(func.coalesce(func.sum(Deal.amount), 0)).where(
-                Deal.tenant_id == tenant_id,
-                Deal.stage == "won",
-                Deal.updated_at >= month_start,
-                Deal.updated_at <= month_end,
-            )
+            select(func.coalesce(func.sum(Deal.amount), 0)).where(*deal_f, *won_f)
         )
         or 0
     )
@@ -177,21 +181,21 @@ async def rep_attainment(
     db: AsyncSession,
     tenant_id: int,
     period: str,
+    crm_id: int | None = None,
 ) -> list[schemas.RepAttainmentOut]:
     year, month = period.split("-")
     month_start = f"{year}-{month}-01"
     month_end = f"{year}-{month}-31"
 
+    target_f = [
+        SalesTarget.tenant_id == tenant_id,
+        SalesTarget.period == period,
+        SalesTarget.owner_id.is_not(None),
+    ]
+    if crm_id is not None:
+        target_f.append(SalesTarget.crm_id == crm_id)
     targets = (
-        (
-            await db.execute(
-                select(SalesTarget).where(
-                    SalesTarget.tenant_id == tenant_id,
-                    SalesTarget.period == period,
-                    SalesTarget.owner_id.is_not(None),
-                )
-            )
-        )
+        (await db.execute(select(SalesTarget).where(*target_f)))
         .scalars()
         .all()
     )
@@ -205,6 +209,10 @@ async def rep_attainment(
         name_rows = await db.execute(text("SELECT id, name FROM app_member_names()"))
         names = {int(r.id): str(r.name) for r in name_rows}
 
+    deal_base = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        deal_base.append(Deal.crm_id == crm_id)
+
     result = []
     for t in targets:
         if not t.owner_id:
@@ -215,7 +223,7 @@ async def rep_attainment(
                 .select_from(Deal)
                 .join(Lead, (Lead.id == Deal.lead_id) & (Lead.tenant_id == Deal.tenant_id))
                 .where(
-                    Deal.tenant_id == tenant_id,
+                    *deal_base,
                     Deal.stage == "won",
                     Lead.owner_id == t.owner_id,
                     Deal.updated_at >= month_start,
@@ -231,7 +239,7 @@ async def rep_attainment(
                 .select_from(Deal)
                 .join(Lead, (Lead.id == Deal.lead_id) & (Lead.tenant_id == Deal.tenant_id))
                 .where(
-                    Deal.tenant_id == tenant_id,
+                    *deal_base,
                     Deal.stage.not_in(["won", "lost"]),
                     Lead.owner_id == t.owner_id,
                 )

@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { api, message } from "@/lib/api/client";
 import { toast } from "sonner";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +60,8 @@ export default function SignupPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
+        <CuriousdevsLogo className="size-14 text-accent" loading />
         <h1 className="text-[24px] font-semibold tracking-tight text-foreground">
           Create your account
         </h1>

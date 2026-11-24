@@ -26,13 +26,16 @@ const axisInr = (value: number) => Math.abs(value) >= 1e7 ? `₹${(value / 1e7).
 const sourceName = (source: string) => ({ webhook: "Website and forms", whatsapp: "WhatsApp", csv: "Imported file", manual: "Added by hand", api: "API", phone_call: "Phone calls", embed: "Website form" } as Record<string, string>)[source] ?? source.replace(/_/g, " ");
 
 /** Comparison and trends across the companies: how each is moving, against the others and itself. */
-export function Analytics({ list, period }: { list: PortfolioCompany[]; period: PortfolioPeriod }) {
+export function Analytics({ list: all, period }: { list: PortfolioCompany[]; period: PortfolioPeriod }) {
   const router = useRouter();
   const [months, setMonths] = React.useState(6);
+  const [compare, setCompare] = React.useState<Set<string>>(new Set());
+  const list = compare.size >= 2 ? all.filter((item) => compare.has(item.id)) : all;
+  const toggleCompare = (id: string) => setCompare((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else if (next.size < 4) next.add(id); return next; });
   const trends = usePortfolioApi<PortfolioTrends>(`/portfolio/trends?months=${months}`, { keepPrevious: true });
   const money = list.some((item) => item.books);
   // A company keeps its colour by its place in the Portfolio.
-  const color = new Map(list.map((item, index) => [item.id, palette[index % palette.length]]));
+  const color = new Map(all.map((item, index) => [item.id, palette[index % palette.length]]));
   // The group's figures, as on the Overview and Finance: sales between the companies taken out.
   const group = groupBooks(list, "current");
   const salesNow = group.sales;
@@ -46,6 +49,7 @@ export function Analytics({ list, period }: { list: PortfolioCompany[]; period: 
   const collected = total(list, "current", (figures) => figures.collected);
   const collectedBefore = total(list, "previous", (figures) => figures.collected);
   return <>
+    {all.length > 2 && <div className="mb-3 flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-muted-foreground">Compare:</span>{all.map((item) => <button key={item.id} type="button" onClick={() => toggleCompare(item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${compare.has(item.id) ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}{compare.size >= 2 && <button type="button" onClick={() => setCompare(new Set())} className="text-xs text-muted-foreground underline">Clear</button>}</div>}
     <SectionNav sections={[{ id: "an-headline", label: "Headline" }, { id: "an-sales", label: money ? "Group sales" : "Value won" }, { id: "an-ratios", label: "Key ratios" }, { id: "an-last-year", label: "Against last year" }, { id: "an-kept", label: "Customers kept" }, { id: "an-months", label: "Month by month" }, { id: "an-share", label: "Share and conversion" }, { id: "an-channels", label: "Where leads come from" }, { id: "an-details", label: "Details" }]} />
     <Section id="an-headline">
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
@@ -189,7 +193,7 @@ function Conversion({ list, color }: { list: PortfolioCompany[]; color: Map<stri
   return <SectionCard title="Lead to win" description="Leads that came in this period, deals won, and the share that turned into a win.">
     <ul className="grid gap-3">{list.map((item) => { const leads = item.period.current.leads, won = item.period.current.wonDeals; const rate = percent(won, leads); return <li key={item.id}>
       <div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="flex items-center gap-2 font-medium"><span className="size-2.5 rounded-sm" style={{ background: color.get(item.id) }} aria-hidden />{item.name}</span><span className="tabular-nums text-muted-foreground">{won} of {leads} · {rate === null ? "—" : `${rate}%`}</span></div>
-      <div className="h-2 rounded bg-surface-2"><div className="h-2 rounded" style={{ width: `${Math.min(100, rate ?? 0)}%`, background: color.get(item.id) }} /></div>
+      <div className="h-2 rounded bg-surface-2"><div className="h-2 rounded" style={{ width: `${Math.max(rate ? 2 : 0, Math.min(100, rate ?? 0))}%`, minWidth: rate ? 4 : 0, background: color.get(item.id) }} /></div>
     </li>; })}</ul>
   </SectionCard>;
 }
@@ -202,8 +206,8 @@ function Channels({ list }: { list: PortfolioCompany[] }) {
   const rows = sources.map((source) => ({ source, now: list.reduce((sum, item) => sum + count(item, source, "current"), 0), before: list.reduce((sum, item) => sum + count(item, source, "previous"), 0) })).sort((a, b) => b.now - a.now);
   const max = Math.max(1, ...rows.map((row) => Math.max(row.now, row.before)));
   return <SectionCard title="Where leads come from" description="By channel, this period against the same days before, all companies together.">
-    <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-3">Channel</th><th className="w-[40%] px-3 py-2">This period</th><th className="px-3 py-2 text-right">Before</th>{list.map((item) => <th key={item.id} className="px-3 py-2 text-right">{item.name}</th>)}</tr></thead>
-      <tbody>{rows.map((row) => <tr key={row.source} className="border-b border-border last:border-0"><td className="py-2 pr-3 font-medium">{sourceName(row.source)}</td><td className="px-3 py-2"><div className="flex items-center gap-2"><div className="h-2 rounded" style={{ width: `${(row.now / max) * 100}%`, minWidth: row.now ? 4 : 0, background: palette[0] }} /><span className="tabular-nums">{row.now}</span></div></td><td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{row.before}</td>{list.map((item) => <td key={item.id} className="px-3 py-2 text-right tabular-nums">{count(item, row.source, "current")}</td>)}</tr>)}</tbody></table></div>
+    <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="py-2 pr-3">Channel</th><th className="w-[40%] px-3 py-2">This period</th><th className="px-3 py-2 text-right">Before</th><th className="px-3 py-2 text-right">Change</th>{list.map((item) => <th key={item.id} className="px-3 py-2 text-right">{item.name}</th>)}</tr></thead>
+      <tbody>{rows.map((row) => { const delta = row.before ? Math.round(((row.now - row.before) / row.before) * 100) : row.now ? 100 : 0; return <tr key={row.source} className="border-b border-border last:border-0"><td className="py-2 pr-3 font-medium">{sourceName(row.source)}</td><td className="px-3 py-2"><div className="flex items-center gap-2"><div className="h-2 rounded" style={{ width: `${(row.now / max) * 100}%`, minWidth: row.now ? 4 : 0, background: palette[0] }} /><span className="tabular-nums">{row.now}</span></div></td><td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{row.before}</td><td className={`px-3 py-2 text-right tabular-nums ${delta > 0 ? "text-success" : delta < 0 ? "text-danger" : "text-muted-foreground"}`}>{delta > 0 ? "+" : ""}{delta}%</td>{list.map((item) => <td key={item.id} className="px-3 py-2 text-right tabular-nums">{count(item, row.source, "current")}</td>)}</tr>; })}</tbody></table></div>
   </SectionCard>;
 }
 

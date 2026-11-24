@@ -11,13 +11,13 @@ import {
   ArrowUpCircle,
   XCircle,
   UserRound,
-  Sparkles,
   Send,
   Edit3,
   ArrowUpRight,
   Clock,
   MessageSquare,
 } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { useApi } from "@/lib/api/use-api";
 import type { Lead } from "@/lib/api/types";
@@ -209,7 +209,7 @@ function TicketDetailPageContent({ params }: { params: Promise<{ id: string }> }
           {showAiSupport && (
             <div className="rounded-lg border border-accent-border bg-accent-muted p-4">
               <div className="mb-2 flex items-center gap-1.5">
-                <Sparkles className="size-3.5 text-accent" />
+                <CuriousdevsLogo className="size-3.5 text-accent" />
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">AI Support</span>
               </div>
               <p className="mb-1 text-[11px] font-medium text-muted-foreground">Current understanding</p>

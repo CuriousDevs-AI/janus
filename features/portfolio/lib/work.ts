@@ -6,6 +6,7 @@
 
 import { inr, monthsOrPart } from "@/features/portfolio/lib/format";
 import type { PortfolioCompany } from "@/features/portfolio/types";
+import { workspaceDefinitions } from "@/lib/workspace-config";
 
 export type WorkKind = "approve" | "collect" | "pay" | "tax" | "file" | "renew" | "books" | "fix" | "deliver" | "support" | "stock";
 export type WorkItem = {
@@ -34,12 +35,13 @@ export const workKinds: Record<WorkKind, string> = {
   stock: "Stock",
 };
 
-const FINANCE = "/workspace/finance-accounting";
+const isActive = (id: string) => workspaceDefinitions.find((w) => w.id === id)?.status === "active";
+const FINANCE = isActive("finance-accounting") ? "/workspace/finance-accounting" : "/portfolio?view=finance";
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
-const OPS = "/workspace/operations-inventory?workspace=operations-inventory";
-const PROJECTS = "/workspace/projects-delivery?workspace=projects-delivery";
-const TICKETS = "/tickets?workspace=customer-support";
+const OPS = isActive("operations-inventory") ? "/workspace/operations-inventory?workspace=operations-inventory" : "/portfolio?view=overview";
+const PROJECTS = isActive("projects-delivery") ? "/workspace/projects-delivery?workspace=projects-delivery" : "/portfolio?view=overview";
+const TICKETS = isActive("customer-support") ? "/tickets?workspace=customer-support" : "/portfolio?view=overview";
 
 export function workFor(list: PortfolioCompany[]): WorkItem[] {
   const items: WorkItem[] = [];

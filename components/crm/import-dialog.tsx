@@ -157,6 +157,7 @@ export function ImportDialog({
               id="csv-file-input"
               type="file"
               accept=".csv"
+              aria-label="Upload CSV file"
               className="hidden"
               onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
             />

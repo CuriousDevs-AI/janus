@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Phone, Video, Mail, ClipboardList } from "lucide-react";
+import { Phone, Video, Mail, ClipboardList, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import type { Activity, ActivityKind } from "@/lib/api/types";
@@ -18,6 +18,7 @@ const KINDS: { key: ActivityKind; label: string; icon: typeof Phone }[] = [
   { key: "meeting", label: "Meeting", icon: Video },
   { key: "email", label: "Email", icon: Mail },
   { key: "task", label: "Task", icon: ClipboardList },
+  { key: "note", label: "Note", icon: StickyNote },
 ];
 
 const OUTCOMES = [
@@ -33,12 +34,14 @@ export function ActivityForm({
   open,
   onOpenChange,
   leadId,
+  dealId,
   contactId,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   leadId?: string | null;
+  dealId?: string | null;
   contactId: string;
   onSaved?: () => void;
 }) {
@@ -64,6 +67,7 @@ export function ActivityForm({
           subject: subject.trim(),
           description: description.trim(),
           leadId: leadId || null,
+          dealId: dealId || null,
           contactId,
           outcome: outcome || null,
           durationSeconds: duration ? parseInt(duration, 10) * 60 : null,

@@ -6,6 +6,7 @@ import { api, APIError, message } from "@/lib/api/client";
 import type { Me } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { setStorePermissions } from "@/lib/stores/workspace-storage";
 import { rememberTenant, watchTenant } from "@/lib/live-company";
 import { scopeApiCache } from "@/lib/api/use-api";
@@ -96,6 +97,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   if (!session)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 text-sm">
+        <CuriousdevsLogo className="size-20 text-accent" loading />
         <p role="status">{error || "Opening your workspace…"}</p>
         {error && (
           <>

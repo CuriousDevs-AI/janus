@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import {
-  CalendarCheck, Phone, Video, Mail, ClipboardList,
+  CalendarCheck, Phone, Video, Mail, ClipboardList, StickyNote,
   CheckCircle2, RefreshCw, Plus, ChevronLeft, ChevronRight,
-  BarChart3, TrendingUp, Clock, Users,
+  BarChart3, TrendingUp, Clock, Users, Settings2, Filter, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
@@ -19,19 +19,24 @@ import { formatDateTime, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { SearchInput } from "@/components/shared/search-input";
 import {
   Bar, BarChart, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-
 const KIND_META: Record<ActivityKind, { label: string; icon: typeof Phone; color: string; chartColor: string }> = {
   call: { label: "Call", icon: Phone, color: "text-info", chartColor: "var(--info)" },
   meeting: { label: "Meeting", icon: Video, color: "text-accent", chartColor: "var(--accent)" },
   email: { label: "Email", icon: Mail, color: "text-warning", chartColor: "var(--warning)" },
   task: { label: "Task", icon: ClipboardList, color: "text-success", chartColor: "var(--success)" },
+  note: { label: "Note", icon: StickyNote, color: "text-muted-foreground", chartColor: "var(--muted-foreground)" },
 };
 
 type ViewTab = "today" | "upcoming" | "overdue" | "calendar" | "analysis";
+type StatusFilter = "all" | "pending" | "completed" | "overdue";
+const ALL_KINDS: ActivityKind[] = ["call", "meeting", "email", "task", "note"];
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -73,8 +78,13 @@ export default function ActivitiesPage() {
   useSession();
   const [tab, setTab] = useState<ViewTab>("today");
   const [kindFilter, setKindFilter] = useState<string>("all");
+  const [visibleKinds, setVisibleKinds] = useState<Set<ActivityKind>>(new Set(ALL_KINDS));
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [logOpen, setLogOpen] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const today = todayIST();
   const weekEnd = addDays(today, 7);
@@ -84,18 +94,34 @@ export default function ActivitiesPage() {
   });
 
   const activities = useApi<Activity[]>(
-    `/activities?limit=200${kindFilter !== "all" && tab !== "analysis" ? `&kind=${kindFilter}` : ""}`,
+    `/activities?limit=100${kindFilter !== "all" && tab !== "analysis" ? `&kind=${kindFilter}` : ""}`,
   );
-  const allActivities = useApi<Activity[]>("/activities?limit=200");
+  const allActivities = useApi<Activity[]>(tab === "analysis" ? "/activities?limit=100" : null);
   const rows = useMemo(() => activities.data ?? [], [activities.data]);
-  const allRows = useMemo(() => allActivities.data ?? [], [allActivities.data]);
+  const allRows = useMemo(() => (tab === "analysis" ? allActivities.data : activities.data) ?? [], [tab, allActivities.data, activities.data]);
+
+  const owners = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of rows) if (a.ownerName) set.add(a.ownerName);
+    return [...set].sort();
+  }, [rows]);
 
   const filtered = useMemo(() => {
-    if (tab === "today") return rows.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) === today);
-    if (tab === "upcoming") return rows.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) > today && a.dueAt.slice(0, 10) <= weekEnd);
-    if (tab === "overdue") return rows.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) < today);
-    return rows;
-  }, [rows, tab, today, weekEnd]);
+    let list = rows;
+    if (tab === "today") list = list.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) === today);
+    else if (tab === "upcoming") list = list.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) > today && a.dueAt.slice(0, 10) <= weekEnd);
+    else if (tab === "overdue") list = list.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) < today);
+    if (visibleKinds.size < ALL_KINDS.length) list = list.filter((a) => visibleKinds.has(a.kind));
+    if (statusFilter === "pending") list = list.filter((a) => !a.completedAt);
+    else if (statusFilter === "completed") list = list.filter((a) => a.completedAt);
+    else if (statusFilter === "overdue") list = list.filter((a) => !a.completedAt && a.dueAt && a.dueAt.slice(0, 10) < today);
+    if (ownerFilter !== "all") list = list.filter((a) => (a.ownerName ?? "Unassigned") === ownerFilter);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((a) => a.subject.toLowerCase().includes(q) || a.ownerName?.toLowerCase().includes(q));
+    }
+    return list;
+  }, [rows, tab, today, weekEnd, visibleKinds, statusFilter, ownerFilter, searchQuery]);
 
   const calDays = useMemo(() => getCalendarDays(calMonth.year, calMonth.month), [calMonth]);
   const actByDate = useMemo(() => {
@@ -231,7 +257,8 @@ export default function ActivitiesPage() {
             </button>
           ))}
         </div>
-        {tab !== "analysis" && (
+        {tab !== "analysis" && <>
+          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search activities…" className="w-56" />
           <Select value={kindFilter} onValueChange={setKindFilter}>
             <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -240,10 +267,77 @@ export default function ActivitiesPage() {
               <SelectItem value="meeting">Meetings</SelectItem>
               <SelectItem value="email">Emails</SelectItem>
               <SelectItem value="task">Tasks</SelectItem>
+              <SelectItem value="note">Notes</SelectItem>
             </SelectContent>
           </Select>
-        )}
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+            <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="overdue">Overdue</SelectItem>
+            </SelectContent>
+          </Select>
+          {owners.length > 1 && (
+            <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+              <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All owners</SelectItem>
+                {owners.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
+                <Settings2 className="size-3.5" />
+                Visible
+                {visibleKinds.size < ALL_KINDS.length && <Badge variant="accent" className="text-[9px] px-1">{visibleKinds.size}</Badge>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-3" align="end">
+              <p className="mb-2 text-xs font-semibold">Show these activity types</p>
+              <div className="space-y-2">
+                {ALL_KINDS.map((kind) => {
+                  const meta = KIND_META[kind];
+                  const Icon = meta.icon;
+                  const checked = visibleKinds.has(kind);
+                  return (
+                    <label key={kind} className="flex items-center gap-2 text-xs cursor-pointer">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          const next = new Set(visibleKinds);
+                          if (v) next.add(kind); else next.delete(kind);
+                          if (next.size > 0) setVisibleKinds(next);
+                        }}
+                      />
+                      <Icon className={cn("size-3.5", meta.color)} />
+                      {meta.label}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="mt-3 flex gap-2 border-t border-border pt-2">
+                <Button size="sm" variant="ghost" className="text-[10px] h-6" onClick={() => setVisibleKinds(new Set(ALL_KINDS))}>Show all</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+          {(statusFilter !== "all" || ownerFilter !== "all" || searchQuery || visibleKinds.size < ALL_KINDS.length) && (
+            <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => { setStatusFilter("all"); setOwnerFilter("all"); setSearchQuery(""); setVisibleKinds(new Set(ALL_KINDS)); }}>
+              <X className="size-3" /> Clear
+            </Button>
+          )}
+        </>}
       </div>
+
+      {tab !== "analysis" && tab !== "calendar" && rows.length > 0 && (
+        <div className="flex items-center gap-2 px-6 py-2 text-xs text-muted-foreground">
+          <Filter className="size-3" />
+          Showing {filtered.length} of {rows.length} activities
+        </div>
+      )}
 
       {activities.error && (
         <p role="alert" className="mx-6 mt-3 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">

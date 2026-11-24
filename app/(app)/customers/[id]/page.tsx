@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
+import { formatCurrencyINR, formatDateTime, formatRelativeTime, titleCase } from "@/lib/utils";
 
 interface CustomerNote {
   id: string;
@@ -23,9 +23,7 @@ interface CustomerNote {
   createdAt: string;
 }
 
-function label(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+const label = titleCase;
 
 function displayName(contact: Contact) {
   return contact.name || contact.phone || contact.email || `Customer #${contact.id}`;

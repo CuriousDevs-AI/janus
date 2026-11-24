@@ -13,7 +13,8 @@ import { sessionChanged, useSession } from "@/components/auth/session-provider";
 import { api, message } from "@/lib/api/client";
 import { roleLabel } from "@/lib/access";
 import { cn } from "@/lib/utils";
-import { useProfileStore, type UserStatus, avatarColorFor } from "@/lib/stores/profile-store";
+import { useProfileStore, type UserStatus, avatarColorFor, generateAvatarSvg } from "@/lib/stores/profile-store";
+import { CARTOON_AVATARS } from "@/lib/cartoon-avatars";
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; dot: string }[] = [
   { value: "online", label: "Online", dot: "bg-emerald-500" },
@@ -133,32 +134,49 @@ export function ProfileCard() {
   return <div className="flex flex-col gap-4">
     {/* Avatar + identity */}
     <SectionCard title="Profile photo" description="Your photo shows in team chat, mentions, and the header.">
-      <div className="flex items-center gap-5">
-        <div className="group relative">
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="Your avatar" className="size-20 rounded-full object-cover ring-2 ring-border" />
-          ) : (
-            <span className="flex size-20 items-center justify-center rounded-full text-xl font-semibold text-white ring-2 ring-border" style={{ backgroundColor: color }}>{ini}</span>
-          )}
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
-            aria-label="Upload photo"
-          >
-            <Camera className="size-5 text-white" />
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-5">
+          <div className="group relative">
+            <img src={avatarUrl || generateAvatarSvg(displayName || name)} alt="Your avatar" className="size-20 rounded-full object-cover ring-2 ring-border" />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+              aria-label="Upload photo"
+            >
+              <Camera className="size-5 text-white" />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>Upload photo</Button>
+            {avatarUrl && (
+              <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => { setAvatar(null); toast.success("Photo removed."); }}>
+                <Trash2 className="size-3" />
+                Remove
+              </Button>
+            )}
+            <p className="text-[11px] text-muted-foreground">JPG, PNG or GIF. Max 2 MB.</p>
+          </div>
         </div>
-        <div className="flex flex-col gap-2">
-          <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>Upload photo</Button>
-          {avatarUrl && (
-            <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => { setAvatar(null); toast.success("Photo removed."); }}>
-              <Trash2 className="size-3" />
-              Remove
-            </Button>
-          )}
-          <p className="text-[11px] text-muted-foreground">JPG, PNG or GIF. Max 2 MB.</p>
+        <div>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Or pick an avatar</p>
+          <div className="flex flex-wrap gap-2">
+            {CARTOON_AVATARS.map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                title={a.label}
+                onClick={() => { setAvatar(a.url); toast.success(`Avatar set: ${a.label}`); }}
+                className={cn(
+                  "size-12 rounded-full ring-2 ring-transparent transition-all hover:scale-110 hover:ring-accent",
+                  avatarUrl === a.url && "ring-accent ring-offset-2 ring-offset-background",
+                )}
+              >
+                <img src={a.url} alt={a.label} className="size-full rounded-full" />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </SectionCard>

@@ -6,9 +6,9 @@ PDF or image up to 5 MB, kept in its row under row-level security) is named in t
 only people who may change documents can download, replace or remove it.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -22,6 +22,7 @@ from janus_api.portfolio.models import CompanyDocument, CompanyDocumentFile
 
 SOON = 30
 MAX_FILE = 5 * 1024 * 1024
+MAX_DOCS_PER_HOUR = 60
 # What a document file may be, told by its first bytes, never by its name or the browser's word.
 SIGNATURES = (
     (b"%PDF-", "application/pdf", ".pdf"),
@@ -146,6 +147,17 @@ async def save(
     try:
         tenant_id = await enter_company(db, user_id, company_id, "portfolio:finance")
         if document_id is None:
+            since = datetime.now(UTC) - timedelta(hours=1)
+            recent = await db.scalar(
+                select(func.count(CompanyDocument.id)).where(
+                    CompanyDocument.updated_by == user_id,
+                    CompanyDocument.updated_at >= since,
+                )
+            )
+            if (recent or 0) >= MAX_DOCS_PER_HOUR:
+                raise ApiError(
+                    "rate_limit", "Too many documents in the last hour. Wait and try again.", 429
+                )
             row = CompanyDocument(tenant_id=tenant_id, updated_by=user_id)
             db.add(row)
         else:

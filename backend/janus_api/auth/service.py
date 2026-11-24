@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from janus_api.audit.service import record
 from janus_api.auth import schemas
-from janus_api.core.config import get_settings
 from janus_api.auth.models import (
     EmailChange,
     EmailVerification,
@@ -16,6 +15,7 @@ from janus_api.auth.models import (
     User,
 )
 from janus_api.core import email, storage
+from janus_api.core.config import get_settings
 from janus_api.core.errors import ApiError
 from janus_api.core.security import (
     DUMMY_HASH,
@@ -50,6 +50,9 @@ def user_out(user: User) -> schemas.UserOut:
         avatar_url=user.avatar_url,
         timezone=user.timezone,
         language=user.language,
+        bio=user.bio,
+        title=user.title,
+        status_text=user.status_text,
         email_verified_at=user.email_verified_at,
     )
 
@@ -119,19 +122,21 @@ async def verification_email(db: AsyncSession, user: User, *, resend: bool = Fal
 
 
 async def signup(db: AsyncSession, data: schemas.Signup, ip: str) -> schemas.Message:
-    dev = get_settings().environment == "development"
     user = await create_user(
-        db, data.name, str(data.email).casefold(), data.password,
-        username=data.username, verified=dev,
+        db, data.name, str(data.email).casefold(), data.password, username=data.username
     )
-    # The first company is named after the person until setup gives it its real name.
-    company = (data.business_name or "").strip() or f"{user.name}'s company"[:160]
+    # The first company gets a placeholder name; the setup wizard renames it.
+    company = (data.business_name or "").strip() or "My Company"
     tenant_id = await org.create_workspace(db, user.id, company)
-    if not dev:
+    from janus_api.crm.crm_workspace import ensure_default_crm
+
+    await ensure_default_crm(db, tenant_id, user.id)
+    if get_settings().environment == "development":
+        user.email_verified_at = now()
+    else:
         await verification_email(db, user)
     record(db, "auth.signup", user_id=user.id, tenant_id=tenant_id, ip=ip)
-    msg = "Account created. You can sign in now." if dev else "Account created. Check your email to verify it."
-    return schemas.Message(message=msg)
+    return schemas.Message(message="Account created. Check your email to verify it.")
 
 
 async def issue_session(
@@ -305,6 +310,7 @@ async def list_sessions(db: AsyncSession, actor: Actor) -> list[schemas.SessionO
                 Session.expires_at > now(),
             )
             .order_by(Session.last_used_at.desc())
+            .limit(50)
         )
     ).all()
     return [
@@ -491,12 +497,20 @@ async def verify_email(db: AsyncSession, token: str, ip: str) -> schemas.Message
 async def me(db: AsyncSession, actor: Actor) -> schemas.Me:
     tenants = await org.list_workspaces(db, actor.user.id, actor.session.tenant_id)
     current = next(tenant for tenant in tenants if tenant.id == str(actor.session.tenant_id))
+    from janus_api.crm.crm_workspace import list_crms_brief
+
+    crm_rows = await list_crms_brief(db, actor.session.tenant_id)
+    crms = [
+        schemas.CrmBrief(id=c.id, name=c.name, slug=c.slug, isDefault=c.isDefault)
+        for c in crm_rows
+    ]
     return schemas.Me(
         user=user_out(actor.user),
         tenant=current,
         role=actor.role,
         permissions=actor.permissions,
         tenants=tenants,
+        crms=crms,
     )
 
 
@@ -505,7 +519,7 @@ async def update_profile(
 ) -> schemas.UserOut:
     user = await active_user(db, actor.user.id, lock=True)
     for key, value in data.model_dump(exclude_unset=True).items():
-        if value is None and key not in {"phone", "avatar_url"}:
+        if value is None and key not in {"phone", "avatar_url", "bio", "title", "status_text"}:
             raise ApiError("validation_error", f"{key} cannot be null.", 422)
         setattr(user, key, str(value) if value is not None else None)
     record(db, "auth.profile_updated", user_id=user.id, tenant_id=actor.session.tenant_id, ip=ip)

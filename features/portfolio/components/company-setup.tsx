@@ -1,0 +1,207 @@
+"use client";
+
+import * as React from "react";
+import { scoped } from "@/lib/company";
+import { useRouter } from "next/navigation";
+import { CompanyWizard } from "@/components/setup/company-wizard";
+import { InviteTeam } from "@/components/setup/invite-team";
+import { ArrowRight, Building2, Check, CircleHelp, MessageSquare, SkipForward, Waypoints } from "lucide-react";
+import { toast } from "sonner";
+import { api, message } from "@/lib/api/client";
+import { workspaceDefinitions } from "@/lib/workspace-config";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { SectionCard } from "@/components/settings/section-ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type Setup = { businessName: string; industry: string; companySize: string; timezone: string; setupCompleted: boolean; completedSteps: string[]; nextStep: string | null };
+type Workspace = { id: string; type: string; name: string; description: string; status: string };
+type WizardStep = "profile" | "workspace" | "members" | "team_chat" | "connections";
+
+const defaultSetup: Setup = { businessName: "", industry: "", companySize: "", timezone: "Asia/Kolkata", setupCompleted: false, completedSteps: [], nextStep: "business_details" };
+const steps: Array<{ id: WizardStep; apiId: string; label: string; description: string }> = [
+  { id: "profile", apiId: "business_details", label: "Company profile", description: "Tell Janus about your company and its timezone." },
+  { id: "workspace", apiId: "workspaces", label: "Activate a workspace", description: "Choose where your team will work. You can continue with Business Management only." },
+  { id: "members", apiId: "members", label: "Invite your team", description: "Add teammates now or skip and invite them later from People & Access." },
+  { id: "team_chat", apiId: "team_chat", label: "Team Chat", description: "Set up channels and messaging so your team can communicate." },
+  { id: "connections", apiId: "data_connections", label: "Connect data", description: "Connect a source when you are ready. This step is optional for the first session." },
+];
+const profileStorageKey = scoped("janus.setup.profile");
+const activationStorageKey = scoped("janus.setup.active-workspace");
+
+export function CompanySetup() {
+  const router = useRouter();
+  const [setup, setSetup] = React.useState<Setup | null>(null);
+  const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
+  const [step, setStep] = React.useState<WizardStep>("profile");
+  const [name, setName] = React.useState("");
+  const [industry, setIndustry] = React.useState("");
+  const [companySize, setCompanySize] = React.useState("");
+  const [timezone, setTimezone] = React.useState("Asia/Kolkata");
+  const [activeWorkspace, setActiveWorkspace] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    Promise.all([api<Setup>("/business/setup"), api<Workspace[]>("/workspaces")])
+      .then(([current, items]) => {
+        if (!mounted) return;
+        const nextSetup = current ?? defaultSetup;
+        setSetup(nextSetup);
+        // Only use localStorage draft if the user already started filling the profile in this setup.
+        // Otherwise start clean from the API so old/stale values don't leak in.
+        const fresh = !nextSetup.completedSteps.includes("business_details");
+        if (fresh) try { window.localStorage.removeItem(profileStorageKey); } catch { /* ok */ }
+        const storedProfile = !fresh ? window.localStorage.getItem(profileStorageKey) : null;
+        const profile = storedProfile ? JSON.parse(storedProfile) as Partial<Setup> : {};
+        const isPlaceholder = !nextSetup.businessName || nextSetup.businessName === "My Company" || /'s company$/i.test(nextSetup.businessName);
+        const apiName = isPlaceholder ? "" : nextSetup.businessName;
+        setName(profile.businessName || apiName);
+        setIndustry(profile.industry || nextSetup.industry);
+        setCompanySize(profile.companySize || nextSetup.companySize);
+        setTimezone(profile.timezone || nextSetup.timezone || "Asia/Kolkata");
+        setWorkspaces(items);
+        const storedActivation = window.localStorage.getItem(activationStorageKey);
+        setActiveWorkspace(storedActivation === "none" ? null : storedActivation || (nextSetup.completedSteps.includes("workspaces") ? items.find((item) => item.status === "active")?.type ?? null : null));
+        const first = steps.find((item) => !nextSetup.completedSteps.includes(item.apiId));
+        setStep(first?.id ?? "profile");
+        setLoading(false);
+      })
+      .catch((reason) => {
+        if (!mounted) return;
+        setError(message(reason)); setLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  const completed = setup?.completedSteps ?? [];
+  const profilePercent = Math.round(([name, industry, companySize].filter(Boolean).length / 3) * 100);
+  const completeCount = steps.filter((item) => completed.includes(item.apiId)).length;
+  const progressPercent = Math.round((completeCount / steps.length) * 100);
+  const currentIndex = Math.max(0, steps.findIndex((item) => item.id === step));
+  const current = steps[currentIndex] ?? steps[0];
+  const canContinue = current.id === "profile" ? Boolean(name.trim() && industry.trim()) : completed.includes(current.apiId);
+
+  const finishing = React.useRef(false);
+  React.useEffect(() => {
+    if (setup && !setup.setupCompleted && steps.every((s) => completed.includes(s.apiId)) && !finishing.current) {
+      finishing.current = true;
+      api<Setup>("/business/setup", { method: "PATCH", body: JSON.stringify({ completedSteps: steps.map((s) => s.apiId) }) })
+        .then(() => { window.dispatchEvent(new Event("janus:setup-changed")); window.location.assign("/portfolio?view=overview"); })
+        .catch(() => { finishing.current = false; });
+    }
+  }, [setup, completed]);
+
+  async function updateStep(apiId: string, values: Partial<Setup> = {}) {
+    if (!setup) return false;
+    const completedSteps = [...new Set([...setup.completedSteps, apiId])];
+    const next = { ...setup, ...values, completedSteps, nextStep: steps.find((item) => !completedSteps.includes(item.apiId))?.apiId ?? null, setupCompleted: steps.every((item) => completedSteps.includes(item.apiId)) };
+    setSetup(next);
+    try {
+      const updated = await api<Setup>("/business/setup", { method: "PATCH", body: JSON.stringify({ businessName: name.trim(), industry: industry.trim(), companySize, timezone, completedSteps }) });
+      setSetup(updated);
+      window.dispatchEvent(new Event("janus:setup-changed"));
+      return true;
+    } catch (reason) { toast.error(message(reason)); return false; }
+  }
+
+  async function saveProfile() {
+    if (!name.trim() || !industry.trim()) return;
+    setSaving(true);
+    try {
+      window.localStorage.setItem(profileStorageKey, JSON.stringify({ businessName: name, industry, companySize, timezone }));
+      if (await updateStep("business_details", { businessName: name.trim(), industry: industry.trim(), companySize, timezone })) { toast.success("Company profile saved"); setStep("workspace"); }
+    } finally { setSaving(false); }
+  }
+
+  async function activateWorkspace(type: string) {
+    setSaving(true);
+    try {
+      const existing = workspaces.find((item) => item.type === type);
+      if (!existing) {
+        const definition = workspaceDefinitions.find((item) => item.id.replaceAll("-", "_") === type);
+        const created = await api<Workspace>("/workspaces", { method: "POST", body: JSON.stringify({ type, name: definition?.name }) });
+        setWorkspaces((items) => [...items, created]);
+      }
+      setActiveWorkspace(type); window.localStorage.setItem(activationStorageKey, type); window.dispatchEvent(new Event("janus:workspace-activation"));
+      await updateStep("workspaces");
+      toast.success(`${workspaceDefinitions.find((item) => item.id.replaceAll("-", "_") === type)?.name ?? "Workspace"} activated`);
+      setStep("members");
+    } catch (reason) { toast.error(message(reason)); } finally { setSaving(false); }
+  }
+
+  async function skipWorkspace() {
+    setActiveWorkspace(null); window.localStorage.setItem(activationStorageKey, "none"); window.dispatchEvent(new Event("janus:workspace-activation"));
+    await updateStep("workspaces"); setStep("members"); toast.success("You can activate a workspace later from Business → Workspaces");
+  }
+
+  async function skipStep(apiId: string, nextStep: WizardStep) {
+    setSaving(true);
+    try { await updateStep(apiId); setStep(nextStep); toast.success("Step skipped for now"); } finally { setSaving(false); }
+  }
+
+  async function finishMembers() {
+    setSaving(true);
+    try { if (await updateStep("members")) setStep("team_chat"); } finally { setSaving(false); }
+  }
+
+  async function finishTeamChat() {
+    setSaving(true);
+    try { if (await updateStep("team_chat")) setStep("connections"); } finally { setSaving(false); }
+  }
+
+  async function finish() {
+    setSaving(true);
+    try {
+      if (!completed.includes("members")) await updateStep("members");
+      if (!completed.includes("team_chat")) await updateStep("team_chat");
+      if (!completed.includes("data_connections")) await updateStep("data_connections");
+      window.dispatchEvent(new Event("janus:setup-changed"));
+      toast.success("Setup complete — your workspaces are unlocked.");
+      window.location.assign("/portfolio?view=overview");
+    } finally { setSaving(false); }
+  }
+
+  if (loading) return <div className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">Loading your business setup…</div>;
+  if (error) return <div className="mx-auto max-w-2xl p-8"><SectionCard title="Business setup unavailable" description={error}><Button onClick={() => router.replace("/portfolio?view=overview")}>Back to Portfolio <ArrowRight className="size-3.5" /></Button></SectionCard></div>;
+  if (!setup) return null;
+  if (setup.setupCompleted) return null;
+
+  return <div className="mx-auto flex max-w-5xl flex-col gap-6 p-5 sm:p-8 lg:p-10">
+    <header className="flex flex-wrap items-start justify-between gap-5"><div><Badge variant="neutral">Owner setup</Badge><h1 className="mt-2 text-2xl font-semibold tracking-tight">Set up your business in Janus</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Finish the essentials once. You can invite people and activate more workspaces whenever you are ready.</p></div><div className="min-w-[190px] rounded-lg border border-border bg-surface p-3"><div className="flex items-center justify-between text-xs"><span className="font-medium">Setup progress</span><span className="tabular-nums text-muted-foreground">{progressPercent}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-3"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progressPercent}%` }} /></div><p className="mt-2 text-[11px] text-muted-foreground">{completeCount} of {steps.length} steps completed</p></div></header>
+    <div className="grid gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
+      <nav aria-label="Setup steps" className="flex gap-1 overflow-x-auto lg:grid lg:content-start lg:gap-2">{steps.map((item, index) => { const done = completed.includes(item.apiId); const selected = item.id === current.id; return <button key={item.id} type="button" onClick={() => (done || index <= currentIndex) && setStep(item.id)} className={`flex min-w-[180px] items-center gap-3 rounded-lg border p-3 text-left transition-colors lg:min-w-0 ${selected ? "border-accent-border bg-accent-muted" : "border-border bg-surface hover:bg-surface-2"}`}><span className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${done ? "bg-success text-white" : selected ? "bg-accent text-white" : "bg-surface-3 text-muted-foreground"}`}>{done ? <Check className="size-3.5" /> : index + 1}</span><span className="min-w-0"><span className="block truncate text-xs font-medium">{item.label}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{done ? "Complete" : item.description}</span></span></button>; })}</nav>
+      <main className="min-w-0"><SectionCard title={`${currentIndex + 1}. ${current.label}`} description={current.description}>{current.id === "profile" && <ProfileStep name={name} industry={industry} companySize={companySize} timezone={timezone} setName={setName} setIndustry={setIndustry} setCompanySize={setCompanySize} setTimezone={setTimezone} profilePercent={profilePercent} />}{current.id === "workspace" && <WorkspaceStep activeWorkspace={activeWorkspace} onActivate={activateWorkspace} onSkip={skipWorkspace} saving={saving} />}{current.id === "members" && <InviteTeam onSkip={() => void skipStep("members", "team_chat")} onContinue={() => void finishMembers()} saving={saving} />}{current.id === "team_chat" && <TeamChatStep onDone={() => void finishTeamChat()} onSkip={() => void skipStep("team_chat", "connections")} saving={saving} />}{current.id === "connections" && <ConnectionsStep onConnect={() => router.push("/lead-sources")} onSkip={() => void skipStep("data_connections", "connections")} />}</SectionCard><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" onClick={() => router.replace("/portfolio?view=overview")}>Save and exit</Button><div className="flex gap-2">{current.id === "profile" ? <Button onClick={() => void saveProfile()} disabled={saving || !canContinue}>{saving ? "Saving…" : "Save and continue"}<ArrowRight className="size-3.5" /></Button> : current.id === "workspace" ? null : current.id === "members" ? <Button onClick={() => void skipStep("members", "team_chat")} disabled={saving}>Continue to Team Chat <ArrowRight className="size-3.5" /></Button> : current.id === "team_chat" ? <Button onClick={() => void skipStep("team_chat", "connections")} disabled={saving}>Continue to data <ArrowRight className="size-3.5" /></Button> : <Button onClick={() => void finish()} disabled={saving}>{saving ? "Finishing…" : "Finish Setup"}<ArrowRight className="size-3.5" /></Button>}</div></div></main>
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><CircleHelp className="size-3.5" />You can change these choices later from Business Settings.</span>{activeWorkspace ? <span className="flex items-center gap-1.5"><Waypoints className="size-3.5 text-success" />Active workspace: {workspaceDefinitions.find((item) => item.id.replaceAll("-", "_") === activeWorkspace)?.name ?? activeWorkspace}</span> : <span className="flex items-center gap-1.5"><Waypoints className="size-3.5" />No workspace active · Business Management only</span>}</div>
+  </div>;
+}
+
+function ProfileStep({ name, industry, companySize, timezone, setName, setIndustry, setCompanySize, setTimezone, profilePercent }: { name: string; industry: string; companySize: string; timezone: string; setName: (value: string) => void; setIndustry: (value: string) => void; setCompanySize: (value: string) => void; setTimezone: (value: string) => void; profilePercent: number }) {
+  return <div className="grid gap-5"><div className="flex items-center justify-between rounded-lg border border-accent-border bg-accent-muted/50 p-3"><div><p className="text-sm font-medium">Company profile completion</p><p className="mt-1 text-xs text-muted-foreground">Used in reports, permissions and workspace settings.</p></div><span className="text-xl font-semibold text-accent">{profilePercent}%</span></div><div className="grid gap-4 sm:grid-cols-2"><label className="text-xs text-muted-foreground">Company name<Input className="mt-1" value={name} onChange={(event) => setName(event.target.value)} placeholder="Your company name" /></label><label className="text-xs text-muted-foreground">Industry<Input className="mt-1" value={industry} onChange={(event) => setIndustry(event.target.value)} placeholder="e.g. Manufacturing" /></label><label className="text-xs text-muted-foreground">Company size<Select value={companySize} onValueChange={setCompanySize}><SelectTrigger className="mt-1"><SelectValue placeholder="Choose size" /></SelectTrigger><SelectContent><SelectItem value="1–10 employees">1–10 employees</SelectItem><SelectItem value="11–50 employees">11–50 employees</SelectItem><SelectItem value="51–200 employees">51–200 employees</SelectItem><SelectItem value="200+ employees">200+ employees</SelectItem></SelectContent></Select></label><label className="text-xs text-muted-foreground">Timezone<Select value={timezone} onValueChange={setTimezone}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem><SelectItem value="UTC">UTC</SelectItem><SelectItem value="Asia/Singapore">Asia/Singapore (SGT)</SelectItem></SelectContent></Select></label></div></div>;
+}
+
+function WorkspaceStep({ activeWorkspace, onActivate, onSkip, saving }: { activeWorkspace: string | null; onActivate: (type: string) => void; onSkip: () => void; saving: boolean }) {
+  const options = workspaceDefinitions.filter((item) => item.id !== "business" && item.id !== "portfolio");
+  return <div className="grid gap-4"><div className={`rounded-lg border p-4 ${activeWorkspace ? "border-success/40 bg-success/5" : "border-amber-300/60 bg-amber-50"}`}><div className="flex items-start gap-3"><Building2 className="mt-0.5 size-4" /><div><p className="text-sm font-medium">{activeWorkspace ? "A workspace is active" : "No workspace is active yet"}</p><p className="mt-1 text-xs text-muted-foreground">{activeWorkspace ? "Your team can now enter the selected workspace from the workspace switcher." : "You can still use Business Management to configure the company and activate a workspace later."}</p></div></div></div><div className="grid gap-2 sm:grid-cols-2">{options.map((item) => { const type = item.id.replaceAll("-", "_"); const active = activeWorkspace === type; return <div key={item.id} className={`flex items-center gap-3 rounded-lg border p-3 ${active ? "border-success/40 bg-success/5" : "border-border bg-surface"}`}><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{item.name}</span><span className="mt-1 block text-xs text-muted-foreground">{item.description}</span></span>{active ? <Badge variant="success">Active</Badge> : <Button size="sm" variant="secondary" onClick={() => onActivate(type)} disabled={saving}>Activate</Button>}</div>; })}</div><Button variant="ghost" className="w-fit" onClick={onSkip} disabled={saving}><SkipForward className="size-3.5" />Skip for now</Button></div>;
+}
+
+
+function TeamChatStep({ onDone, onSkip, saving }: { onDone: () => void; onSkip: () => void; saving: boolean }) {
+  return <div className="grid gap-4">
+    <div className="flex items-start gap-3 rounded-lg border border-accent-border bg-accent-muted/50 p-4"><MessageSquare className="mt-0.5 size-4 text-accent" /><div><p className="text-sm font-medium">Team Chat is built into Janus</p><p className="mt-1 text-xs text-muted-foreground">Channels, direct messages, voice calls and screen sharing — no separate app needed. Your team can start talking the moment they sign in.</p></div></div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div className="rounded-lg border border-border bg-surface p-3"><p className="text-sm font-medium">#general</p><p className="mt-1 text-xs text-muted-foreground">Company-wide announcements and updates. Created automatically for every team.</p></div>
+      <div className="rounded-lg border border-border bg-surface p-3"><p className="text-sm font-medium">#random</p><p className="mt-1 text-xs text-muted-foreground">Water-cooler chat, off-topic conversations and team bonding.</p></div>
+    </div>
+    <p className="text-xs text-muted-foreground">You can create more channels, set up direct messages and configure notifications from Team Chat after setup.</p>
+    <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onDone} disabled={saving}>Enable Team Chat <ArrowRight className="size-3.5" /></Button><Button variant="ghost" onClick={onSkip} disabled={saving}><SkipForward className="size-3.5" />Skip for now</Button></div>
+  </div>;
+}
+
+function ConnectionsStep({ onConnect, onSkip }: { onConnect: () => void; onSkip: () => void }) {
+  return <div className="grid gap-4"><div className="flex items-start gap-3 rounded-lg border border-border bg-surface-2 p-4"><Waypoints className="mt-0.5 size-4 text-accent" /><div><p className="text-sm font-medium">Connect your first source</p><p className="mt-1 text-xs text-muted-foreground">Website forms, WhatsApp, phone calls, webhooks, API and CSV imports are available from Lead Sources.</p></div></div><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={onConnect}>Open Lead Sources <ArrowRight className="size-3.5" /></Button><Button variant="ghost" onClick={onSkip}><SkipForward className="size-3.5" />Skip for now</Button></div></div>;
+}

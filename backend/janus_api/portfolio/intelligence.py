@@ -461,25 +461,26 @@ async def ask(
             facts="\n".join(f"[{s.id}] {s.text}" for s in sources) or "(none)",
         )
         turns = [t for q in history for t in (("user", q.question), ("assistant", q.answer))]
-        result = (
-            await ai.converse_with_key(
+        msgs = [*turns, ("user", data.question)]
+        if key_row is not None:
+            model_name, key_secret = key_row.model, ai_keys.secret(key_row)
+            result = await ai.converse_with_key(
                 tenant_id,
                 provider,
-                key_row.model,
-                ai_keys.secret(key_row),
+                model_name,
+                key_secret,
                 system[:60000],
-                [*turns, ("user", data.question)],
+                msgs,
                 feature=FEATURE,
             )
-            if key_row is not None
-            else await ai.converse(
+        else:
+            result = await ai.converse(
                 db,
                 provider,  # type: ignore[arg-type]
                 system[:60000],
-                [*turns, ("user", data.question)],
+                msgs,
                 feature=FEATURE,
             )
-        )
 
         text = result.text.strip()
         suggestions: list[str] = []

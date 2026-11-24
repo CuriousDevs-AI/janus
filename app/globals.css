@@ -119,6 +119,68 @@ html {
   color-scheme: light;
 }
 
+html.dark {
+  color-scheme: dark;
+
+  --background: #0c0e14;
+  --surface: #13161e;
+  --surface-2: #1a1d28;
+  --surface-3: #242836;
+  --foreground: #e8eaf0;
+  --muted-foreground: #8b90a0;
+  --border: #2a2e3c;
+  --border-strong: #3a3f52;
+
+  --accent-foreground: #ffffff;
+  --accent-muted: rgba(37, 99, 235, 0.15);
+  --accent-border: rgba(37, 99, 235, 0.4);
+
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.15);
+  --warning: #eab308;
+  --warning-muted: rgba(234, 179, 8, 0.15);
+  --danger: #ef4444;
+  --danger-muted: rgba(239, 68, 68, 0.15);
+  --info: #a78bfa;
+  --info-muted: rgba(167, 139, 250, 0.15);
+
+  --popover: #13161e;
+  --input: #1a1d28;
+  --ring: rgba(37, 99, 235, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not(.light) {
+    color-scheme: dark;
+
+    --background: #0c0e14;
+    --surface: #13161e;
+    --surface-2: #1a1d28;
+    --surface-3: #242836;
+    --foreground: #e8eaf0;
+    --muted-foreground: #8b90a0;
+    --border: #2a2e3c;
+    --border-strong: #3a3f52;
+
+    --accent-foreground: #ffffff;
+    --accent-muted: rgba(37, 99, 235, 0.15);
+    --accent-border: rgba(37, 99, 235, 0.4);
+
+    --success: #22c55e;
+    --success-muted: rgba(34, 197, 94, 0.15);
+    --warning: #eab308;
+    --warning-muted: rgba(234, 179, 8, 0.15);
+    --danger: #ef4444;
+    --danger-muted: rgba(239, 68, 68, 0.15);
+    --info: #a78bfa;
+    --info-muted: rgba(167, 139, 250, 0.15);
+
+    --popover: #13161e;
+    --input: #1a1d28;
+    --ring: rgba(37, 99, 235, 0.4);
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -151,7 +213,7 @@ body {
   border-radius: 8px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #c9bda9;
+  background: var(--border-strong);
 }
 
 .app-main {
@@ -203,4 +265,59 @@ body {
     linear-gradient(rgba(10, 20, 36, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(10, 20, 36, 0.045) 1px, transparent 1px);
   background-size: 34px 34px;
+}
+
+@keyframes logo-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.hover\:animate-logo-spin:hover {
+  animation: logo-spin 1.5s linear infinite;
+}
+
+/* Logo build loop: each arm wipes in like being drawn, one by one */
+@keyframes logo-write-1 {
+  0%       { clip-path: inset(0 0 0 100%); }
+  15%      { clip-path: inset(0); }
+  80%      { clip-path: inset(0); }
+  83%      { clip-path: inset(0 0 0 100%); }
+  100%     { clip-path: inset(0 0 0 100%); }
+}
+@keyframes logo-write-2 {
+  0%, 8%   { clip-path: inset(0 0 0 100%); }
+  23%      { clip-path: inset(0); }
+  80%      { clip-path: inset(0); }
+  83%      { clip-path: inset(0 0 0 100%); }
+  100%     { clip-path: inset(0 0 0 100%); }
+}
+@keyframes logo-write-3 {
+  0%, 16%  { clip-path: inset(0 0 0 100%); }
+  31%      { clip-path: inset(0); }
+  80%      { clip-path: inset(0); }
+  83%      { clip-path: inset(0 0 0 100%); }
+  100%     { clip-path: inset(0 0 0 100%); }
+}
+@keyframes logo-write-4 {
+  0%, 24%  { clip-path: inset(0 0 0 100%); }
+  39%      { clip-path: inset(0); }
+  80%      { clip-path: inset(0); }
+  83%      { clip-path: inset(0 0 0 100%); }
+  100%     { clip-path: inset(0 0 0 100%); }
+}
+
+.logo-arm {
+  clip-path: inset(0 0 0 100%);
+}
+.logo-arm-1 { animation: logo-write-1 3s ease-in-out infinite; }
+.logo-arm-2 { animation: logo-write-2 3s ease-in-out infinite; }
+.logo-arm-3 { animation: logo-write-3 3s ease-in-out infinite; }
+.logo-arm-4 { animation: logo-write-4 3s ease-in-out infinite; }
+.logo-build-pulse {}
+
+@media print {
+  [data-sidebar], [data-radix-popper-content-wrapper], [data-radix-dialog-overlay],
+  nav, header, footer, .no-print { display: none !important; }
+  [role="dialog"] { position: static !important; max-height: none !important; overflow: visible !important;
+    box-shadow: none !important; border: none !important; background: white !important; }
+  body { background: white !important; }
 }

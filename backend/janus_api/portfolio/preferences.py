@@ -4,6 +4,7 @@ and the thresholds at which a company turns red for them."""
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from janus_api.audit.service import record
 from janus_api.portfolio import schemas
 from janus_api.portfolio.models import PortfolioPreference
 
@@ -18,8 +19,11 @@ async def read(db: AsyncSession, user_id: int) -> schemas.Preferences:
     )
 
 
-async def save(db: AsyncSession, user_id: int, data: schemas.Preferences) -> schemas.Preferences:
+async def save(
+    db: AsyncSession, user_id: int, data: schemas.Preferences, ip: str | None = None
+) -> schemas.Preferences:
     row = await db.scalar(select(PortfolioPreference).where(PortfolioPreference.user_id == user_id))
+    old_thresholds = row.thresholds if row else None
     if row is None:
         row = PortfolioPreference(user_id=user_id)
         db.add(row)
@@ -27,4 +31,12 @@ async def save(db: AsyncSession, user_id: int, data: schemas.Preferences) -> sch
     row.snoozed = dict(list(data.snoozed.items())[-500:])
     row.thresholds = data.thresholds.model_dump()
     await db.flush()
+    if old_thresholds != row.thresholds:
+        record(
+            db,
+            "portfolio.preferences_saved",
+            user_id=user_id,
+            ip=ip,
+            details={"thresholds": row.thresholds},
+        )
     return await read(db, user_id)

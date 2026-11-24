@@ -94,6 +94,7 @@ export interface PortfolioRegistration {
   cin: string | null;
   pan: string | null;
   tan: string | null;
+  gstin: string | null;
   epfCode: string | null;
   esiCode: string | null;
   ptState: string | null;
@@ -105,6 +106,10 @@ export interface PortfolioRegistration {
   phone: string | null;
   city: string | null;
   state: string | null;
+  linkedin: string | null;
+  twitter: string | null;
+  instagram: string | null;
+  facebook: string | null;
   /** The company's people, each a director, founder or co-founder, or more than one. */
   directors: PortfolioPersonRecord[];
 }
@@ -203,6 +208,7 @@ export interface PortfolioAccessResult {
 export interface PortfolioActivity {
   days: number;
   items: { companyId: string; company: string; at: string; area: string; who: string; text: string; detail: string | null; amount: string | null; count: number; flag: "change" | "reversal" | null }[];
+  cursor: string | null;
 }
 /** GET /portfolio/trends: day, week or month per company, oldest first. Money is null without money. */
 export interface PortfolioTrends {

@@ -671,6 +671,7 @@ async def _read_company(
 _summary_cache: dict[str, tuple[float, schemas.PortfolioSummary]] = {}
 _summary_locks: dict[str, asyncio.Lock] = {}
 _SUMMARY_TTL = 15
+_SUMMARY_MAX = 200
 
 
 def invalidate_summary(user_id: int) -> None:
@@ -680,6 +681,7 @@ def invalidate_summary(user_id: int) -> None:
         _summary_cache.pop(k, None)
         _summary_locks.pop(k, None)
 
+
 # Each recently active person, when they last asked and which company they had open, so the
 # warm-up refreshes the summary they will read next (the open company is marked in it).
 _warm_users: dict[int, tuple[float, int | None]] = {}
@@ -688,6 +690,8 @@ _warm_users: dict[int, tuple[float, int | None]] = {}
 def _cache_key(user_id: int, current_tenant: int | None, period_key: str, detail: bool) -> str:
     # The open company is part of the answer (it is marked current), so it is part of the key.
     return f"{user_id}:{current_tenant}:{period_key}:{detail}"
+
+
 _WARM_INTERVAL = 60
 _WARM_USER_TTL = 300
 
@@ -735,6 +739,11 @@ async def summary(
         for k in expired:
             _summary_cache.pop(k, None)
             _summary_locks.pop(k, None)
+        if len(_summary_cache) > _SUMMARY_MAX:
+            by_age = sorted(_summary_cache, key=lambda k: _summary_cache[k][0])
+            for k in by_age[: len(_summary_cache) - _SUMMARY_MAX]:
+                _summary_cache.pop(k, None)
+                _summary_locks.pop(k, None)
         return result
 
 
@@ -840,7 +849,7 @@ def start_warm_up() -> None:
     """Start the background warm-up loop. Called once from the app lifespan."""
     global _warm_task
     if _warm_task is None or _warm_task.done():
-        _warm_task = asyncio.get_event_loop().create_task(_warm_loop())
+        _warm_task = asyncio.get_running_loop().create_task(_warm_loop())
 
 
 def stop_warm_up() -> None:

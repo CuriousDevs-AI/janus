@@ -60,7 +60,18 @@ async def _recalc(db: AsyncSession, tenant_id: int, deal_id: int) -> None:
         select(Deal).where(Deal.tenant_id == tenant_id, Deal.id == deal_id).with_for_update()
     )
     if deal:
+        old_amount = deal.amount
         deal.amount = total
+        if old_amount != total:
+            record(
+                db, "deal.amount_changed", tenant_id=tenant_id,
+                details={
+                    "deal_id": deal_id,
+                    "old_amount": str(old_amount),
+                    "new_amount": str(total),
+                    "reason": "line_item_recalculation",
+                },
+            )
         await db.flush()
 
 

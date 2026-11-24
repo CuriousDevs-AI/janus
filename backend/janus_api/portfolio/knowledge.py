@@ -200,7 +200,7 @@ async def relevant(
             .limit(30)
         )
     )
-    words = " OR ".join(re.findall(r"[A-Za-z0-9]{3,}", question)[:20])
+    words = " OR ".join(re.findall(r"[\w]{3,}", question, re.UNICODE)[:20])
     if not words:
         return facts, []
     document = func.to_tsvector("simple", PortfolioKnowledge.title + " " + PortfolioKnowledge.body)

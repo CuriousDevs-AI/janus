@@ -1,7 +1,9 @@
 "use client";
 
+import * as React from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { Zap, GitBranch, Sparkles, CheckCircle, Clock, Share2, type LucideIcon } from "lucide-react";
+import { Zap, GitBranch, CheckCircle, Clock, Share2, type LucideIcon } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { cn } from "@/lib/utils";
 import type { WorkflowNodeKind } from "@/lib/types";
 
@@ -15,11 +17,11 @@ export type WorkflowFlowNode = Node<WorkflowFlowNodeData, "workflowNode">;
 
 export const nodeKindMeta: Record<
   WorkflowNodeKind,
-  { icon: LucideIcon; label: string; text: string; border: string; dot: string }
+  { icon: LucideIcon | React.ComponentType<{ className?: string }>; label: string; text: string; border: string; dot: string }
 > = {
   trigger: { icon: Zap, label: "Trigger", text: "text-accent", border: "border-l-accent", dot: "#2563EB" },
   condition: { icon: GitBranch, label: "Condition", text: "text-info", border: "border-l-info", dot: "#7C3AED" },
-  ai_decision: { icon: Sparkles, label: "AI Decision", text: "text-accent", border: "border-l-accent", dot: "#2563EB" },
+  ai_decision: { icon: CuriousdevsLogo, label: "AI Decision", text: "text-accent", border: "border-l-accent", dot: "#2563EB" },
   action: { icon: CheckCircle, label: "Action", text: "text-success", border: "border-l-success", dot: "#16A34A" },
   wait: { icon: Clock, label: "Wait", text: "text-warning", border: "border-l-warning", dot: "#D97706" },
   branch: { icon: Share2, label: "Branch", text: "text-muted-foreground", border: "border-l-border-strong", dot: "#647085" },

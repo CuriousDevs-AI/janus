@@ -67,6 +67,7 @@ class Invitation(Base):
     email: Mapped[str] = mapped_column(String(320))
     role_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("roles.id"))
     inviter_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    crm_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), default=list, server_default="{}")
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -59,7 +59,7 @@ export function WorkInbox({ list }: { list: PortfolioCompany[] }) {
               <p className="text-xs text-muted-foreground">{item.detail}{item.due ? ` Due ${day(item.due)}.` : ""}</p>
             </div>
             <div className="flex gap-1">
-              <Button size="sm" variant="ghost" aria-label={`Snooze ${item.title} for a day`} title="Hide for a day, in this browser" onClick={() => save({ ...snoozed, [item.key]: Date.now() + DAY })}><BellOff className="size-3.5" /></Button>
+              <Button size="sm" variant="ghost" aria-label={`Snooze ${item.title} for a day`} title="Hide for a day" onClick={() => save({ ...snoozed, [item.key]: Date.now() + DAY })}><BellOff className="size-3.5" /></Button>
               <Button size="sm" variant="secondary" onClick={() => setOpened(fromWork(item))}>Open</Button>
             </div>
           </li>;

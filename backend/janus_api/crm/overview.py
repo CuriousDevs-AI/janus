@@ -37,19 +37,24 @@ def _ist_day(column: Any) -> Any:
     return cast(func.timezone("Asia/Kolkata", column), Date)
 
 
-async def pipeline(db: AsyncSession, tenant_id: int) -> Pipeline:
+async def pipeline(db: AsyncSession, tenant_id: int, crm_id: int | None = None) -> Pipeline:
     """All leads, and deals by where they stand: open, won or lost."""
+    deal_f = [Deal.tenant_id == tenant_id]
+    lead_f = [Lead.tenant_id == tenant_id]
+    if crm_id is not None:
+        deal_f.append(Deal.crm_id == crm_id)
+        lead_f.append(Lead.crm_id == crm_id)
     rows = (
         await db.execute(
             select(Deal.stage, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
-            .where(Deal.tenant_id == tenant_id)
+            .where(*deal_f)
             .group_by(Deal.stage)
         )
     ).all()
     counts: dict[str, int] = {row[0]: int(row[1]) for row in rows}
     values: dict[str, Decimal] = {row[0]: Decimal(row[2]) for row in rows}
     open_stages = [stage for stage in counts if stage not in ("won", "lost")]
-    leads = await db.scalar(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id))
+    leads = await db.scalar(select(func.count(Lead.id)).where(*lead_f))
     return Pipeline(
         leads=int(leads or 0),
         open_deals=sum(counts[stage] for stage in open_stages),
@@ -60,35 +65,39 @@ async def pipeline(db: AsyncSession, tenant_id: int) -> Pipeline:
     )
 
 
-async def activity(db: AsyncSession, tenant_id: int, start: date, end: date) -> Activity:
+async def activity(
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
+) -> Activity:
     """Leads that came in and deals won between two days, both included, in India time."""
-    leads = await db.scalar(
-        select(func.count(Lead.id)).where(
-            Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end)
-        )
-    )
-    # Deals keep no date of winning. A won deal is rarely edited again,
-    # so its last change stands in.
+    lead_f = [Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end)]
+    deal_f = [
+        Deal.tenant_id == tenant_id,
+        Deal.stage == "won",
+        _ist_day(Deal.updated_at).between(start, end),
+    ]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
+    leads = await db.scalar(select(func.count(Lead.id)).where(*lead_f))
     won_count, won_value = (
         await db.execute(
-            select(func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0)).where(
-                Deal.tenant_id == tenant_id,
-                Deal.stage == "won",
-                _ist_day(Deal.updated_at).between(start, end),
-            )
+            select(func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0)).where(*deal_f)
         )
     ).one()
     return Activity(leads=int(leads or 0), won_deals=int(won_count), won_value=Decimal(won_value))
 
 
 async def leads_by_source(
-    db: AsyncSession, tenant_id: int, start: date, end: date
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
 ) -> dict[str, int]:
     """Leads that came in between two days, by the channel they came from."""
+    lead_f = [Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end)]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
     rows = (
         await db.execute(
             select(Lead.source, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end))
+            .where(*lead_f)
             .group_by(Lead.source)
         )
     ).all()
@@ -102,29 +111,34 @@ class Day:
     won_value: Decimal
 
 
-async def daily(db: AsyncSession, tenant_id: int, start: date, end: date) -> dict[date, Day]:
+async def daily(
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
+) -> dict[date, Day]:
     """Leads in and deals won on each day between two days, both included, in India time. Days with
     nothing are left out."""
     lead_day = _ist_day(Lead.created_at)
+    lead_f = [Lead.tenant_id == tenant_id, lead_day.between(start, end)]
+    deal_f = [Deal.tenant_id == tenant_id, Deal.stage == "won"]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
+    won_day = _ist_day(Deal.updated_at)
     leads: dict[date, int] = {
         day: int(count)
         for day, count in (
             await db.execute(
                 select(lead_day, func.count(Lead.id))
-                .where(Lead.tenant_id == tenant_id, lead_day.between(start, end))
+                .where(*lead_f)
                 .group_by(lead_day)
             )
         ).all()
     }
-    won_day = _ist_day(Deal.updated_at)
     won = {
         day: (int(count), Decimal(value))
         for day, count, value in (
             await db.execute(
                 select(won_day, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
-                .where(
-                    Deal.tenant_id == tenant_id, Deal.stage == "won", won_day.between(start, end)
-                )
+                .where(*deal_f, won_day.between(start, end))
                 .group_by(won_day)
             )
         ).all()
@@ -153,7 +167,7 @@ QUIET_DAYS = 3
 
 
 async def quiet_leads(
-    db: AsyncSession, tenant_id: int, today: date, limit: int = 5
+    db: AsyncSession, tenant_id: int, today: date, limit: int = 5, crm_id: int | None = None
 ) -> tuple[int, list[QuietLead]]:
     """Open leads nobody has touched for QUIET_DAYS or more: how many, and the longest-waiting."""
     from datetime import UTC, datetime, time, timedelta
@@ -161,13 +175,14 @@ async def quiet_leads(
     from janus_api.crm.models import Contact
 
     cutoff = datetime.combine(today - timedelta(days=QUIET_DAYS), time.max, UTC)
-    quiet = (
+    quiet = [
         Lead.tenant_id == tenant_id,
         Lead.stage.not_in(("won", "lost")),
         Lead.last_activity_at <= cutoff,
-        # Someone agreed to follow up on a later day: not quiet until that day has passed.
         or_(Lead.next_follow_up_on.is_(None), Lead.next_follow_up_on < today),
-    )
+    ]
+    if crm_id is not None:
+        quiet.append(Lead.crm_id == crm_id)
     count = await db.scalar(select(func.count(Lead.id)).where(*quiet))
     rows = await db.execute(
         select(Lead.id, Contact.name, Contact.company, Lead.stage, Lead.last_activity_at)
@@ -204,12 +219,17 @@ class Funnel:
     lost: int
 
 
-async def funnel(db: AsyncSession, tenant_id: int, start: date, end: date) -> Funnel:
+async def funnel(
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
+) -> Funnel:
     """How far the leads that came in between two days, both included, have got by now."""
+    lead_f = [Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end)]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
     rows = (
         await db.execute(
             select(Lead.stage, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end))
+            .where(*lead_f)
             .group_by(Lead.stage)
         )
     ).all()
@@ -235,27 +255,33 @@ class Rep:
     open_leads: int
 
 
-async def reps(db: AsyncSession, tenant_id: int, start: date, end: date) -> list[Rep]:
+async def reps(
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
+) -> list[Rep]:
     """Each lead owner's new leads and won deals between two days, and open leads now.
 
     Leads nobody owns are one line with owner_id None, so unassigned work shows too.
     """
+    lead_f = [Lead.tenant_id == tenant_id]
+    deal_f = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
     came_in = (
         select(Lead.owner_id, func.count(Lead.id))
-        .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at).between(start, end))
+        .where(*lead_f, _ist_day(Lead.created_at).between(start, end))
         .group_by(Lead.owner_id)
     )
     open_now = (
         select(Lead.owner_id, func.count(Lead.id))
-        .where(Lead.tenant_id == tenant_id, Lead.stage.not_in(("won", "lost")))
+        .where(*lead_f, Lead.stage.not_in(("won", "lost")))
         .group_by(Lead.owner_id)
     )
-    # Deals keep no date of winning; their last change stands in, as in activity().
     won = (
         select(Lead.owner_id, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
         .join(Lead, (Lead.id == Deal.lead_id) & (Lead.tenant_id == Deal.tenant_id))
         .where(
-            Deal.tenant_id == tenant_id,
+            *deal_f,
             Deal.stage == "won",
             _ist_day(Deal.updated_at).between(start, end),
         )
@@ -299,18 +325,20 @@ class DueFollowUp:
 
 
 async def follow_ups(
-    db: AsyncSession, tenant_id: int, today: date, limit: int = 5
+    db: AsyncSession, tenant_id: int, today: date, limit: int = 5, crm_id: int | None = None
 ) -> tuple[int, int, list[DueFollowUp]]:
     """Open leads whose follow-up is today, and those whose day has passed: counts, and the
     earliest few."""
     from janus_api.crm.models import Contact
 
-    due = (
+    due = [
         Lead.tenant_id == tenant_id,
         Lead.stage.not_in(("won", "lost")),
         Lead.next_follow_up_on.is_not(None),
         Lead.next_follow_up_on <= today,
-    )
+    ]
+    if crm_id is not None:
+        due.append(Lead.crm_id == crm_id)
     rows = (
         await db.execute(
             select(Lead.next_follow_up_on, func.count(Lead.id))
@@ -338,16 +366,17 @@ async def follow_ups(
 
 
 async def won_deals(
-    db: AsyncSession, tenant_id: int, start: date, end: date
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
 ) -> list[tuple[int, str, Decimal]]:
     """Deals won between two days, both included: id, name and value."""
-    rows = await db.execute(
-        select(Deal.id, Deal.name, Deal.amount).where(
-            Deal.tenant_id == tenant_id,
-            Deal.stage == "won",
-            _ist_day(Deal.updated_at).between(start, end),
-        )
-    )
+    deal_f = [
+        Deal.tenant_id == tenant_id,
+        Deal.stage == "won",
+        _ist_day(Deal.updated_at).between(start, end),
+    ]
+    if crm_id is not None:
+        deal_f.append(Deal.crm_id == crm_id)
+    rows = await db.execute(select(Deal.id, Deal.name, Deal.amount).where(*deal_f))
     return [(int(row.id), str(row.name), Decimal(row.amount)) for row in rows]
 
 
@@ -373,9 +402,16 @@ class LostReason:
 
 
 async def lost_reasons(
-    db: AsyncSession, tenant_id: int, start: date, end: date
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
 ) -> list[LostReason]:
     """Why leads were lost between two days, both included, the most common reason first."""
+    lead_f = [
+        Lead.tenant_id == tenant_id,
+        Lead.stage == "lost",
+        _ist_day(func.coalesce(Lead.lost_at, Lead.last_activity_at)).between(start, end),
+    ]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
     rows = (
         await db.execute(
             select(
@@ -385,11 +421,7 @@ async def lost_reasons(
             )
             .select_from(Lead)
             .outerjoin(Deal, (Deal.tenant_id == Lead.tenant_id) & (Deal.lead_id == Lead.id))
-            .where(
-                Lead.tenant_id == tenant_id,
-                Lead.stage == "lost",
-                _ist_day(func.coalesce(Lead.lost_at, Lead.last_activity_at)).between(start, end),
-            )
+            .where(*lead_f)
             .group_by(Lead.lost_category)
         )
     ).all()
@@ -417,8 +449,13 @@ class Closed:
     cycle_days: float | None
 
 
-async def closed(db: AsyncSession, tenant_id: int, start: date, end: date) -> Closed:
+async def closed(
+    db: AsyncSession, tenant_id: int, start: date, end: date, crm_id: int | None = None
+) -> Closed:
     """Deals won, by the day they were won, and lost, by the day lost, between two days."""
+    deal_f = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        deal_f.append(Deal.crm_id == crm_id)
     won_row = (
         await db.execute(
             select(
@@ -429,7 +466,7 @@ async def closed(db: AsyncSession, tenant_id: int, start: date, end: date) -> Cl
             .select_from(Deal)
             .join(Lead, (Lead.tenant_id == Deal.tenant_id) & (Lead.id == Deal.lead_id))
             .where(
-                Deal.tenant_id == tenant_id,
+                *deal_f,
                 Deal.stage == "won",
                 _ist_day(Deal.updated_at).between(start, end),
             )
@@ -437,7 +474,7 @@ async def closed(db: AsyncSession, tenant_id: int, start: date, end: date) -> Cl
     ).one()
     lost = await db.scalar(
         select(func.count(Deal.id)).where(
-            Deal.tenant_id == tenant_id,
+            *deal_f,
             Deal.stage == "lost",
             _ist_day(func.coalesce(Deal.lost_at, Deal.updated_at)).between(start, end),
         )

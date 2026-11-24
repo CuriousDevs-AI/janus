@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ArrowUp, BookOpen, Building2, Check, Copy, Cpu, FileCheck2, Landmark, MessageSquarePlus, Scale, Sparkles, Trash2, TrendingDown, TriangleAlert } from "lucide-react";
+import { AlertTriangle, ArrowUp, BookOpen, Building2, Check, Copy, Cpu, Download, FileCheck2, FileText, History, ImagePlus, Landmark, MessageSquarePlus, Paperclip, Scale, Trash2, TrendingDown, TriangleAlert, X } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,22 +16,22 @@ import { KnowledgeCard, knowledgeChanged } from "@/features/portfolio/components
 import { SetupModelDialog } from "@/features/portfolio/components/ai-setup";
 import type { PortfolioAsked, PortfolioCompany, PortfolioKnowledgeItem, PortfolioModels, PortfolioPeriod, PortfolioSource } from "@/features/portfolio/types";
 
-const suggestions: [string, React.ComponentType<{ className?: string }>][] = [
-  ["Which company needs immediate attention?", TriangleAlert],
-  ["Which company is performing worst this month, and why?", TrendingDown],
-  ["Compare profit across companies", Scale],
-  ["What are the biggest financial risks?", Landmark],
-  ["Who is my biggest customer?", Building2],
-  ["Any GST or TDS due?", FileCheck2],
+const suggestions: [string, string, React.ComponentType<{ className?: string }>][] = [
+  ["Which company needs immediate attention?", "Needs attention", TriangleAlert],
+  ["Which company is performing worst this month, and why?", "Worst performer", TrendingDown],
+  ["Compare profit across companies", "Compare profit", Scale],
+  ["What are the biggest financial risks?", "Financial risks", Landmark],
+  ["Who is my biggest customer?", "Biggest customer", Building2],
+  ["Any GST or TDS due?", "GST / TDS due", FileCheck2],
 ];
 /** The first questions for one business on its own: what an owner asks most days. */
-const ownSuggestions: [string, React.ComponentType<{ className?: string }>][] = [
-  ["What needs my attention?", TriangleAlert],
-  ["How can I improve the business?", Sparkles],
-  ["How is my sales team doing?", Building2],
-  ["What is our conversion this month?", TrendingDown],
-  ["How much profit did we make?", Scale],
-  ["Any GST or TDS due?", FileCheck2],
+const ownSuggestions: [string, string, React.ComponentType<{ className?: string }>][] = [
+  ["What needs my attention?", "Needs attention", TriangleAlert],
+  ["How can I improve the business?", "Improve business", CuriousdevsLogo],
+  ["How is my sales team doing?", "Sales team", Building2],
+  ["What is our conversion this month?", "Conversion", TrendingDown],
+  ["How much profit did we make?", "Profit", Scale],
+  ["Any GST or TDS due?", "GST / TDS due", FileCheck2],
 ];
 /** Questions about one company that Janus rules can answer when the company is named. */
 const about = (name: string): string[] => [
@@ -40,6 +41,7 @@ const about = (name: string): string[] => [
   `What is owed to ${name}?`,
   `Any GST or TDS due at ${name}?`,
 ];
+
 const RULES = "rules";
 const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules (no AI)", provider: null, company: null, free: true, note: "Fixed answers from the figures on the page. Free, and works with no model." }], companies: [], free: [], portfolioKeys: [], canAddKeys: false };
 
@@ -48,7 +50,7 @@ const rulesOnly: PortfolioModels = { options: [{ id: RULES, label: "Janus rules 
 export type DepartmentChat = { name: string; topic?: "sales" | "people" | "finance" | "stock" | "support" | "projects"; questions: [string, React.ComponentType<{ className?: string }>][]; placeholder: string };
 
 /** One turn: Janus rules answer on the page; a model answers on the server with the facts it cited. */
-type Turn = { q: string; rules?: Answer; ai?: PortfolioAsked; pending?: boolean; error?: string };
+type Turn = { id: string; q: string; rules?: Answer; ai?: PortfolioAsked; pending?: boolean; error?: string };
 
 /** This page load's conversation, per person, so moving to another Portfolio page and back keeps it. */
 const conversations = new Map<string, Turn[]>();
@@ -84,19 +86,21 @@ export function Intelligence({ list: all, period, company, department }: { list:
   const [turns, setTurnsState] = React.useState<Turn[]>(() => conversations.get(thread) ?? []);
   const setTurns = (change: (current: Turn[]) => Turn[]) => setTurnsState((current) => { const next = change(current); conversations.set(thread, next); return next; });
   const [q, setQ] = React.useState("");
+  const [files, setFiles] = React.useState<{ name: string; text: string }[]>([]);
+  const fileRef = React.useRef<HTMLInputElement>(null);
   const [cleared, setCleared] = React.useState(false);
   const [fresh, setFresh] = React.useState(() => freshThreads.has(`${who}:${department?.name ?? ""}`));
   const [panel, setPanel] = React.useState<"knowledge" | null>(null);
   const [settingUp, setSettingUp] = React.useState(false);
   const [focus, setFocus] = React.useState<string | null>(null);
   const focused = company ?? list.find((item) => item.id === focus);
-  const tries = department ? department.questions.map(([text]) => text) : company ? ownSuggestions.map(([text]) => text) : focused ? about(focused.name) : suggestions.map(([text]) => text);
+  const tries: [string, string][] = department ? department.questions.map(([text]) => [text, text.length > 25 ? text.slice(0, 22) + "…" : text]) : company ? ownSuggestions.map(([text, short]) => [text, short]) : focused ? about(focused.name).map((text) => [text, text.length > 25 ? text.slice(0, 22) + "…" : text]) : suggestions.map(([text, short]) => [text, short]);
   // Saved questions are the whole business's; a department chat starts from its own.
   // An answer asked on this page is also in the saved history once it is reloaded: show it once.
   const asked = new Set(turns.map((turn) => turn.ai?.id).filter(Boolean));
   const earlier = cleared || fresh || department ? [] : (history.data ?? []).filter((item) => !asked.has(item.id));
   const preview = Boolean(previewRole);
-  const shown: Turn[] = [...earlier.map((item) => ({ q: item.question, ai: item })), ...turns];
+  const shown: Turn[] = [...earlier.map((item) => ({ id: item.id, q: item.question, ai: item })), ...turns];
   const busy = turns.some((turn) => turn.pending);
 
   const scroller = React.useRef<HTMLDivElement>(null);
@@ -104,40 +108,62 @@ export function Intelligence({ list: all, period, company, department }: { list:
   // Keep the newest message in view as the conversation grows.
   React.useEffect(() => { if (shown.length) scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [shown.length, busy]);
 
+  const pickFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = event.target.files;
+    if (!picked) return;
+    for (const file of Array.from(picked)) {
+      if (file.size > 50_000) { toast.error(`${file.name} is too large. Keep files under 50 KB.`); continue; }
+      const isText = /\.(txt|csv|md|json|log|tsv)$/i.test(file.name) || file.type.startsWith("text/");
+      if (!isText) { toast.error(`${file.name}: only text files (.txt, .csv, .md) are supported for now.`); continue; }
+      const reader = new FileReader();
+      reader.onload = () => { if (typeof reader.result === "string") setFiles((prev) => [...prev, { name: file.name, text: reader.result as string }]); };
+      reader.readAsText(file);
+    }
+    event.target.value = "";
+  };
+
   const ask = async (text: string) => {
     const clean = text.trim();
     if (!clean || busy) return;
+    const attached = files;
     setQ("");
+    setFiles([]);
     if (box.current) box.current.style.height = "auto";
     box.current?.focus({ preventScroll: true });
-    if (model.id === RULES && company && isAdviceQuestion(clean)) {
-      // One company open: the Advisor's findings, the same the Advisor page and the morning brief show.
-      setTurns((current) => [...current, { q: clean, pending: true }]);
+    // Use `chosen` (the user's selection) for routing, not `model.id` which falls back to RULES
+    // while the models API is still loading.
+    const turnId = crypto.randomUUID();
+    const useRules = chosen === RULES;
+    if (useRules && company && isAdviceQuestion(clean)) {
+      setTurns((current) => [...current, { id: turnId, q: clean, pending: true }]);
       try {
         const advice = await api<AdvisorOut>("/business/advisor");
         const top = advice.findings.slice(0, 3);
         const rules: Answer = top.length
           ? { text: `${top.length === 1 ? "One thing" : `${top.length} things`} would help ${advice.company} most now, most serious first. Open Advisor to add them to your plan; I check each against your figures.`, rows: top.map((item): [string, string] => [item.title, `${item.sees} This week: ${item.action}`]) }
           : { text: `Nothing in ${advice.company}'s figures needs fixing right now. Keep the records current and I will say when something does.` };
-        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, rules } : turn));
+        setTurns((current) => current.map((turn) => turn.id === turnId ? { ...turn, rules, pending: false } : turn));
       } catch (error) {
-        setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? { q: clean, error: message(error) } : turn));
+        setTurns((current) => current.map((turn) => turn.id === turnId ? { ...turn, error: message(error), pending: false } : turn));
       }
       return;
     }
-    if (model.id === RULES) {
+    if (useRules) {
       const fromRecords = answerLive(clean, list, period);
       const mine = (knowledge.data ?? []).filter((item) => list.some((entry) => entry.id === item.companyId));
-      setTurns((current) => [...current, { q: clean, rules: fromRecords.matched === false ? answerFromKnowledge(clean, mine, fromRecords) : fromRecords }]);
+      setTurns((current) => [...current, { id: turnId, q: clean, rules: fromRecords.matched === false ? answerFromKnowledge(clean, mine, fromRecords) : fromRecords }]);
       return;
     }
-    setTurns((current) => [...current, { q: clean, pending: true }]);
-    const settle = (done: Turn) => setTurns((current) => current.map((turn) => turn.pending && turn.q === clean ? done : turn));
+    setTurns((current) => [...current, { id: turnId, q: clean, pending: true }]);
+    const settle = (done: Partial<Turn>) => setTurns((current) => current.map((turn) => turn.id === turnId ? { ...turn, ...done, pending: false } : turn));
     try {
-      const answer = await api<PortfolioAsked>("/portfolio/intelligence/ask", { method: "POST", body: JSON.stringify({ question: clean, model: model.id, period: period?.key ?? "month", ...(company ? { companyId: company.id } : {}), ...(department?.topic ? { topic: department.topic } : {}) }) });
-      settle({ q: clean, ai: answer });
+      const modelId = model.id !== RULES ? model.id : chosen;
+      const withFiles = attached.length ? `${attached.map((f) => `[File: ${f.name}]\n${f.text}`).join("\n\n")}\n\n${clean}` : clean;
+      const question = withFiles.slice(0, 2000);
+      const answer = await api<PortfolioAsked>("/portfolio/intelligence/ask", { method: "POST", body: JSON.stringify({ question, model: modelId, period: period?.key ?? "month", ...(company ? { companyId: company.id } : {}), ...(department?.topic ? { topic: department.topic } : {}) }) });
+      settle({ ai: answer });
     } catch (error) {
-      settle({ q: clean, error: message(error) });
+      settle({ error: message(error) });
     }
   };
 
@@ -147,22 +173,69 @@ export function Intelligence({ list: all, period, company, department }: { list:
   };
 
   return <div className="flex flex-col gap-4">
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+      {/* ── Left sidebar: model, suggestions, history, knowledge ── */}
+      <aside className="flex h-[calc(100vh-220px)] min-h-[520px] flex-col overflow-y-auto rounded-xl border border-border bg-surface">
+        <div className="flex flex-col gap-2 p-3">
+          <Button size="sm" variant="outline" className="w-full justify-start gap-2 border-dashed text-sm font-medium" disabled={busy} onClick={() => { setTurns(() => []); freshThreads.add(thread); setFresh(true); }}><MessageSquarePlus className="size-4" />New chat</Button>
+          {turns.length > 0 && <Button size="sm" variant="ghost" className="w-full justify-start gap-2 text-xs text-muted-foreground" onClick={() => {
+            const lines = turns.flatMap((t) => {
+              const a = t.ai ? t.ai.answer : t.rules ? [t.rules.text, ...(t.rules.rows ?? []).map(([l, v]: [string, string]) => `  ${l.replace(/^↳\s*/, "")}: ${v}`)].join("\n") : t.error ?? "";
+              return [`Q: ${t.q}`, `A: ${a}`, ""];
+            });
+            const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "janus-thread.txt"; link.click(); URL.revokeObjectURL(link.href);
+          }}><Download className="size-3.5" />Export thread</Button>}
+          <div className="rounded-lg bg-surface-2/70 p-2">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Model</span>
+              {!preview && <button type="button" className="rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-surface hover:text-foreground" disabled={!models.data} onClick={() => setSettingUp(true)} aria-label="Set up model"><Cpu className="size-3" /></button>}
+            </div>
+            <Select value={model.id} onValueChange={setChosen} disabled={preview}>
+              <SelectTrigger aria-label="Answer with" className="h-8 rounded-md border-border bg-surface text-xs font-medium"><SelectValue /></SelectTrigger>
+              <SelectContent>{available.options.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}{option.company ? ` · ${option.company}` : ""}{option.free ? " · free" : ""}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mx-3 h-px bg-border" />
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
+          <div>
+            <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Suggestions</p>
+            <div className="flex flex-wrap gap-1.5">
+              {tries.map(([full, short], i) => { const Icon = (department ? undefined : company ? ownSuggestions[i]?.[2] : suggestions[i]?.[2]) as React.ComponentType<{ className?: string }> | undefined; return <button key={full} type="button" disabled={busy} onClick={() => void ask(full)} title={full} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-2 py-1.5 text-[11px] text-muted-foreground transition-all hover:border-accent/40 hover:bg-accent-muted hover:text-accent disabled:opacity-40">{Icon && <Icon className="size-3 shrink-0 opacity-70" aria-hidden />}{short}</button>; })}
+            </div>
+          </div>
+          {!company && list.length > 1 && <div>
+            <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ask about</p>
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Ask about">
+              <button type="button" aria-pressed={!focused} onClick={() => setFocus(null)} className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${!focused ? "border-accent bg-accent/10 font-medium text-accent" : "border-border text-muted-foreground hover:bg-surface-2"}`}>All</button>
+              {list.map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(focus === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${focus === item.id ? "border-accent bg-accent/10 font-medium text-accent" : "border-border text-muted-foreground hover:bg-surface-2"}`}>{item.name}</button>)}
+            </div>
+          </div>}
+          {!preview && earlier.length > 0 && <ChatHistory items={earlier} onSelect={(text) => void ask(text)} />}
+        </div>
+        <div className="mt-auto border-t border-border p-2">
+          {!preview && <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground" aria-expanded={panel === "knowledge"} onClick={() => setPanel(panel === "knowledge" ? null : "knowledge")}><BookOpen className="size-3.5 shrink-0" />{panel === "knowledge" ? "Hide knowledge" : "Knowledge"}</button>}
+          {!preview && (history.data ?? []).length > 0 && !cleared && <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground" onClick={forget}><Trash2 className="size-3.5 shrink-0" />Forget history</button>}
+          {!preview && available.options.length > 1 && <a className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground" href="/portfolio?view=ai-keys"><Cpu className="size-3.5 shrink-0" />Manage AI keys</a>}
+        </div>
+      </aside>
+
+      {/* ── Main chat area ── */}
       <section aria-label="Conversation with Janus" className="flex h-[calc(100vh-220px)] min-h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-surface">
         <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"><Sparkles className="size-4" aria-hidden /></span>
+            <CuriousdevsLogo className="size-7 shrink-0 text-accent" animate />
             <div className="min-w-0"><p className="text-sm font-semibold">{department ? `Janus · ${department.name}` : "Janus"}</p><p className="truncate text-xs text-muted-foreground">{company ? company.name : `Across ${list.length} ${list.length === 1 ? "company" : "companies"}`}{period ? ` · ${period.label}` : ""} · answers only from your figures</p></div>
           </div>
-          {shown.length > 0 && <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setTurns(() => []); freshThreads.add(thread); setFresh(true); }} title="Start a new conversation. Earlier answers stay saved until you choose Forget."><MessageSquarePlus className="size-4" />New chat</Button>}
         </header>
 
         <div ref={scroller} className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           {shown.length === 0 ? <Welcome count={list.length} company={company} department={department} onAsk={(text) => void ask(text)} />
-            : <ol className="mx-auto flex max-w-3xl flex-col gap-6" aria-live="polite">{shown.map((turn, index) => <li key={index} className="flex flex-col gap-3">
+            : <ol className="mx-auto flex max-w-3xl flex-col gap-6" aria-live="polite">{shown.map((turn) => <li key={turn.id} className="flex flex-col gap-3">
               <p className="max-w-[85%] self-end whitespace-pre-line rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm text-accent-foreground">{turn.q}</p>
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent"><Sparkles className="size-3.5" aria-hidden /></span>
+                <CuriousdevsLogo className="mt-0.5 size-5 shrink-0 text-accent" animate />
                 <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-border bg-surface-2 px-4 py-3 text-sm">
                   {turn.pending && <Thinking />}
                   {turn.error && <p className="flex items-start gap-2 text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{turn.error}</p>}
@@ -174,48 +247,25 @@ export function Intelligence({ list: all, period, company, department }: { list:
             </li>)}</ol>}
         </div>
 
-        <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); void ask(q); }}>
-          <div className="flex items-end gap-2 rounded-xl border border-input bg-surface-2 px-3 py-2 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+        <form className="border-t border-border bg-surface-2/30 p-3" onSubmit={(event) => { event.preventDefault(); void ask(q); }}>
+          <input ref={fileRef} type="file" accept=".txt,.csv,.md,.json,.log,.tsv" multiple className="hidden" onChange={pickFile} />
+          {files.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{files.map((f, i) => <span key={i} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-[12px] text-foreground">
+            <FileText className="size-3.5 shrink-0 text-accent" aria-hidden />{f.name}<button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label={`Remove ${f.name}`}><X className="size-3" /></button>
+          </span>)}</div>}
+          <div className="flex items-end gap-2 rounded-xl border border-input bg-surface px-3 py-2 shadow-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+            <div className="flex shrink-0 gap-0.5 pb-0.5">
+              <button type="button" onClick={() => fileRef.current?.click()} className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground" title="Attach a text file (.txt, .csv, .md)"><Paperclip className="size-4" /></button>
+              <button type="button" onClick={() => toast.info("Image uploads are coming soon. Describe what you see, or paste the numbers.")} className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground" title="Attach an image (coming soon)"><ImagePlus className="size-4" /></button>
+            </div>
             <textarea ref={box} aria-label="Ask Janus" rows={1} value={q} placeholder={department ? department.placeholder : company ? "Ask about sales, profit, money owed, customers or filings…" : "Ask about sales, profit, money owed, filings or a company…"}
               onChange={(event) => { setQ(event.target.value); event.target.style.height = "auto"; event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`; }}
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void ask(q); } }}
               className="max-h-[140px] min-h-[24px] flex-1 resize-none bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground" />
-            <Button type="submit" size="icon" className="size-8 shrink-0 rounded-lg" disabled={!q.trim() || busy} aria-label="Send"><ArrowUp className="size-4" /></Button>
+            <Button type="submit" size="icon" className="size-8 shrink-0 rounded-lg bg-accent text-accent-foreground shadow-sm hover:bg-accent/90" disabled={!(q.trim() || files.length) || busy} aria-label="Send"><ArrowUp className="size-4" /></Button>
           </div>
-          <p className="mt-1.5 px-1 text-[11px] text-muted-foreground">Enter to send, Shift+Enter for a new line. Answering with {model.label}{model.company ? ` (${model.company})` : ""}. Janus does not guess or forecast.</p>
+          <p className="mt-1.5 px-1 text-[11px] text-muted-foreground">Enter to send · {model.label}{model.company ? ` (${model.company})` : ""}{model.free ? " · free" : ""}</p>
         </form>
       </section>
-
-      <aside className="flex flex-col gap-4">
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Cpu className="size-3.5" aria-hidden />Answer with</p>
-          <Select value={model.id} onValueChange={setChosen} disabled={preview}>
-            <SelectTrigger aria-label="Answer with"><SelectValue /></SelectTrigger>
-            <SelectContent>{available.options.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}{option.company ? ` · ${option.company}` : ""}{option.free ? " · free" : ""}</SelectItem>)}</SelectContent>
-          </Select>
-          <p className="mt-2 text-xs text-muted-foreground">{preview ? "Only Janus rules while previewing a role: a model would be asked as you, with your figures." : model.note}</p>
-          {!preview && <Button size="sm" variant="outline" className="mt-3 w-full" disabled={!models.data} onClick={() => setSettingUp(true)}>Set up model</Button>}
-          {!preview && available.options.length > 1 && <a className="mt-2 block text-center text-xs text-accent hover:underline" href="/portfolio?view=ai-keys">Manage AI keys</a>}
-        </div>
-        {!company && list.length > 1 && <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Building2 className="size-3.5" aria-hidden />Ask about</p>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ask about">
-            <button type="button" aria-pressed={!focused} onClick={() => setFocus(null)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${!focused ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>All companies</button>
-            {list.map((item) => <button key={item.id} type="button" aria-pressed={focus === item.id} onClick={() => setFocus(focus === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${focus === item.id ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-surface-2"}`}>{item.name}</button>)}
-          </div>
-        </div>}
-        {/* Once a conversation starts the opening suggestions are gone, so they move here. */}
-        {(shown.length > 0 || (focused && !company)) && <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{focused && !company ? `Try asking about ${focused.name}` : "Try asking"}</p>
-          <ul className="flex flex-col gap-1">{tries.map((text) => <li key={text}><button type="button" disabled={busy} onClick={() => void ask(text)} className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50">{text}</button></li>)}</ul>
-        </div>}
-        {!preview && <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><BookOpen className="size-3.5" aria-hidden />What Janus knows</p>
-          <p className="text-xs text-muted-foreground">Facts and documents you approved, used beside your records. Janus never remembers anything on its own.</p>
-          <Button size="sm" variant="outline" className="mt-3 w-full" aria-expanded={panel === "knowledge"} onClick={() => setPanel(panel === "knowledge" ? null : "knowledge")}>{panel === "knowledge" ? "Hide knowledge" : "See and add knowledge"}</Button>
-          {(history.data ?? []).length > 0 && !cleared && <Button size="sm" variant="ghost" className="mt-1 w-full text-muted-foreground" onClick={forget}><Trash2 className="size-3.5" />Forget earlier questions</Button>}
-        </div>}
-      </aside>
     </div>
     {!preview && panel === "knowledge" && <KnowledgeCard list={list} />}
     {settingUp && models.data && <SetupModelDialog models={models.data} onClose={() => setSettingUp(false)} onSaved={(id) => { setSettingUp(false); setChosen(id); models.reload(); }} />}
@@ -223,15 +273,15 @@ export function Intelligence({ list: all, period, company, department }: { list:
 }
 
 function Welcome({ count, company, department, onAsk }: { count: number; company?: PortfolioCompany; department?: DepartmentChat; onAsk: (text: string) => void }) {
-  const offered: [string, React.ComponentType<{ className?: string }>][] = department?.questions ?? (company ? ownSuggestions : suggestions);
-  return <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center gap-6 py-6 text-center">
-    <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-muted text-accent"><Sparkles className="size-6" aria-hidden /></span>
-    <div>
-      <h2 className="text-lg font-semibold">{department && company ? `Ask about ${department.name} at ${company.name}` : company ? `Ask about ${company.name}` : `Ask about all ${count} ${count === 1 ? "company" : "companies"}`}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{company ? "Every answer gives the figure behind it, and says when the records cannot answer." : "Every answer names the company and the figure behind it, and says when the records cannot answer."}</p>
+  const offered: [string, string, React.ComponentType<{ className?: string }>][] = department ? department.questions.map(([text, Icon]) => [text, text.length > 30 ? text.slice(0, 27) + "…" : text, Icon]) : company ? ownSuggestions : suggestions;
+  return <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center gap-8 py-10 text-center">
+    <div className="flex flex-col items-center gap-3">
+      <CuriousdevsLogo className="size-14 text-accent" loading />
+      <h2 className="text-xl font-semibold tracking-tight">{department && company ? `Ask about ${department.name} at ${company.name}` : company ? `Ask about ${company.name}` : `Ask about all ${count} ${count === 1 ? "company" : "companies"}`}</h2>
+      <p className="max-w-md text-sm leading-relaxed text-muted-foreground">{company ? "Every answer gives the figure behind it, and says when the records cannot answer." : "Every answer names the company and the figure behind it, and says when the records cannot answer."}</p>
     </div>
-    <div className="grid w-full gap-2 sm:grid-cols-2">{offered.map(([text, Icon]) => <button key={text} type="button" onClick={() => onAsk(text)} className="flex items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 text-left text-[13px] transition-colors hover:border-accent-border hover:bg-accent-muted">
-      <Icon className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden /><span>{text}</span>
+    <div className="grid w-full gap-2.5 sm:grid-cols-2">{offered.map(([text, , Icon]) => <button key={text} type="button" onClick={() => onAsk(text)} className="group flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3.5 text-left text-[13px] transition-all hover:border-accent/30 hover:bg-accent-muted hover:shadow-sm">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent transition-colors group-hover:bg-accent/20"><Icon className="size-3.5" aria-hidden /></span><span className="pt-0.5 leading-snug">{text}</span>
     </button>)}</div>
   </div>;
 }
@@ -275,4 +325,37 @@ function ModelAnswer({ answer }: { answer: PortfolioAsked }) {
     {answer.suggested.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Janus suggests remembering: {answer.suggested.join("; ")}. It waits for your approval under What Janus knows.</p>}
     <p className="mt-2.5 text-[11px] text-muted-foreground">{answer.model}{answer.costUsd ? ` · about $${Number(answer.costUsd).toFixed(4)}` : ""}</p>
   </>;
+}
+
+function ChatHistory({ items, onSelect }: { items: PortfolioAsked[]; onSelect: (question: string) => void }) {
+  const grouped = React.useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterday = today - 86400000;
+    const weekAgo = today - 7 * 86400000;
+    const groups: { label: string; items: PortfolioAsked[] }[] = [
+      { label: "Today", items: [] },
+      { label: "Yesterday", items: [] },
+      { label: "This week", items: [] },
+      { label: "Earlier", items: [] },
+    ];
+    for (const item of items) {
+      const t = new Date(item.createdAt).getTime();
+      if (t >= today) groups[0].items.push(item);
+      else if (t >= yesterday) groups[1].items.push(item);
+      else if (t >= weekAgo) groups[2].items.push(item);
+      else groups[3].items.push(item);
+    }
+    return groups.filter((g) => g.items.length > 0);
+  }, [items]);
+  if (!grouped.length) return null;
+  return <div>
+    <p className="mb-1.5 flex items-center gap-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"><History className="size-3" aria-hidden />Recent</p>
+    <nav className="flex flex-col gap-2" aria-label="Chat history">{grouped.map((group) => <div key={group.label}>
+      <p className="mb-0.5 px-2 text-[10px] font-medium text-muted-foreground/60">{group.label}</p>
+      <ul className="flex flex-col">{group.items.map((item) => <li key={item.id}>
+        <button type="button" onClick={() => onSelect(item.question)} className="w-full truncate rounded-lg px-2 py-1.5 text-left text-[12px] text-foreground/80 transition-colors hover:bg-surface-2 hover:text-foreground" title={item.question}>{item.question}</button>
+      </li>)}</ul>
+    </div>)}</nav>
+  </div>;
 }

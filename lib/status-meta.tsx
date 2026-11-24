@@ -34,11 +34,7 @@ export const leadStageMeta: Record<LeadStage, { label: string; tone: BadgeTone }
   new: { label: "New", tone: "neutral" },
   contacted: { label: "Contacted", tone: "info" },
   qualified: { label: "Qualified", tone: "accent" },
-  demo: { label: "Demo", tone: "accent" },
-  proposal: { label: "Proposal", tone: "warning" },
-  negotiation: { label: "Negotiation", tone: "warning" },
-  approval: { label: "Approval", tone: "warning" },
-  won: { label: "Won", tone: "success" },
+  converted: { label: "Converted", tone: "success" },
   lost: { label: "Lost", tone: "danger" },
 };
 

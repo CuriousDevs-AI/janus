@@ -8,6 +8,7 @@ import {
   BookOpen,
   CalendarCheck,
   Bot,
+  BrainCircuit,
   Building2,
   CalendarClock,
   ClipboardList,
@@ -34,7 +35,6 @@ import {
   ScrollText,
   Settings2,
   ShieldCheck,
-  Sparkles,
   MessageSquare,
   UserRoundPlus,
   TrendingUp,
@@ -43,14 +43,17 @@ import {
   Workflow,
 } from "lucide-react";
 import type { WorkspaceId } from "@/lib/workspace-config";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 
 export interface NavItem {
   label: string;
   href: string;
-  icon: LucideIcon;
+  icon: LucideIcon | React.ComponentType<{ className?: string }>;
   requiredPermission?: string;
   /** Only in the preview; on real accounts this lives elsewhere (Engage is in Team Chat). */
   demoOnly?: boolean;
+  /** Always visible in the sidebar — cannot be hidden by the user. */
+  essential?: boolean;
 }
 
 export interface NavSection {
@@ -58,39 +61,18 @@ export interface NavSection {
   items: NavItem[];
 }
 
-/**
- * The AI pages, the same in every workspace: the assistant, agents, workflows, the AI dashboard and
- * what the model costs. Each page opens on the workspace it was reached from. The Portfolio's
- * assistant is the one across every company, and it also keeps the AI keys.
- * The permissions match what the API checks for each page.
- */
-export function aiNavItems(workspaceId: WorkspaceId): NavItem[] {
-  const portfolio = workspaceId === "portfolio";
-  const items: NavItem[] = [
-    { label: "AI Assistant", href: portfolio ? "/portfolio?view=intelligence" : `/ai?workspace=${workspaceId}`, icon: Sparkles, requiredPermission: portfolio ? undefined : "ai:manage" },
-    { label: "AI Agents", href: `/agents?workspace=${workspaceId}`, icon: Bot, requiredPermission: "agents:manage" },
-    { label: "Workflows", href: `/automations?workspace=${workspaceId}`, icon: Workflow, requiredPermission: "automations:manage" },
-    { label: "AI Dashboard", href: `/evaluations?workspace=${workspaceId}`, icon: FlaskConical, requiredPermission: "ai:manage" },
-    { label: "AI Usage & Cost", href: `/usage?workspace=${workspaceId}`, icon: Gauge, requiredPermission: "ai:manage" },
-  ];
-  if (portfolio) items.push({ label: "AI Models & Keys", href: "/portfolio?view=ai-keys", icon: KeyRound, requiredPermission: "ai:manage" });
-  return items;
-}
-
-const aiSection = (workspaceId: WorkspaceId): NavSection => ({ title: "AI", items: aiNavItems(workspaceId) });
-
 /** CRM navigation stays on the existing routes and is never duplicated. */
 export const crmNavSections: NavSection[] = [
   {
     title: "CRM & Sales",
     items: [
-      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write" },
-      { label: "Chats", href: "/inbox", icon: MessageCircle },
-      { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage" },
-      { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write" },
-      { label: "Contacts", href: "/contacts", icon: Users },
-      { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write" },
-      { label: "Customers", href: "/customers", icon: Building2 },
+      { label: "CRM Overview", href: "/dashboard", icon: LayoutDashboard, requiredPermission: "leads:write", essential: true },
+      { label: "CRM Workspaces", href: "/crm", icon: Building2, requiredPermission: "settings:manage" },
+      { label: "Chats", href: "/inbox", icon: MessageCircle, essential: true },
+      { label: "Lead Sources", href: "/lead-sources", icon: Radio, requiredPermission: "sources:manage", essential: true },
+      { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write", essential: true },
+      { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write", essential: true },
+      { label: "Contacts", href: "/customers", icon: Users, essential: true },
       { label: "Activities", href: "/activities", icon: CalendarCheck },
       { label: "Forecast", href: "/forecast", icon: TrendingUp, requiredPermission: "reports:read" },
       { label: "Products", href: "/products", icon: Package, requiredPermission: "settings:manage" },
@@ -98,11 +80,20 @@ export const crmNavSections: NavSection[] = [
       { label: "Web Forms", href: "/web-forms", icon: ClipboardList, requiredPermission: "sources:manage" },
       { label: "Sequences", href: "/sequences", icon: Mail, requiredPermission: "settings:manage" },
       { label: "Quotes", href: "/quotes", icon: FileCheck2, requiredPermission: "leads:write" },
+      { label: "Automations", href: "/automations", icon: Workflow, requiredPermission: "automations:manage" },
       { label: "Knowledge", href: "/knowledge", icon: Database, requiredPermission: "agents:manage" },
       { label: "Analytics", href: "/analytics", icon: BarChart3, requiredPermission: "reports:read" },
     ],
   },
-  aiSection("crm-sales"),
+  {
+    title: "AI",
+    items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=crm-sales", icon: CuriousdevsLogo },
+      { label: "Agents", href: "/agents?workspace=crm-sales", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Memory", href: "/memory?workspace=crm-sales", icon: BrainCircuit, requiredPermission: "ai:manage", demoOnly: true },
+      { label: "AI Dashboard", href: "/evaluations?workspace=crm-sales", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ],
+  },
   {
     title: "CRM Management",
     items: [
@@ -112,6 +103,7 @@ export const crmNavSections: NavSection[] = [
       { label: "Approvals", href: "/approvals", icon: ShieldCheck, requiredPermission: "approvals:manage" },
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Audit Logs", href: "/audit", icon: ScrollText, requiredPermission: "settings:manage" },
+      { label: "Usage", href: "/usage", icon: Gauge, requiredPermission: "billing:manage" },
     ],
   },
 ];
@@ -120,7 +112,7 @@ export const businessNavSections: NavSection[] = [
   {
     title: "Business",
     items: [
-      { label: "Business Overview", href: "/settings?tab=workspace&view=overview", icon: LayoutDashboard, requiredPermission: "settings:manage" },
+      { label: "Business Overview", href: "/settings?tab=workspace&view=overview", icon: LayoutDashboard, requiredPermission: "settings:manage", essential: true },
     ],
   },
   {
@@ -133,12 +125,21 @@ export const businessNavSections: NavSection[] = [
     ],
   },
   {
-    title: "Reports",
+    title: "Intelligence",
     items: [
+      { label: "Janus Intelligence", href: "/ai", icon: CuriousdevsLogo },
       { label: "Business Reports", href: "/analytics", icon: BarChart3, requiredPermission: "settings:manage" },
+      { label: "AI Agents", href: "/agents", icon: Bot, requiredPermission: "agents:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=business", icon: FlaskConical, requiredPermission: "ai:manage" },
+      { label: "AI Usage & Cost", href: "/usage?workspace=business", icon: Gauge, requiredPermission: "ai:manage" },
     ],
   },
-  aiSection("business"),
+  {
+    title: "Automation",
+    items: [
+      { label: "Workflows", href: "/automations?workspace=business", icon: Workflow, requiredPermission: "agents:manage" },
+    ],
+  },
   // Your own profile, password and notifications are in My account (the menu on your name), the
   // same in every workspace; this menu keeps the company's settings.
   {
@@ -152,18 +153,24 @@ export const businessNavSections: NavSection[] = [
 /** The Owner's view across every company. Each item is one page of /portfolio. */
 export const portfolioNavSections: NavSection[] = [
   { title: "Portfolio", items: [
-    { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard },
+    { label: "Overview", href: "/portfolio?view=overview", icon: LayoutDashboard, essential: true },
     { label: "Analytics", href: "/portfolio?view=analytics", icon: BarChart3 },
     { label: "Finance", href: "/portfolio?view=finance", icon: WalletCards },
     { label: "Work inbox", href: "/portfolio?view=work", icon: ShieldCheck },
     { label: "Activity", href: "/portfolio?view=activity", icon: ScrollText },
   ] },
   { title: "Manage", items: [
-    { label: "Companies", href: "/portfolio?view=companies", icon: Building2 },
+    { label: "Companies", href: "/portfolio?view=companies", icon: Building2, essential: true },
     { label: "Notifications", href: "/portfolio?view=notifications", icon: Bell },
     { label: "Compliance", href: "/portfolio?view=compliance", icon: CalendarCheck },
   ] },
-  aiSection("portfolio"),
+  { title: "AI", items: [
+    { label: "Janus Intelligence", href: "/portfolio?view=intelligence", icon: CuriousdevsLogo },
+    { label: "AI Agents", href: "/agents?workspace=portfolio", icon: Bot, requiredPermission: "ai:manage" },
+    { label: "Workflows", href: "/automations?workspace=portfolio", icon: Workflow, requiredPermission: "ai:manage" },
+    { label: "AI Dashboard", href: "/evaluations?workspace=portfolio", icon: FlaskConical, requiredPermission: "ai:manage" },
+    { label: "AI Models & Keys", href: "/portfolio?view=ai-keys", icon: KeyRound, requiredPermission: "ai:manage" },
+  ] },
   { title: "Access", items: [
     { label: "Portfolio access", href: "/portfolio?view=people", icon: Users },
     { label: "Plan and billing", href: "/portfolio?view=billing", icon: CreditCard },
@@ -173,19 +180,24 @@ export const portfolioNavSections: NavSection[] = [
 const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | "crm-sales">, NavSection[]> = {
   "team-chat": [
     { title: "Team Chat", items: [
-      { label: "Chat", href: "/team?workspace=team-chat", icon: Hash },
+      { label: "Chat", href: "/team?workspace=team-chat", icon: Hash, essential: true },
     ] },
-    aiSection("team-chat"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=team-chat", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=team-chat", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=team-chat", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=team-chat", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
   ],
   "hr-people": [
     { title: "My HR", items: [
-      { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard },
-      { label: "Engage", href: "/workspace/hr-people?view=engage", icon: Sparkles, demoOnly: true },
+      { label: "Home", href: "/workspace/hr-people?view=my-home", icon: LayoutDashboard, essential: true },
+      { label: "Engage", href: "/workspace/hr-people?view=engage", icon: CuriousdevsLogo, demoOnly: true },
       { label: "My profile", href: "/workspace/hr-people?view=my-profile", icon: UserRoundPlus },
       { label: "My onboarding", href: "/workspace/hr-people?view=my-onboarding", icon: UserRoundPlus },
       { label: "Document Center", href: "/workspace/hr-people?view=document-center", icon: FileText },
       { label: "My documents", href: "/workspace/hr-people?view=my-documents", icon: FileText },
-      { label: "Ask about policy", href: "/workspace/hr-people?view=policy-qa", icon: Sparkles },
+      { label: "Ask about policy", href: "/workspace/hr-people?view=policy-qa", icon: CuriousdevsLogo },
     ] },
     { title: "Salary", items: [
       { label: "Payslips", href: "/workspace/hr-people?view=my-payslips", icon: Receipt },
@@ -231,7 +243,12 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "HR Compliance", href: "/workspace/hr-people?view=compliance", icon: ShieldCheck, requiredPermission: "hr:read" },
       { label: "PF, ESI & Challans", href: "/workspace/hr-people?view=statutory", icon: FileCheck2, requiredPermission: "hr:payroll:read" },
     ] },
-    aiSection("hr-people"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=hr-people", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=hr-people", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=hr-people", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=hr-people", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
     { title: "Admin", items: [
       { label: "Departments & roles", href: "/workspace/hr-people?view=organization", icon: Users, requiredPermission: "hr:manage" },
       { label: "HR Settings", href: "/workspace/hr-people?view=settings", icon: Settings2, requiredPermission: "hr:manage" },
@@ -239,7 +256,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
   ],
   "finance-accounting": [
     { title: "Overview", items: [
-      { label: "Finance Overview", href: "/workspace/finance-accounting", icon: LayoutDashboard },
+      { label: "Finance Overview", href: "/workspace/finance-accounting", icon: LayoutDashboard, essential: true },
       { label: "Financial Ratios", href: "/workspace/finance-accounting?view=ratios", icon: TrendingUp },
       { label: "Day Book", href: "/workspace/finance-accounting?view=day-book", icon: BookOpen },
     ] },
@@ -299,11 +316,16 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "FY Closing", href: "/workspace/finance-accounting?view=fy-closing", icon: ShieldCheck },
       { label: "Audit Trail Export", href: "/workspace/finance-accounting?view=audit-export", icon: FileCheck2 },
     ] },
-    aiSection("finance-accounting"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=finance-accounting", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=finance-accounting", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=finance-accounting", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=finance-accounting", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
   ],
   "projects-delivery": [
     { title: "Projects & Delivery", items: [
-      { label: "Projects Overview", href: "/workspace/projects-delivery", icon: LayoutDashboard },
+      { label: "Projects Overview", href: "/workspace/projects-delivery", icon: LayoutDashboard, essential: true },
       { label: "All Projects", href: "/workspace/projects-delivery?view=projects", icon: ClipboardList },
       { label: "Tasks & Work Items", href: "/workspace/projects-delivery?view=tasks", icon: FileText },
       { label: "Milestones & Deliverables", href: "/workspace/projects-delivery?view=milestones", icon: CalendarClock },
@@ -316,13 +338,18 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Project Reports", href: "/workspace/projects-delivery?view=reports", icon: BarChart3 },
       { label: "Project Settings", href: "/settings?tab=workspace", icon: Settings2, requiredPermission: "settings:manage" },
     ] },
-    aiSection("projects-delivery"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=projects-delivery", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=projects-delivery", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=projects-delivery", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=projects-delivery", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
   ],
   "customer-support": [
     { title: "Customer Support & Success", items: [
-      { label: "Support Overview", href: "/workspace/customer-support", icon: LayoutDashboard },
-      { label: "Tickets", href: "/workspace/customer-support?view=tickets", icon: LifeBuoy },
-      { label: "Customer Directory", href: "/customers?workspace=customer-support", icon: Building2 },
+      { label: "Support Overview", href: "/workspace/customer-support", icon: LayoutDashboard, essential: true },
+      { label: "Tickets", href: "/workspace/customer-support?view=tickets", icon: LifeBuoy, essential: true },
+      { label: "Contacts", href: "/customers?workspace=customer-support", icon: Users },
       { label: "Queues & Assignments", href: "/workspace/customer-support?view=queues", icon: Users },
       { label: "SLA Management", href: "/workspace/customer-support?view=sla", icon: Gauge },
       { label: "Knowledge Base", href: "/knowledge?workspace=customer-support", icon: Database },
@@ -331,12 +358,17 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Support Reports", href: "/workspace/customer-support?view=reports", icon: BarChart3 },
       { label: "Support Settings", href: "/settings?tab=notifications", icon: Settings2, requiredPermission: "settings:manage" },
     ] },
-    aiSection("customer-support"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=customer-support", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=customer-support", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=customer-support", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=customer-support", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
   ],
   "operations-inventory": [
     { title: "Operations & Inventory", items: [
-      { label: "Operations Overview", href: "/workspace/operations-inventory", icon: LayoutDashboard },
-      { label: "Inventory", href: "/workspace/operations-inventory?view=inventory", icon: Package },
+      { label: "Operations Overview", href: "/workspace/operations-inventory", icon: LayoutDashboard, essential: true },
+      { label: "Inventory", href: "/workspace/operations-inventory?view=inventory", icon: Package, essential: true },
       { label: "Products & Stock", href: "/workspace/operations-inventory?view=products", icon: Package },
       { label: "Warehouses & Locations", href: "/workspace/operations-inventory?view=warehouses", icon: Building2 },
       { label: "Physical Count", href: "/workspace/operations-inventory?view=counts", icon: Database },
@@ -349,12 +381,17 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "Operations Reports", href: "/workspace/operations-inventory?view=reports", icon: BarChart3 },
       { label: "Operations Settings", href: "/settings?tab=automation", icon: Settings2, requiredPermission: "settings:manage" },
     ] },
-    aiSection("operations-inventory"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=operations-inventory", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=operations-inventory", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=operations-inventory", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=operations-inventory", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
   ],
   "it-infrastructure": [
     { title: "IT & Infrastructure", items: [
-      { label: "IT Overview", href: "/workspace/it-infrastructure", icon: LayoutDashboard },
-      { label: "IT Helpdesk", href: "/workspace/it-infrastructure?view=helpdesk", icon: LifeBuoy },
+      { label: "IT Overview", href: "/workspace/it-infrastructure", icon: LayoutDashboard, essential: true },
+      { label: "IT Helpdesk", href: "/workspace/it-infrastructure?view=helpdesk", icon: LifeBuoy, essential: true },
       { label: "Incidents", href: "/workspace/it-infrastructure?view=incidents", icon: OctagonAlert },
       { label: "Problem Management", href: "/workspace/it-infrastructure?view=problems", icon: GitMerge },
       { label: "Change Management", href: "/workspace/it-infrastructure?view=changes", icon: Workflow },
@@ -379,7 +416,12 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
       { label: "IT Reports", href: "/workspace/it-infrastructure?view=reports", icon: BarChart3 },
       { label: "IT Settings", href: "/workspace/it-infrastructure?view=it-settings", icon: Settings2 },
     ] },
-    aiSection("it-infrastructure"),
+    { title: "AI", items: [
+      { label: "Janus Intelligence", href: "/ai?workspace=it-infrastructure", icon: CuriousdevsLogo },
+      { label: "AI Agents", href: "/agents?workspace=it-infrastructure", icon: Bot, requiredPermission: "ai:manage" },
+      { label: "Workflows", href: "/automations?workspace=it-infrastructure", icon: Workflow, requiredPermission: "ai:manage" },
+      { label: "AI Dashboard", href: "/evaluations?workspace=it-infrastructure", icon: FlaskConical, requiredPermission: "ai:manage" },
+    ] },
   ],
 };
 

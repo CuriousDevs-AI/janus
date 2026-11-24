@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api, message } from "@/lib/api/client";
-import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
+import { invalidatePortfolioCache, usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { enablePush } from "@/lib/push";
 import { SectionCard } from "@/components/settings/section-ui";
 import { attentionOf, openIn, useRoles } from "@/features/portfolio/lib/companies";
@@ -108,7 +108,7 @@ export function ThresholdsCard() {
   const set = (patch: Partial<Thresholds>) => setDraft({ ...value, ...patch });
   const number = (text: string, max: number) => Math.min(max, Math.max(0, Math.round(Number(text) || 0)));
   const field = "h-8 w-28 rounded-md border border-input bg-surface-2 px-2 text-[13px] tabular-nums";
-  const save = async () => { if (await preferences.save({ ...preferences.value, thresholds: value })) { toast.success("Saved. Health is worked out again with your thresholds."); window.location.reload(); } };
+  const save = async () => { if (await preferences.save({ ...preferences.value, thresholds: value })) { toast.success("Saved. Health is worked out again with your thresholds."); invalidatePortfolioCache(); } };
   return <SectionCard title="When is a company red?" description="Your own thresholds. They change health on every Portfolio page and in your emails, for you only.">
     <div className="mb-4"><AlertsSwitch /></div>
     <div className="grid gap-3 sm:grid-cols-2">

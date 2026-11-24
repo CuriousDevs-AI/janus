@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: SecretStr = SecretStr("")
     smtp_starttls: bool = True
+    smtp_ssl: bool = False
     s3_endpoint_url: str | None = None
     s3_region: str = "ap-south-1"
     s3_bucket: str = ""
@@ -104,20 +105,18 @@ class Settings(BaseSettings):
                 raise ValueError("Production API URL must use HTTPS")
             if not self.frontend_url.startswith("https://"):
                 raise ValueError("Production frontend URL must use HTTPS")
-            # Once Razorpay takes payments, every payment issues a GST tax invoice from Janus, so
-            # the seller's registration must be on it: a made-up or missing GSTIN is never issued.
+            # Seller details on invoices: GSTIN is optional (unregistered sellers don't charge GST),
+            # but the legal name and address are always needed so invoices say who billed.
             if self.razorpay_key_id:
-                gstin = self.janus_gstin.strip().upper()
-                if not re.fullmatch(r"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]", gstin):
-                    raise ValueError(
-                        "Taking payments in production needs JANUS_GSTIN, a valid GSTIN"
-                    )
-                if self.janus_state_code != gstin[:2]:
-                    raise ValueError("JANUS_STATE_CODE must be the GSTIN's first two digits")
+                if self.janus_gstin:
+                    gstin = self.janus_gstin.strip().upper()
+                    if not re.fullmatch(r"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]", gstin):
+                        raise ValueError("JANUS_GSTIN must be a valid GSTIN if provided")
+                    if self.janus_state_code != gstin[:2]:
+                        raise ValueError("JANUS_STATE_CODE must be the GSTIN's first two digits")
                 if self.janus_legal_name.strip() in ("", "Janus") or not self.janus_address.strip():
                     raise ValueError(
-                        "Taking payments in production needs JANUS_LEGAL_NAME (the registered "
-                        "business, not the product) and JANUS_ADDRESS"
+                        "Taking payments in production needs JANUS_LEGAL_NAME and JANUS_ADDRESS"
                     )
         return self
 

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { TeamToday } from "@/components/crm/team-today";
 import { LostReasonsCard } from "@/components/crm/lost-reasons-card";
-import { AlertTriangle, ArrowUpRight, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { AlertTriangle, ArrowUpRight, RefreshCw, TrendingUp } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSession } from "@/components/auth/session-provider";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard } from "@/components/shared/metric-card";
@@ -14,19 +15,17 @@ import { useAllRows } from "@/lib/api/use-all-rows";
 import type { DashboardStats, DailyPoint, FunnelData, RepData, Deal, Lead, Source } from "@/lib/api/types";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
 import { formatCurrencyINR, formatDateTime, formatRelativeTime } from "@/lib/utils";
-
-function sourceLabel(source: string) {
-  return source.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+import { sourceLabel, sourceMeta, sourceChartColor } from "@/lib/lead-sources";
+import { SourceBadge } from "@/components/shared/source-badge";
 
 export default function DashboardPage() {
   const session = useSession();
-  const stats = useApi<DashboardStats>("/dashboard/stats");
+  const stats = useApi<DashboardStats>("/dashboard/stats?_=1");
   const daily = useApi<DailyPoint[]>("/dashboard/daily?days=180");
   const funnel = useApi<FunnelData[]>("/dashboard/funnel?days=30");
   const reps = useApi<RepData[]>("/dashboard/reps?days=30");
-  const leads = useAllRows<Lead>("/leads");
-  const deals = useAllRows<Deal>("/deals");
+  const leads = useAllRows<Lead>("/leads?_=1");
+  const deals = useAllRows<Deal>("/deals?_=1");
   const canViewSources =
     can(session, "sources:manage") &&
     Boolean(session.user.email_verified_at);
@@ -102,11 +101,11 @@ export default function DashboardPage() {
           )}
           {leadRows.length > 0 && (
             <div className="min-h-[200px] divide-y divide-border">
-              {leadRows.slice(0, 6).map((lead) => {
+              {[...leadRows].reverse().slice(0, 6).map((lead) => {
                 const content = (
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{lead.contactName || `Lead #${lead.id}`}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{sourceLabel(lead.source)} · {lead.stage}</p>
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><SourceBadge source={lead.source} /> · {lead.stage}</p>
                   </div>
                 );
                 const row = <>{content}<span className="shrink-0 text-xs text-muted-foreground">{formatRelativeTime(lead.lastActivityAt)}</span></>;
@@ -179,7 +178,7 @@ export default function DashboardPage() {
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-5">
-          <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">AI operating insights</h2></div>
+          <div className="flex items-center gap-2"><CuriousdevsLogo className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">AI operating insights</h2></div>
           <p className="mt-1 text-[11px] text-muted-foreground">The next actions Janus would surface for the sales owner.</p>
           <div className="mt-4 space-y-3">
             {(() => {
@@ -200,7 +199,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2"><TrendingUp className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Pipeline funnel</h2></div>
           <p className="mt-1 text-[11px] text-muted-foreground">Lead distribution across stages (last 30 days).</p>
           <div className="mt-4 flex gap-1">
-            {funnel.data.filter((s) => s.count > 0 || ["new", "contacted", "qualified", "won", "lost"].includes(s.stage)).map((s) => {
+            {funnel.data.filter((s) => s.count > 0 || ["new", "contacted", "qualified", "converted", "lost"].includes(s.stage)).map((s) => {
               const maxCount = Math.max(...funnel.data!.map((f) => f.count), 1);
               return (
                 <div key={s.stage} className="min-w-0 flex-1 text-center">
@@ -255,14 +254,14 @@ export default function DashboardPage() {
                   const src = lead.source || "unknown";
                   if (!bySource[src]) bySource[src] = { total: 0, qualified: 0, won: 0 };
                   bySource[src].total++;
-                  if (["qualified", "demo", "proposal", "negotiation", "approval", "won"].includes(lead.stage)) bySource[src].qualified++;
+                  if (["qualified", "converted", "won"].includes(lead.stage)) bySource[src].qualified++;
                   if (lead.stage === "won") bySource[src].won++;
                 }
                 const sorted = Object.entries(bySource).sort((a, b) => b[1].total - a[1].total).slice(0, 6);
                 const maxTotal = Math.max(...sorted.map(([, v]) => v.total), 1);
                 return sorted.map(([src, v]) => (
                   <div key={src} className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 truncate text-xs font-medium">{sourceLabel(src)}</span>
+                    <SourceBadge source={src} className="w-24 shrink-0" />
                     <div className="flex-1">
                       <div className="flex h-4 overflow-hidden rounded-full bg-surface-3">
                         <div className="bg-success/70 transition-all" style={{ width: `${(v.won / maxTotal) * 100}%` }} title={`${v.won} won`} />
@@ -286,7 +285,7 @@ export default function DashboardPage() {
           </section>
 
           <section className="rounded-lg border border-border bg-surface p-5">
-            <div className="flex items-center gap-2"><Sparkles className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Follow-up effectiveness</h2></div>
+            <div className="flex items-center gap-2"><CuriousdevsLogo className="size-4 text-info" /><h2 className="text-[13px] font-semibold">Follow-up effectiveness</h2></div>
             <p className="mt-1 text-[11px] text-muted-foreground">How quickly and consistently your team follows up on leads.</p>
             <div className="mt-4 space-y-3">
               {(() => {
@@ -334,6 +333,45 @@ export default function DashboardPage() {
           </section>
         </div>
       )}
+
+      {leadRows.length > 0 && (() => {
+        const bySource: Record<string, number> = {};
+        for (const lead of leadRows) { const src = lead.source || "unknown"; bySource[src] = (bySource[src] || 0) + 1; }
+        const pieData = Object.entries(bySource).sort((a, b) => b[1] - a[1]).map(([src, count]) => ({ name: sourceLabel(src), value: count, source: src }));
+        const total = leadRows.length;
+        return (
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <div className="flex items-center gap-2"><TrendingUp className="size-4 text-accent" /><h2 className="text-[13px] font-semibold">Source distribution</h2></div>
+            <p className="mt-1 text-[11px] text-muted-foreground">Where your leads are coming from across all channels.</p>
+            <div className="mt-4 flex flex-wrap items-center gap-6">
+              <div className="relative size-44 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={2} strokeWidth={0}>
+                      {pieData.map((d) => <Cell key={d.source} fill={sourceChartColor(d.source)} />)}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value} leads (${Math.round((Number(value) / total) * 100)}%)`, ""]} contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid var(--border)" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-xl font-bold">{total}</span>
+                  <span className="text-[10px] text-muted-foreground">total leads</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {pieData.map((d) => (
+                  <div key={d.source} className="flex items-center gap-1.5 text-xs">
+                    <span className="size-2.5 rounded-full" style={{ backgroundColor: sourceChartColor(d.source) }} />
+                    <span className="text-muted-foreground">{d.name}</span>
+                    <span className="font-semibold">{d.value}</span>
+                    <span className="text-[10px] text-muted-foreground">({Math.round((d.value / total) * 100)}%)</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {(session.permissions.includes("*") || can(session, "leads:assign")) && <>
         <TeamToday leads={leadRows} deals={dealRows} />

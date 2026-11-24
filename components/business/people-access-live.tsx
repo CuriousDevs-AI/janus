@@ -60,7 +60,7 @@ const ago = (iso?: string | null) => {
   if (!iso) return "Never signed in";
   const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
   if (minutes < 30) return "Active now";
-  if (minutes < 24 * 60) return `${Math.round(minutes / 60) || 1} hours ago`;
+  if (minutes < 24 * 60) { const h = Math.round(minutes / 60) || 1; return `${h} ${h === 1 ? "hour" : "hours"} ago`; }
   const days = Math.round(minutes / 1440);
   return days < 30 ? `${days} day${days === 1 ? "" : "s"} ago` : new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 };
@@ -79,7 +79,17 @@ type Section = (typeof sections)[number][0];
  */
 export function LivePeopleAccess({ initialSection = "members" }: { initialSection?: string }) {
   const session = useSession();
+  const canManageMembers = session.permissions.includes("*") || session.permissions.includes("members:manage");
   const [section, setSection] = React.useState<Section>(() => sections.some(([value]) => value === initialSection) ? initialSection as Section : "members");
+  if (!canManageMembers) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <Users className="size-8 text-muted-foreground" />
+        <p className="text-sm font-medium">People & Access</p>
+        <p className="max-w-md text-sm text-muted-foreground">Managing team members requires the Admin or Owner role. Ask an Admin to make changes on this page.</p>
+      </div>
+    );
+  }
   const members = useApi<Member[]>("/members");
   const spaces = useApi<Array<{ type: string; status: string }>>("/workspaces");
   const on = React.useMemo(() => spaces.data ? new Set(spaces.data.filter((item) => item.status === "active").map((item) => item.type.replaceAll("_", "-"))) : null, [spaces.data]);

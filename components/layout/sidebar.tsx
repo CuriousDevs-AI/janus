@@ -3,6 +3,7 @@
 import * as React from "react";
 import { activeCompany, activeCompanyId, portfolioHome, scoped } from "@/lib/company";
 import { CompanyLogo } from "@/components/shared/company-logo";
+import { readPortfolioLogo } from "@/features/portfolio";
 import { LiveCompanySwitcher } from "@/components/layout/company-switcher";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -10,6 +11,7 @@ import {
   ChevronsUpDown,
   Circle,
   Inbox,
+  LockKeyhole,
   Plus,
 } from "lucide-react";
 import {
@@ -46,6 +48,10 @@ function withTeamChat<T extends { id: string; name: string; description: string 
   return list.length && !list.some((item) => item.id === "team-chat") ? [...list, teamChatEntry] : list;
 }
 
+function CuriousDevsLogo() {
+  return <svg viewBox="4 4 92 92" width="26" height="26" fill="currentColor" role="presentation" aria-hidden="true" className="shrink-0 text-accent transition-all duration-500 group-hover:[transform:rotate(90deg)]"><g transform="translate(50 50) rotate(45)"><path d="M-44.5-20.5V20.5H10.1V13.4H-37.4V-13.4H-24.15V-20.5Z" /><path d="M-44.5-20.5V20.5H10.1V13.4H-37.4V-13.4H-24.15V-20.5Z" transform="rotate(90)" /><path d="M-44.5-20.5V20.5H10.1V13.4H-37.4V-13.4H-24.15V-20.5Z" transform="rotate(180)" /><path d="M-44.5-20.5V20.5H10.1V13.4H-37.4V-13.4H-24.15V-20.5Z" transform="rotate(270)" /></g></svg>;
+}
+
 export function SidebarNav({
   collapsed = false,
   onNavigate,
@@ -59,7 +65,14 @@ export function SidebarNav({
   const { workspaceId, workspace } = useWorkspace();
   const tenant = session.tenant;
   const workspacesApi = useApi<Array<{ id: string; type: string; name: string; description: string; status: string }>>("/workspaces");
-  const setupApi = useApi<{ completedSteps: string[] }>("/business/setup");
+  const setupApi = useApi<{ completedSteps: string[]; setupCompleted: boolean }>("/business/setup");
+  const allStepIds = ["business_details", "workspaces", "members", "team_chat", "data_connections"];
+  const setupComplete = setupApi.data ? (setupApi.data.setupCompleted || allStepIds.every((s) => setupApi.data!.completedSteps.includes(s))) : true;
+  React.useEffect(() => {
+    const refresh = () => { setupApi.reload(); workspacesApi.reload(); };
+    window.addEventListener("janus:setup-changed", refresh);
+    return () => window.removeEventListener("janus:setup-changed", refresh);
+  }, [setupApi.reload, workspacesApi.reload]);
   const [activationOverride, setActivationOverride] = React.useState<boolean | null>(null);
   React.useEffect(() => {
     const key = scoped("janus.setup.active-workspace");
@@ -73,22 +86,38 @@ export function SidebarNav({
     return () => { window.removeEventListener("janus:workspace-activation", read); window.removeEventListener("storage", read); };
   }, []);
   const setupWorkspaceChosen = setupApi.data?.completedSteps?.includes("workspaces") ?? false;
-  const catalogHasActiveWorkspace = workspaceDefinitions.some((item) => item.id === "crm-sales" && item.status === "active");
+  const catalogHasActiveWorkspace = setupComplete && workspaceDefinitions.some((item) => item.id === "crm-sales" && item.status === "active");
   const apiHasActiveWorkspace = Boolean(workspacesApi.data?.some((item) => item.status === "active"));
-  // CRM & Sales is provisioned with every business, so a stale setup value
-  // must not hide an already-active CRM workspace.
+  // Only trust the catalog after setup is done; before that, rely on the API and activation override.
   const hasActiveWorkspace = catalogHasActiveWorkspace || activationOverride === true || (activationOverride === null && setupWorkspaceChosen && apiHasActiveWorkspace);
   // A workspace that is switched off for this company shows the business menu instead; its records are kept.
   const switchedOff = OPERATIONAL_WORKSPACES.includes(workspaceId) && !activeCompany().workspaces.includes(workspaceId);
   const effectiveWorkspaceId = hasActiveWorkspace && !switchedOff ? workspaceId : "business";
-  const navSections = getNavSectionsForWorkspace(effectiveWorkspaceId);
-  const visibleSections = navSections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter(
-        (item) => !item.demoOnly && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)),
-      ),
-    }))
+  const rawNavSections = getNavSectionsForWorkspace(effectiveWorkspaceId);
+  const sidebarPrefs = React.useMemo(() => {
+    try { const raw = window.localStorage.getItem(scoped("janus.sidebar.prefs")); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  }, []);
+  const wsPrefs = sidebarPrefs[effectiveWorkspaceId] ?? {};
+  const hiddenItems: string[] = wsPrefs.hidden ?? [];
+  const collapsedSections: string[] = wsPrefs.collapsed ?? [];
+  const sectionOrder: string[] | undefined = wsPrefs.sectionOrder;
+  const orderedNav = React.useMemo(() => {
+    if (!sectionOrder) return rawNavSections;
+    const byTitle = new Map(rawNavSections.map((s) => [s.title, s]));
+    const ordered = sectionOrder.map((t) => byTitle.get(t)).filter((s): s is typeof rawNavSections[number] => Boolean(s));
+    const rest = rawNavSections.filter((s) => !sectionOrder.includes(s.title));
+    return [...ordered, ...rest];
+  }, [rawNavSections, sectionOrder]);
+  const visibleSections = orderedNav
+    .map((section) => {
+      const isCollapsed = collapsedSections.includes(section.title);
+      return {
+        ...section,
+        items: section.items.filter(
+          (item) => !item.demoOnly && (item.essential || (!isCollapsed && !hiddenItems.includes(item.href))) && (!item.requiredPermission || session.permissions.includes("*") || session.permissions.includes(item.requiredPermission)),
+        ),
+      };
+    })
     .filter((section) => section.items.length > 0);
 
   function isActive(item: NavItem) {
@@ -145,7 +174,34 @@ export function SidebarNav({
           collapsed ? "px-2" : "px-3",
         )}
       >
-        {workspaceId === "portfolio" ? <Link href={portfolioHome} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2", collapsed && "justify-center px-0")}><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-foreground text-[13px] font-semibold text-background">P</span>{!collapsed && <span className="flex min-w-0 flex-1 flex-col items-start leading-tight"><span className="max-w-full truncate text-[13px] font-semibold text-foreground">Portfolio</span><span className="text-[10px] text-muted-foreground">All your companies</span></span>}</Link> : <DropdownMenu>
+        {workspaceId === "portfolio" ? <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className={cn("group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2", collapsed && "justify-center px-0")}>
+              <CuriousDevsLogo />
+              {!collapsed && <>
+                <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
+                  <span className="max-w-full truncate text-[14px] font-bold tracking-tight text-foreground">Janus</span>
+                  <span className="text-[10px] text-muted-foreground">by Curious<span className="font-medium text-accent">Devs</span></span>
+                </span>
+                <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
+              </>}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+            <DropdownMenuItem asChild className="bg-accent-muted">
+              <Link href={portfolioHome} className="flex items-center justify-between">
+                <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">Portfolio</span><span className="truncate text-[11px] text-muted-foreground">Overview, analytics and finance</span></span>
+                <Circle className="size-2 shrink-0 fill-accent text-accent" />
+              </Link>
+            </DropdownMenuItem>
+            {accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild>
+              <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
+                <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{item.description}</span></span>
+              </Link>
+            </DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu> : <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
@@ -153,7 +209,7 @@ export function SidebarNav({
                 collapsed && "justify-center px-0",
               )}
             >
-              <CompanyLogo company={{ id: activeCompanyId(), name: tenant.name, logo: activeCompany().logo }} size={32} />
+              <CompanyLogo company={{ id: activeCompanyId(), name: tenant.name, logo: activeCompany().logo || readPortfolioLogo(tenant.id) }} size={32} />
               {!collapsed && (
                 <>
                   <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
@@ -172,13 +228,17 @@ export function SidebarNav({
           <DropdownMenuContent align="start" className="w-64">
 
             <DropdownMenuLabel>{ownerView ? "Created workspaces" : "Your workspaces"}</DropdownMenuLabel>
-            {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild className={cn(workspaceId === item.id && "bg-accent-muted")}>
-              <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
+            {!setupComplete && <DropdownMenuItem asChild><Link href="/portfolio?view=companies" className="flex items-center gap-2 text-xs text-accent"><LockKeyhole className="size-3" />Complete setup to unlock workspaces</Link></DropdownMenuItem>}
+            {accessibleWorkspaces.length ? accessibleWorkspaces.map((item) => <DropdownMenuItem key={item.id} asChild disabled={!setupComplete} className={cn(workspaceId === item.id && "bg-accent-muted")}>
+              {setupComplete ? <Link href={workspaceHref(item.id)} className="flex items-center justify-between">
                 <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{item.description}</span></span>
                 {workspaceId === item.id && <Circle className="size-2 shrink-0 fill-accent text-accent" />}
-              </Link>
+              </Link> : <span className="flex items-center justify-between opacity-50">
+                <span className="flex min-w-0 flex-col gap-0.5"><span className="font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{item.description}</span></span>
+                <LockKeyhole className="size-3 shrink-0 text-muted-foreground" />
+              </span>}
             </DropdownMenuItem>) : <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">No active workspace yet</span></DropdownMenuItem>}
-            {canCreateWorkspace && <><DropdownMenuSeparator />
+            {canCreateWorkspace && setupComplete && <><DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings?tab=workspace&view=workspaces&create=1&workspace=business">
                 <Plus className="size-3.5" />
@@ -191,6 +251,7 @@ export function SidebarNav({
 
       {/* Nav. In Team Chat the chats themselves take the menu's place, as in WhatsApp. */}
       {teamChatList ? <TeamChatSidebarList onNavigate={onNavigate} /> : <nav className="flex-1 overflow-y-auto py-3">
+        {workspaceId === "portfolio" && !collapsed && <div className="mb-4 rounded-lg mx-3 bg-accent/8 px-3.5 py-2.5"><p className="text-[13px] font-medium text-foreground">Hi, {session.user.name?.split(" ")[0] ?? "there"} <span className="text-[18px] leading-none">👋</span></p><p className="mt-0.5 text-[11px] text-muted-foreground">Your portfolio at a glance</p></div>}
         {/* Work Inbox: the one cross-workspace page, always at the top of every sidebar. */}
         {workspaceId !== "portfolio" && <div className={cn("mb-4", collapsed ? "px-2" : "px-3")}>
           <ul className="flex flex-col gap-0.5">
@@ -291,8 +352,8 @@ export function SidebarNav({
         ))}
       </nav>}
 
-      {/* A real account sees the switcher once it can go somewhere: a second company, or a Portfolio. */}
-      {(session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
+      {/* A real account sees the switcher once it can go somewhere: a second company, or a Portfolio. Hide it until setup is done. */}
+      {setupComplete && (session.tenants.length > 1 || session.tenants.some((item) => PORTFOLIO_ROLES.includes(item.role))) && <LiveCompanySwitcher inPortfolio={workspaceId === "portfolio"} collapsed={collapsed} />}
 
     </>
   );

@@ -14,7 +14,7 @@ import { FilterChips, StatTile, workspaceHref } from "@/components/shared/stat-t
 import { change, day, healthTone, inr, KeyRatios, RATE_MINIMUM, todayIst, type PortfolioCompany, type PortfolioPeriod, type PortfolioPeriodKey } from "@/features/portfolio";
 
 const n = (value: string | null | undefined) => Number(value ?? 0);
-const card = "rounded-xl border border-[#e4e4df] bg-white p-5";
+const card = "rounded-xl border border-border bg-surface p-5";
 const dot = { high: "bg-danger", medium: "bg-warning", low: "bg-muted-foreground/50" } as const;
 const filingTone = { overdue: "danger", due_soon: "warning", upcoming: "neutral", filed: "success" } as const;
 const filingWord = { overdue: "Past due", due_soon: "Due this week", upcoming: "Coming up", filed: "Filed" } as const;
@@ -50,6 +50,16 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
   const calls = company.crm as typeof company.crm & { followUpsToday?: number; followUpsOverdue?: number };
   const topSource = [...company.leadSources].sort((a, b) => b.current - a.current)[0];
 
+  const reg = company.registration;
+  const missing: string[] = [];
+  if (!company.businessModel) missing.push("Kind of business");
+  if (!reg?.entityType) missing.push("Entity type");
+  if (!reg?.pan) missing.push("PAN");
+  if (!reg?.email) missing.push("Email");
+  if (!reg?.phone) missing.push("Phone");
+  if (!reg?.city) missing.push("City");
+  if (!reg?.directors?.length) missing.push("People (founders / directors)");
+
   return <div className={`flex flex-col gap-6 transition-opacity ${stale ? "opacity-60" : ""}`}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -58,6 +68,16 @@ export function LiveBusinessOverview({ company, period, onPeriod, onReload, stal
       </div>
       <FilterChips<PortfolioPeriodKey> label="Period" value={period.key} onChange={onPeriod} options={[{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }]} />
     </div>
+
+    {missing.length > 0 && <section className="rounded-xl border border-warning/40 bg-warning-muted p-4" aria-label="Incomplete profile">
+      <h3 className="text-sm font-semibold text-foreground">Complete your company profile</h3>
+      <p className="mt-1 text-sm text-muted-foreground">These important details are not filled in yet:</p>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-foreground">{missing.map((item) => <li key={item} className="flex items-center gap-1.5">
+        <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+        {item}
+      </li>)}</ul>
+      <Link href={`/portfolio?view=companies&company=${company.id}`} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">Edit company details<ArrowRight className="size-3.5" aria-hidden /></Link>
+    </section>}
 
     <section className={card} aria-label="Needs you">
       <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">Needs you</h3>{company.attention.length > 0 && <span className="text-xs text-muted-foreground">{company.attention.length} {company.attention.length === 1 ? "thing" : "things"}, most urgent first</span>}</div>
@@ -164,7 +184,7 @@ function profitAfterSalaries(company: PortfolioCompany, period: PortfolioPeriod)
 }
 
 function Space({ name, href, lines, warn = false }: { name: string; href: string; lines: string[]; warn?: boolean }) {
-  return <Link href={href} className="group rounded-xl border border-[#e4e4df] bg-white p-4 transition-[border-color,box-shadow] hover:border-accent-border hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+  return <Link href={href} className="group rounded-xl border border-border bg-surface p-4 transition-[border-color,box-shadow] hover:border-accent-border hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
     <p className="flex items-center justify-between gap-2 text-sm font-medium">{name}<span className="flex items-center gap-2">{warn && <span className="size-2 rounded-full bg-warning" aria-label="Something here needs a look" />}<ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden /></span></p>
     {lines.map((line, index) => <p key={index} className="mt-1 text-xs text-muted-foreground">{line}</p>)}
   </Link>;

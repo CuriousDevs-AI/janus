@@ -80,7 +80,7 @@ async def get_setup(db: AsyncSession, tenant_id: int) -> schemas.SetupOut:
     if tenant is None:
         raise ApiError("not_found", "Business not found.", 404)
     completed = list((tenant.business_hours or {}).get("setup_steps", []))
-    steps = ["business_details", "workspaces", "members", "data_connections"]
+    steps = ["business_details", "workspaces", "members", "team_chat", "data_connections"]
     return schemas.SetupOut(
         businessName=tenant.name,
         industry=tenant.industry,
@@ -88,7 +88,7 @@ async def get_setup(db: AsyncSession, tenant_id: int) -> schemas.SetupOut:
         timezone=tenant.timezone,
         businessHoursStart=(tenant.business_hours or {}).get("start"),
         businessHoursEnd=(tenant.business_hours or {}).get("end"),
-        setupCompleted=len(completed) == len(steps),
+        setupCompleted=all(s in completed for s in steps),
         completedSteps=completed,
         nextStep=next((step for step in steps if step not in completed), None),
     )

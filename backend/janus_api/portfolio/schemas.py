@@ -295,6 +295,10 @@ class Registration(BaseModel):
     phone: Text = Field(default=None, max_length=32)
     city: Text = Field(default=None, max_length=80)
     state: Text = Field(default=None, max_length=40)
+    linkedin: Text = Field(default=None, max_length=200)
+    twitter: Text = Field(default=None, max_length=200)
+    instagram: Text = Field(default=None, max_length=200)
+    facebook: Text = Field(default=None, max_length=200)
     directors: list[Director] = Field(default_factory=list, max_length=30)
 
 
@@ -667,6 +671,7 @@ class ActivityItem(BaseModel):
 class ActivityList(BaseModel):
     days: int
     items: list[ActivityItem]
+    cursor: str | None = None
 
 
 class TrendPoint(BaseModel):

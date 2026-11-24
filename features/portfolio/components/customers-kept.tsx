@@ -34,6 +34,7 @@ export function CustomersKept({ list }: { list: PortfolioCompany[] }) {
   };
   const canMerge = (id: string) => editable.some((item) => item.id === id);
   const merge = async (id: string, pair: { name: string; into: string }) => {
+    if (!window.confirm(`Count "${pair.name}" as "${pair.into}"? Their history will be combined.`)) return;
     setBusy(true);
     try { await api(`/portfolio/companies/${id}/customers/merges`, { method: "POST", body: JSON.stringify(pair) }); toast.success(`${pair.name} is now counted as ${pair.into}.`); data.reload(); }
     catch (error) { toast.error(message(error)); } finally { setBusy(false); }

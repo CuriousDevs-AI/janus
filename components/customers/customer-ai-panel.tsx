@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Sparkles, Send, User } from "lucide-react";
+import { Send, User } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { useApi } from "@/lib/api/use-api";
 import { answerAboutCustomer, SUGGESTED_QUESTIONS } from "@/lib/services/customer-ai";
@@ -56,7 +57,7 @@ export function CustomerAIPanel({ customerId }: { customerId: string }) {
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-border bg-surface p-4">
         <div className="mb-3 flex items-center gap-1.5">
-          <Sparkles className="size-3.5 text-accent" />
+          <CuriousdevsLogo className="size-3.5 text-accent" />
           <span className="text-[13px] font-semibold text-foreground">Ask anything about this customer</span>
         </div>
 
@@ -95,7 +96,7 @@ export function CustomerAIPanel({ customerId }: { customerId: string }) {
           ))}
           {thinking && (
             <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
-              <Sparkles className="size-3.5 text-accent" />
+              <CuriousdevsLogo className="size-3.5 text-accent" />
               Thinking...
             </div>
           )}

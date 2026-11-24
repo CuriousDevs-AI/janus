@@ -79,10 +79,11 @@ function FormPreview({ form }: { form: WebForm }) {
 export default function WebFormsPage() {
   const session = useSession();
   const canWrite = can(session, "sources:manage");
-  const forms = useApi<WebForm[]>("/web-forms");
+  const forms = useApi<WebForm[]>("/web-forms?_=1");
   const [editing, setEditing] = useState<Partial<WebForm> | null>(null);
   const [embedForm, setEmbedForm] = useState<WebForm | null>(null);
   const [previewForm, setPreviewForm] = useState<WebForm | null>(null);
+  const [deleting, setDeleting] = useState<WebForm | null>(null);
   const [busy, setBusy] = useState(false);
 
   const rows = forms.data ?? [];
@@ -137,12 +138,16 @@ export default function WebFormsPage() {
   }
 
   async function remove(id: string) {
+    setBusy(true);
     try {
       await api(`/web-forms/${id}`, { method: "DELETE" });
       toast.success("Form deleted");
+      setDeleting(null);
       forms.reload();
     } catch (e) {
       toast.error(message(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -157,7 +162,7 @@ export default function WebFormsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="mx-auto flex h-full max-w-[1400px] flex-col">
       <PageHeader
         title="Web Forms"
         description="Embeddable lead capture forms for your website"
@@ -173,37 +178,12 @@ export default function WebFormsPage() {
         </div>
       )}
 
-      {rows.length > 0 && (() => {
-        const activeForms = rows.filter((f) => f.active).length;
-        const totalSubs = rows.reduce((s, f) => s + f.submissionCount, 0);
-        return (
-          <>
-            <div className="grid gap-2 px-6 pb-3 sm:grid-cols-4">
-              {([
-                ["Total Forms", String(rows.length), "Configured", "bg-accent"],
-                ["Active", String(activeForms), `${rows.length - activeForms} inactive`, "bg-emerald-500"],
-                ["Submissions", String(totalSubs), "Total form submissions", "bg-indigo-500"],
-                ["Avg Conversion", "3.2%", "Visitors to submissions", "bg-purple-500"],
-              ] as const).map(([title, value, detail, dot]) => (
-                <div key={title} className="rounded-xl border border-border bg-surface p-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`size-1.5 rounded-full ${dot}`} />
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
-                  </div>
-                  <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-lg font-bold tabular-nums">{value}</span>
-                    <span className="text-[11px] text-muted-foreground">{detail}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mx-6 mb-3 flex items-center gap-2 rounded-lg bg-accent-muted px-4 py-2.5">
-              <ClipboardList className="size-3.5 shrink-0 text-accent" />
-              <p className="text-[12px] text-accent">Forms with 3-4 fields convert 2x better than forms with 6+ fields.</p>
-            </div>
-          </>
-        );
-      })()}
+      {rows.length > 0 && (
+        <div className="mx-6 mb-3 flex items-center gap-2 rounded-lg bg-accent-muted px-4 py-2.5">
+          <ClipboardList className="size-3.5 shrink-0 text-accent" />
+          <p className="text-[12px] text-accent">Forms with 3-4 fields convert 2x better than forms with 6+ fields.</p>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 px-6 pb-4">
         <Button variant="ghost" size="sm" onClick={() => forms.reload()}><RefreshCw className="size-3.5" /></Button>
@@ -260,7 +240,7 @@ export default function WebFormsPage() {
                           <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => setEditing(f)} title="Edit">
                             <Pencil className="size-3.5" />
                           </Button>
-                          <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => remove(f.id)} title="Delete">
+                          <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => setDeleting(f)} title="Delete">
                             <Trash2 className="size-3.5 text-danger" />
                           </Button>
                         </div>
@@ -331,6 +311,23 @@ export default function WebFormsPage() {
           {previewForm && <FormPreview form={previewForm} />}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewForm(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleting !== null} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-danger">Delete form</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Delete <strong>&quot;{deleting?.name}&quot;</strong>? This will remove the form and all its submission data permanently.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={busy} onClick={() => deleting && remove(deleting.id)}>
+              {busy ? "Deleting…" : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

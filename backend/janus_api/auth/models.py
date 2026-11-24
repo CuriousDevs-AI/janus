@@ -18,6 +18,9 @@ class User(Base):
     avatar_url: Mapped[str | None]
     timezone: Mapped[str] = mapped_column(default="Asia/Kolkata")
     language: Mapped[str] = mapped_column(default="en")
+    bio: Mapped[str | None] = mapped_column(String(500))
+    title: Mapped[str | None] = mapped_column(String(120))
+    status_text: Mapped[str | None] = mapped_column(String(200))
     failed_login_count: Mapped[int] = mapped_column(default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

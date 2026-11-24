@@ -172,8 +172,9 @@ def _due_out(
     if gap is not None:
         missing, deducted = gap
         late_months = max(1, -(-((today - due.due_on).days) // 30)) if today > due.due_on else 0
-        interest = missing * 15 * late_months // 1000
-        fee: object = Decimal(interest) / 100 if late_months else None
+        fee: object = (
+            Decimal(missing) * 15 * late_months / Decimal(100_000) if late_months else None
+        )
         # The interest is the late cost (lateFee); the note says what it is charged on.
         note = (
             f"₹{missing / 100:,.0f} short of the ₹{deducted / 100:,.0f} deducted, at 1.5% a month"
@@ -281,6 +282,7 @@ async def set_compliance_plan(
         record(db, "portfolio.compliance_plan_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
         from janus_api.portfolio.summary import invalidate_summary
+
         invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
@@ -350,6 +352,7 @@ async def mark_filing(
         )
         await db.flush()
         from janus_api.portfolio.summary import invalidate_summary
+
         invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
@@ -386,6 +389,7 @@ async def set_registration(
         record(db, "portfolio.registration_set", user_id=user_id, tenant_id=tenant_id, ip=ip)
         await db.flush()
         from janus_api.portfolio.summary import invalidate_summary
+
         invalidate_summary(user_id)
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)

@@ -82,7 +82,7 @@ function AddPerson({ list, owner, onClose, onDone }: { list: PortfolioCompany[];
   const offered = owner ? accessRoles : accessRoles.filter(([value]) => ADMIN_GIVES.includes(value));
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<PortfolioRole>("group_finance");
-  const [companies, setCompanies] = React.useState<string[]>(owned.map((item) => item.id));
+  const [companies, setCompanies] = React.useState<string[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [touched, setTouched] = React.useState(false);
   const error = !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) ? "Enter a valid email." : companies.length === 0 ? "Choose at least one company." : "";

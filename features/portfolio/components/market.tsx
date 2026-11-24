@@ -56,7 +56,7 @@ export function Sparkline({ values, label, up, days, format = inr }: { values: n
     {at !== null && <><line x1={x(at)} x2={x(at)} y1={top} y2={height} stroke="var(--border)" /><text x={Math.min(width, Math.max(0, x(at)))} y={8} textAnchor={at > values.length * 0.6 ? "end" : at < values.length * 0.4 ? "start" : "middle"} fontSize={10} fill="var(--foreground)" className="tabular-nums">{when ? `${when} · ` : ""}{format(values[at])}</text></>}
     <polyline fill="none" stroke={colour} strokeWidth={1.75} strokeLinejoin="round" points={values.map((value, index) => `${x(index)},${y(value)}`).join(" ")} />
     <circle cx={x(point)} cy={y(values[point])} r={at === null ? 2.5 : 3.5} fill={colour} />
-    <rect x={0} y={0} width={width} height={height} fill="transparent" onMouseMove={move} onMouseLeave={() => setAt(null)} />
+    <rect x={0} y={0} width={width} height={height} fill="transparent" onPointerMove={move} onPointerLeave={() => setAt(null)} />
   </svg>;
 }
 

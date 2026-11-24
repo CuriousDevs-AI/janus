@@ -13,7 +13,8 @@ export function SectionNav({ sections, label = "On this page" }: { sections: Nav
 
   React.useEffect(() => {
     // Some parts only show when there is something in them, so ask the page which are there.
-    const found = sections.filter((section) => (document.getElementById(section.id)?.childElementCount ?? 0) > 0);
+    const seen = new Set<string>();
+    const found = sections.filter((section) => { if (seen.has(section.id)) return false; seen.add(section.id); return (document.getElementById(section.id)?.childElementCount ?? 0) > 0; });
     // The part on screen is the last one whose top has passed just below the bar; at the very end
     // of the page, the last part. Scrolling happens in the app's main pane, so listen for any scroll.
     const mark = () => {
@@ -23,10 +24,11 @@ export function SectionNav({ sections, label = "On this page" }: { sections: Nav
       const passed = tops.filter((entry) => entry.top <= 160);
       setCurrent(atEnd && passed.length ? tops[tops.length - 1].id : passed.length ? passed[passed.length - 1].id : tops[0]?.id ?? null);
     };
-    // After the page has painted: what is on it, and where the reader is.
+    let raf = 0;
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; mark(); }); };
     const frame = window.setTimeout(() => { setPresent(found); mark(); }, 0);
-    document.addEventListener("scroll", mark, { capture: true, passive: true });
-    return () => { window.clearTimeout(frame); document.removeEventListener("scroll", mark, { capture: true }); };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => { window.clearTimeout(frame); cancelAnimationFrame(raf); document.removeEventListener("scroll", onScroll, { capture: true }); };
     // The list of ids is the dependency; a new array with the same ids changes nothing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

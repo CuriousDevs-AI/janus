@@ -9,6 +9,8 @@ import { SectionCard } from "@/components/settings/section-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api/use-api";
+import { useSession } from "@/components/auth/session-provider";
+import { can } from "@/lib/permissions";
 import type { ChannelType } from "@/lib/types";
 
 function copy(value: string, label: string) {
@@ -24,8 +26,10 @@ interface WhatsAppConnection { displayPhone: string | null; verifiedName: string
 interface SourceRow { id: string; source: string; name: string; status: string }
 
 function LiveChannelsSection() {
+  const session = useSession();
+  const canManageSources = can(session, "sources:manage");
   const whatsapp = useApi<WhatsAppConnection>("/whatsapp/connection");
-  const sources = useApi<SourceRow[]>("/sources?limit=50&after_id=0");
+  const sources = useApi<SourceRow[]>(canManageSources ? "/sources?limit=50&after_id=0" : null);
   const websites = (sources.data ?? []).filter((item) => item.source === "website" && item.status === "connected");
   const live = whatsapp.data?.status === "connected";
   return (

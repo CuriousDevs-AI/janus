@@ -7,7 +7,7 @@ export function inr(value: number): string {
   // Rounded half up on whole tenths, like the weekly email: ₹1.65L reads ₹1.7L, not toFixed's ₹1.6L.
   const tenths = (unit: number) => String(Math.round(value / (unit / 10)) / 10);
   if (Math.abs(value) >= 1e7) return `₹${tenths(1e7)}Cr`;
-  if (Math.abs(value) >= 1e5) return `₹${tenths(1e5)}L`;
+  if (Math.abs(value) >= 1e5) { const l = tenths(1e5); return l === "0" ? `₹${Math.round(value).toLocaleString("en-IN")}` : `₹${l}L`; }
   return `₹${Math.round(Math.abs(value) < 0.5 ? 0 : value).toLocaleString("en-IN")}`;
 }
 
@@ -22,9 +22,11 @@ export const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone:
 
 /** The change against the same days before, in words a reader can check against the two figures. */
 export function change(current: number, previous: number) {
-  if (previous === 0) return current === 0 ? "Same as before" : "None in the same days before";
-  const percent = Math.round(((current - previous) / previous) * 100);
-  return percent === 0 ? "Same as before" : `${percent > 0 ? "+" : ""}${percent}% on the same days before`;
+  if (previous === 0) return current === 0 ? "Same as before" : current > 0 ? "New this period" : "None in the same days before";
+  const raw = Math.round(((current - previous) / previous) * 100);
+  if (raw === 0) return "Same as before";
+  const percent = Math.max(-999, Math.min(999, raw));
+  return `${percent > 0 ? "+" : ""}${percent}${Math.abs(raw) > 999 ? "+" : ""}% on the same days before`;
 }
 
 export const severityTone = { high: "danger", medium: "warning", low: "neutral" } as const;

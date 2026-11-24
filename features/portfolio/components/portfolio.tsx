@@ -1,14 +1,16 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
-import { FilterChips } from "@/components/shared/stat-tile";
-import { AiPageShell } from "@/components/ai/ai-shell";
 import { SectionCard } from "@/components/settings/section-ui";
 import { useSession } from "@/components/auth/session-provider";
+import { CompanySetup } from "@/features/portfolio/components/company-setup";
+import { useApi } from "@/lib/api/use-api";
 import { usePortfolioApi } from "@/features/portfolio/lib/use-portfolio-api";
 import { Access } from "@/features/portfolio/components/access";
 import { Activity } from "@/features/portfolio/components/activity";
@@ -45,7 +47,7 @@ const titles: Record<string, [string, string]> = {
   analytics: ["Analytics", "The same measures for every company, side by side."],
   finance: ["Finance", "Money in and out, by company."],
   companies: ["Companies", "Every company: its details, people and standing. Add, edit or open one."],
-  intelligence: ["AI Assistant", "Ask a question across all your companies."],
+  intelligence: ["Janus Intelligence", "Ask a question across all your companies."],
   notifications: ["Notifications", "What needs you, from every company."],
   compliance: ["Compliance", "What each company must file, what is missing, and recording filings."],
   work: ["Work inbox", "Everything that needs someone to act, across your companies."],
@@ -53,10 +55,30 @@ const titles: Record<string, [string, string]> = {
   people: ["Portfolio access", "Who else sees these companies together, and how much."],
   "ai-keys": ["AI Models & Keys", "Providers, models, keys and routing for AI features across your portfolio."],
   billing: ["Plan and billing", "One plan for your account, covering every company you own."],
+  setup: ["Company Setup", "Set up your company profile, workspaces and team."],
 };
-const periodChoices: { value: PortfolioPeriodKey; label: string }[] = [{ value: "month", label: "This month" }, { value: "quarter", label: "This quarter" }, { value: "fy", label: "This financial year" }];
 // The views that report on a period, and so show the period bar and the board pack.
 const periodViews = ["overview", "analytics", "finance"];
+
+function SetupBanner() {
+  const setup = useApi<{ setupCompleted: boolean; completedSteps: string[] }>("/business/setup");
+  if (!setup.data || setup.data.setupCompleted) return null;
+  const total = 5;
+  const done = setup.data.completedSteps.length;
+  const remaining = total - done;
+  if (remaining <= 0) return null;
+  return (
+    <div className="mx-6 mt-4">
+      <Link href="/portfolio?view=companies" className="flex items-center justify-between gap-3 rounded-xl border border-accent-border bg-accent-muted px-4 py-3 text-sm transition-colors hover:bg-accent-muted/80">
+        <div className="flex items-center gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white text-xs font-semibold">{done}/{total}</span>
+          <span><span className="font-medium">Finish setting up your company</span> <span className="text-muted-foreground">— {remaining} {remaining === 1 ? "step" : "steps"} left. Complete it to open Business Management, Team Chat and workspaces.</span></span>
+        </div>
+        <ArrowRight className="size-4 shrink-0 text-accent" />
+      </Link>
+    </div>
+  );
+}
 
 /** Every company the person owns or was shared, as the server reports it. */
 export function Portfolio() {
@@ -81,10 +103,16 @@ export function Portfolio() {
   const owner = realOwner && !preview;
   // An Owner or a Portfolio administrator shares the Portfolio.
   const shares = !preview && session.tenants.some((item) => (item.role === "owner" || item.role === "group_admin") && item.status === "active");
-  const [title, base] = titles[view] ?? titles.overview;
-  // The assistant and the AI keys are AI pages: they wear the same frame as every workspace's.
-  const aiView = view === "intelligence" ? "assistant" as const : view === "ai-keys" ? "keys" as const : null;
-  const choosePeriod = (key: PortfolioPeriodKey) => { const next = new URLSearchParams(params.toString()); next.set("period", key); router.replace(`/portfolio?${next.toString()}`, { scroll: false }); };
+  const setupStatus = useApi<{ setupCompleted: boolean; completedSteps: string[] }>("/business/setup");
+  const allStepIds = ["business_details", "workspaces", "members", "team_chat", "data_connections"];
+  const setupDone = setupStatus.data ? (setupStatus.data.setupCompleted || allStepIds.every((s) => setupStatus.data!.completedSteps.includes(s))) : true;
+  React.useEffect(() => {
+    const refresh = () => setupStatus.reload();
+    window.addEventListener("janus:setup-changed", refresh);
+    return () => window.removeEventListener("janus:setup-changed", refresh);
+  }, [setupStatus.reload]);
+  const effectiveView = view === "companies" && !setupDone && owner ? "setup" : view;
+  const [title, base] = titles[effectiveView] ?? titles.overview;
   const description = !owner && view === "overview" ? "Every company shared with you, at a glance." : base;
   const list = (summary.data?.companies ?? []).map((item) => preview === "group_analyst" ? withoutMoney(item) : item);
   const withMoney = list.filter((item): item is WithMoney => item.money !== null);
@@ -98,7 +126,8 @@ export function Portfolio() {
       case "finance": return withMoney.length === 0
         ? <SectionCard title="Money is not shared with you" description="Your role covers leads, deals, people, support and compliance. Money from the books (sales, costs, profit, what customers owe and what is due to suppliers) is not part of it."><p className="text-sm text-muted-foreground">Ask the Owner for a role with money, such as Finance manager, if you need what customers owe and what is due to suppliers.</p></SectionCard>
         : <Finance list={withMoney} hidden={list.length - withMoney.length} period={summary.data.period} onChanged={summary.reload} />;
-      case "companies": return <Companies list={list} period={summary.data.period} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />;
+      case "setup":
+      case "companies": return <>{!setupDone && owner && <CompanySetup />}{(setupDone || !owner) && <Companies list={list} period={summary.data.period} onAdd={owner ? () => setAdding(true) : undefined} onSaved={summary.reload} />}</>;
       case "people": return shares
         ? <Access list={list} owner={owner} />
         : <SectionCard title="Portfolio access" description="Only an Owner or a Portfolio administrator shares the Portfolio."><p className="text-sm text-muted-foreground">They decide who else sees these companies.</p></SectionCard>;
@@ -115,16 +144,12 @@ export function Portfolio() {
 
   return <PreviewRole.Provider value={preview}><div className="mx-auto flex max-w-[1240px] flex-col">
     {preview && <div role="status" className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-border bg-accent-muted px-3 py-2 text-sm print:hidden"><span>You are seeing the Portfolio as a <strong>{roleLabel(preview)}</strong> would, on every page until you exit. {preview === "group_analyst" ? "Money from the books is hidden: sales, costs, profit, what customers owe, bills and salaries. Deal values from CRM stay visible, as they are for this role." : "Money is shown."} They cannot open the companies or change anything.</span><Button size="sm" variant="secondary" onClick={() => { writePreview(null); router.replace("/portfolio?view=people"); }}>Exit preview</Button></div>}
-    {aiView ? <AiPageShell page={aiView} title={aiView === "assistant" ? "AI Assistant" : "AI Models & Keys"}
-      description={aiView === "assistant" ? "Ask across every company in plain words. Janus answers from their records, names the company and the figure behind each answer, and says when the records cannot answer." : base}
-      actions={aiView === "assistant" && list.length > 0 ? <FilterChips label="Period" value={period} options={periodChoices} onChange={choosePeriod} /> : undefined}>
-      <div aria-busy={summary.stale} className={`flex flex-col gap-6 transition-opacity duration-200 ${summary.stale ? "pointer-events-none opacity-50" : ""}`}>{body()}</div>
-    </AiPageShell> : <>
+    {owner && <SetupBanner />}
     <PageHeader title={title} description={description} actions={list.length > 0 && <div className="flex flex-wrap gap-2">{summary.data && periodViews.includes(view) && <ExportButtons list={list} period={summary.data.period} />}</div>} />
     <div className="flex flex-col gap-6 px-6 pb-10">
       {!summary.loading && !summary.error && summary.data && list.length > 0 && periodViews.includes(view) && <PeriodBar period={summary.data.period} chosen={period} updating={summary.stale} />}
       <div aria-busy={summary.stale} className={`flex flex-col gap-6 transition-opacity duration-200 ${summary.stale ? "pointer-events-none opacity-50" : ""}`}>{body()}</div>
-    </div></>}
+    </div>
     {adding && <AddCompany onClose={() => setAdding(false)} />}
   </div></PreviewRole.Provider>;
 }

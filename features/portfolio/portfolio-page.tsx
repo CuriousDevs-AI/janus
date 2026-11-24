@@ -12,6 +12,8 @@ const ROLE_DESCRIPTIONS: [string, string, string][] = [
   ["operations_manager", "Operations manager", "Portfolio without money; runs stock, projects and approvals in each company."],
   ["finance_manager", "Finance manager", "Portfolio with money; records bills and decides approvals in each company."],
   ["company_admin", "Company administrator", "Runs the company and sees it on the Portfolio with money."],
+  ["group_admin", "Portfolio administrator", "Sees every company with money. Shares the Portfolio with view roles. Owns nothing."],
+  ["owner", "Owner", "Full control of each company shared, including adding people."],
 ];
 
 export function PortfolioPage() {

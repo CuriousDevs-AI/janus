@@ -1,16 +1,8 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useProfileStore } from "@/lib/stores/profile-store";
+import { generateAvatarSvg } from "@/lib/stores/profile-store";
 import { cn, initials } from "@/lib/utils";
-
-const COLORS = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2"];
-
-function colorFor(name: string) {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return COLORS[hash % COLORS.length];
-}
 
 const STATUS_DOTS: Record<string, string> = {
   online: "bg-emerald-500",
@@ -42,19 +34,14 @@ interface TeamAvatarProps {
 }
 
 export function TeamAvatar({ person, size = "md", showStatus, className, onClick }: TeamAvatarProps) {
-  const ownAvatar = useProfileStore((s) => s.avatarUrl);
-  const avatarUrl = person.avatarUrl || ownAvatar;
+  const avatarUrl = person.avatarUrl || generateAvatarSvg(person.name);
   const dot = showStatus && person.status ? STATUS_DOTS[person.status] : null;
 
   return (
     <span className={cn("relative inline-flex shrink-0", className)} onClick={onClick} role={onClick ? "button" : undefined}>
       <Avatar className={cn(SIZE_MAP[size], onClick && "cursor-pointer")}>
-        {avatarUrl ? (
-          <AvatarImage src={avatarUrl} alt={person.name} />
-        ) : null}
-        <AvatarFallback style={{ backgroundColor: colorFor(person.name) }} className="text-white">
-          {initials(person.name)}
-        </AvatarFallback>
+        <AvatarImage src={avatarUrl} alt={person.name} />
+        <AvatarFallback>{initials(person.name)}</AvatarFallback>
       </Avatar>
       {dot ? (
         <span

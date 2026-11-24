@@ -158,7 +158,7 @@ export function CustomFieldsSettings() {
           </DialogHeader>
           {editing && (
             <div className="space-y-3">
-              <div><Label>Field Name *</Label><Input value={editing.fieldName ?? ""} onChange={(e) => setEditing({ ...editing, fieldName: e.target.value })} /></div>
+              <div><Label htmlFor="custom-field-name">Field Name *</Label><Input id="custom-field-name" value={editing.fieldName ?? ""} onChange={(e) => setEditing({ ...editing, fieldName: e.target.value })} /></div>
               <div>
                 <Label>Field Type</Label>
                 <Select value={editing.fieldType ?? "text"} onValueChange={(v) => setEditing({ ...editing, fieldType: v })}>

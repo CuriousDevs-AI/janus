@@ -14,5 +14,5 @@ export function ExportButtons({ list, period }: { list: PortfolioCompany[]; peri
     link.click();
     URL.revokeObjectURL(link.href);
   };
-  return <div className="flex gap-2 print:hidden"><Button size="sm" variant="outline" onClick={download}><Download className="mr-1 size-4" />Board pack (CSV)</Button><Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="mr-1 size-4" />Print</Button></div>;
+  return <div className="flex gap-2 print:hidden"><Button size="sm" variant="outline" onClick={download}><Download className="mr-1 size-4" />Board pack (CSV)</Button><Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="mr-1 size-4" />Print / Save PDF</Button></div>;
 }

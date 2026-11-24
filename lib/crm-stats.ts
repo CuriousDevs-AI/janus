@@ -1,6 +1,6 @@
 import type { FunnelStage, TimeSeriesPoint } from "@/lib/types";
 
-const stageRows: [string, string[]][] = [["New", ["new"]], ["Qualified", ["qualified"]], ["Demo", []], ["Proposal", ["proposal"]], ["Negotiation", ["negotiation"]], ["Won", ["won"]]];
+const stageRows: [string, string[]][] = [["New", ["new"]], ["Contacted", ["contacted"]], ["Qualified", ["qualified"]], ["Converted", ["converted"]], ["Won", ["won"]]];
 
 const revenueTrend: TimeSeriesPoint[] = [
   { date: "May", value: 410000 },

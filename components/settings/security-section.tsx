@@ -51,7 +51,9 @@ export function SecuritySection() {
 
 function LiveSessionList({ devices, busy, onSignOut }: { devices: Device[]; busy: string | null; onSignOut: (id: string) => void }) {
   const sorted = [...devices].sort((a, b) => Number(b.current) - Number(a.current) || b.last_used_at.localeCompare(a.last_used_at));
-  return <ul className="divide-y divide-border">{sorted.map((item) => {
+  const [showAll, setShowAll] = React.useState(false);
+  const visible = showAll ? sorted : sorted.slice(0, 20);
+  return <><ul className="divide-y divide-border">{visible.map((item) => {
     const Icon = isPhone(item.device) ? Smartphone : Laptop;
     return <li key={item.id} className="flex flex-wrap items-center gap-3 py-3">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-muted-foreground"><Icon className="size-4" aria-hidden /></span>
@@ -61,7 +63,7 @@ function LiveSessionList({ devices, busy, onSignOut }: { devices: Device[]; busy
       </div>
       {!item.current && <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => onSignOut(item.id)}>{busy === item.id ? <Loader2 className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}Sign out</Button>}
     </li>;
-  })}</ul>;
+  })}</ul>{!showAll && sorted.length > 20 && <Button size="sm" variant="ghost" className="mt-2" onClick={() => setShowAll(true)}>Show all {sorted.length} devices</Button>}</>;
 }
 
 function PasswordCard() {

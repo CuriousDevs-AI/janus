@@ -35,6 +35,7 @@ export function DocumentsCard({ item, canEdit, onSaved }: { item: PortfolioCompa
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   const remove = async (doc: PortfolioDocument) => {
+    if (!window.confirm(`Delete ${doc.name}? This cannot be undone.`)) return;
     try { await api(`/portfolio/companies/${item.id}/documents/${doc.id}`, { method: "DELETE" }); onSaved(); }
     catch (error) { toast.error(message(error)); }
   };

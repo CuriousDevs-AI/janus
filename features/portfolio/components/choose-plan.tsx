@@ -21,7 +21,7 @@ const rupees = (value: string) => Number(value).toLocaleString("en-IN", { style:
 export function ChoosePlan() {
   const params = useSearchParams();
   const next = params.get("next");
-  const target = next && next.startsWith("/") && !next.startsWith("//") && next !== "/choose-plan" ? next : "/setup";
+  const target = next && next.startsWith("/") && !next.startsWith("//") && next !== "/choose-plan" ? next : "/portfolio?view=companies";
   const billing = usePortfolioApi<Billing>("/billing");
   const [moving, setMoving] = React.useState<BillingPlan | null>(null);
   const [busy, setBusy] = React.useState(false);

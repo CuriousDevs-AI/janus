@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { GripVertical, Phone, Mail, CalendarClock, Building2, User } from "lucide-react";
+import {
+  Clock,
+  Eye,
+  MoreVertical,
+  Phone,
+  Pencil,
+  User,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import type { Lead } from "@/lib/api/types";
@@ -10,22 +17,32 @@ import { leadStageMeta } from "@/lib/status-meta";
 import type { LeadStage } from "@/lib/types";
 import { useSession } from "@/components/auth/session-provider";
 import { can } from "@/lib/permissions";
-import { Badge } from "@/components/ui/badge";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { followUpWords, isDue } from "@/components/crm/follow-up";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-const BOARD_STAGES: LeadStage[] = ["new", "contacted", "qualified", "demo", "proposal", "negotiation", "approval", "won", "lost"];
+const BOARD_STAGES: LeadStage[] = ["new", "contacted", "qualified", "converted", "lost"];
 
-const STAGE_COLOR: Record<string, string> = {
-  new: "bg-slate-500",
-  contacted: "bg-blue-500",
-  qualified: "bg-cyan-500",
-  demo: "bg-indigo-500",
-  proposal: "bg-amber-500",
-  negotiation: "bg-orange-500",
-  approval: "bg-purple-500",
-  won: "bg-emerald-500",
-  lost: "bg-red-500",
+const STAGE_STYLE: Record<string, { dot: string; bg: string; border: string; headerBg: string; countBg: string; countText: string }> = {
+  new: { dot: "bg-blue-500", bg: "bg-blue-50 dark:bg-blue-950/30", border: "border-blue-200 dark:border-blue-900", headerBg: "bg-blue-50 dark:bg-blue-950/40", countBg: "bg-blue-500", countText: "text-white" },
+  contacted: { dot: "bg-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950/30", border: "border-indigo-200 dark:border-indigo-900", headerBg: "bg-indigo-50 dark:bg-indigo-950/40", countBg: "bg-indigo-500", countText: "text-white" },
+  qualified: { dot: "bg-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-900", headerBg: "bg-emerald-50 dark:bg-emerald-950/40", countBg: "bg-emerald-500", countText: "text-white" },
+  converted: { dot: "bg-green-600", bg: "bg-green-50 dark:bg-green-950/30", border: "border-green-200 dark:border-green-900", headerBg: "bg-green-50 dark:bg-green-950/40", countBg: "bg-green-600", countText: "text-white" },
+  lost: { dot: "bg-red-500", bg: "bg-red-50 dark:bg-red-950/30", border: "border-red-200 dark:border-red-900", headerBg: "bg-red-50 dark:bg-red-950/40", countBg: "bg-red-500", countText: "text-white" },
+};
+
+const EMPTY_MESSAGES: Record<string, { title: string; desc: string }> = {
+  new: { title: "No new leads yet", desc: "Drop a lead here or add a new one." },
+  contacted: { title: "No contacted leads", desc: "Move leads here after your first outreach." },
+  qualified: { title: "No qualified leads", desc: "Leads that fit your criteria go here." },
+  converted: { title: "No converted leads", desc: "Leads converted to deals appear here." },
+  lost: { title: "No lost leads", desc: "Move unqualified or closed-lost leads here." },
 };
 
 export function LeadsBoard({
@@ -67,11 +84,13 @@ export function LeadsBoard({
   }
 
   return (
-    <div className="flex-1 overflow-auto px-6 py-4">
-      <div className="flex h-full min-h-[32rem] gap-3" style={{ minWidth: BOARD_STAGES.length * 272 }}>
+    <div className="flex-1 overflow-x-auto px-6 py-3">
+      <div className="flex gap-3" style={{ minWidth: BOARD_STAGES.length * 280 }}>
         {BOARD_STAGES.map((stage) => {
           const meta = leadStageMeta[stage] ?? { label: stage, tone: "neutral" as const };
+          const style = STAGE_STYLE[stage] ?? STAGE_STYLE.new;
           const items = leads.filter((l) => l.stage === stage);
+          const empty = EMPTY_MESSAGES[stage] ?? EMPTY_MESSAGES.new;
           return (
             <section
               key={stage}
@@ -90,35 +109,35 @@ export function LeadsBoard({
                 if (lead) void move(lead, stage);
               }}
               className={cn(
-                "flex w-64 shrink-0 flex-col rounded-xl border transition-colors",
-                dragOverStage === stage
-                  ? "border-accent bg-accent-muted/30 shadow-md"
-                  : "border-border bg-surface-2/30",
+                "flex w-[280px] shrink-0 flex-col border transition-colors",
+                style.border,
+                dragOverStage === stage ? "ring-2 ring-accent/40" : "",
               )}
             >
-              <div className="flex items-center gap-2 px-3 py-3 border-b border-border bg-surface/50">
-                <span className={cn("size-2.5 rounded-full shrink-0", STAGE_COLOR[stage])} />
-                <h2 className="text-xs font-semibold flex-1 uppercase tracking-wide">{meta.label}</h2>
-                <Badge variant="neutral" className="text-[10px] px-1.5 py-0">{items.length}</Badge>
+              <div className={cn("flex items-center gap-2 px-3 py-2.5", style.headerBg)}>
+                <span className={cn("size-2.5 shrink-0 rounded-full", style.dot)} />
+                <h2 className="flex-1 text-xs font-bold uppercase tracking-wider">{meta.label}</h2>
+                <span className={cn("inline-flex size-5 items-center justify-center text-[10px] font-bold tabular-nums", style.countBg, style.countText)}>{items.length}</span>
               </div>
 
-              <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground">
-                {items.length === 0 ? "Empty" : `${items.length} lead${items.length !== 1 ? "s" : ""}`}
-              </div>
-              <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+              <div className={cn("flex max-h-[calc(100vh-250px)] flex-1 flex-col gap-2 overflow-y-auto p-2", style.bg)}>
                 {items.map((lead) => (
                   <LeadCard
                     key={lead.id}
                     lead={lead}
                     canDrag={canWrite && !busy}
+                    canWrite={canWrite}
+                    stages={BOARD_STAGES}
+                    onMove={(s) => move(lead, s)}
                     onClick={() => onLeadClick?.(lead)}
                     sessionUserId={session.user.id}
                     sessionUserName={session.user.name}
                   />
                 ))}
                 {items.length === 0 && (
-                  <div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-border text-center text-xs text-muted-foreground">
-                    Drop leads here
+                  <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
+                    <p className="text-xs font-medium text-muted-foreground">{empty.title}</p>
+                    <p className="text-[11px] text-muted-foreground/70">{empty.desc}</p>
                   </div>
                 )}
               </div>
@@ -133,18 +152,25 @@ export function LeadsBoard({
 function LeadCard({
   lead,
   canDrag,
+  canWrite,
+  stages,
+  onMove,
   onClick,
   sessionUserId,
   sessionUserName,
 }: {
   lead: Lead;
   canDrag: boolean;
+  canWrite: boolean;
+  stages: LeadStage[];
+  onMove: (stage: LeadStage) => void;
   onClick?: () => void;
   sessionUserId: string;
   sessionUserName: string;
 }) {
   const name = lead.contactName?.trim() || lead.phone || lead.email || `Lead #${lead.id}`;
   const due = isDue(lead.nextFollowUpOn);
+  const ownerName = lead.ownerId === sessionUserId ? sessionUserName : lead.ownerName || "Unassigned";
 
   return (
     <article
@@ -153,53 +179,71 @@ function LeadCard({
         e.dataTransfer.setData("text/plain", lead.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      className="group flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-3 shadow-sm transition-all hover:shadow-md hover:border-border-strong cursor-pointer"
+      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
       onClick={onClick}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[13px] font-semibold leading-tight line-clamp-2">{name}</span>
-        {canDrag && <GripVertical className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />}
+      <div className="flex items-start justify-between gap-1.5">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-foreground">{name}</p>
+          {lead.company && <p className="truncate text-[11px] text-muted-foreground">{lead.company}</p>}
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem asChild>
+              <Link href={`/leads/${lead.id}`}><Eye className="size-3.5 mr-2" />View details</Link>
+            </DropdownMenuItem>
+            {canWrite && (
+              <DropdownMenuItem onClick={onClick}>
+                <Pencil className="size-3.5 mr-2" />Edit
+              </DropdownMenuItem>
+            )}
+            {canWrite && (
+              <>
+                <DropdownMenuSeparator />
+                {stages.filter((s) => s !== lead.stage).map((s) => (
+                  <DropdownMenuItem key={s} onSelect={() => onMove(s)}>
+                    <span className={cn("size-2 rounded-full mr-2", STAGE_STYLE[s]?.dot ?? "bg-muted")} />
+                    Move to {leadStageMeta[s]?.label ?? s}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {lead.company && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Building2 className="size-3 shrink-0" />
-          <span className="truncate">{lead.company}</span>
+      {lead.phone && (
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Phone className="size-3 shrink-0" />
+          <span className="tabular-nums">{lead.phone}</span>
         </div>
       )}
 
-      {lead.requirement && (
-        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">{lead.requirement}</p>
-      )}
-
-      <div className="flex flex-wrap gap-1.5 mt-0.5">
-        {lead.phone && (
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            <Phone className="size-2.5" /> {lead.phone.slice(-10)}
-          </span>
-        )}
-        {lead.email && (
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            <Mail className="size-2.5" /> {lead.email.split("@")[0]}
-          </span>
-        )}
-      </div>
-
-      {lead.nextFollowUpOn && (
-        <div className={cn("flex items-center gap-1 text-[10px] mt-0.5", due ? "text-warning font-medium" : "text-muted-foreground")}>
-          <CalendarClock className="size-3" />
-          {followUpWords(lead.nextFollowUpOn)}
+      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
+        <div className="flex items-center gap-1 min-w-0 text-[10px] text-muted-foreground">
+          <User className="size-3 shrink-0" />
+          <span className="truncate">{ownerName}</span>
         </div>
-      )}
-
-      <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-border/50">
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-          <User className="size-2.5" />
-          <span className="truncate max-w-[100px]">
-            {lead.ownerId === sessionUserId ? sessionUserName : lead.ownerName || "Unassigned"}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {lead.nextFollowUpOn && (
+            <span className={cn("text-[10px] tabular-nums", due ? "font-semibold text-warning" : "text-muted-foreground")}>
+              {followUpWords(lead.nextFollowUpOn)}
+            </span>
+          )}
+          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <Clock className="size-2.5" />
+            {formatRelativeTime(lead.lastActivityAt)}
           </span>
         </div>
-        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(lead.lastActivityAt)}</span>
       </div>
     </article>
   );

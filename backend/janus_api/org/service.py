@@ -122,6 +122,9 @@ async def create_workspace(db: AsyncSession, user_id: int, name: str) -> int:
     from janus_api.business.service import ensure_crm_workspace
 
     await ensure_crm_workspace(db, tenant_id, user_id)
+    from janus_api.crm.crm_workspace import ensure_default_crm
+
+    await ensure_default_crm(db, tenant_id, user_id)
     return tenant_id
 
 

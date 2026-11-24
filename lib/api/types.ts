@@ -23,6 +23,7 @@ export interface Me {
   role: string;
   permissions: string[];
   tenants: Me["tenant"][];
+  crms?: CrmBrief[];
 }
 export type SourceKind = "embed" | "webhook" | "api_key" | "csv" | "oauth";
 export type MappingTarget =
@@ -69,6 +70,7 @@ export interface Preset {
 export interface Lead {
   dealId: string | null;
   id: string;
+  crmId?: string;
   customerId: string;
   contactName: string;
   phone: string | null;
@@ -186,6 +188,7 @@ export interface WhatsAppMessage {
 
 export interface Deal {
   id: string;
+  crmId?: string;
   leadId: string;
   customerId: string;
   customerName: string;
@@ -213,13 +216,23 @@ export interface DealEvent {
   createdAt: string;
 }
 
-export type ActivityKind = "call" | "meeting" | "email" | "task";
+export interface LeadEvent {
+  id: string;
+  action: string;
+  userId: string | null;
+  userName: string | null;
+  details: Record<string, string | number | boolean>;
+  createdAt: string;
+}
+
+export type ActivityKind = "call" | "meeting" | "email" | "task" | "note";
 export interface Activity {
   id: string;
   kind: ActivityKind;
   subject: string;
   description: string;
   leadId: string | null;
+  dealId: string | null;
   contactId: string;
   ownerId: string | null;
   ownerName: string | null;
@@ -324,6 +337,7 @@ export interface CustomerNote {
 
 export interface ContactLeadSummary {
   id: string;
+  crmId?: string;
   stage: string;
   source: string;
   requirement: string;
@@ -334,11 +348,21 @@ export interface ContactLeadSummary {
   dealStage: string | null;
 }
 
+export interface LeadNoteWithLead {
+  id: string;
+  leadId: string;
+  body: string;
+  author: string | null;
+  nextFollowUpOn: string | null;
+  createdAt: string;
+}
+
 export interface ContactDetail {
   contact: Contact;
   leads: ContactLeadSummary[];
   notes: CustomerNote[];
   activities: Activity[];
+  leadNotes: LeadNoteWithLead[];
   tags: CrmTag[];
   totalDealValue: string;
   openDealValue: string;
@@ -514,6 +538,48 @@ export interface WebForm {
   notifyEmail: string | null;
   active: boolean;
   submissionCount: number;
+}
+
+export interface CrmBrief {
+  id: string;
+  name: string;
+  slug: string;
+  isDefault: boolean;
+  role: string | null;
+}
+
+export interface CrmWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  pipelineStages: import("@/lib/hooks/use-pipeline-config").PipelineStage[];
+  winStage: string;
+  isDefault: boolean;
+  active: boolean;
+  memberCount?: number;
+  leadCount?: number;
+  dealCount?: number;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamMember {
+  id: string;
+  user_id: string;
+  name: string;
+  role: string;
+  status: string;
+}
+
+export interface CrmMember {
+  id: string;
+  crmId: string;
+  membershipId: string;
+  memberName: string | null;
+  role: string;
+  createdAt: string;
 }
 
 export interface DuplicateGroup {

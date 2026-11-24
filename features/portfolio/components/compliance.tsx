@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, ChevronDown, Download, Lightbulb, Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -25,7 +24,8 @@ const dueName = { overdue: "Past due · not confirmed", due_soon: "Due this week
 export function ComplianceView({ list: all, onChanged }: { list: PortfolioCompany[]; onChanged: () => void }) {
   const { handlesMoney } = useRoles();
   // Opened for one company (from a notification or the Overview): its filings only.
-  const only = useSearchParams().get("company");
+  const initialOnly = useSearchParams().get("company");
+  const [only, setOnly] = React.useState<string | null>(initialOnly);
   const focused = all.find((item) => item.id === only);
   const [filter, setFilter] = React.useState<"open" | "all" | "overdue" | "due_soon">("open");
   // "Registration details missing" narrows the page to the companies with something missing.
@@ -67,7 +67,7 @@ export function ComplianceView({ list: all, onChanged }: { list: PortfolioCompan
       {/* One company at a time, or all; the count is what is past due in each. */}
       {all.length > 1 && <nav aria-label="Company" className="flex flex-wrap gap-1.5">{[{ id: null as string | null, name: "All companies", late: all.reduce((sum, item) => sum + item.compliance.filter((due) => due.status === "overdue").length, 0) }, ...all.map((item) => ({ id: item.id as string | null, name: item.name, late: item.compliance.filter((due) => due.status === "overdue").length }))].map((chip) => {
         const on = (focused?.id ?? null) === chip.id;
-        return <Link key={chip.id ?? "all"} href={chip.id ? `/portfolio?view=compliance&company=${chip.id}` : "/portfolio?view=compliance"} aria-current={on ? "page" : undefined} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}>{chip.name}{chip.late > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${on ? "bg-background text-danger" : "bg-danger-muted text-danger"}`} title={`${chip.late} past due`}>{chip.late}</span>}</Link>;
+        return <button key={chip.id ?? "all"} type="button" onClick={() => setOnly(chip.id)} aria-pressed={on} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-surface-2"}`}>{chip.name}{chip.late > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${on ? "bg-background text-danger" : "bg-danger-muted text-danger"}`} title={`${chip.late} past due`}>{chip.late}</span>}</button>;
       })}</nav>}
     </div>
     {(() => {
@@ -130,7 +130,7 @@ function SwitchOn({ item, part, onSaved }: { item: PortfolioCompany; part: "tds"
 function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due: PortfolioComplianceDue; canMark: boolean; onChanged: () => void }) {
   const [busy, setBusy] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
-  const [filedOn, setFiledOn] = React.useState(todayIst());
+  const [filedOn, setFiledOn] = React.useState("");
   const [ack, setAck] = React.useState("");
   const [paid, setPaid] = React.useState("");
   // A TDS payment, PF or ESI is paid with a challan: its amount is kept beside the filing.
@@ -153,7 +153,7 @@ function DueRow({ item, due, canMark, onChanged }: { item: PortfolioCompany; due
     <div className="flex flex-wrap items-center gap-3">
       <Badge variant={dueTone[due.status]}>{dueName[due.status]}</Badge>
       <span className="min-w-0 flex-1 text-sm"><span className="font-medium">{due.label}</span> · {due.period} <span className="text-muted-foreground">· {due.area} · due {day(due.dueOn)}{due.filedOn ? ` · filed ${day(due.filedOn)}` : ""}{due.acknowledgement ? ` · ack ${due.acknowledgement}` : ""}{due.amount ? ` · paid ${inr(Number(due.amount))}` : ""}</span>{due.status === "overdue" && due.lateNote && <span className="block text-xs text-danger">{due.lateFee ? `${due.key.startsWith("tds_") ? "Interest" : "Late fee"} so far about ${inr(Number(due.lateFee))} (estimate). ` : tdsInterest ? `Interest so far about ${inr(tdsInterest)} on ${inr(Number(item.tds!.toDeposit))} of TDS not deposited (estimate). ` : "Late cost: "}{due.lateNote}.</span>}</span>
-      {canMark && (due.status === "filed" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(false)}>Undo</Button> : !recording && <Button size="sm" variant="outline" disabled={busy} onClick={() => setRecording(true)}>Record filing</Button>)}
+      {canMark && (due.status === "filed" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(false)}>Undo</Button> : !recording && <Button size="sm" variant="outline" disabled={busy} onClick={() => { setFiledOn(todayIst()); setRecording(true); }}>Record filing</Button>)}
     </div>
     {recording && <form className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface-2 p-2" onSubmit={(event) => { event.preventDefault(); void save(true); }}>
       <label className="grid gap-1 text-xs text-muted-foreground">Filed on<Input type="date" value={filedOn} max={todayIst()} onChange={(event) => setFiledOn(event.target.value)} className="w-40" /></label>

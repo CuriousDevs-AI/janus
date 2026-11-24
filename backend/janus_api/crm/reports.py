@@ -15,15 +15,22 @@ def _ist_day(column: Any) -> Any:
     return cast(func.timezone("Asia/Kolkata", column), Date)
 
 
-async def dashboard_stats(db: AsyncSession, tenant_id: int) -> schemas.DashboardStats:
+async def dashboard_stats(
+    db: AsyncSession, tenant_id: int, crm_id: int | None = None
+) -> schemas.DashboardStats:
+    lead_f = [Lead.tenant_id == tenant_id]
+    deal_f = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
     total_leads = int(
-        await db.scalar(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)) or 0
+        await db.scalar(select(func.count(Lead.id)).where(*lead_f)) or 0
     )
     today = datetime.now(UTC).date()
     new_today = int(
         await db.scalar(
             select(func.count(Lead.id)).where(
-                Lead.tenant_id == tenant_id,
+                *lead_f,
                 _ist_day(Lead.created_at) == today,
             )
         )
@@ -33,7 +40,7 @@ async def dashboard_stats(db: AsyncSession, tenant_id: int) -> schemas.Dashboard
     new_week = int(
         await db.scalar(
             select(func.count(Lead.id)).where(
-                Lead.tenant_id == tenant_id,
+                *lead_f,
                 _ist_day(Lead.created_at) >= week_start,
             )
         )
@@ -43,7 +50,7 @@ async def dashboard_stats(db: AsyncSession, tenant_id: int) -> schemas.Dashboard
     deal_rows = (
         await db.execute(
             select(Deal.stage, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
-            .where(Deal.tenant_id == tenant_id)
+            .where(*deal_f)
             .group_by(Deal.stage)
         )
     ).all()
@@ -56,15 +63,15 @@ async def dashboard_stats(db: AsyncSession, tenant_id: int) -> schemas.Dashboard
     won_value = stage_values.get("won", Decimal(0))
     won_deals = stage_counts.get("won", 0)
     lost_deals = stage_counts.get("lost", 0)
-    total_closed = won_deals + lost_deals
-    conversion = (won_deals / total_closed * 100) if total_closed > 0 else 0
+    conversion = (won_deals / total_leads * 100) if total_leads > 0 else 0
 
-    cycle_row = await db.execute(
+    cycle_q = (
         select(func.avg(func.extract("epoch", Deal.updated_at - Lead.created_at) / 86400))
         .select_from(Deal)
         .join(Lead, (Lead.tenant_id == Deal.tenant_id) & (Lead.id == Deal.lead_id))
-        .where(Deal.tenant_id == tenant_id, Deal.stage == "won")
+        .where(*deal_f, Deal.stage == "won")
     )
+    cycle_row = await db.execute(cycle_q)
     avg_cycle = cycle_row.scalar()
 
     return schemas.DashboardStats(
@@ -85,6 +92,7 @@ async def funnel_data(
     db: AsyncSession,
     tenant_id: int,
     days: int = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.FunnelData]:
     start = datetime.now(UTC).date() - timedelta(days=days)
     stage_order = [
@@ -98,10 +106,15 @@ async def funnel_data(
         "won",
         "lost",
     ]
+    lead_f = [Lead.tenant_id == tenant_id, _ist_day(Lead.created_at) >= start]
+    deal_f = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
     rows = (
         await db.execute(
             select(Lead.stage, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at) >= start)
+            .where(*lead_f)
             .group_by(Lead.stage)
         )
     ).all()
@@ -110,7 +123,7 @@ async def funnel_data(
     deal_values = (
         await db.execute(
             select(Deal.stage, func.coalesce(func.sum(Deal.amount), 0))
-            .where(Deal.tenant_id == tenant_id)
+            .where(*deal_f)
             .group_by(Deal.stage)
         )
     ).all()
@@ -130,13 +143,19 @@ async def rep_performance(
     db: AsyncSession,
     tenant_id: int,
     days: int = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.RepPerformance]:
     start = datetime.now(UTC).date() - timedelta(days=days)
+    lead_f = [Lead.tenant_id == tenant_id]
+    deal_f = [Deal.tenant_id == tenant_id]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
 
     came_in = (
         await db.execute(
             select(Lead.owner_id, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at) >= start)
+            .where(*lead_f, _ist_day(Lead.created_at) >= start)
             .group_by(Lead.owner_id)
         )
     ).all()
@@ -145,7 +164,7 @@ async def rep_performance(
     open_now = (
         await db.execute(
             select(Lead.owner_id, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id, Lead.stage.not_in(("won", "lost")))
+            .where(*lead_f, Lead.stage.not_in(("won", "lost")))
             .group_by(Lead.owner_id)
         )
     ).all()
@@ -156,7 +175,7 @@ async def rep_performance(
             select(Lead.owner_id, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
             .join(Lead, (Lead.id == Deal.lead_id) & (Lead.tenant_id == Deal.tenant_id))
             .where(
-                Deal.tenant_id == tenant_id,
+                *deal_f,
                 Deal.stage == "won",
                 _ist_day(Deal.updated_at) >= start,
             )
@@ -199,8 +218,12 @@ async def source_breakdown(
     db: AsyncSession,
     tenant_id: int,
     days: int = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.SourceBreakdown]:
     start = datetime.now(UTC).date() - timedelta(days=days)
+    lead_f = [Lead.tenant_id == tenant_id, _ist_day(Lead.created_at) >= start]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
     rows = (
         await db.execute(
             select(
@@ -211,16 +234,18 @@ async def source_breakdown(
             )
             .select_from(Lead)
             .outerjoin(Deal, (Deal.lead_id == Lead.id) & (Deal.tenant_id == Lead.tenant_id))
-            .where(Lead.tenant_id == tenant_id, _ist_day(Lead.created_at) >= start)
+            .where(*lead_f)
             .group_by(Lead.source)
         )
     ).all()
     result = []
     for source, leads, won, won_val in rows:
         conv = (int(won) / int(leads) * 100) if int(leads) > 0 else 0
+        src = str(source)
         result.append(
             schemas.SourceBreakdown(
-                source=str(source),
+                source=src,
+                sourceLabel=schemas._SOURCE_LABELS.get(src, src.replace("_", " ").title()),
                 leads=int(leads),
                 won=int(won),
                 wonValue=format(Decimal(won_val), ".2f"),
@@ -234,13 +259,19 @@ async def daily_trend(
     db: AsyncSession,
     tenant_id: int,
     days: int = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.DailyPoint]:
     start = datetime.now(UTC).date() - timedelta(days=days)
     lead_day = _ist_day(Lead.created_at)
+    lead_f = [Lead.tenant_id == tenant_id, lead_day >= start]
+    deal_f = [Deal.tenant_id == tenant_id, Deal.stage == "won", _ist_day(Deal.updated_at) >= start]
+    if crm_id is not None:
+        lead_f.append(Lead.crm_id == crm_id)
+        deal_f.append(Deal.crm_id == crm_id)
     lead_rows = (
         await db.execute(
             select(lead_day, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id, lead_day >= start)
+            .where(*lead_f)
             .group_by(lead_day)
         )
     ).all()
@@ -250,7 +281,7 @@ async def daily_trend(
     won_rows = (
         await db.execute(
             select(won_day, func.count(Deal.id), func.coalesce(func.sum(Deal.amount), 0))
-            .where(Deal.tenant_id == tenant_id, Deal.stage == "won", won_day >= start)
+            .where(*deal_f)
             .group_by(won_day)
         )
     ).all()

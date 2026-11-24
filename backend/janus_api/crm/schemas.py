@@ -13,6 +13,69 @@ from pydantic import (
     model_validator,
 )
 
+# ---------------------------------------------------------------------------
+# CRM Workspaces
+# ---------------------------------------------------------------------------
+
+
+class CrmBrief(BaseModel):
+    id: str
+    name: str
+    slug: str
+    isDefault: bool = False
+
+
+class CrmWorkspaceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=1000)
+    pipelineStages: list[dict[str, object]] | None = None
+
+
+class CrmWorkspaceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=1000)
+    pipelineStages: list[dict[str, object]] | None = None
+    winStage: str | None = Field(default=None, max_length=40)
+
+
+class CrmWorkspaceOut(BaseModel):
+    id: str
+    name: str
+    slug: str
+    description: str
+    pipelineStages: list[dict[str, object]]
+    winStage: str
+    isDefault: bool
+    active: bool
+    leadCount: int = 0
+    dealCount: int = 0
+    memberCount: int = 0
+    createdByName: str | None = None
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class CrmMemberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    membershipId: str
+    role: str | None = "member"
+
+
+class CrmMemberUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: str
+
+
+class CrmMemberOut(BaseModel):
+    id: str
+    crmId: str
+    membershipId: str
+    memberName: str | None = None
+    role: str
+    createdAt: datetime
+
 
 class CapturedContact(BaseModel):
     name: str = Field(default="", max_length=160)
@@ -89,6 +152,7 @@ LeadSource = Literal[
 class LeadOut(BaseModel):
     dealId: str | None = None
     id: str
+    crmId: str | None = None
     customerId: str
     contactName: str
     phone: str | None
@@ -118,11 +182,7 @@ LeadStage = Literal[
     "new",
     "contacted",
     "qualified",
-    "demo",
-    "proposal",
-    "negotiation",
-    "approval",
-    "won",
+    "converted",
     "lost",
 ]
 
@@ -170,7 +230,12 @@ class LeadUpdate(BaseModel):
 
 DealStage = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=40, pattern=r"^[a-z][a-z0-9_-]{0,39}$"),
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=40,
+        pattern=r"^[a-z][a-z0-9_-]{0,39}$",
+    ),
 ]
 
 
@@ -197,6 +262,7 @@ class DealUpdate(DealValues):
 
 class DealOut(BaseModel):
     id: str
+    crmId: str | None = None
     leadId: str
     customerId: str
     customerName: str
@@ -217,6 +283,15 @@ class DealOut(BaseModel):
 
 
 class DealEvent(BaseModel):
+    id: str
+    action: str
+    userId: str | None
+    userName: str | None = None
+    details: dict[str, str | int | bool]
+    createdAt: datetime
+
+
+class LeadEvent(BaseModel):
     id: str
     action: str
     userId: str | None
@@ -324,7 +399,7 @@ class CustomerAccountOut(BaseModel):
 # Activities
 # ---------------------------------------------------------------------------
 
-ActivityKind = Literal["call", "meeting", "email", "task"]
+ActivityKind = Literal["call", "meeting", "email", "task", "note"]
 ActivityOutcome = Literal[
     "connected",
     "no_answer",
@@ -343,6 +418,7 @@ class ActivityIn(BaseModel):
     subject: str = Field(max_length=500)
     description: str = Field(default="", max_length=5000)
     leadId: str | None = None
+    dealId: str | None = None
     contactId: str
     dueAt: datetime | None = None
     outcome: ActivityOutcome | None = None
@@ -370,6 +446,7 @@ class ActivityOut(BaseModel):
     subject: str
     description: str
     leadId: str | None
+    dealId: str | None = None
     contactId: str
     ownerId: str | None
     ownerName: str | None = None
@@ -565,6 +642,7 @@ class LeadDetailOut(BaseModel):
 
 class ContactLeadSummary(BaseModel):
     id: str
+    crmId: str | None = None
     stage: str
     source: str
     requirement: str
@@ -575,11 +653,21 @@ class ContactLeadSummary(BaseModel):
     dealStage: str | None = None
 
 
+class LeadNoteWithLead(BaseModel):
+    id: str
+    leadId: str
+    body: str
+    author: str | None
+    nextFollowUpOn: date | None
+    createdAt: datetime
+
+
 class ContactDetailOut(BaseModel):
     contact: ContactOut
     leads: list[ContactLeadSummary] = []
     notes: list[CustomerNoteOut] = []
     activities: list[ActivityOut] = []
+    leadNotes: list[LeadNoteWithLead] = []
     tags: list[TagOut] = []
     totalDealValue: str = "0.00"
     openDealValue: str = "0.00"
@@ -619,8 +707,23 @@ class RepPerformance(BaseModel):
     conversionRate: str
 
 
+_SOURCE_LABELS: dict[str, str] = {
+    "website": "Website",
+    "whatsapp": "WhatsApp",
+    "phone_call": "Phone Call",
+    "webhook": "Webhook",
+    "api": "API",
+    "csv_import": "CSV Import",
+    "meta_lead_ads": "Meta Lead Ads",
+    "indiamart": "IndiaMart",
+    "manual": "Manual",
+    "referral": "Referral",
+}
+
+
 class SourceBreakdown(BaseModel):
     source: str
+    sourceLabel: str = ""
     leads: int
     won: int
     wonValue: str

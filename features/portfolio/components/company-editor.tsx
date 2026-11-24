@@ -9,12 +9,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { api, message } from "@/lib/api/client";
 import { invalidatePortfolioCache } from "@/features/portfolio/lib/use-portfolio-api";
 import { businessModels, businessOrder } from "@/features/portfolio/lib/business";
+import { LogoPicker } from "@/components/shared/logo-picker";
+import { readPortfolioLogo, savePortfolioLogo } from "@/features/portfolio/lib/logos";
 import type { BusinessModel, EntityType, LeaderRole, PortfolioCompany, PortfolioPersonRecord, PortfolioRegistration } from "@/features/portfolio/types";
 
 export const entityNames: Record<EntityType, string> = { pvt_ltd: "Private limited", public_ltd: "Public limited", opc: "One person company", llp: "LLP", partnership: "Partnership", proprietorship: "Proprietorship", other: "Other" };
 export const roleNames: Record<LeaderRole, string> = { founder: "Founder", cofounder: "Co-founder", director: "Director" };
 const sizes = ["1–10 employees", "11–50 employees", "51–200 employees", "200+ employees"];
-const emptyRegistration: PortfolioRegistration = { entityType: null, legalName: null, cin: null, pan: null, tan: null, epfCode: null, esiCode: null, ptState: null, udyam: null, incorporatedOn: null, registeredAddress: null, website: null, email: null, phone: null, city: null, state: null, directors: [] };
+const emptyRegistration: PortfolioRegistration = { entityType: null, legalName: null, cin: null, pan: null, tan: null, gstin: null, epfCode: null, esiCode: null, ptState: null, udyam: null, incorporatedOn: null, registeredAddress: null, website: null, email: null, phone: null, city: null, state: null, linkedin: null, twitter: null, instagram: null, facebook: null, directors: [] };
 const select = "h-8 rounded-md border border-input bg-surface-2 px-2 text-[13px] text-foreground";
 
 /**
@@ -27,8 +29,14 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
   const [industry, setIndustry] = React.useState(item.industry);
   const [size, setSize] = React.useState(item.companySize);
   const [model, setModel] = React.useState<BusinessModel>(item.businessModel);
+  const [logo, setLogo] = React.useState<string | undefined>(() => readPortfolioLogo(item.id));
   const [form, setForm] = React.useState<PortfolioRegistration>(() => ({ ...emptyRegistration, ...item.registration, directors: (item.registration?.directors ?? []).map((person) => ({ ...person, roles: person.roles?.length ? person.roles : ["director"] })) }));
   const [saving, setSaving] = React.useState(false);
+  const [initial] = React.useState(() => ({ name: item.name, industry: item.industry, size: item.companySize, model: item.businessModel, logo: readPortfolioLogo(item.id), form: JSON.stringify({ ...emptyRegistration, ...item.registration, directors: (item.registration?.directors ?? []).map((p) => ({ ...p, roles: p.roles?.length ? p.roles : ["director"] })) }) }));
+  const guardedClose = () => {
+    const dirty = name !== initial.name || industry !== initial.industry || size !== initial.size || model !== initial.model || logo !== initial.logo || JSON.stringify(form) !== initial.form;
+    if (!dirty || window.confirm("You have unsaved changes. Discard?")) onClose();
+  };
   const set = (key: keyof PortfolioRegistration, value: string) => setForm({ ...form, [key]: value === "" ? null : value });
   const setPerson = (index: number, change: Partial<PortfolioPersonRecord>) => setForm({ ...form, directors: form.directors.map((person, at) => at === index ? { ...person, ...change } : person) });
   const upper = (value: string | null) => (value ?? "").trim().toUpperCase();
@@ -37,6 +45,9 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
     basics && name.trim().length < 2 ? "Give the company a name." : "",
     upper(form.pan) && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(upper(form.pan)) ? "PAN is 5 letters, 4 digits and a letter, like AAPFU0939F." : "",
     upper(form.tan) && !/^[A-Z]{4}[0-9]{5}[A-Z]$/.test(upper(form.tan)) ? "TAN is 4 letters, 5 digits and a letter, like BLRA12345B." : "",
+    upper(form.gstin) && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(upper(form.gstin)) ? "GSTIN is 15 characters, like 29AAPFU0939F1Z5." : "",
+    upper(form.cin) && form.entityType !== "llp" && !/^[UL][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(upper(form.cin)) ? "CIN is 21 characters, like U51909KA2020PTC123456." : "",
+    upper(form.cin) && form.entityType === "llp" && !/^[A-Z]{3}-[0-9]{4}$/.test(upper(form.cin)) ? "LLPIN is like AAB-1234." : "",
     upper(form.ptState) && !/^[A-Z]{2}$/.test(upper(form.ptState)) ? "Professional tax state is two letters, like KA or MH." : "",
     form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(form.email.trim()) ? "That company email does not look right." : "",
     people.some((person) => person.din && !/^[0-9]{8}$/.test(person.din.trim())) ? "A DIN is 8 digits." : "",
@@ -49,6 +60,7 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
         await api(`/portfolio/companies/${item.id}/details`, { method: "PUT", body: JSON.stringify({ name: name.trim(), industry: industry.trim(), companySize: size, businessModel: model }) });
       }
       await api(`/portfolio/companies/${item.id}/registration`, { method: "PUT", body: JSON.stringify({ ...form, directors: people.map((person) => ({ name: person.name.trim(), din: person.din?.trim() || null, roles: person.roles, title: person.title?.trim() || null })) }) });
+      await savePortfolioLogo(item.id, logo);
       invalidatePortfolioCache();
       toast.success(`${basics ? name.trim() : item.name} saved.`);
       onSaved();
@@ -57,9 +69,10 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
   }
   const field = (key: keyof PortfolioRegistration, label: string, placeholder = "", type = "text") => <label className="grid gap-1 text-xs text-muted-foreground">{label}<Input type={type} value={(form[key] as string | null) ?? ""} placeholder={placeholder} onChange={(event) => set(key, event.target.value)} /></label>;
   const heading = (text: string, note?: string) => <div className="border-b border-border pb-1 pt-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{text}</p>{note && <p className="text-[11px] text-muted-foreground">{note}</p>}</div>;
-  return <Dialog open onOpenChange={(value) => !value && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Edit {item.name}</DialogTitle><DialogDescription>Leave anything you do not have blank. The legal details decide which filings apply.</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={(value) => !value && !saving && guardedClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Edit {item.name}</DialogTitle><DialogDescription>Leave anything you do not have blank. The legal details decide which filings apply.</DialogDescription></DialogHeader>
     <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); if (!errors.length) void save(); }}>
       {heading("The company")}
+      {basics && <LogoPicker id={item.id} name={name} value={logo} onChange={setLogo} />}
       {basics ? <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-xs text-muted-foreground">Name<Input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></label>
         <label className="grid gap-1 text-xs text-muted-foreground">Kind of business<BusinessModelSelect value={model} onChange={setModel} className={select} /></label>
@@ -77,6 +90,14 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
         {field("state", "State", "Karnataka")}
       </div>
       {field("registeredAddress", "Registered address")}
+
+      {heading("Social media")}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {field("linkedin", "LinkedIn", "https://linkedin.com/company/…")}
+        {field("twitter", "X (Twitter)", "https://x.com/…")}
+        {field("instagram", "Instagram", "https://instagram.com/…")}
+        {field("facebook", "Facebook", "https://facebook.com/…")}
+      </div>
 
       {heading("People", "Tick every role a person holds. A founder can also be a director.")}
       <div className="grid gap-2">
@@ -98,14 +119,15 @@ export function CompanyEditor({ item, basics, onClose, onSaved }: { item: Portfo
         {field("legalName", "Legal name", item.name)}
         {field("pan", "PAN", "AAPFU0939F")}
         {field("tan", "TAN", "BLRA12345B")}
+        {field("gstin", "GSTIN", "29AAPFU0939F1Z5")}
         {field("cin", form.entityType === "llp" ? "LLPIN" : "CIN", form.entityType === "llp" ? "AAB-1234" : "U51909KA2020PTC123456")}
         {field("udyam", "Udyam (MSME) number", "UDYAM-KR-03-0012345")}
         {field("epfCode", "EPF establishment code")}
         {field("esiCode", "ESI code")}
-        {field("ptState", "Professional tax state", "KA")}
+        <label className="grid gap-1 text-xs text-muted-foreground">Professional tax state<select className={select} value={form.ptState ?? ""} onChange={(event) => set("ptState", event.target.value)}><option value="">Not chosen</option>{["AN","AP","AR","AS","BR","CG","CH","DD","DL","GA","GJ","HP","HR","JH","JK","KA","KL","LA","LD","MH","ML","MN","MP","MZ","NL","OD","PB","PY","RJ","SK","TN","TR","TS","UK","UP","WB"].map((code) => <option key={code} value={code}>{code}</option>)}</select></label>
       </div>
       {errors.length > 0 && <ul role="alert" className="grid gap-1 text-xs text-danger">{errors.map((text) => <li key={text}>{text}</li>)}</ul>}
-      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button type="submit" disabled={saving || errors.length > 0}>{saving ? "Saving…" : "Save"}</Button></DialogFooter>
+      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={guardedClose}>Cancel</Button><Button type="submit" disabled={saving || errors.length > 0}>{saving ? "Saving…" : "Save"}</Button></DialogFooter>
     </form>
   </DialogContent></Dialog>;
 }

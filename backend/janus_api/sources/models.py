@@ -29,6 +29,7 @@ class SourceConnection(Base):
         ),
     )
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), index=True)
+    crm_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("crm_workspaces.id"))
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(String(1000), default="")
     kind: Mapped[str] = mapped_column(String(30), default="webhook")

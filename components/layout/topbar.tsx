@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Clock, LogOut, Menu, Search, Shield, User, Bell } from "lucide-react";
+import { Clock, LogOut, Menu, Palette, Search, Shield, User, Bell } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useUIStore } from "@/lib/stores/ui-store";
@@ -11,7 +11,7 @@ import { CallPill } from "@/components/team/voice-stage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { roleLabel } from "@/lib/access";
 import { cn, initials } from "@/lib/utils";
-import { useProfileStore, useMyStatus, type UserStatus } from "@/lib/stores/profile-store";
+import { useProfileStore, useMyStatus, generateAvatarSvg, type UserStatus } from "@/lib/stores/profile-store";
 import { STATUS_PRESETS } from "@/lib/hooks/use-auto-status";
 import {
   DropdownMenu,
@@ -43,8 +43,9 @@ export function Topbar() {
   const pathname = usePathname();
   const onTeam = pathname === "/team";
 
-  const avatarUrl = useProfileStore((s) => s.avatarUrl);
+  const storeAvatar = useProfileStore((s) => s.avatarUrl);
   const displayName = useProfileStore((s) => s.displayName) || session.user.name;
+  const avatarUrl = storeAvatar || generateAvatarSvg(displayName);
   const profileTitle = useProfileStore((s) => s.title);
   const { status, customStatus, statusEmoji } = useMyStatus();
   const setStatus = useProfileStore((s) => s.setStatus);
@@ -83,8 +84,8 @@ export function Topbar() {
             >
               <span className="relative">
                 <Avatar className="size-7">
-                  {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} /> : null}
-                  <AvatarFallback style={{ backgroundColor: "#2563eb" }}>{initials(displayName)}</AvatarFallback>
+                  <AvatarImage src={avatarUrl} alt={displayName} />
+                  <AvatarFallback>{initials(displayName)}</AvatarFallback>
                 </Avatar>
                 <span
                   className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background", dot)}
@@ -108,8 +109,8 @@ export function Topbar() {
             <div className="flex items-center gap-3 px-3 py-3">
               <span className="relative shrink-0">
                 <Avatar className="size-10">
-                  {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} /> : null}
-                  <AvatarFallback style={{ backgroundColor: "#2563eb" }} className="text-sm">{initials(displayName)}</AvatarFallback>
+                  <AvatarImage src={avatarUrl} alt={displayName} />
+                  <AvatarFallback className="text-sm">{initials(displayName)}</AvatarFallback>
                 </Avatar>
                 <span className={cn("absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-background", dot)} />
               </span>
@@ -156,6 +157,12 @@ export function Topbar() {
               <Link href={`/account?tab=security&workspace=${workspaceId}`} className="flex items-center gap-2">
                 <Shield className="size-3.5" />
                 Security & sessions
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={`/account?tab=appearance&workspace=${workspaceId}`} className="flex items-center gap-2">
+                <Palette className="size-3.5" />
+                Appearance
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

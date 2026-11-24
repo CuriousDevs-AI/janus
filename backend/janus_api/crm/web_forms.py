@@ -29,16 +29,12 @@ def _out(f: WebForm) -> schemas.WebFormOut:
 async def list_forms(
     db: AsyncSession,
     tenant_id: int,
+    crm_id: int | None = None,
 ) -> list[schemas.WebFormOut]:
-    rows = (
-        (
-            await db.execute(
-                select(WebForm).where(WebForm.tenant_id == tenant_id).order_by(WebForm.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    q = select(WebForm).where(WebForm.tenant_id == tenant_id, WebForm.active.is_(True))
+    if crm_id is not None:
+        q = q.where(WebForm.crm_id == crm_id)
+    rows = (await db.execute(q.order_by(WebForm.name))).scalars().all()
     return [_out(f) for f in rows]
 
 
@@ -47,6 +43,7 @@ async def create_form(
     tenant_id: int,
     user_id: int,
     data: schemas.WebFormIn,
+    crm_id: int | None = None,
 ) -> schemas.WebFormOut:
     existing = await db.scalar(select(WebForm).where(WebForm.slug == data.slug))
     if existing:
@@ -61,6 +58,7 @@ async def create_form(
         redirect_url=data.redirectUrl,
         notify_email=data.notifyEmail,
         created_by=user_id,
+        crm_id=crm_id,
     )
     db.add(f)
     await db.flush()
@@ -119,6 +117,9 @@ async def submit_form(
     if not f:
         raise ApiError("form_not_found", "Form not found or inactive", 404)
 
+    from janus_api.core.tenancy import set_context
+    await set_context(db, tenant_id=f.tenant_id, user_id=f.created_by)
+
     mapped: dict[str, str] = {}
     for field_config in f.fields_config or []:
         field_name = str(field_config.get("name", ""))
@@ -147,6 +148,8 @@ async def submit_form(
         ["*"],
         lead_in,
         f"webform-{f.slug}-{int(now().timestamp())}",
+        crm_id=f.crm_id,
+        source="website",
     )
 
     f.submission_count = (f.submission_count or 0) + 1

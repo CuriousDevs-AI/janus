@@ -14,6 +14,7 @@ from janus_api.crm import (
     activities,
     attachments,
     contacts_list,
+    crm_workspace,
     custom_fields,
     deal_items,
     deals,
@@ -47,6 +48,7 @@ AfterId = Annotated[int, Query(ge=0, le=2**63 - 1)]
 async def leads(
     actor: Reader,
     db: Db,
+    response: Response,
     after_id: AfterId = 0,
     limit: Limit = 100,
     q: str | None = None,
@@ -54,8 +56,10 @@ async def leads(
     source: str | None = None,
     owner_id: int | None = None,
     tag_id: int | None = None,
+    crm_id: int | None = None,
+    sort: str | None = None,
 ) -> list[schemas.LeadOut]:
-    return await service.list_leads(
+    rows = await service.list_leads(
         db,
         actor.session.tenant_id,
         actor.user.id,
@@ -67,7 +71,11 @@ async def leads(
         source=source,
         owner_id=owner_id,
         tag_id=tag_id,
+        crm_id=crm_id,
+        sort=sort,
     )
+    response.headers["X-Total-Count"] = str(len(rows))
+    return rows
 
 
 @router.post("/leads", response_model=schemas.LeadOut, status_code=201)
@@ -77,6 +85,7 @@ async def create_lead(
     db: Db,
     response: Response,
     idempotency_key: Annotated[str, Header(min_length=1, max_length=80)],
+    crm_id: int | None = None,
 ) -> schemas.LeadOut:
     lead, created = await service.create_manual_lead(
         db,
@@ -85,6 +94,7 @@ async def create_lead(
         actor.permissions,
         data,
         idempotency_key,
+        crm_id=crm_id,
     )
     if not created:
         response.status_code = 200
@@ -92,12 +102,16 @@ async def create_lead(
 
 
 @router.get("/leads/filter-options")
-async def lead_filter_options(actor: Reader, db: Db) -> dict[str, Any]:
+async def lead_filter_options(actor: Reader, db: Db, crm_id: int | None = None) -> dict[str, Any]:
     """Distinct stages, sources and owners for filter dropdowns."""
     tid = actor.session.tenant_id
     stage_q = select(Lead.stage).where(Lead.tenant_id == tid).distinct()
+    if crm_id is not None:
+        stage_q = stage_q.where(Lead.crm_id == crm_id)
     stages = [str(r[0]) for r in (await db.execute(stage_q)).all()]
     src_q = select(Lead.source).where(Lead.tenant_id == tid).distinct()
+    if crm_id is not None:
+        src_q = src_q.where(Lead.crm_id == crm_id)
     sources_q = [str(r[0]) for r in (await db.execute(src_q)).all()]
     own_q = (
         select(User.id, User.name)
@@ -106,6 +120,8 @@ async def lead_filter_options(actor: Reader, db: Db) -> dict[str, Any]:
         .where(Lead.tenant_id == tid, Lead.owner_id.isnot(None))
         .distinct()
     )
+    if crm_id is not None:
+        own_q = own_q.where(Lead.crm_id == crm_id)
     owner_rows = (await db.execute(own_q)).all()
     return {
         "stages": sorted(stages),
@@ -153,6 +169,18 @@ async def add_lead_note(
 ) -> schemas.NoteOut:
     return await service.add_note(
         db, actor.session.tenant_id, actor.user.id, actor.permissions, lead_id, data
+    )
+
+
+@router.get(
+    "/leads/{lead_id}/events",
+    response_model=list[schemas.LeadEvent],
+)
+async def lead_events(
+    lead_id: Identifier, actor: Reader, db: Db, limit: Limit = 50
+) -> list[schemas.LeadEvent]:
+    return await service.lead_events(
+        db, actor.session.tenant_id, lead_id, limit
     )
 
 
@@ -241,6 +269,7 @@ async def customers(
     limit: Limit = 50,
     q: str | None = None,
     filter: str = "all",
+    crm_id: int | None = None,
 ) -> list[schemas.CustomerListRow]:
     return await service.list_customers(
         db,
@@ -251,6 +280,7 @@ async def customers(
         limit,
         q,
         filter,
+        crm_id=crm_id,
     )
 
 
@@ -262,8 +292,11 @@ async def deals_list(
     limit: Limit = 100,
     stage: str | None = None,
     owner_id: int | None = None,
+    crm_id: int | None = None,
 ) -> list[schemas.DealOut]:
-    return await deals.list_deals(db, actor, after_id, limit, stage=stage, owner_id=owner_id)
+    return await deals.list_deals(
+        db, actor, after_id, limit, stage=stage, owner_id=owner_id, crm_id=crm_id,
+    )
 
 
 @router.get("/deals/{deal_id}", response_model=schemas.DealOut)
@@ -298,12 +331,15 @@ async def deal_events(
 
 @router.get("/lost-reasons", response_model=list[schemas.LostReasonOut])
 async def lost_reasons(
-    actor: Assigner, db: Db, days: Annotated[int, Query(ge=1, le=366)] = 90
+    actor: Assigner,
+    db: Db,
+    days: Annotated[int, Query(ge=1, le=366)] = 90,
+    crm_id: int | None = None,
 ) -> list[schemas.LostReasonOut]:
     """Why the company's leads were lost in the last few days, for whoever runs the team."""
     today = datetime.now(IST).date()
     reasons = await overview.lost_reasons(
-        db, actor.session.tenant_id, today - timedelta(days=days - 1), today
+        db, actor.session.tenant_id, today - timedelta(days=days - 1), today, crm_id=crm_id
     )
     return [
         schemas.LostReasonOut(
@@ -347,16 +383,20 @@ async def list_activities(
     db: Db,
     contact_id: Identifier | None = None,
     lead_id: Identifier | None = None,
+    deal_id: Identifier | None = None,
     after_id: AfterId = 0,
     limit: Limit = 50,
+    crm_id: int | None = None,
 ) -> list[schemas.ActivityOut]:
     return await activities.list_activities(
         db,
         actor.session.tenant_id,
         contact_id=contact_id,
         lead_id=lead_id,
+        deal_id=deal_id,
         after_id=after_id,
         limit=limit,
+        crm_id=crm_id,
     )
 
 
@@ -622,8 +662,10 @@ async def update_quote(
 
 
 @router.get("/dashboard/stats", response_model=schemas.DashboardStats)
-async def dashboard_stats(actor: Reader, db: Db) -> schemas.DashboardStats:
-    return await reports.dashboard_stats(db, actor.session.tenant_id)
+async def dashboard_stats(
+    actor: Reader, db: Db, crm_id: int | None = None,
+) -> schemas.DashboardStats:
+    return await reports.dashboard_stats(db, actor.session.tenant_id, crm_id=crm_id)
 
 
 @router.get("/dashboard/funnel", response_model=list[schemas.FunnelData])
@@ -631,8 +673,9 @@ async def dashboard_funnel(
     actor: Reader,
     db: Db,
     days: Annotated[int, Query(ge=1, le=366)] = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.FunnelData]:
-    return await reports.funnel_data(db, actor.session.tenant_id, days)
+    return await reports.funnel_data(db, actor.session.tenant_id, days, crm_id=crm_id)
 
 
 @router.get("/dashboard/reps", response_model=list[schemas.RepPerformance])
@@ -640,8 +683,9 @@ async def dashboard_reps(
     actor: Reader,
     db: Db,
     days: Annotated[int, Query(ge=1, le=366)] = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.RepPerformance]:
-    return await reports.rep_performance(db, actor.session.tenant_id, days)
+    return await reports.rep_performance(db, actor.session.tenant_id, days, crm_id=crm_id)
 
 
 @router.get("/dashboard/sources", response_model=list[schemas.SourceBreakdown])
@@ -649,8 +693,9 @@ async def dashboard_sources(
     actor: Reader,
     db: Db,
     days: Annotated[int, Query(ge=1, le=366)] = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.SourceBreakdown]:
-    return await reports.source_breakdown(db, actor.session.tenant_id, days)
+    return await reports.source_breakdown(db, actor.session.tenant_id, days, crm_id=crm_id)
 
 
 @router.get("/dashboard/daily", response_model=list[schemas.DailyPoint])
@@ -658,8 +703,9 @@ async def dashboard_daily(
     actor: Reader,
     db: Db,
     days: Annotated[int, Query(ge=1, le=366)] = 30,
+    crm_id: int | None = None,
 ) -> list[schemas.DailyPoint]:
-    return await reports.daily_trend(db, actor.session.tenant_id, days)
+    return await reports.daily_trend(db, actor.session.tenant_id, days, crm_id=crm_id)
 
 
 # ---------------------------------------------------------------------------
@@ -738,8 +784,9 @@ async def get_forecast(
     actor: Reader,
     db: Db,
     period: str = Query(pattern=r"^\d{4}-\d{2}$"),
+    crm_id: int | None = None,
 ) -> schemas.ForecastOut:
-    return await forecasting.get_forecast(db, actor.session.tenant_id, period)
+    return await forecasting.get_forecast(db, actor.session.tenant_id, period, crm_id=crm_id)
 
 
 @router.get("/forecast/reps", response_model=list[schemas.RepAttainmentOut])
@@ -747,13 +794,18 @@ async def forecast_reps(
     actor: Reader,
     db: Db,
     period: str = Query(pattern=r"^\d{4}-\d{2}$"),
+    crm_id: int | None = None,
 ) -> list[schemas.RepAttainmentOut]:
-    return await forecasting.rep_attainment(db, actor.session.tenant_id, period)
+    return await forecasting.rep_attainment(db, actor.session.tenant_id, period, crm_id=crm_id)
 
 
 @router.post("/targets", response_model=schemas.TargetOut, status_code=201)
-async def set_target(data: schemas.TargetIn, actor: Writer, db: Db) -> schemas.TargetOut:
-    return await forecasting.set_target(db, actor.session.tenant_id, actor.user.id, data)
+async def set_target(
+    data: schemas.TargetIn, actor: Writer, db: Db, crm_id: int | None = None
+) -> schemas.TargetOut:
+    return await forecasting.set_target(
+        db, actor.session.tenant_id, actor.user.id, data, crm_id=crm_id,
+    )
 
 
 @router.get("/targets", response_model=list[schemas.TargetOut])
@@ -761,8 +813,9 @@ async def list_targets(
     actor: Reader,
     db: Db,
     period: str | None = None,
+    crm_id: int | None = None,
 ) -> list[schemas.TargetOut]:
-    return await forecasting.list_targets(db, actor.session.tenant_id, period)
+    return await forecasting.list_targets(db, actor.session.tenant_id, period, crm_id=crm_id)
 
 
 # ---------------------------------------------------------------------------
@@ -991,8 +1044,12 @@ async def delete_sequence(sequence_id: Identifier, actor: Writer, db: Db) -> Non
 
 
 @router.get("/web-forms", response_model=list[schemas.WebFormOut])
-async def list_web_forms(actor: Reader, db: Db) -> list[schemas.WebFormOut]:
-    return await web_forms.list_forms(db, actor.session.tenant_id)
+async def list_web_forms(
+    actor: Reader, db: Db, crm_id: int | None = None,
+) -> list[schemas.WebFormOut]:
+    return await web_forms.list_forms(
+        db, actor.session.tenant_id, crm_id=crm_id,
+    )
 
 
 @router.post("/web-forms", response_model=schemas.WebFormOut, status_code=201)
@@ -1000,8 +1057,11 @@ async def create_web_form(
     data: schemas.WebFormIn,
     actor: Writer,
     db: Db,
+    crm_id: int | None = None,
 ) -> schemas.WebFormOut:
-    return await web_forms.create_form(db, actor.session.tenant_id, actor.user.id, data)
+    return await web_forms.create_form(
+        db, actor.session.tenant_id, actor.user.id, data, crm_id=crm_id,
+    )
 
 
 @router.patch("/web-forms/{form_id}", response_model=schemas.WebFormOut)
@@ -1088,3 +1148,113 @@ async def dismiss_duplicate(
     db: Db,
 ) -> None:
     await duplicates.dismiss_duplicate(db, actor.session.tenant_id, actor.user.id, group_id)
+
+
+# ---------------------------------------------------------------------------
+# CRM Workspaces
+# ---------------------------------------------------------------------------
+
+Admin = Annotated[Actor, Depends(require("settings:manage"))]
+
+
+@router.get("/crm-workspaces", response_model=list[schemas.CrmWorkspaceOut])
+async def list_crm_workspaces(actor: Reader, db: Db) -> list[schemas.CrmWorkspaceOut]:
+    return await crm_workspace.list_crms(db, actor.session.tenant_id)
+
+
+@router.post(
+    "/crm-workspaces",
+    response_model=schemas.CrmWorkspaceOut,
+    status_code=201,
+)
+async def create_crm_workspace(
+    data: schemas.CrmWorkspaceIn, actor: Admin, db: Db,
+) -> schemas.CrmWorkspaceOut:
+    return await crm_workspace.create_crm(
+        db, actor.session.tenant_id, actor.user.id, data,
+    )
+
+
+@router.get("/crm-workspaces/{crm_id}", response_model=schemas.CrmWorkspaceOut)
+async def get_crm_workspace(
+    crm_id: Identifier, actor: Reader, db: Db,
+) -> schemas.CrmWorkspaceOut:
+    return await crm_workspace.get_crm(
+        db, actor.session.tenant_id, crm_id,
+    )
+
+
+@router.patch("/crm-workspaces/{crm_id}", response_model=schemas.CrmWorkspaceOut)
+async def update_crm_workspace(
+    crm_id: Identifier,
+    data: schemas.CrmWorkspaceUpdate,
+    actor: Admin,
+    db: Db,
+) -> schemas.CrmWorkspaceOut:
+    return await crm_workspace.update_crm(
+        db, actor.session.tenant_id, actor.user.id, crm_id, data,
+    )
+
+
+@router.post(
+    "/crm-workspaces/{crm_id}/archive",
+    response_model=schemas.CrmWorkspaceOut,
+)
+async def archive_crm_workspace(
+    crm_id: Identifier, actor: Admin, db: Db,
+) -> schemas.CrmWorkspaceOut:
+    return await crm_workspace.archive_crm(
+        db, actor.session.tenant_id, actor.user.id, crm_id,
+    )
+
+
+@router.get(
+    "/crm-workspaces/{crm_id}/members",
+    response_model=list[schemas.CrmMemberOut],
+)
+async def list_crm_members(
+    crm_id: Identifier, actor: Reader, db: Db,
+) -> list[schemas.CrmMemberOut]:
+    return await crm_workspace.list_members(
+        db, actor.session.tenant_id, crm_id,
+    )
+
+
+@router.post(
+    "/crm-workspaces/{crm_id}/members",
+    response_model=schemas.CrmMemberOut,
+    status_code=201,
+)
+async def add_crm_member(
+    crm_id: Identifier,
+    data: schemas.CrmMemberIn,
+    actor: Admin,
+    db: Db,
+) -> schemas.CrmMemberOut:
+    return await crm_workspace.add_member(
+        db, actor.session.tenant_id, actor.user.id, crm_id, data,
+    )
+
+
+@router.patch(
+    "/crm-workspaces/{crm_id}/members/{member_id}",
+    response_model=schemas.CrmMemberOut,
+)
+async def update_crm_member(
+    crm_id: Identifier, member_id: Identifier, data: schemas.CrmMemberUpdate, actor: Admin, db: Db,
+) -> schemas.CrmMemberOut:
+    return await crm_workspace.update_member_role(
+        db, actor.session.tenant_id, actor.user.id, crm_id, member_id, data.role,
+    )
+
+
+@router.delete(
+    "/crm-workspaces/{crm_id}/members/{member_id}",
+    status_code=204,
+)
+async def remove_crm_member(
+    crm_id: Identifier, member_id: Identifier, actor: Admin, db: Db,
+) -> None:
+    await crm_workspace.remove_member(
+        db, actor.session.tenant_id, actor.user.id, crm_id, member_id,
+    )

@@ -7,7 +7,7 @@ events of one kind by one person close together read as one line ("raised 6 invo
 edits and reversals are marked.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,13 +22,13 @@ from janus_api.portfolio import schemas
 from janus_api.portfolio.access import readable_companies
 from janus_api.portfolio.periods import inr
 
-PER_COMPANY, MOST = 80, 300
+PER_COMPANY, MOST, PAGE = 80, 300, 100
 
 # What each event says, and the area it belongs to. Money areas are hidden without money.
 EVENTS: dict[str, tuple[str, str]] = {
     "lead.captured": ("Sales", "captured a lead"),
+    "lead.deleted": ("Sales", "deleted a lead"),
     "deal.created": ("Sales", "opened a deal"),
-    "deal.updated": ("Sales", "updated a deal"),
     "csv.imported": ("Sales", "imported leads from a file"),
     "finance.invoice_created": ("Finance", "raised an invoice"),
     "finance.payment_recorded": ("Finance", "recorded a customer payment"),
@@ -74,9 +74,7 @@ EVENTS: dict[str, tuple[str, str]] = {
     "business.workspace_created": ("Setup", "switched on a workspace"),
     "business.automation_published": ("Setup", "published a workflow"),
     "company.rules_changed": ("Setup", "changed the company's rules"),
-    "portfolio.company_created": ("Portfolio", "added this company"),
-    "portfolio.company_updated": ("Portfolio", "changed the company's name or details"),
-    "portfolio.targets_set": ("Portfolio", "set monthly targets"),
+    "portfolio.company_created": ("Portfolio", "added a company"),
     "portfolio.compliance_plan_set": ("Compliance", "changed which filings apply"),
     "portfolio.registration_set": ("Compliance", "updated the registration details"),
     "portfolio.filing_marked": ("Compliance", "recorded a filing as done"),
@@ -87,8 +85,8 @@ MONEY_AREAS = {"Finance"}
 # The plural for a burst: "raised 6 invoices".
 PLURAL: dict[str, str] = {
     "lead.captured": "captured {n} leads",
+    "lead.deleted": "deleted {n} leads",
     "deal.created": "opened {n} deals",
-    "deal.updated": "updated {n} deals",
     "finance.invoice_created": "raised {n} invoices",
     "finance.payment_recorded": "recorded {n} customer payments",
     "finance.bill_recorded": "recorded {n} supplier bills",
@@ -102,10 +100,8 @@ PLURAL: dict[str, str] = {
     "invitation.created": "invited {n} people",
 }
 CHANGES = {
-    "deal.updated",
     "membership.updated",
     "company.rules_changed",
-    "portfolio.company_updated",
     "portfolio.compliance_plan_set",
     "portfolio.registration_set",
     "project.status_changed",
@@ -136,9 +132,19 @@ def _detail(details: dict[str, str | int | bool]) -> str | None:
 
 
 async def activity(
-    db: AsyncSession, user_id: int, current_tenant: int, days: int
+    db: AsyncSession,
+    user_id: int,
+    current_tenant: int,
+    days: int,
+    cursor: str | None = None,
 ) -> schemas.ActivityList:
     since = now() - timedelta(days=days)
+    before: datetime | None = None
+    if cursor:
+        try:
+            before = datetime.fromisoformat(cursor)
+        except (ValueError, TypeError):
+            pass
     found: list[tuple[int, str, audit.Event]] = []
     try:
         for tenant_id in await readable_companies(db, user_id):
@@ -155,6 +161,8 @@ async def activity(
                 found.append((tenant_id, company.name, event))
     finally:
         await set_context(db, user_id=user_id, tenant_id=current_tenant)
+    if before is not None:
+        found = [(t, n, e) for t, n, e in found if e.at < before]
     found.sort(key=lambda entry: entry[2].at, reverse=True)
     found = found[:MOST]
     people = await user_directory(db, sorted({e.user_id for _, _, e in found if e.user_id}))
@@ -205,4 +213,6 @@ async def activity(
     for item, paise in zip(items, totals, strict=True):
         if paise is not None:
             item.amount = inr(Decimal(paise) / 100)
-    return schemas.ActivityList(days=days, items=items)
+    page = items[:PAGE]
+    next_cursor = page[-1].at.isoformat() if len(items) > PAGE else None
+    return schemas.ActivityList(days=days, items=page, cursor=next_cursor)

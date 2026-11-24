@@ -73,10 +73,10 @@ export function KeyRatiosTable({ list }: { list: PortfolioCompany[] }) {
         return <tr key={item.id} className="border-b border-border last:border-0">
           <td className="py-2 pr-3 font-medium">{item.name}</td>
           <td className="px-3 py-2 text-right tabular-nums">{kept ? kept.customers : "—"}</td>
-          <td className={`px-3 py-2 text-right tabular-nums ${kept && churnHigh(kept) ? "font-semibold text-amber-700 dark:text-amber-400" : ""}`}>{pct(kept?.churnRate)}</td>
+          <td className={`px-3 py-2 text-right tabular-nums ${kept && churnHigh(kept) ? "font-semibold text-warning" : ""}`}>{pct(kept?.churnRate)}</td>
           <td className="px-3 py-2 text-right tabular-nums">{pct(kept?.repeatRate)}</td>
           <td className="px-3 py-2 text-right tabular-nums">{kept?.revenuePerCustomer ? inr(n(kept.revenuePerCustomer)) : "—"}</td>
-          <td className={`px-3 py-2 text-right tabular-nums ${kept && concentrated(kept) ? "font-semibold text-amber-700 dark:text-amber-400" : ""}`} title={kept?.topCustomer ?? undefined}>{pct(kept?.topShare)}</td>
+          <td className={`px-3 py-2 text-right tabular-nums ${kept && concentrated(kept) ? "font-semibold text-warning" : ""}`} title={kept?.topCustomer ?? undefined}>{pct(kept?.topShare)}</td>
           <td className="px-3 py-2 text-right tabular-nums">{pct(now?.winRate)}</td>
           <td className="px-3 py-2 text-right tabular-nums">{now?.avgDealSize ? inr(n(now.avgDealSize)) : "—"}</td>
           <td className="py-2 pl-3 text-right tabular-nums">{now?.cycleDays ?? "—"}</td>

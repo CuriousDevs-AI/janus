@@ -4,7 +4,8 @@ import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowUpFromLine, CheckCircle2, RotateCcw, Bot, Layers, Sparkles } from "lucide-react";
+import { ArrowUpFromLine, CheckCircle2, RotateCcw, Bot, Layers } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { useAppStore } from "@/lib/stores/app-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -230,7 +231,7 @@ export default function KnowledgeDetailPage({ params }: { params: Promise<{ id: 
                         <span className="text-mono text-[12.5px] font-medium text-foreground">v{v.version}</span>
                         {isCurrent && (
                           <Badge variant="accent" className="gap-1">
-                            <Sparkles className="size-3" />
+                            <CuriousdevsLogo className="size-3" />
                             Current
                           </Badge>
                         )}

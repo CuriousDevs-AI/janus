@@ -26,6 +26,14 @@ async def import_statement(
 ) -> schemas.BankImported:
     try:
         tenant_id = await enter_company(db, user_id, company_id, "portfolio:finance")
+        seen: set[tuple[str, str, int]] = set()
+        deduped = []
+        for row in data.rows:
+            key = (row.date, row.description, _paise(row.amount))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(row)
         added, skipped = await finance_service.import_bank_lines(
             db,
             tenant_id,
@@ -38,7 +46,7 @@ async def import_statement(
                     amount_paise=_paise(row.amount),
                     balance_paise=_paise(row.balance) if row.balance is not None else None,
                 )
-                for row in data.rows
+                for row in deduped
             ],
             ip,
         )

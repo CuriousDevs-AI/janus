@@ -24,7 +24,7 @@ export function TeamToday({ leads, deals }: { leads: Lead[]; deals: Deal[] }) {
     return rows.get(key)!;
   };
   for (const lead of leads) {
-    if (["won", "lost"].includes(lead.stage)) continue;
+    if (["converted", "lost"].includes(lead.stage)) continue;
     const item = row(lead.ownerId, lead.ownerName);
     item.open += 1;
     if (lead.nextFollowUpOn === today) item.dueToday += 1;

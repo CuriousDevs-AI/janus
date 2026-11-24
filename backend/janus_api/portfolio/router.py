@@ -1,10 +1,10 @@
+from datetime import UTC, datetime
 from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 
 from janus_api.ai import service as ai
-from janus_api.core.db import session_factory
 from janus_api.core.deps import CurrentActor, Db, request_ip
 from janus_api.core.errors import ApiError
 from janus_api.core.tenancy import set_context
@@ -22,6 +22,7 @@ from janus_api.portfolio import (
     intelligence,
     intercompany,
     knowledge,
+    logos,
     payroll,
     preferences,
     schemas,
@@ -34,19 +35,15 @@ from janus_api.portfolio.compliance import plan as compliance
 from janus_api.portfolio.periods import today_ist
 
 
-async def _portfolio_guard(actor: CurrentActor) -> None:
-    """Reject callers who lack portfolio:read on every tenant they belong to.
-
-    Uses its own short-lived session so the handler's Db transaction is not held open
-    while parallel company reads run inside the summary endpoint.
-    """
-    async with session_factory()() as db:
-        await set_context(db, user_id=actor.user.id, tenant_id=actor.session.tenant_id)
-        allowed = await readable_companies(db, actor.user.id)
-        await db.rollback()
+async def _portfolio_guard(actor: CurrentActor, db: Db) -> None:
+    """Reject callers who lack portfolio:read on any tenant they belong to."""
+    allowed = await readable_companies(db, actor.user.id)
     if not allowed:
         raise ApiError("forbidden", "You do not have access to the Portfolio.", 403)
 
+
+_digest_cache: dict[int, tuple[datetime, schemas.DigestPreview]] = {}
+_DIGEST_TTL = 300
 
 router = APIRouter(
     prefix="/v1/portfolio",
@@ -112,9 +109,13 @@ async def set_digest(
 
 @router.get("/digest/preview", response_model=schemas.DigestPreview)
 async def digest_preview(actor: CurrentActor, db: Db) -> schemas.DigestPreview:
+    cached = _digest_cache.get(actor.user.id)
+    if cached and (datetime.now(UTC) - cached[0]).total_seconds() < _DIGEST_TTL:
+        return cached[1]
     message = await digest.build(db, actor.user.id, actor.user.name, actor.session.tenant_id, None)
     if message is None:
         raise ApiError("not_found", "There is no company in your Portfolio yet.", 404)
+    _digest_cache[actor.user.id] = (datetime.now(UTC), message)
     return message
 
 
@@ -177,10 +178,12 @@ async def set_registration(
 
 
 @router.get("/activity", response_model=schemas.ActivityList)
-async def read_activity(actor: CurrentActor, db: Db, days: int = 30) -> schemas.ActivityList:
+async def read_activity(
+    actor: CurrentActor, db: Db, days: int = 30, cursor: str | None = None
+) -> schemas.ActivityList:
     """What happened lately in every company the person sees, newest first."""
     return await activity.activity(
-        db, actor.user.id, actor.session.tenant_id, max(1, min(days, 90))
+        db, actor.user.id, actor.session.tenant_id, max(1, min(days, 90)), cursor
     )
 
 
@@ -210,6 +213,33 @@ async def update_details(
     return await companies.update_details(
         db, actor.user.id, actor.session.tenant_id, company_id, data, request_ip(request)
     )
+
+
+@router.get("/companies/{company_id}/logo")
+async def read_logo(company_id: str, actor: CurrentActor, db: Db) -> Response:
+    tenant_id = await enter_company(db, actor.user.id, company_id, "portfolio:read")
+    await set_context(db, user_id=actor.user.id, tenant_id=actor.session.tenant_id)
+    row = await logos.read(db, tenant_id)
+    if row is None:
+        raise ApiError("not_found", "No logo uploaded.", 404)
+    return Response(content=row.data, media_type=row.content_type)
+
+
+@router.put("/companies/{company_id}/logo", status_code=204)
+async def save_logo(
+    company_id: str,
+    file: Annotated[bytes, File()],
+    actor: CurrentActor,
+    db: Db,
+) -> Response:
+    await logos.save(db, actor.user.id, actor.session.tenant_id, company_id, file)
+    return Response(status_code=204)
+
+
+@router.delete("/companies/{company_id}/logo", status_code=204)
+async def remove_logo(company_id: str, actor: CurrentActor, db: Db) -> Response:
+    await logos.remove(db, actor.user.id, actor.session.tenant_id, company_id)
+    return Response(status_code=204)
 
 
 @router.get("/intelligence/models", response_model=schemas.ModelsOut)
@@ -461,9 +491,9 @@ async def read_preferences(actor: CurrentActor, db: Db) -> schemas.Preferences:
 
 @router.put("/preferences", response_model=schemas.Preferences)
 async def save_preferences(
-    data: schemas.Preferences, actor: CurrentActor, db: Db
+    data: schemas.Preferences, actor: CurrentActor, db: Db, request: Request
 ) -> schemas.Preferences:
-    return await preferences.save(db, actor.user.id, data)
+    return await preferences.save(db, actor.user.id, data, request_ip(request))
 
 
 @router.get("/compliance/register", response_model=list[schemas.RegisterRow])

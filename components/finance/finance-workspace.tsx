@@ -922,17 +922,22 @@ function BalanceSheetCard() {
   const receivables = invoices.filter((i) => !i.cancelled).reduce((sum, i) => sum + dueAmount(i, creditNotes), 0);
   const stock = items.reduce((sum, item) => sum + stockOn(movements, item.id) * item.rate, 0);
   const payables = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - (bill.tds ?? 0) - bill.payments.reduce((paid, p) => paid + p.amount, 0)), 0);
+  const outputTax = invoices.filter((i) => !i.cancelled && !i.opening).reduce((sum, inv) => { const t = invoiceTotals(inv); return sum + t.cgst + t.sgst + t.igst; }, 0);
+  const creditTax = creditNotes.filter((n) => n.status === "approved" && n.kind !== "write-off").reduce((sum, n) => { const inv = invoices.find((i) => i.id === n.invoiceId); if (!inv) return sum; const t = invoiceTotals(inv); return t.total > 0 ? sum + n.amount * ((t.cgst + t.sgst + t.igst) / t.total) : sum; }, 0);
+  const inputTax = expenses.reduce((sum, e) => sum + e.amount * (e.gstRate / 100), 0) + bills.filter((b) => !b.itcBlocked).reduce((sum, b) => sum + (b.gst ?? 0), 0);
+  const gstPayable = Math.round((outputTax - creditTax - inputTax) * 100) / 100;
   // Schedule III, vertical form: equity is share capital plus reserves and surplus; reserves include the profit to date.
   const reserves = profitAndLoss(invoices, creditNotes, bills, expenses).profit;
   const equity = shareCapital + reserves;
   const assets = cash + receivables + stock;
-  const liabilitiesAndEquity = equity + payables;
+  const liabilitiesAndEquity = equity + payables + gstPayable;
   const difference = Math.round((assets - liabilitiesAndEquity) * 100) / 100;
   const rows: [string, number, boolean][] = [
     ["Share capital", shareCapital, false],
     ["Reserves and surplus (profit to date)", reserves, false],
     ["Total equity", equity, true],
     ["Trade payables (bills still owed)", payables, false],
+    ["GST payable (net of ITC)", gstPayable, false],
     ["Total equity and liabilities", liabilitiesAndEquity, true],
     ["Cash and bank", cash, false],
     ["Trade receivables (owed by customers)", receivables, false],
@@ -2355,10 +2360,23 @@ function CustomerMasterView({ me }: { me: string }) {
   }
 
   const totalReceivable = invoices.filter((i) => !i.cancelled).reduce((s, i) => s + dueAmount(i, creditNotes), 0);
+  const invoicedCustomers = React.useMemo(() => {
+    if (customers.length > 0) return null;
+    const map = new Map<string, { company: string; outstanding: number; invoiceCount: number }>();
+    for (const inv of invoices.filter((i) => !i.cancelled)) {
+      const key = inv.customerCompany || inv.customer || "Unknown";
+      const existing = map.get(key) || { company: key, outstanding: 0, invoiceCount: 0 };
+      existing.outstanding += dueAmount(inv, creditNotes);
+      existing.invoiceCount += 1;
+      map.set(key, existing);
+    }
+    return Array.from(map.values());
+  }, [customers.length, invoices, creditNotes]);
+  const displayCount = invoicedCustomers ? invoicedCustomers.length : customers.length;
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Total Customers" value={String(customers.length)} detail={`${customers.filter((c) => c.active).length} active`} />
+        <Kpi label="Total Customers" value={String(displayCount)} detail={invoicedCustomers ? "From invoices" : `${customers.filter((c) => c.active).length} active`} />
         <Kpi label="Segments" value={String(new Set(customers.map((c) => c.segment)).size)} detail="Customer segments" />
         <Kpi label="Total Receivable" value={money(totalReceivable)} detail="Outstanding from customers" />
         <Kpi label="With GSTIN" value={String(customers.filter((c) => c.gstin).length)} detail="GST registered" />
@@ -2368,12 +2386,19 @@ function CustomerMasterView({ me }: { me: string }) {
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm"><thead className="border-b border-border bg-surface-2"><tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Customer</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">GSTIN</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Segment</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Credit Limit</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Terms</th>
+            {!invoicedCustomers && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">GSTIN</th>}
+            {!invoicedCustomers && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Segment</th>}
+            {!invoicedCustomers && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Credit Limit</th>}
+            {invoicedCustomers && <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Invoices</th>}
+            {!invoicedCustomers && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Terms</th>}
             <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Outstanding</th>
-          </tr></thead><tbody className="divide-y divide-border">{customers.map((c) => {
+          </tr></thead><tbody className="divide-y divide-border">{invoicedCustomers ? invoicedCustomers.map((c) => (
+            <tr key={c.company} className="hover:bg-surface-2">
+              <td className="px-4 py-3 font-medium">{c.company}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-xs">{c.invoiceCount}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{money(c.outstanding)}</td>
+            </tr>
+          )) : customers.map((c) => {
             const owed = invoices.filter((i) => !i.cancelled && i.customerCompany === c.company).reduce((s, i) => s + dueAmount(i, creditNotes), 0);
             const overLimit = owed > c.creditLimitAmount;
             return (
@@ -3324,6 +3349,7 @@ function InvoicesView({ me }: { me: string }) {
           </table>
         </CardContent>
       </Card>
+      <p className="mt-2 text-center text-xs text-muted-foreground sm:hidden">Swipe the table sideways to see more columns.</p>
       {creating ? <NewInvoiceDialog me={me} initialDeal={fromDeal} onClose={() => setCreating(false)} /> : null}
       {paying ? <PaymentDialog invoice={paying} onClose={() => setPaying(null)} /> : null}
       {selected ? <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} /> : null}

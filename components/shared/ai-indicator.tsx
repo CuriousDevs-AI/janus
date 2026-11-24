@@ -1,4 +1,5 @@
-import { Sparkles, Bot, UserRound } from "lucide-react";
+import { Bot, UserRound } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { cn } from "@/lib/utils";
 
 export function AIIndicator({ label = "AI", className }: { label?: string; className?: string }) {
@@ -9,7 +10,7 @@ export function AIIndicator({ label = "AI", className }: { label?: string; class
         className
       )}
     >
-      <Sparkles className="size-3" />
+      <CuriousdevsLogo className="size-3" />
       {label}
     </span>
   );

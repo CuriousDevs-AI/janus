@@ -38,6 +38,7 @@ def output(deal: Deal, lead: Lead, contact: Contact, owner: User | None = None) 
     return schemas.DealOut.model_validate(
         dict(
             id=str(deal.id),
+            crmId=str(deal.crm_id),
             leadId=str(lead.id),
             customerId=str(contact.id),
             customerName=contact.name or contact.phone_e164 or contact.email or "Customer",
@@ -66,8 +67,11 @@ async def list_deals(
     limit: int,
     stage: str | None = None,
     owner_id: int | None = None,
+    crm_id: int | None = None,
 ) -> list[schemas.DealOut]:
     query = (await query_for(db, actor)).where(Deal.id > after_id)
+    if crm_id is not None:
+        query = query.where(Deal.crm_id == crm_id)
     if stage is not None:
         query = query.where(Deal.stage == stage)
     if owner_id is not None:
@@ -108,6 +112,7 @@ async def create(
         return output(deal, lead, contact, owner)
     deal = Deal(
         tenant_id=tenant_id,
+        crm_id=lead.crm_id,
         lead_id=lead_id,
         name=data.name,
         amount=data.amount,
@@ -115,9 +120,9 @@ async def create(
         expected_close_at=data.expectedCloseAt,
     )
     db.add(deal)
-    lead.stage, lead.last_activity_at = data.stage, now()
+    old_lead_stage = lead.stage
+    lead.stage, lead.last_activity_at = "converted", now()
     set_lost(deal, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
-    set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
     await db.flush()
     record(
         db,
@@ -133,6 +138,17 @@ async def create(
             "lost_category": deal.lost_category or "",
             "lost_reason": deal.lost_reason,
             "amount": format(deal.amount, ".2f"),
+        },
+    )
+    record(
+        db,
+        "lead.updated",
+        user_id=actor.user.id,
+        tenant_id=tenant_id,
+        details={
+            "lead_id": lead_id,
+            "from_stage": old_lead_stage,
+            "to_stage": "converted",
         },
     )
     owner = await db.get(User, lead.owner_id) if lead.owner_id else None
@@ -167,10 +183,7 @@ async def update(
     deal.name, deal.amount, deal.stage, deal.expected_close_at = after[:4]
     deal.version += 1
     deal.updated_at = lead.last_activity_at = now()
-    lead.stage = deal.stage
     set_lost(deal, data.stage, data.lostCategory, data.lostReason, deal.updated_at)
-    set_lost(lead, data.stage, data.lostCategory, data.lostReason, deal.updated_at)
-    # A won or lost deal has nothing left to follow up.
     if deal.stage in ("won", "lost"):
         lead.next_follow_up_on = None
     record(

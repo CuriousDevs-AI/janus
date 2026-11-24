@@ -2,7 +2,7 @@
  * The people in the end-to-end suite. See PERSONAS.md for who they are and what each wants from Janus.
  * Each run gets its own email addresses, so runs never collide.
  */
-export type Role = "owner" | "admin" | "manager" | "agent" | "group_finance";
+export type Role = "owner" | "admin" | "manager" | "agent" | "group_finance" | "finance_manager" | "operations_manager";
 export type Department = "Sales" | "Finance" | "Operations" | "Projects" | "IT";
 
 export interface Person {
@@ -33,7 +33,7 @@ export const EMPLOYEES: Person[] = [
   { key: "arjun", name: "Arjun Mehta", title: "Sales Manager", role: "manager", department: "Sales", managerKey: "vikram", salary: 120000 },
   { key: "priya", name: "Priya Nair", title: "Sales Executive", role: "agent", department: "Sales", managerKey: "arjun", salary: 45000 },
   { key: "rohan", name: "Rohan Das", title: "Sales Executive", role: "agent", department: "Sales", managerKey: "arjun", salary: 42000 },
-  { key: "meera", name: "Meera Iyer", title: "Finance Manager", role: "manager", department: "Finance", managerKey: "vikram", salary: 130000 },
+  { key: "meera", name: "Meera Iyer", title: "Finance Manager", role: "finance_manager", department: "Finance", managerKey: "vikram", salary: 130000 },
   { key: "sneha", name: "Sneha Reddy", title: "Accountant", role: "agent", department: "Finance", managerKey: "meera", salary: 60000 },
   { key: "tarun", name: "Tarun Jain", title: "Accounts Payable Executive", role: "agent", department: "Finance", managerKey: "meera", salary: 40000 },
   { key: "karan", name: "Karan Singh", title: "Operations Manager", role: "manager", department: "Operations", managerKey: "vikram", salary: 110000 },

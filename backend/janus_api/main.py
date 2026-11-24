@@ -127,11 +127,13 @@ async def health() -> dict[str, str]:
 @app.post("/health/migrate")
 async def health_migrate() -> dict[str, str]:
     import subprocess
+    import pathlib
     info: dict[str, str] = {}
     try:
+        base = pathlib.Path("/app") if pathlib.Path("/app/alembic.ini").exists() else pathlib.Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            ["/app/.venv/bin/alembic", "-c", "/app/alembic.ini", "upgrade", "head"],
-            capture_output=True, text=True, timeout=120, cwd="/app",
+            [str(base / ".venv" / "bin" / "alembic"), "-c", str(base / "alembic.ini"), "upgrade", "head"],
+            capture_output=True, text=True, timeout=120, cwd=str(base),
         )
         info["exit_code"] = str(result.returncode)
         info["stdout"] = result.stdout[-1000:] if result.stdout else ""
@@ -156,7 +158,7 @@ async def health_db() -> dict[str, str]:
             row = await db.execute(sa_text("SELECT 1"))
             info["db"] = "connected" if row else "no result"
             tables = await db.execute(sa_text(
-                "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 30"
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 100"
             ))
             tbl_list = [r[0] for r in tables]
             info["tables"] = ",".join(tbl_list)
@@ -170,7 +172,7 @@ async def health_db() -> dict[str, str]:
                     cfg.set_main_option("script_location", "/app/migrations")
                     alembic_cmd.upgrade(cfg, "head")
                     tables2 = await db.execute(sa_text(
-                        "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 30"
+                        "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 100"
                     ))
                     tbl_list2 = [r[0] for r in tables2]
                     info["auto_migrate"] = f"done, {len(tbl_list2)} tables"

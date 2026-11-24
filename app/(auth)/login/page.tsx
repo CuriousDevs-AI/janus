@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,10 +61,11 @@ export default function LoginPage() {
         return;
       }
       try {
-        const setup = await api<{ setupCompleted: boolean }>("/business/setup");
-        router.replace(setup.setupCompleted ? "/settings?tab=workspace&view=overview&workspace=business" : "/setup");
+        const setup = await api<{ setupCompleted: boolean; completedSteps?: string[] }>("/business/setup");
+        const allStepIds = ["business_details", "workspaces", "members", "team_chat", "data_connections"];
+        const done = setup.setupCompleted || allStepIds.every((s) => (setup.completedSteps ?? []).includes(s));
+        router.replace(done ? "/settings?tab=workspace&view=overview&workspace=business" : "/portfolio?view=companies");
       } catch {
-        // Older deployments without the business migration continue to CRM.
         router.replace("/leads");
       }
     } catch (error) {
@@ -73,7 +75,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
+        <CuriousdevsLogo className="size-14 text-accent" loading />
         <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-foreground">
           Your customer operations,
           <br />
@@ -119,8 +122,8 @@ export default function LoginPage() {
         </div>
 
         <Button type="submit" className="mt-1 w-full" disabled={isSubmitting}>
-          Sign in
-          <ArrowRight className="size-3.5" />
+          {isSubmitting ? "Signing in…" : "Sign in"}
+          {!isSubmitting && <ArrowRight className="size-3.5" />}
         </Button>
       </form>
 

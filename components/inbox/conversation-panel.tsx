@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   Send,
   Paperclip,
-  Sparkles,
   CalendarClock,
   MoreHorizontal,
   Bot,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { generateAIReply, generateDraft } from "@/lib/services/ai-responder";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { ChannelBadge } from "@/components/shared/channel-badge";
 import { AIIndicator, AIConfidence } from "@/components/shared/ai-indicator";
@@ -39,7 +39,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
   const customer = useAppStore((s) => s.customers.find((c) => c.id === conversation?.customerId));
   const allLeads = useAppStore((s) => s.leads);
   const customerLeads = allLeads.filter((l) => l.customerId === conversation?.customerId);
-  const lead = customerLeads.find((l) => l.stage !== "won" && l.stage !== "lost") ?? customerLeads[0];
+  const lead = customerLeads.find((l) => l.stage !== "converted" && l.stage !== "lost") ?? customerLeads[0];
   const sendMessage = useAppStore((s) => s.sendMessage);
   const simulateAIReply = useAppStore((s) => s.simulateAIReply);
   const markConversationRead = useAppStore((s) => s.markConversationRead);
@@ -143,7 +143,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
         {aiDraft && (
           <div className="mx-auto mb-2 max-w-2xl rounded-md border border-accent-border bg-accent-muted p-3">
             <div className="mb-1.5 flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-accent" />
+              <CuriousdevsLogo className="size-3.5 text-accent" />
               <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">Suggested response</span>
             </div>
             <p className="text-[13px] text-foreground">{aiDraft}</p>
@@ -187,7 +187,7 @@ export function ConversationPanel({ conversationId }: { conversationId: string |
                 <Paperclip className="size-3.5" />
               </Button>
               <Button variant="ghost" size="sm" onClick={() => { setDraftIndex(0); setAiDraft(generateDraft(0)); }}>
-                <Sparkles className="size-3.5 text-accent" />
+                <CuriousdevsLogo className="size-3.5 text-accent" />
                 AI Draft
               </Button>
               <Button variant="ghost" size="sm" onClick={() => toast.success("Meeting scheduled", { description: "Technical Demo - Tomorrow 3:00 PM" })}>

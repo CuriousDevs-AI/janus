@@ -11,6 +11,7 @@ import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import type { Activity, CrmTag, Deal, Lead, LeadNote, LeadScore } from "@/lib/api/types";
 import { leadStageMeta } from "@/lib/status-meta";
+import { SourceBadge } from "@/components/shared/source-badge";
 import type { LeadStage } from "@/lib/types";
 import { formatCurrencyINR, formatRelativeTime, formatDateTime } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -29,7 +30,7 @@ import { DealItemsEditor } from "./deal-items";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { todayIso } from "@/lib/today";
 
-const STAGES = ["new", "contacted", "qualified", "demo", "proposal", "negotiation", "approval", "won", "lost"] as const;
+const STAGES = ["new", "contacted", "qualified", "converted", "lost"] as const;
 
 const ACTIVITY_ICON: Record<string, typeof Phone> = {
   call: Phone,
@@ -136,7 +137,7 @@ function LeadDetailContent({
             {lead.company && <p className="text-sm text-muted-foreground flex items-center gap-1"><Building2 className="size-3" /> {lead.company}</p>}
             <div className="flex items-center gap-2 mt-1.5">
               <Badge variant={stageMeta.tone}>{stageMeta.label}</Badge>
-              <Badge variant="outline" className="text-xs">{lead.source.replace("_", " ")}</Badge>
+              <SourceBadge source={lead.source} />
               {scoreData.data && <Badge variant={scoreData.data.score >= 80 ? "success" : scoreData.data.score >= 50 ? "warning" : "neutral"} className="text-xs">Score: {scoreData.data.score}</Badge>}
               {lead.ownerName && <span className="text-xs text-muted-foreground">{lead.ownerName}</span>}
             </div>
@@ -160,12 +161,12 @@ function LeadDetailContent({
               </a>
             </Button>
           )}
-          <Select value={lead.stage} onValueChange={changeStage}>
+          <Select value={lead.stage} onValueChange={changeStage} disabled={lead.stage === "converted"}>
             <SelectTrigger className="h-7 w-32 text-xs ml-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STAGES.map((s) => (
+              {STAGES.filter((s) => s !== "converted").map((s) => (
                 <SelectItem key={s} value={s}>{leadStageMeta[s].label}</SelectItem>
               ))}
             </SelectContent>
@@ -189,7 +190,7 @@ function LeadDetailContent({
               <InfoRow label="Phone" value={lead.phone} />
               <InfoRow label="Email" value={lead.email} />
               <InfoRow label="Company" value={lead.company} />
-              <InfoRow label="Source" value={lead.source.replace("_", " ")} />
+              <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground shrink-0">Source</span><SourceBadge source={lead.source} /></div>
               <InfoRow label="Campaign" value={lead.campaign} />
               <InfoRow label="Created" value={formatDateTime(lead.createdAt)} />
               <InfoRow label="Last activity" value={formatRelativeTime(lead.lastActivityAt)} />

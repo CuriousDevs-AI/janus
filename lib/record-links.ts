@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useApi } from "@/lib/api/use-api";
+import { useSession } from "@/components/auth/session-provider";
+import { can } from "@/lib/permissions";
 import { customersFromLeads } from "@/lib/customers-from-leads";
 import { useAppStore } from "@/lib/stores/app-store";
 import { syncSupportTickets } from "@/lib/ticket-records";
@@ -18,12 +20,15 @@ export interface LinkOption { id: string; label: string }
 const closedTicket = (status: string) => status === "resolved" || status === "closed";
 
 export function useCrmLinkOptions() {
+  const session = useSession();
+  const canReadLeads = can(session, "leads:read_own") || can(session, "leads:read_team");
+  const canReadTickets = can(session, "support:read") || can(session, "support:manage");
   const tickets = useAppStore((state) => state.tickets);
-  const leads = useApi<Lead[]>("/leads?limit=100&after_id=0");
-  const deals = useApi<{ id: string; name: string; customerName: string }[]>("/deals?limit=100&after_id=0");
+  const leads = useApi<Lead[]>(canReadLeads ? "/leads?limit=100&after_id=0" : null);
+  const deals = useApi<{ id: string; name: string; customerName: string }[]>(canReadLeads ? "/deals?limit=100&after_id=0" : null);
   React.useEffect(() => {
-    syncSupportTickets().catch(() => { /* the choices stay as they are */ });
-  }, []);
+    if (canReadTickets) syncSupportTickets().catch(() => { /* the choices stay as they are */ });
+  }, [canReadTickets]);
   const customers = customersFromLeads(leads.data ?? []).map((c): LinkOption => ({ id: c.id, label: c.name }));
   return {
     customers,

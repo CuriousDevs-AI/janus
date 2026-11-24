@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { SectionCard } from "@/components/settings/section-ui";
 import { api, message } from "@/lib/api/client";
 import { switchTenant } from "@/lib/live-company";
+import { readPortfolioLogo } from "@/features/portfolio/lib/logos";
+import { CompanyLogo } from "@/components/shared/company-logo";
 import { Kpi } from "@/features/portfolio/components/figures";
 import { RegistrationCard } from "@/features/portfolio/components/compliance";
 import { DocumentsCard } from "@/features/portfolio/components/documents";
@@ -35,12 +37,14 @@ export function Companies({ list, period, onAdd, onSaved }: { list: PortfolioCom
   const pathname = usePathname();
   const chosen = params.get("company");
   const [editing, setEditing] = React.useState<PortfolioCompany | null>(null);
+  const [logoTick, setLogoTick] = React.useState(0);
   const { owns, handlesMoney } = useRoles();
   const go = (company: string | null) => { const next = new URLSearchParams(params.toString()); if (company) next.set("company", company); else next.delete("company"); router.push(`${pathname}?${next.toString()}`); };
   const profile = list.find((item) => item.id === chosen);
-  const editor = editing && <CompanyEditor item={editing} basics={owns(editing)} onClose={() => setEditing(null)} onSaved={onSaved} />;
+  const handleSaved = React.useCallback(() => { setLogoTick((v) => v + 1); onSaved(); }, [onSaved]);
+  const editor = editing && <CompanyEditor item={editing} basics={owns(editing)} onClose={() => setEditing(null)} onSaved={handleSaved} />;
   const canEdit = (item: PortfolioCompany) => handlesMoney(item);
-  if (profile) return <><CompanyProfile item={profile} period={period} onBack={() => go(null)} onSaved={onSaved} onEdit={canEdit(profile) ? () => setEditing(profile) : undefined} />{editor}</>;
+  if (profile) return <><CompanyProfile key={logoTick} item={profile} period={period} onBack={() => go(null)} onSaved={onSaved} onEdit={canEdit(profile) ? () => setEditing(profile) : undefined} />{editor}</>;
   return <><CompanyTable list={list} period={period} onAdd={onAdd} onOpen={go} onEdit={(item) => canEdit(item) ? setEditing(item) : undefined} canEdit={canEdit} /><ArchivedByPlan owner={Boolean(onAdd)} />{editor}</>;
 }
 
@@ -144,11 +148,11 @@ function CompanyProfile({ item, period, onBack, onSaved, onEdit }: { item: Portf
     </div>
 
     <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 md:flex-row md:items-start">
-      <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-foreground text-lg font-semibold text-background" aria-hidden>{item.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
+      <CompanyLogo company={{ id: item.id, name: item.name, logo: readPortfolioLogo(item.id) }} size={56} className="rounded-xl" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold">{item.name}</h2>{item.health && <Badge variant={healthTone[item.health.status]}>{healthName[item.health.status]}</Badge>}{item.current && <Badge variant="neutral">Open now</Badge>}</div>
         <p className="mt-0.5 text-sm text-muted-foreground">{[reg?.legalName && reg.legalName !== item.name ? reg.legalName : null, reg?.entityType ? entityNames[reg.entityType] : null, businessName(item), item.industry || null, item.companySize || null, reg?.incorporatedOn ? `founded ${reg.incorporatedOn.slice(0, 4)}` : null].filter(Boolean).join(" · ")}</p>
-        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm">{contact.map(([icon, text, href], index) => <li key={index} className={`flex items-center gap-1.5 ${text ? "" : "text-muted-foreground/70"}`}>{icon}{text ? href ? <a className="text-accent hover:underline" href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">{text}</a> : text : "Not recorded"}</li>)}</ul>
+        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm">{contact.some(([, text]) => text) ? contact.filter(([, text]) => text).map(([icon, text, href], index) => <li key={index} className="flex items-center gap-1.5">{icon}{href ? <a className="text-accent hover:underline" href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">{text}</a> : text}</li>) : <li className="text-muted-foreground/70">No contact details recorded yet</li>}</ul>
         {reg?.registeredAddress && <p className="mt-2 text-xs text-muted-foreground">Registered office: {reg.registeredAddress}</p>}
       </div>
     </section>

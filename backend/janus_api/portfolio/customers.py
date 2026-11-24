@@ -257,7 +257,8 @@ async def merge(
         raise ApiError("same_customer", "These names are already counted as one customer.", 422)
     try:
         tenant_id = await enter_company(db, user_id, company_id, "billing:manage")
-        known = {row.alias_key: row for row in (await db.scalars(select(CustomerMerge))).all()}
+        stmt = select(CustomerMerge).where(CustomerMerge.tenant_id == tenant_id)
+        known = {row.alias_key: row for row in (await db.scalars(stmt)).all()}
         if into_key in known:
             # Merging into a name that is itself merged counts it as that name's customer.
             into_key, into = customer_key(known[into_key].customer), known[into_key].customer
@@ -302,7 +303,12 @@ async def unmerge(
     """Counts a merged name as its own customer again."""
     try:
         tenant_id = await enter_company(db, user_id, company_id, "billing:manage")
-        row = await db.scalar(select(CustomerMerge).where(CustomerMerge.id == merge_id))
+        row = await db.scalar(
+            select(CustomerMerge).where(
+                CustomerMerge.id == merge_id,
+                CustomerMerge.tenant_id == tenant_id,
+            )
+        )
         if row is None:
             raise ApiError("merge_not_found", "That merge was not found.", 404)
         await db.delete(row)

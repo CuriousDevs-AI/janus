@@ -680,7 +680,7 @@ async def bills_for_invoices(
             ),
             key=lambda row: abs((row.bill_date - invoice.invoice_date).days),
         )
-        if near:
+        if len(near) == 1:
             found[invoice.number] = BillMatch(number=str(near[0].number), by_number=False)
             used.add(str(near[0].number))
     return found

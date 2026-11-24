@@ -55,8 +55,8 @@ interface StoreData {
   data: PipelineConfig | null;
 }
 
-export function usePipelineConfig() {
-  const store = useApi<StoreData>("/workspace-state/janus.pipeline.v1");
+export function usePipelineConfig(enabled = true) {
+  const store = useApi<StoreData>(enabled ? "/workspace-state/janus.pipeline.v1" : null);
   const [saving, setSaving] = useState(false);
 
   const config: PipelineConfig = useMemo(() => {

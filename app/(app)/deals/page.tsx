@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Plus, GripVertical, RefreshCw, Building2, User, CalendarClock,
+  Plus, RefreshCw, Building2, CalendarClock,
   LayoutGrid, List, Settings2, ArrowUpDown, ArrowUp, ArrowDown,
   Eye, MoreHorizontal, Pencil, Trash2, ChevronUp, ChevronDown as ChevronDownIcon,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { can } from "@/lib/permissions";
@@ -15,51 +16,75 @@ import { api, message } from "@/lib/api/client";
 import type { Deal } from "@/lib/api/types";
 import { useSession } from "@/components/auth/session-provider";
 import { PageHeader } from "@/components/shared/page-header";
-import { SearchInput } from "@/components/shared/search-input";
 import { DealForm } from "@/components/deals/deal-form";
 import { formatCurrencyINR, formatRelativeTime, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePipelineConfig, barColor, AVAILABLE_COLORS, toSlug, DEFAULT_STAGES, type PipelineStage } from "@/lib/hooks/use-pipeline-config";
+import { useCrmContext } from "@/lib/hooks/use-crm-context";
 
 const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+const BG_MAP: Record<string, string> = {
+  "bg-slate-500": "bg-slate-50 dark:bg-slate-950/30", "bg-blue-500": "bg-blue-50 dark:bg-blue-950/30",
+  "bg-cyan-500": "bg-cyan-50 dark:bg-cyan-950/30", "bg-indigo-500": "bg-indigo-50 dark:bg-indigo-950/30",
+  "bg-amber-500": "bg-amber-50 dark:bg-amber-950/30", "bg-orange-500": "bg-orange-50 dark:bg-orange-950/30",
+  "bg-purple-500": "bg-purple-50 dark:bg-purple-950/30", "bg-pink-500": "bg-pink-50 dark:bg-pink-950/30",
+  "bg-teal-500": "bg-teal-50 dark:bg-teal-950/30", "bg-lime-500": "bg-lime-50 dark:bg-lime-950/30",
+  "bg-fuchsia-500": "bg-fuchsia-50 dark:bg-fuchsia-950/30", "bg-sky-500": "bg-sky-50 dark:bg-sky-950/30",
+  "bg-emerald-500": "bg-emerald-50 dark:bg-emerald-950/30", "bg-red-500": "bg-red-50 dark:bg-red-950/30",
+};
+const BORDER_MAP: Record<string, string> = {
+  "bg-slate-500": "border-slate-200 dark:border-slate-800", "bg-blue-500": "border-blue-200 dark:border-blue-800",
+  "bg-cyan-500": "border-cyan-200 dark:border-cyan-800", "bg-indigo-500": "border-indigo-200 dark:border-indigo-800",
+  "bg-amber-500": "border-amber-200 dark:border-amber-800", "bg-orange-500": "border-orange-200 dark:border-orange-800",
+  "bg-purple-500": "border-purple-200 dark:border-purple-800", "bg-pink-500": "border-pink-200 dark:border-pink-800",
+  "bg-teal-500": "border-teal-200 dark:border-teal-800", "bg-lime-500": "border-lime-200 dark:border-lime-800",
+  "bg-fuchsia-500": "border-fuchsia-200 dark:border-fuchsia-800", "bg-sky-500": "border-sky-200 dark:border-sky-800",
+  "bg-emerald-500": "border-emerald-200 dark:border-emerald-800", "bg-red-500": "border-red-200 dark:border-red-800",
+};
+function columnBg(color: string) { return BG_MAP[color] ?? "bg-muted/30"; }
+function columnBorder(color: string) { return BORDER_MAP[color] ?? "border-border"; }
 
 type ViewMode = "board" | "table";
 type SortKey = "name" | "amount" | "stage" | "expectedCloseAt" | "updatedAt" | "customerName";
 type SortDir = "asc" | "desc";
 
-function useLocalView(): [ViewMode, (v: ViewMode) => void] {
-  const [view, setViewState] = useState<ViewMode>(() => {
-    try { return (localStorage.getItem("janus:deals:view") as ViewMode) || "board"; } catch { return "board"; }
+function useLocalPref<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try { return (localStorage.getItem(key) as T) || fallback; } catch { return fallback; }
   });
-  const setView = (v: ViewMode) => { setViewState(v); try { localStorage.setItem("janus:deals:view", v); } catch {} };
-  return [view, setView];
+  const set = (v: T) => { setVal(v); try { localStorage.setItem(key, v); } catch {} };
+  return [val, set];
 }
 
 export default function DealsPage() {
   const session = useSession();
+  const { crms, multiCrm } = useCrmContext();
+  const [crmFilter, setCrmFilter] = useState<string>("all");
+  const crmParam = multiCrm && crmFilter !== "all" ? `&crm_id=${crmFilter}` : "";
   const canWrite = can(session, "leads:write");
   const canAdmin = can(session, "settings:manage");
+  const canReadTeam = can(session, "leads:read_team");
   const writable = canWrite;
 
-  const pipeline = usePipelineConfig();
+  const pipeline = usePipelineConfig(canAdmin || canReadTeam);
   const { stages, stageMap } = pipeline;
   const stageOrder = stages.map((s) => s.key);
 
-  const [cursors, setCursors] = useState(["0"]);
-  const result = useApi<Deal[]>(`/deals?after_id=${cursors.at(-1)}&limit=100`);
-  const deals = result.data ?? [];
-  const everyDeal = useAllRows<Deal>("/deals");
-  const allDeals = everyDeal.data ?? deals;
+  const [view, setView] = useLocalPref<ViewMode>("janus:deals:view", "board");
+  const [perPage, setPerPage] = useLocalPref("janus:deals:perPage", "50");
+  const pageSize = Number(perPage) || 50;
 
-  const [view, setView] = useLocalView();
+  const [cursors, setCursors] = useState(["0"]);
+  const result = useApi<Deal[]>(`/deals?after_id=${cursors.at(-1)}&limit=${pageSize}${crmParam}`);
+  const deals = result.data ?? [];
+  const everyDeal = useAllRows<Deal>(`/deals?_=1${crmParam}`);
+  const allDeals = everyDeal.data ?? deals;
   const [query, setQuery] = useState("");
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [editing, setEditing] = useState<Deal | null>(null);
@@ -129,10 +154,10 @@ export default function DealsPage() {
     else { setSortKey(key); setSortDir(key === "amount" ? "desc" : "asc"); }
   }
 
-  function SortIcon({ col }: { col: SortKey }) {
+  const sortIcon = (col: SortKey) => {
     if (sortKey !== col) return <ArrowUpDown className="size-3 text-muted-foreground/50" />;
     return sortDir === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />;
-  }
+  };
 
   const toggleSelect = (id: string) => setSelectedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const allSelected = sorted.length > 0 && sorted.every((d) => selectedIds.has(d.id));
@@ -147,29 +172,41 @@ export default function DealsPage() {
         actions={<>
           <Button size="sm" variant="secondary" onClick={reload} aria-label="Refresh"><RefreshCw className="size-3.5" /></Button>
           {canAdmin && <Button size="sm" variant="outline" onClick={() => setStageSettingsOpen(true)}><Settings2 className="size-3.5" /> Stages</Button>}
-          {writable && <Button size="sm" asChild><Link href="/leads"><Plus className="size-3.5" /> New Deal</Link></Button>}
+          {writable && <Button size="sm" asChild><Link href="/leads" title="Deals are created by converting a lead"><Plus className="size-3.5" /> Convert Lead</Link></Button>}
         </>}
       />
 
       {result.error && <p role="alert" className="mx-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">{result.error}</p>}
 
-      {/* Pipeline value bar */}
-      <div className="px-6 pb-3">
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-2">
+      {/* Pipeline bar + quick filters */}
+      <div className="px-6 pb-2">
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2">
           {pipelineStages.map((stage) => {
             const stageVal = filtered.filter((d) => d.stage === stage.key).reduce((a, d) => a + Number(d.amount), 0);
             const pct = (stageVal / pipelineTotal) * 100;
             if (pct < 0.5) return null;
-            return <div key={stage.key} className={cn("h-full transition-all", barColor(stage.color))} style={{ width: `${pct}%` }} title={`${stage.label}: ${formatCurrencyINR(stageVal)}`} />;
+            return (
+              <button
+                key={stage.key}
+                type="button"
+                onClick={() => setStageFilter(stageFilter === stage.key ? "all" : stage.key)}
+                className={cn("h-full transition-all hover:brightness-110", barColor(stage.color), stageFilter === stage.key && "ring-1 ring-foreground/20")}
+                style={{ width: `${pct}%` }}
+                title={`${stage.label}: ${formatCurrencyINR(stageVal)} (${filtered.filter((d) => d.stage === stage.key).length})`}
+              />
+            );
           })}
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
           {pipelineStages.map((stage) => {
             const count = filtered.filter((d) => d.stage === stage.key).length;
-            return <button key={stage.key} type="button" onClick={() => setStageFilter(stageFilter === stage.key ? "all" : stage.key)} className={cn("flex items-center gap-1.5 text-[10px] transition-colors", stageFilter === stage.key ? "font-bold" : "text-muted-foreground hover:text-foreground")}>
-              <span className={cn("size-2 rounded-full", stage.color)} />
-              {stage.label} ({count})
-            </button>;
+            const active = stageFilter === stage.key;
+            return (
+              <button key={stage.key} type="button" onClick={() => setStageFilter(active ? "all" : stage.key)} className={cn("flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[10px] transition-all", active ? "bg-surface-2 font-bold text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-surface-2/50")}>
+                <span className={cn("size-2 rounded-full transition-transform", stage.color, active && "scale-125")} />
+                {stage.label} <span className="tabular-nums">{count}</span>
+              </button>
+            );
           })}
         </div>
       </div>
@@ -177,56 +214,100 @@ export default function DealsPage() {
       {/* Summary cards */}
       <div className="grid gap-2 px-6 pb-3 sm:grid-cols-4" aria-label="Pipeline summary">
         {([
-          ["closing", "Closing This Month", closing, "bg-emerald-500"],
-          ["slipped", "Past Close Date", slipped, "bg-amber-500"],
-          ["undated", "No Close Date", undated, "bg-slate-400"],
-          ["mine", "My Deals", allDeals.filter((d) => d.ownerId === session.user.id), "bg-accent"],
-        ] as const).map(([key, title, list, dot]) => (
-          <button key={key} type="button" aria-pressed={closeFilter === key} onClick={() => setCloseFilter(closeFilter === key ? "all" : key)} className={cn("rounded-xl border p-3 text-left transition-all", closeFilter === key ? "border-accent bg-accent-muted shadow-sm" : "border-border bg-surface hover:bg-surface-2")}>
-            <div className="flex items-center gap-1.5">
-              <span className={cn("size-1.5 rounded-full", dot)} />
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
-            </div>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className={cn("text-lg font-bold tabular-nums", key === "slipped" && list.length ? "text-warning" : "")}>{list.length}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">{formatCurrencyINR(sumOf(list))}</span>
-            </div>
-          </button>
-        ))}
+          ["closing", "Closing this month", closing, "bg-emerald-500"],
+          ["slipped", "Past close date", slipped, "bg-amber-500"],
+          ["undated", "No close date", undated, "bg-slate-400"],
+          ["mine", "My deals", allDeals.filter((d) => d.ownerId === session.user.id), "bg-accent"],
+        ] as const).map(([key, title, list, dot]) => {
+          const active = closeFilter === key;
+          return (
+            <button key={key} type="button" aria-pressed={active} onClick={() => setCloseFilter(active ? "all" : key)} className={cn("group/card rounded-md p-3 text-left transition-all", active ? "bg-accent/10 shadow-sm ring-1 ring-accent/30" : "bg-surface-2/40 hover:bg-surface-2/70")}>
+              <div className="flex items-center gap-1.5">
+                <span className={cn("size-1.5 rounded-full transition-transform", dot, active && "scale-150")} />
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{title}</span>
+              </div>
+              <div className="mt-1.5 flex items-baseline gap-2">
+                <span className={cn("text-xl font-bold tabular-nums transition-colors", key === "slipped" && list.length ? "text-warning" : active ? "text-accent" : "")}>{list.length}</span>
+                <span className="text-[11px] text-muted-foreground tabular-nums">{formatCurrencyINR(sumOf(list))}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 pb-3">
-        <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
-          <button type="button" onClick={() => setView("board")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", view === "board" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><LayoutGrid className="size-3.5" /> Board</button>
-          <button type="button" onClick={() => setView("table")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", view === "table" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><List className="size-3.5" /> Table</button>
+      <div className="flex flex-wrap items-center gap-1 border-b border-border/50 px-6 pb-2">
+        <div className="flex bg-surface-2/60 p-0.5 rounded-md">
+          <button type="button" onClick={() => setView("board")} className={cn("flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors", view === "board" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><LayoutGrid className="size-3" /> Board</button>
+          <button type="button" onClick={() => setView("table")} className={cn("flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors", view === "table" ? "bg-surface shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}><List className="size-3" /> Table</button>
         </div>
-        <SearchInput value={query} onChange={setQuery} placeholder="Search deals…" className="w-60" />
-        <Select value={stageFilter} onValueChange={setStageFilter}>
-          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="All stages" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All stages</SelectItem>
-            {stages.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="ghost" disabled={cursors.length === 1} onClick={() => setCursors(cursors.slice(0, -1))}>Prev</Button>
-          <span className="text-xs text-muted-foreground">Page {cursors.length}</span>
-          <Button size="sm" variant="ghost" disabled={deals.length < 100} onClick={() => setCursors([...cursors, deals.at(-1)!.id])}>Next</Button>
-        </div>
+        <span className="mx-1 h-4 w-px bg-border/50" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search deals…"
+          className="w-44 border-0 bg-transparent px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+        />
+        <span className="mx-1 h-4 w-px bg-border/50" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", stageFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
+              {stageFilter === "all" ? "Stage" : stages.find((s) => s.key === stageFilter)?.label ?? "Stage"}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => setStageFilter("all")} className={stageFilter === "all" ? "font-semibold" : ""}>All stages</DropdownMenuItem>
+            {stages.map((s) => (
+              <DropdownMenuItem key={s.key} onSelect={() => setStageFilter(s.key)} className={stageFilter === s.key ? "font-semibold" : ""}>
+                <span className={cn("size-2 rounded-full", s.color)} /> {s.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {multiCrm && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs transition-colors", crmFilter !== "all" ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                <Building2 className="size-3" /> {crmFilter === "all" ? "CRM" : crms.find((c) => c.id === crmFilter)?.name ?? "CRM"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => setCrmFilter("all")} className={crmFilter === "all" ? "font-semibold" : ""}>All CRMs</DropdownMenuItem>
+              {crms.map((c) => (
+                <DropdownMenuItem key={c.id} onSelect={() => setCrmFilter(c.id)} className={crmFilter === c.id ? "font-semibold" : ""}>{c.name}</DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
-      {!result.data && !result.error && <p role="status" className="px-6 py-4 text-sm">Loading deals…</p>}
+      {!result.data && !result.error && (
+        <div role="status" className="space-y-1 px-6 py-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 py-2">
+              <div className="h-4 w-4 animate-pulse rounded bg-surface-2" />
+              <div className="h-4 w-32 animate-pulse rounded bg-surface-2" />
+              <div className="h-4 w-24 animate-pulse rounded bg-surface-2" />
+              <div className="h-4 w-16 animate-pulse rounded bg-surface-2" />
+              <div className="h-4 flex-1 animate-pulse rounded bg-surface-2" />
+              <div className="h-4 w-20 animate-pulse rounded bg-surface-2" />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Board View */}
       {result.data && view === "board" && (
         <>
           {filtered.length === 0 && <p className="px-6 pt-4 text-sm text-muted-foreground">No deals match your filters.</p>}
-          <div className="flex-1 overflow-auto px-6 py-4">
-            <div className="flex h-full min-h-[32rem] gap-3" style={{ minWidth: stages.length * 272 }}>
+          <div className="flex-1 overflow-x-auto px-6 py-3">
+            <div className="flex gap-3" style={{ minWidth: stages.length * 290 }}>
               {stages.map((stage) => {
                 const items = filtered.filter((d) => d.stage === stage.key);
                 const stageVal = items.reduce((s, d) => s + Number(d.amount), 0);
+                const colBg = columnBg(stage.color);
+                const colBorder = columnBorder(stage.color);
                 return (
                   <section
                     key={stage.key}
@@ -234,23 +315,48 @@ export default function DealsPage() {
                     onDragOver={(e) => { if (writable && !busy) { e.preventDefault(); setDragOverStage(stage.key); } }}
                     onDragLeave={() => setDragOverStage(null)}
                     onDrop={(e) => { e.preventDefault(); setDragOverStage(null); const deal = deals.find((d) => d.id === e.dataTransfer.getData("text/plain")); if (deal) void move(deal, stage.key); }}
-                    className={cn("flex w-64 shrink-0 flex-col rounded-xl border transition-all", dragOverStage === stage.key ? "border-accent bg-accent-muted/30 shadow-md" : "border-border bg-surface-2/30")}
+                    className={cn(
+                      "flex w-[280px] shrink-0 flex-col border transition-colors",
+                      colBorder,
+                      dragOverStage === stage.key && "ring-2 ring-accent/40",
+                    )}
                   >
-                    <div className="flex items-center gap-2 px-3 py-3 border-b border-border bg-surface/50 rounded-t-xl">
-                      <span className={cn("size-2.5 rounded-full shrink-0", stage.color)} />
-                      <h2 className="text-xs font-semibold flex-1 uppercase tracking-wide">{stage.label}</h2>
-                      <Badge variant="neutral" className="text-[10px] px-1.5 py-0">{items.length}</Badge>
+                    {/* Column header */}
+                    <div className={cn("flex items-center gap-2 px-3 py-2.5", colBg)}>
+                      <span className={cn("size-2.5 shrink-0 rounded-full", stage.color)} />
+                      <h2 className="flex-1 text-xs font-bold uppercase tracking-wider">{stage.label}</h2>
+                      <span className={cn("inline-flex size-5 items-center justify-center text-[10px] font-bold tabular-nums text-white", stage.color)}>{items.length}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="rounded-md p-0.5 text-muted-foreground/50 hover:text-muted-foreground"><MoreHorizontal className="size-3.5" /></button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => setStageFilter(stageFilter === stage.key ? "all" : stage.key)}>
+                            <Eye className="size-3.5 mr-2" />{stageFilter === stage.key ? "Show all" : "Filter to this stage"}
+                          </DropdownMenuItem>
+                          {canAdmin && <DropdownMenuItem onSelect={() => setStageSettingsOpen(true)}>
+                            <Settings2 className="size-3.5 mr-2" />Edit stages
+                          </DropdownMenuItem>}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 bg-surface/30">
-                      <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{formatCurrencyINR(stageVal)}</span>
-                      {stage.key !== "won" && stage.key !== "lost" && <span className="text-[9px] font-medium text-muted-foreground">{stage.probability}%</span>}
+
+                    {/* Value sub-header */}
+                    <div className={cn("flex items-baseline justify-between px-3 py-1.5 border-b", colBorder, colBg)}>
+                      <span className="text-sm font-bold tabular-nums">{formatCurrencyINR(stageVal)}</span>
+                      <span className="text-[10px] text-muted-foreground">{items.length} deal{items.length !== 1 ? "s" : ""}</span>
                     </div>
-                    <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
+
+                    {/* Cards */}
+                    <div className={cn("flex max-h-[calc(100vh-310px)] flex-1 flex-col gap-2 overflow-y-auto p-2", colBg)}>
                       {items.map((deal) => (
-                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} onEdit={() => setEditing(deal)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} stageMeta={stageMeta} />
+                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} stageColor={stage.color} onEdit={() => setEditing(deal)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} />
                       ))}
                       {items.length === 0 && (
-                        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border text-center text-xs text-muted-foreground py-8">Drop deals here</div>
+                        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
+                          <p className="text-xs font-medium text-muted-foreground">No deals here</p>
+                          <p className="text-[11px] text-muted-foreground/70">Drag a deal or add a new one.</p>
+                        </div>
                       )}
                     </div>
                   </section>
@@ -263,73 +369,124 @@ export default function DealsPage() {
 
       {/* Table View */}
       {result.data && view === "table" && (
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div className="flex-1 overflow-auto px-6 py-3">
           {sorted.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
-              <LayoutGrid className="size-10 text-muted-foreground/30" />
+              <LayoutGrid className="size-8 text-muted-foreground/20" />
               <p className="text-sm font-medium">No deals match your filters</p>
+              <p className="text-xs text-muted-foreground">Try adjusting your search or filters.</p>
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-surface-2">
-                    <TableHead className="w-10"><Checkbox checked={allSelected} onCheckedChange={(c) => setSelectedIds(c ? new Set(sorted.map((d) => d.id)) : new Set())} /></TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("name")}><div className="flex items-center gap-1">Deal <SortIcon col="name" /></div></TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("customerName")}><div className="flex items-center gap-1">Customer <SortIcon col="customerName" /></div></TableHead>
-                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("amount")}><div className="flex items-center justify-end gap-1">Value <SortIcon col="amount" /></div></TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("stage")}><div className="flex items-center gap-1">Stage <SortIcon col="stage" /></div></TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("expectedCloseAt")}><div className="flex items-center gap-1">Close Date <SortIcon col="expectedCloseAt" /></div></TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("updatedAt")}><div className="flex items-center gap-1">Updated <SortIcon col="updatedAt" /></div></TableHead>
-                    <TableHead className="w-14" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+            <>
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border/50 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    <th className="w-8 pb-2 pr-2"><Checkbox checked={allSelected} onCheckedChange={(c) => setSelectedIds(c ? new Set(sorted.map((d) => d.id)) : new Set())} /></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("name")}><span className="inline-flex items-center gap-1">Deal {sortIcon("name")}</span></th>
+                    {multiCrm && <th className="pb-2 pr-3">CRM</th>}
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("customerName")}><span className="inline-flex items-center gap-1">Customer {sortIcon("customerName")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3 text-right" onClick={() => toggleSort("amount")}><span className="inline-flex items-center gap-1 justify-end">Value {sortIcon("amount")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("stage")}><span className="inline-flex items-center gap-1">Stage {sortIcon("stage")}</span></th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("expectedCloseAt")}><span className="inline-flex items-center gap-1">Close {sortIcon("expectedCloseAt")}</span></th>
+                    <th className="pb-2 pr-3">Assignment</th>
+                    <th className="cursor-pointer select-none pb-2 pr-3" onClick={() => toggleSort("updatedAt")}><span className="inline-flex items-center gap-1">Updated {sortIcon("updatedAt")}</span></th>
+                    <th className="w-10 pb-2" />
+                  </tr>
+                </thead>
+                <tbody>
                   {sorted.map((deal) => {
                     const overdue = deal.expectedCloseAt && deal.expectedCloseAt < today && !["won", "lost"].includes(deal.stage);
                     const sm = stageMeta(deal.stage);
                     return (
-                      <TableRow key={deal.id} className={cn("group", selectedIds.has(deal.id) && "bg-accent-muted/30")}>
-                        <TableCell><Checkbox checked={selectedIds.has(deal.id)} onCheckedChange={() => toggleSelect(deal.id)} /></TableCell>
-                        <TableCell><Link href={`/deals/${deal.id}`} className="text-sm font-medium hover:text-accent hover:underline">{deal.name}</Link></TableCell>
-                        <TableCell><div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Building2 className="size-3 shrink-0" /><span className="truncate max-w-[140px]">{deal.customerName || deal.company || "—"}</span></div></TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums text-sm">{formatCurrencyINR(Number(deal.amount), false)}</TableCell>
-                        <TableCell>
+                      <tr key={deal.id} className={cn("group border-b border-border/30 transition-colors hover:bg-surface-2/40", selectedIds.has(deal.id) && "bg-accent/5")}>
+                        <td className="py-2 pr-2"><Checkbox checked={selectedIds.has(deal.id)} onCheckedChange={() => toggleSelect(deal.id)} /></td>
+                        <td className="py-2 pr-3">
+                          <Link href={`/deals/${deal.id}`} className="text-xs font-medium hover:text-accent">{deal.name}</Link>
+                        </td>
+                        {multiCrm && <td className="py-2 pr-3 text-xs text-muted-foreground">{crms.find((c) => c.id === deal.crmId)?.name ?? "—"}</td>}
+                        <td className="max-w-[140px] truncate py-2 pr-3 text-xs text-muted-foreground">{deal.customerName || deal.company || "—"}</td>
+                        <td className="py-2 pr-3 text-right text-xs font-semibold tabular-nums">{formatCurrencyINR(Number(deal.amount), false)}</td>
+                        <td className="py-2 pr-3">
                           {writable ? (
-                            <Select value={deal.stage} onValueChange={(v) => move(deal, v)}>
-                              <SelectTrigger className="h-7 w-32 text-xs border-0 bg-transparent px-1 hover:bg-surface-2">
-                                <div className="flex items-center gap-1.5"><span className={cn("size-2 rounded-full", sm.color)} /><SelectValue /></div>
-                              </SelectTrigger>
-                              <SelectContent>{stages.map((s) => <SelectItem key={s.key} value={s.key}><div className="flex items-center gap-2"><span className={cn("size-2 rounded-full", s.color)} />{s.label}</div></SelectItem>)}</SelectContent>
-                            </Select>
-                          ) : <div className="flex items-center gap-1.5 text-xs"><span className={cn("size-2 rounded-full", sm.color)} />{sm.label}</div>}
-                        </TableCell>
-                        <TableCell className={cn("text-xs", overdue ? "text-warning font-medium" : "text-muted-foreground")}>{deal.expectedCloseAt ? <div className="flex items-center gap-1"><CalendarClock className="size-3" />{deal.expectedCloseAt}</div> : <span className="text-muted-foreground/50">—</span>}</TableCell>
-                        <TableCell><div className="flex items-center gap-1 text-xs text-muted-foreground"><User className="size-3" /><span className="truncate max-w-[80px]">{deal.ownerId === session.user.id ? session.user.name : deal.ownerName || "Unassigned"}</span></div></TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{formatRelativeTime(deal.updatedAt)}</TableCell>
-                        <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button type="button" className="inline-flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs transition-colors hover:bg-surface-2">
+                                  <span className={cn("size-2 rounded-full", sm.color)} /> {sm.label}
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                {stages.map((s) => (
+                                  <DropdownMenuItem key={s.key} onSelect={() => move(deal, s.key)} className={deal.stage === s.key ? "font-semibold" : ""}>
+                                    <span className={cn("size-2 rounded-full", s.color)} /> {s.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : <span className="inline-flex items-center gap-1.5 text-xs"><span className={cn("size-2 rounded-full", sm.color)} />{sm.label}</span>}
+                        </td>
+                        <td className={cn("py-2 pr-3 text-xs", overdue ? "text-warning font-medium" : "text-muted-foreground")}>{deal.expectedCloseAt || "—"}</td>
+                        <td className="max-w-[100px] truncate py-2 pr-3 text-xs text-muted-foreground">{deal.ownerId === session.user.id ? session.user.name : deal.ownerName || "—"}</td>
+                        <td className="py-2 pr-3 text-xs text-muted-foreground">{formatRelativeTime(deal.updatedAt)}</td>
+                        <td className="py-2">
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="size-7 p-0 opacity-0 group-hover:opacity-100"><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild><button type="button" className="rounded p-1 opacity-0 transition-opacity hover:bg-surface-2 group-hover:opacity-100"><MoreHorizontal className="size-3.5 text-muted-foreground" /></button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" /> View</Link></DropdownMenuItem>
                               {writable && <DropdownMenuItem onClick={() => setEditing(deal)}><Pencil className="size-3.5 mr-2" /> Edit</DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     );
                   })}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-3 border-t border-border bg-surface-2 px-4 py-2">
-                  <span className="text-xs font-medium">{selectedIds.size} selected</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{formatCurrencyINR([...selectedIds].reduce((s, id) => { const d = sorted.find((x) => x.id === id); return s + Number(d?.amount ?? 0); }, 0))}</span>
+                <div className="sticky bottom-0 mt-2 flex items-center gap-3 rounded-md bg-accent/10 px-4 py-2 text-xs">
+                  <span className="font-semibold text-accent">{selectedIds.size} selected</span>
+                  <span className="text-muted-foreground tabular-nums">{formatCurrencyINR([...selectedIds].reduce((s, id) => { const d = sorted.find((x) => x.id === id); return s + Number(d?.amount ?? 0); }, 0))}</span>
                 </div>
               )}
-            </div>
+            </>
           )}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {result.data && view === "table" && (
+        <div className="flex items-center justify-between border-t border-border/40 px-6 py-2.5">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Rows per page</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="inline-flex items-center gap-1 rounded-md bg-surface-2/60 px-2 py-1 text-xs font-medium text-foreground hover:bg-surface-2">{pageSize}</button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {["25", "50", "100"].map((n) => (
+                  <DropdownMenuItem key={n} onSelect={() => { setPerPage(n as typeof perPage); setCursors(["0"]); }} className={perPage === n ? "font-semibold" : ""}>{n}</DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span>Page {cursors.length}</span>
+            <button
+              type="button"
+              disabled={cursors.length === 1}
+              onClick={() => setCursors(cursors.slice(0, -1))}
+              className="rounded-md p-1 transition-colors hover:bg-surface-2 disabled:opacity-30"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              disabled={deals.length < pageSize}
+              onClick={() => setCursors([...cursors, deals.at(-1)!.id])}
+              className="rounded-md p-1 transition-colors hover:bg-surface-2 disabled:opacity-30"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -504,44 +661,75 @@ function StageSettingsDialog({ open, onOpenChange, pipeline, allDeals }: {
 }
 
 /* ── Deal Card ── */
-function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, onEdit, onDragStart, onDragEnd, stageMeta }: {
+
+const AVATAR_COLORS = ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-rose-500", "bg-violet-500", "bg-cyan-500", "bg-orange-500", "bg-teal-500"];
+const avatarColor = (name: string) => AVATAR_COLORS[Math.abs([...name].reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)) % AVATAR_COLORS.length];
+
+function DealCard({ deal, writable, busy, today, sessionUserId, sessionUserName, stageColor, onEdit, onDragStart, onDragEnd }: {
   deal: Deal; writable: boolean; busy: boolean; today: string;
-  sessionUserId: string; sessionUserName: string;
+  sessionUserId: string; sessionUserName: string; stageColor: string;
   onEdit: () => void; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
-  stageMeta: (key: string) => PipelineStage;
 }) {
-  const overdue = deal.expectedCloseAt && deal.expectedCloseAt < today;
+  const overdue = deal.expectedCloseAt && deal.expectedCloseAt < today && !["won", "lost"].includes(deal.stage);
+  const ownerDisplay = deal.ownerId === sessionUserId ? sessionUserName : deal.ownerName || "Unassigned";
+  const ownerInitial = ownerDisplay.charAt(0).toUpperCase();
+  const customerDisplay = deal.company || deal.customerName || "";
+
   return (
     <article
       draggable={writable && !busy}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className="group flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-3 shadow-sm transition-all hover:shadow-md hover:border-border-strong cursor-pointer"
+      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
       onClick={onEdit}
     >
-      <div className="flex items-start justify-between gap-2">
-        <Link className="text-[13px] font-semibold leading-tight line-clamp-2 hover:text-accent" href={`/deals/${deal.id}`} onClick={(e) => e.stopPropagation()}>{deal.name}</Link>
-        {writable && <GripVertical aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />}
+      {/* Title + menu */}
+      <div className="flex items-start justify-between gap-1.5">
+        <div className="min-w-0 flex-1">
+          <Link
+            className="block truncate text-[13px] font-semibold leading-snug text-foreground hover:text-accent"
+            href={`/deals/${deal.id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {deal.name}
+          </Link>
+          {customerDisplay && <p className="truncate text-[11px] text-muted-foreground">{customerDisplay}</p>}
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" onClick={(e) => e.stopPropagation()} className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground">
+              <MoreHorizontal className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" />View details</Link></DropdownMenuItem>
+            {writable && <DropdownMenuItem onClick={() => onEdit()}><Pencil className="size-3.5 mr-2" />Edit</DropdownMenuItem>}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      {(deal.customerName || deal.company) && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Building2 className="size-3 shrink-0" />
-          <span className="truncate">{deal.customerName}{deal.company && ` · ${deal.company}`}</span>
-        </div>
-      )}
+
+      {/* Amount */}
       <p className="text-sm font-bold tabular-nums">{formatCurrencyINR(Number(deal.amount), false)}</p>
-      {deal.expectedCloseAt && (
-        <div className={cn("flex items-center gap-1 text-[10px]", overdue ? "text-warning font-medium" : "text-muted-foreground")}>
-          <CalendarClock className="size-3" />
-          {overdue ? "Overdue: " : "Close: "}{deal.expectedCloseAt}
+
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
+        <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-muted-foreground">
+          <span className={cn("flex size-5 shrink-0 items-center justify-center text-[9px] font-semibold text-white", avatarColor(ownerDisplay))}>
+            {ownerInitial}
+          </span>
+          <span className="truncate">{ownerDisplay}</span>
         </div>
-      )}
-      <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-border/50">
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-          <User className="size-2.5" />
-          <span className="truncate max-w-[100px]">{deal.ownerId === sessionUserId ? sessionUserName : deal.ownerName || "Unassigned"}</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {deal.expectedCloseAt && (
+            <span className={cn("flex items-center gap-0.5 text-[10px]", overdue ? "text-warning font-semibold" : "text-muted-foreground")}>
+              <CalendarClock className="size-2.5" />
+              {deal.expectedCloseAt.slice(5)}
+            </span>
+          )}
+          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            {formatRelativeTime(deal.updatedAt)}
+          </span>
         </div>
-        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(deal.updatedAt)}</span>
       </div>
     </article>
   );

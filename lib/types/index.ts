@@ -128,11 +128,7 @@ export type LeadStage =
   | "new"
   | "contacted"
   | "qualified"
-  | "demo"
-  | "proposal"
-  | "negotiation"
-  | "approval"
-  | "won"
+  | "converted"
   | "lost";
 
 export interface ScoreReason {

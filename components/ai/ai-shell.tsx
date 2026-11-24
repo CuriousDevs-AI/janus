@@ -3,12 +3,12 @@
 import * as React from "react";
 import { useSession } from "@/components/auth/session-provider";
 import { useWorkspace } from "@/components/layout/workspace-context";
-import { aiNavItems } from "@/lib/nav-config";
+import { getNavSectionsForWorkspace, type NavItem } from "@/lib/nav-config";
 import { cn } from "@/lib/utils";
 
 /** The AI pages every workspace has, in the order the sidebar lists them. */
 export type AiPage = "assistant" | "agents" | "workflows" | "dashboard" | "usage" | "keys";
-const pageOf: Record<string, AiPage> = { "AI Assistant": "assistant", "AI Agents": "agents", Workflows: "workflows", "AI Dashboard": "dashboard", "AI Usage & Cost": "usage", "AI Models & Keys": "keys" };
+const pageOf: Record<string, AiPage> = { "Janus Intelligence": "assistant", "AI Assistant": "assistant", "AI Agents": "agents", Workflows: "workflows", "AI Dashboard": "dashboard", "AI Usage & Cost": "usage", "AI Models & Keys": "keys" };
 
 /**
  * One frame for every AI page in every workspace: which workspace it is for, the page's title and
@@ -26,7 +26,8 @@ export function AiPageShell({ page, title, description, actions, children, class
   const { workspaceId, workspace } = useWorkspace();
   const { permissions } = useSession();
   const allowed = (permission?: string) => !permission || permissions.includes("*") || permissions.includes(permission);
-  const items = aiNavItems(workspaceId).filter((item) => allowed(item.requiredPermission) || pageOf[item.label] === page);
+  const aiSection = getNavSectionsForWorkspace(workspaceId).find((s) => s.title === "AI");
+  const items: NavItem[] = (aiSection?.items ?? []).filter((item) => allowed(item.requiredPermission) || pageOf[item.label] === page);
   const current = items.find((item) => pageOf[item.label] === page);
   const Icon = current?.icon;
 

@@ -14,13 +14,14 @@ const months = { week: 7 / 30.4, month: 1, quarter: 3, fy: 12 } as const;
 /** Progress against the monthly targets, scaled to the period, with where the pace says it should be today. */
 export function TargetsCard({ list, period }: { list: PortfolioCompany[]; period: PortfolioPeriod }) {
   const withTargets = list.filter((item) => item.targets && (item.targets.leads || item.targets.wonValue || item.targets.collected));
+  const [now] = React.useState(() => Date.now());
   if (withTargets.length === 0) return null;
   // Counted in calendar days of the period, so November has 30 and the pace on the 7th is 7/30.
   const [year, month] = period.start.split("-").map(Number);
   const length = period.key === "fy" ? 12 : period.key === "quarter" ? 3 : 1;
   const startDay = Date.UTC(year, month - 1, 1);
   const endDay = Date.UTC(year, month - 1 + length, 1);
-  const today = Date.parse(`${period.end}T00:00:00Z`);
+  const today = Math.min(now, Date.parse(`${period.end}T00:00:00Z`));
   const elapsed = Math.min(1, (today - startDay + 864e5) / (endDay - startDay));
   const row = (label: string, actual: number, monthly: string | null, format: (value: number) => string) => {
     if (!monthly) return null;

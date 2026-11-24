@@ -13,6 +13,7 @@ import { useSession } from "@/components/auth/session-provider";
 import { message } from "@/lib/api/client";
 import { switchTenant } from "@/lib/live-company";
 import { PORTFOLIO_ROLES, roleLabel } from "@/lib/access";
+import { readPortfolioLogo } from "@/features/portfolio";
 
 
 /**
@@ -65,8 +66,6 @@ export function CompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: boole
   );
 }
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]!.toUpperCase()).join("") || "?";
-const initialsBadge = (name: string) => <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-[11px] font-semibold text-white" aria-hidden>{initials(name)}</span>;
 
 /**
  * The same switcher for a real account: its companies are the memberships the server lists in /me,
@@ -90,7 +89,7 @@ export function LiveCompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: b
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button aria-label="Switch company" disabled={busy} className={cn("flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2", collapsed && "justify-center")}>
-            {inPortfolio ? <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white"><LayoutGrid className="size-3.5" aria-hidden /></span> : initialsBadge(session.tenant.name)}
+            {inPortfolio ? <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[#111827] text-white"><LayoutGrid className="size-3.5" aria-hidden /></span> : <CompanyLogo company={{ id: session.tenant.id, name: session.tenant.name, logo: readPortfolioLogo(session.tenant.id) }} size={28} />}
             {!collapsed && <><span className="flex min-w-0 flex-1 flex-col leading-tight"><span className="truncate text-[12px] font-medium text-foreground">{label}</span><span className="text-[10px] text-muted-foreground">{busy ? "Opening…" : caption}</span></span><ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" aria-hidden /></>}
           </button>
         </DropdownMenuTrigger>
@@ -106,15 +105,12 @@ export function LiveCompanySwitcher({ inPortfolio, collapsed }: { inPortfolio: b
             const here = !inPortfolio && item.id === session.tenant.id;
             return (
               <DropdownMenuItem key={item.id} disabled={busy} onSelect={() => { if (item.id === session.tenant.id) router.push(businessHome); else void open(item.id); }} className={cn(here && "bg-accent-muted")}>
-                {initialsBadge(item.name)}
+                <CompanyLogo company={{ id: item.id, name: item.name, logo: readPortfolioLogo(item.id) }} size={28} />
                 <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-medium">{item.name}</span><span className="truncate text-[11px] text-muted-foreground">{roleLabel(item.role)}</span></span>
                 {here && <Check className="size-3.5 text-accent" aria-hidden />}
               </DropdownMenuItem>
             );
           })}
-          {owner && <><DropdownMenuSeparator />
-            <DropdownMenuItem asChild><Link href="/portfolio?view=companies&add=1"><Plus className="size-3.5" aria-hidden />Add company</Link></DropdownMenuItem>
-            <DropdownMenuItem asChild><Link href="/portfolio?view=companies"><Building2 className="size-3.5" aria-hidden />Manage companies</Link></DropdownMenuItem></>}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

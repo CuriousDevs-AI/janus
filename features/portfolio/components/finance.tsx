@@ -335,7 +335,7 @@ function OpeningLine({ companyId, row, onSaved }: { companyId: string; row: Open
   return <li className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm">
     {editing ? <>
       <label className="grid gap-0.5 text-xs text-muted-foreground">Name<input className={field} value={name} maxLength={160} onChange={(event) => setName(event.target.value)} /></label>
-      <label className="grid gap-0.5 text-xs text-muted-foreground">Amount (₹)<input className={`${field} w-32`} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+      <label className="grid gap-0.5 text-xs text-muted-foreground">Amount (₹)<input className={`${field} w-32`} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />{amount && !/^\d{1,13}(\.\d{1,2})?$/.test(amount) && <span className="text-danger">Enter a valid amount</span>}</label>
       <label className="grid gap-0.5 text-xs text-muted-foreground">Due on<input type="date" className={field} min={row.asOf} value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label>
       <div className="flex gap-2 self-end">
         <Button size="sm" disabled={busy || name.trim().length < 2 || !/^\d{1,13}(\.\d{1,2})?$/.test(amount) || !dueOn} onClick={() => void save()}>Save</Button>

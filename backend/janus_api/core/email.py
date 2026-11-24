@@ -32,9 +32,14 @@ class SMTPEmailSender:
         message.set_content(body)
 
         def deliver() -> None:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-                if settings.smtp_starttls:
-                    smtp.starttls(context=ssl.create_default_context())
+            ctx = ssl.create_default_context()
+            if settings.smtp_ssl:
+                conn = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10, context=ctx)
+            else:
+                conn = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
+            with conn as smtp:
+                if not settings.smtp_ssl and settings.smtp_starttls:
+                    smtp.starttls(context=ctx)
                 if settings.smtp_username:
                     smtp.login(settings.smtp_username, settings.smtp_password.get_secret_value())
                 smtp.send_message(message)

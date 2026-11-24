@@ -223,3 +223,16 @@ class PortfolioAiKey(Base):
     copied_to: Mapped[list[int]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PortfolioLogo(Base):
+    """A company's logo stored server-side, one per tenant, up to 200 KB as a PNG or JPEG."""
+
+    __tablename__ = "portfolio_logos"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tenants.id"), unique=True)
+    content_type: Mapped[str] = mapped_column(String(40))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    uploaded_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

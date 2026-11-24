@@ -5,7 +5,8 @@ import { useCrmAccess } from "@/lib/use-crm-access";
 import { use } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ScrollText, TrendingUp, Sparkles, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, ScrollText, TrendingUp, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { useAppStore } from "@/lib/stores/app-store";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
 import { ApprovalRiskBadge } from "@/components/shared/status-badge";
@@ -109,7 +110,7 @@ export default function ApprovalDetailPage({ params }: { params: Promise<{ id: s
 
           <div className="rounded-lg border border-accent-border bg-accent-muted p-4">
             <div className="mb-2 flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-accent" />
+              <CuriousdevsLogo className="size-3.5 text-accent" />
               <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">
                 {approval.requestedByType === "ai" ? "AI reasoning" : "Requester's reasoning"}
               </span>

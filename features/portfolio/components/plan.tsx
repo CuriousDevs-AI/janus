@@ -78,7 +78,7 @@ export function Plan() {
           <p className="mt-1 text-xs text-muted-foreground">{limit(plan.companies, "company", "companies")} · {limit(plan.logins, "person", "people")}</p>
           <ul className="mt-3 flex flex-1 flex-col gap-1.5 text-[13px]">{plan.features.map((feature) => <li key={feature} className="flex items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />{feature}</li>)}</ul>
           <div className="mt-4">{here ? <Button size="sm" variant="secondary" className="w-full" disabled>Current plan</Button>
-            : plan.id === "enterprise" ? <Button size="sm" variant="outline" className="w-full" onClick={() => toast.message("Enterprise is set up with the Janus team, on agreed terms.", { description: "Tell us how many companies and people you run, and we will get in touch." })}>Talk to us</Button>
+            : plan.id === "enterprise" ? <Button size="sm" variant="outline" className="w-full" onClick={() => toast.message("Enterprise is set up with the Janus team, on agreed terms.", { description: "Email hello@curiousdevs.in with how many companies and people you run." })}>Talk to us</Button>
             : <Button size="sm" variant={up ? "default" : "outline"} className="w-full" disabled={data.payments === "off" && plan.id !== "free"} title={data.payments === "off" && plan.id !== "free" ? "Paid plans open once payments are connected" : undefined} onClick={() => setMoving(plan)}>{up ? <><ArrowUp className="size-3.5" />Upgrade to {plan.name}</> : <><ArrowDown className="size-3.5" />Move to {plan.name}</>}</Button>}</div>
         </section>;
       })}</div>
@@ -163,6 +163,7 @@ function CurrentPlan({ data, plan }: { data: Billing; plan: BillingPlan }) {
 
 export function ChangePlan({ from, to, pay, first = false, onClose, onDone }: { from: BillingPlan; to: BillingPlan; pay: boolean; first?: boolean; onClose: () => void; onDone: () => void }) {
   const [saving, setSaving] = React.useState(false);
+  const [razorpayOpen, setRazorpayOpen] = React.useState(false);
   const [keep, setKeep] = React.useState<string[] | null>(null);
   // The preview follows the companies chosen to keep, and says exactly what the move will do.
   const preview = usePortfolioApi<BillingPreview>(`/billing/preview?plan=${to.id}${keep ? `&keep=${keep.join(",")}` : ""}`, { keepPrevious: true });
@@ -188,18 +189,20 @@ export function ChangePlan({ from, to, pay, first = false, onClose, onDone }: { 
           try {
             await api("/billing/checkout/verify", { method: "POST", body: JSON.stringify({ orderId: paid.razorpay_order_id, paymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature }) });
             toast.success(`Paid. You are on the ${to.name} plan.`);
+            setRazorpayOpen(false);
             onDone();
-          } catch (error) { toast.error(`Razorpay took the payment, but Janus could not confirm it yet: ${message(error)} It will be confirmed when Razorpay notifies Janus.`); setSaving(false); }
+          } catch (error) { toast.error(`Razorpay took the payment, but Janus could not confirm it yet: ${message(error)} It will be confirmed when Razorpay notifies Janus.`); setRazorpayOpen(false); setSaving(false); }
         },
-        modal: { ondismiss: () => setSaving(false) },
+        modal: { ondismiss: () => { setRazorpayOpen(false); setSaving(false); } },
       });
-      checkout.on("payment.failed", (failure) => { toast.error(failure.error?.description ?? "The payment did not go through."); setSaving(false); });
+      checkout.on("payment.failed", (failure) => { toast.error(failure.error?.description ?? "The payment did not go through."); setRazorpayOpen(false); setSaving(false); });
+      setRazorpayOpen(true);
       checkout.open();
-    } catch (error) { toast.error(message(error)); setSaving(false); }
+    } catch (error) { toast.error(message(error)); setRazorpayOpen(false); setSaving(false); }
   }
   const tooMany = limit !== null && chosen.length > limit;
   const list = (title: string, items: { name: string; company?: string }[], tone: "warn" | "good") => items.length > 0 && <div><p className={`text-xs font-semibold ${tone === "warn" ? "text-warning" : "text-success"}`}>{title}</p><ul className="mt-1 grid gap-0.5 text-sm">{items.map((item, index) => <li key={index}>{item.name}{item.company ? <span className="text-muted-foreground"> · {item.company}</span> : null}</li>)}</ul></div>;
-  return <Dialog open onOpenChange={(open) => !open && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+  return <Dialog open modal={!razorpayOpen} onOpenChange={(open) => !open && !saving && onClose()}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg" onInteractOutside={razorpayOpen ? (e) => e.preventDefault() : undefined}>
     <DialogHeader><DialogTitle>{first ? `Start on ${to.name}?` : `Move from ${from.name} to ${to.name}?`}</DialogTitle><DialogDescription>{to.price === null || Number(to.price) === 0 ? `${to.name} costs nothing.` : `${rupees(to.price)} a month plus GST, from today, renewing monthly.`}{first || !seen || (seen.archiveCompanies.length + seen.archivePeople.length + seen.withdrawInvitations.length === 0 && !tooMany) ? "" : " Nothing is deleted: what does not fit is archived, and comes back when your plan has room again."}</DialogDescription></DialogHeader>
     {!seen ? <div role="status" className="flex h-40 items-center justify-center rounded-lg bg-surface-2 text-sm text-muted-foreground">Working out what changes for your companies and people…</div> : <div className={`grid gap-4 text-sm transition-opacity ${preview.stale ? "opacity-60" : ""}`}>
       {seen.archiveCompanies.length > 0 || tooMany ? <fieldset className="grid gap-1.5 rounded-lg border border-warning/30 bg-warning-muted/40 p-3">
@@ -246,7 +249,7 @@ function BillToCard({ details, onSaved }: { details: BillingDetails | null; onSa
   return <SectionCard title="Who should the invoices be billed to?" description="Asked once. A GST tax invoice needs the legal name and GSTIN of the business paying, and its state as the place of supply, so your CA can claim the input credit.">
     <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label className="grid gap-1 text-xs text-muted-foreground">Legal name<input className={field} required minLength={2} maxLength={160} value={draft.legalName} placeholder="Malhotra Textiles Private Limited" onChange={(event) => setDraft({ ...draft, legalName: event.target.value })} /></label>
-      <label className="grid gap-1 text-xs text-muted-foreground">GSTIN (leave empty if not registered)<input className={field} maxLength={15} value={draft.gstin ?? ""} placeholder="27AAPFU0939F1ZV" aria-invalid={bad} onChange={(event) => setDraft({ ...draft, gstin: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">GSTIN (leave empty if not registered)<input className={`${field} uppercase`} maxLength={15} value={draft.gstin ?? ""} placeholder="27AAPFU0939F1ZV" aria-invalid={bad} onChange={(event) => setDraft({ ...draft, gstin: event.target.value.toUpperCase() })} /></label>
       <label className="grid gap-1 text-xs text-muted-foreground">State (place of supply)<select className={field} required value={state} disabled={Boolean(gstin) && !bad} onChange={(event) => setDraft({ ...draft, stateCode: event.target.value })}><option value="">Choose…</option>{Object.entries(states).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
       <label className="grid gap-1 text-xs text-muted-foreground">Address (optional)<input className={field} maxLength={400} value={draft.address ?? ""} onChange={(event) => setDraft({ ...draft, address: event.target.value })} /></label>
       {bad && <p role="alert" className="text-xs text-danger sm:col-span-2">That GSTIN does not have the right format.</p>}

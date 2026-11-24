@@ -1,4 +1,4 @@
-"""CRM activity tracking: calls, meetings, emails and tasks on leads and contacts."""
+"""CRM activity tracking: calls, meetings, emails, tasks and notes on leads, deals and contacts."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +8,7 @@ from janus_api.auth.models import User
 from janus_api.core.errors import ApiError
 from janus_api.core.security import now
 from janus_api.crm import schemas
-from janus_api.crm.models import Activity, Contact, Lead
+from janus_api.crm.models import Activity, Contact, Deal, Lead
 
 
 def _out(a: Activity, owner_name: str | None = None) -> schemas.ActivityOut:
@@ -18,6 +18,7 @@ def _out(a: Activity, owner_name: str | None = None) -> schemas.ActivityOut:
         subject=a.subject,
         description=a.description,
         leadId=str(a.lead_id) if a.lead_id else None,
+        dealId=str(a.deal_id) if a.deal_id else None,
         contactId=str(a.contact_id),
         ownerId=str(a.owner_id) if a.owner_id else None,
         ownerName=owner_name,
@@ -35,18 +36,26 @@ async def list_activities(
     *,
     contact_id: int | None = None,
     lead_id: int | None = None,
+    deal_id: int | None = None,
     after_id: int = 0,
     limit: int = 50,
+    crm_id: int | None = None,
 ) -> list[schemas.ActivityOut]:
     query = (
         select(Activity, User.name)
         .outerjoin(User, User.id == Activity.owner_id)
         .where(Activity.tenant_id == tenant_id)
     )
+    if crm_id is not None:
+        query = query.join(
+            Lead, (Lead.id == Activity.lead_id) & (Lead.tenant_id == Activity.tenant_id)
+        ).where(Lead.crm_id == crm_id)
     if contact_id is not None:
         query = query.where(Activity.contact_id == contact_id)
     if lead_id is not None:
         query = query.where(Activity.lead_id == lead_id)
+    if deal_id is not None:
+        query = query.where(Activity.deal_id == deal_id)
     if after_id:
         query = query.where(Activity.id > after_id)
     rows = (await db.execute(query.order_by(Activity.created_at.desc()).limit(limit))).all()
@@ -73,12 +82,19 @@ async def create_activity(
             raise ApiError("not_found", "Lead not found.", 404)
         lead.last_activity_at = now()
 
+    deal_id: int | None = int(data.dealId) if data.dealId else None
+    if deal_id is not None:
+        deal = await db.scalar(select(Deal).where(Deal.tenant_id == tenant_id, Deal.id == deal_id))
+        if deal is None:
+            raise ApiError("not_found", "Deal not found.", 404)
+
     a = Activity(
         tenant_id=tenant_id,
         kind=data.kind,
         subject=data.subject.strip(),
         description=data.description.strip(),
         lead_id=lead_id,
+        deal_id=deal_id,
         contact_id=contact_id,
         owner_id=user_id,
         due_at=data.dueAt,

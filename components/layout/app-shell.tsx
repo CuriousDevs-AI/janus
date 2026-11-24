@@ -16,6 +16,7 @@ import { VoiceCallProvider, useVoiceCall } from "@/components/team/voice-call";
 import { AnnouncementWatcher } from "@/components/team/team-posts";
 import { useAutoAway, useCallStatus, useStatusExpiry } from "@/lib/hooks/use-auto-status";
 import { useProfileStore } from "@/lib/stores/profile-store";
+import { loadAndApplyAppearance } from "@/lib/appearance";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -36,25 +37,52 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const allowed = true;
   const { workspaceId } = useWorkspace();
+  React.useEffect(() => { loadAndApplyAppearance(workspaceId); }, [workspaceId]);
   // A workspace the role cannot open (Business Management is for owners and admins) sends the
   // person to the workspace they work in, rather than showing its menu with nothing behind it.
-  const blocked = workspaceId !== "portfolio" && !mayOpenWorkspace(workspaceId, session.permissions);
+  const isPersonalPage = pathname === "/account" || pathname.startsWith("/account/");
+  const blocked = !isPersonalPage && workspaceId !== "portfolio" && !mayOpenWorkspace(workspaceId, session.permissions);
   React.useEffect(() => {
     if (blocked) router.replace(homeForPermissions(session.permissions));
   }, [blocked, router, session.permissions]);
   // An Owner whose account has not chosen a plan chooses one first, then goes on where they were.
   const [needsPlan, setNeedsPlan] = React.useState(false);
+  const [setupDone, setSetupDone] = React.useState<boolean | null>(null);
   React.useEffect(() => {
     if (session.role !== "owner") return;
     let live = true;
-    api<{ owner: boolean; chosen: boolean }>("/billing")
-      .then((billing) => { if (live && billing.owner && !billing.chosen) setNeedsPlan(true); })
-      .catch(() => { /* the plan page itself says what went wrong */ });
+    const allStepIds = ["business_details", "workspaces", "members", "team_chat", "data_connections"];
+    Promise.all([
+      api<{ owner: boolean; chosen: boolean }>("/billing"),
+      api<{ setupCompleted: boolean; completedSteps?: string[] }>("/business/setup"),
+    ])
+      .then(([billing, setup]) => {
+        if (!live) return;
+        if (billing.owner && !billing.chosen) setNeedsPlan(true);
+        setSetupDone(setup.setupCompleted || allStepIds.every((s) => (setup.completedSteps ?? []).includes(s)));
+      })
+      .catch(() => {});
     return () => { live = false; };
   }, [session.role]);
   React.useEffect(() => {
+    const allStepIds = ["business_details", "workspaces", "members", "team_chat", "data_connections"];
+    const refresh = () => {
+      api<{ setupCompleted: boolean; completedSteps?: string[] }>("/business/setup")
+        .then((setup) => setSetupDone(setup.setupCompleted || allStepIds.every((s) => (setup.completedSteps ?? []).includes(s))))
+        .catch(() => {});
+    };
+    window.addEventListener("janus:setup-changed", refresh);
+    return () => window.removeEventListener("janus:setup-changed", refresh);
+  }, []);
+  React.useEffect(() => {
     if (needsPlan && pathname !== "/choose-plan") router.replace(`/choose-plan?next=${encodeURIComponent(pathname)}`);
   }, [needsPlan, pathname, router]);
+  // Until setup is done, only the portfolio and choose-plan pages are reachable.
+  const setupPages = ["/choose-plan", "/portfolio", "/verify-email", "/account"];
+  const onSetupPage = setupPages.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+  React.useEffect(() => {
+    if (setupDone === false && !onSetupPage) router.replace("/portfolio?view=companies");
+  }, [setupDone, onSetupPage, router]);
   // Choosing a plan fills the screen, before any workspace.
   if (pathname === "/choose-plan") return <main className="h-dvh overflow-y-auto">{children}</main>;
   return (

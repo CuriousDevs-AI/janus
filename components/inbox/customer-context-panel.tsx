@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Sparkles, ListChecks, ArrowRight } from "lucide-react";
+import { ListChecks, ArrowRight } from "lucide-react";
+import { CuriousdevsLogo } from "@/components/shared/curiousdevs-logo";
 import { useAppStore, useCompany } from "@/lib/stores/app-store";
 import { useApi } from "@/lib/api/use-api";
 import { CustomerAvatar } from "@/components/shared/customer-avatar";
@@ -21,7 +22,7 @@ export function CustomerContextPanel({ customerId, className }: { customerId: st
   const allTickets = useAppStore((s) => s.tickets);
   const allActivities = useAppStore((s) => s.activities);
   const customerLeads = allLeads.filter((l) => l.customerId === customerId);
-  const lead = customerLeads.find((l) => l.stage !== "won" && l.stage !== "lost") ?? customerLeads[0];
+  const lead = customerLeads.find((l) => l.stage !== "converted" && l.stage !== "lost") ?? customerLeads[0];
   const deals = allDeals.filter((d) => d.customerId === customerId);
   const tickets = allTickets.filter((t) => t.customerId === customerId && t.status !== "closed");
   const activities = allActivities.filter((a) => a.customerId === customerId);
@@ -71,7 +72,7 @@ export function CustomerContextPanel({ customerId, className }: { customerId: st
 
         <div className="rounded-md border border-accent-border bg-accent-muted p-3">
           <div className="mb-1.5 flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-accent" />
+            <CuriousdevsLogo className="size-3.5 text-accent" />
             <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">AI Summary</span>
           </div>
           <p className="text-[12px] leading-relaxed text-foreground">
@@ -136,7 +137,7 @@ export function CustomerContextPanel({ customerId, className }: { customerId: st
           </Button>
           <Button size="sm" variant="secondary" asChild>
             <Link href={`/ai?customer=${customer.id}`}>
-              <Sparkles className="size-3 text-accent" />
+              <CuriousdevsLogo className="size-3 text-accent" />
               Ask AI
             </Link>
           </Button>

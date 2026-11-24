@@ -92,6 +92,9 @@ class ProfileUpdate(BaseModel):
     avatar_url: HttpUrl | None = None
     timezone: str | None = None
     language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}(-[A-Za-z]{2,4})?$")
+    bio: str | None = Field(default=None, max_length=500)
+    title: str | None = Field(default=None, max_length=120)
+    status_text: str | None = Field(default=None, max_length=200)
 
     @field_validator("timezone")
     @classmethod
@@ -113,7 +116,17 @@ class UserOut(BaseModel):
     avatar_url: str | None
     timezone: str
     language: str
+    bio: str | None = None
+    title: str | None = None
+    status_text: str | None = None
     email_verified_at: datetime | None
+
+
+class CrmBrief(BaseModel):
+    id: str
+    name: str
+    slug: str
+    isDefault: bool = False
 
 
 class Me(BaseModel):
@@ -122,6 +135,7 @@ class Me(BaseModel):
     role: str
     permissions: list[str]
     tenants: list[TenantOut]
+    crms: list[CrmBrief] = []
 
 
 class TokenPair(BaseModel):

@@ -19,6 +19,13 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   const first = (item: PortfolioCompany) => item.name.split(" ")[0].toLowerCase();
   // With one company open (Business Management), every answer is about it by name.
   const named = (list.length === 1 ? list[0] : undefined) ?? list.find((item) => q.includes(item.name.toLowerCase())) ?? list.find((item) => new RegExp(`\\b${first(item).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q) && list.filter((other) => first(other) === first(item)).length === 1);
+  if (!named && list.length > 1) {
+    const ambiguous = list.filter((item) => new RegExp(`\\b${first(item).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(q));
+    if (ambiguous.length > 1) {
+      const names = ambiguous.map((item) => item.name).join(", ");
+      return { text: `That name matches more than one company: ${names}. Use the full name so I know which one you mean.` };
+    }
+  }
   const scope = named ? [named] : list;
   const top = <T,>(pick: (item: PortfolioCompany) => T | null | undefined, value: (item: PortfolioCompany) => number) => [...scope].filter((item) => pick(item) !== null && pick(item) !== undefined).sort((a, b) => value(b) - value(a))[0];
   const one = list.length === 1;
@@ -134,7 +141,7 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
   if (customer && !own && /owe|overdue|outstanding|invoice|due|pay/.test(q)) {
     return { text: `${unsupported}Janus has ${whose(customer.name)} sales here, not what they owe one by one: open ${whose(customer.company.name)} Finance, Receivables for their invoices. Sales before GST this period: ${inr(Number(customer.current))} (${inr(Number(customer.previous))} in the same days before).` };
   }
-  if (/biggest customer|top customer|largest customer|main customer|concentrat|depend/.test(q)) {
+  if (/biggest customer|top\s+\S*\s*customer|largest customer|main customer|concentrat|depend/.test(q)) {
     const rows = scope.filter((item) => item.books && item.customers.length).map((item): [string, string] => {
       const sales = Number(item.books!.current.netSales); const top = item.customers[0];
       return [item.name, Number(top.current) > 0 ? `${top.name}: ${inr(Number(top.current))}${sales > 0 ? `, ${Math.round((Number(top.current) / sales) * 100)}% of sales` : ""}` : `${top.name} bought most before; nothing yet this period`];
@@ -243,6 +250,11 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const items = attentionOf(scope);
     return { text: items.length ? `${items.length} thing${items.length === 1 ? " needs" : "s need"} you${named ? ` at ${named.name}` : ""}, most urgent first.` : "Nothing needs you right now.", rows: items.slice(0, 8).map((item) => [item.company.name, item.text]) };
   }
+  if (/\b(workflow|automation|automat\w*)\b/.test(q)) {
+    const wf = scope.flatMap((item) => item.approvals.filter((entry) => /workflow/i.test(entry.label)).map((entry): [string, string] => [item.name, `${entry.count} ${(entry.count === 1 ? entry.one : entry.label).toLowerCase()} waiting`]));
+    const all = scope.flatMap((item) => item.approvals.map((entry): [string, string] => [item.name, `${entry.count} ${(entry.count === 1 ? entry.one : entry.label).toLowerCase()}`]));
+    return { text: wf.length ? `${wf.reduce((sum, [, text]) => sum + parseInt(text), 0)} workflow run${wf.length === 1 && wf[0][1].startsWith("1 ") ? " is" : "s are"} waiting for a decision. Manage them in Workflows under AI.` : all.length ? `No workflow runs are waiting${named ? ` at ${named.name}` : ""}. Other approvals waiting:` : `No workflows or approvals are waiting${named ? ` at ${named.name}` : ""}. Set up automations in Workflows under AI.`, rows: wf.length ? wf : all };
+  }
   if (/approv|waiting|pending|decide/.test(q)) {
     const rows = scope.flatMap((item) => item.approvals.map((entry): [string, string] => [item.name, `${entry.count} ${(entry.count === 1 ? entry.one : entry.label).toLowerCase()}`]));
     return { text: rows.length ? "These are waiting for a decision." : "No approvals are waiting.", rows };
@@ -294,12 +306,12 @@ export function answerLive(question: string, list: PortfolioCompany[], period?: 
     const pick = /worst|lowest|weakest/.test(q) ? ranked[ranked.length - 1] : ranked[0];
     return { text: named ? `${named.name} wins ${winRateText(named)} of the deals it has closed, all time.` : pick ? `${pick.name} has the ${/worst|lowest|weakest/.test(q) ? "lowest" : "best"} win rate, ${winRate(pick)}% of ${pick.crm.wonDeals + pick.crm.lostDeals} closed deals, all time.` : `No company has ${RATE_MINIMUM} closed deals yet, so no win rate is ranked.`, rows: scope.map((item) => [item.name, `${winRateText(item)} · ${item.crm.wonDeals} won, ${item.crm.lostDeals} lost`]) };
   }
-  if (/lead|pipeline|deal|won|sales|revenue|best|compare/.test(q)) {
+  if (/lead|pipeline|deal|won|sales|revenue|best|compare/.test(q) && !/customer/.test(q)) {
     const best = top((item) => item.crm, (item) => Number(item.crm.pipelineValue));
     return { text: named ? `${named.name} has ${inr(Number(named.crm.pipelineValue))} open in ${named.crm.openDeals} deal${named.crm.openDeals === 1 ? "" : "s"} and has won ${inr(Number(named.crm.wonValue))}.` : `${best?.name} holds the largest open pipeline, ${inr(Number(best?.crm.pipelineValue ?? 0))}.`, rows: scope.map((item) => [item.name, `${item.period.current.leads} leads this period · ${inr(Number(item.crm.pipelineValue))} open · ${inr(Number(item.crm.wonValue))} won`]) };
   }
-  if (one) return { matched: false, text: `I could not match that to ${named!.name}'s records, and I will not guess. I can answer about what needs you, sales and why they changed, leads and who owns them, conversion, profit, money owed, cash, supplier bills, approvals, people, leave, claims and payroll, stock, projects, support tickets, GST and filings.` };
-  return { matched: false, text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, money owed, people, leave, claims and payroll, stock, delivery, support tickets, supplier bills, cash, GST and filings. Name a company to narrow it." };
+  if (one) return { matched: false, text: `I could not match that to ${named!.name}'s records, and I will not guess. I can answer about what needs you, sales and why they changed, leads and who owns them, conversion, profit, money owed, cash, supplier bills, approvals, workflows, people, leave, claims and payroll, stock, projects, support tickets, GST and filings.` };
+  return { matched: false, text: "I could not match that to your records, and I will not guess. I answer from the figures on the Portfolio: why sales or leads changed, which company performs best or worst, which needs you most, financial risks, profit, what needs you, approvals, workflows, money owed, people, leave, claims and payroll, stock, delivery, support tickets, supplier bills, cash, GST and filings. Name a company to narrow it." };
 }
 
 const STOP = new Set("a an and are as at be but by can do does did for from has have how i in is it its me my of on or our so that the their them there these they this to us was we what when where which who why will with you your".split(" "));
