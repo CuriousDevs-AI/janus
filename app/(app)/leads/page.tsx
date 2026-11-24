@@ -463,7 +463,7 @@ export default function LeadsPage() {
   const dueCount = (loaded?.rows ?? []).filter(({ lead }) => isDue(lead.nextFollowUpOn) && !["won", "lost"].includes(lead.stage)).length;
 
   return (
-    <div className="mx-auto flex max-w-[1500px] flex-col">
+    <div className={cn("mx-auto flex flex-col", view === "board" ? "h-full" : "max-w-[1500px]")}>
       <PageHeader
         title="Leads"
         description="Every enquiry in one searchable pipeline."
@@ -655,7 +655,7 @@ export default function LeadsPage() {
       ) : view === "quality" ? (
         <LeadQualityAnalysis rows={rows} />
       ) : view === "board" ? (
-        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => setDrawerLead(lead)} />
+        <LeadsBoard leads={rows.map(({ lead }) => lead)} onStageChanged={() => { setAfter("0"); setVersion((v) => v + 1); }} onLeadClick={(lead) => setDrawerLead(lead)} sessionAvatarUrl={session.user.avatar_url} />
       ) : (
         <>
         <div className="isolate overflow-x-auto">

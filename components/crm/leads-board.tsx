@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
+  CalendarClock,
   Clock,
   Eye,
   MoreVertical,
@@ -45,14 +46,19 @@ const EMPTY_MESSAGES: Record<string, { title: string; desc: string }> = {
   lost: { title: "No lost leads", desc: "Move unqualified or closed-lost leads here." },
 };
 
+const AVATAR_COLORS = ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-rose-500", "bg-violet-500", "bg-cyan-500", "bg-orange-500", "bg-teal-500"];
+const avatarColor = (name: string) => AVATAR_COLORS[Math.abs([...name].reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)) % AVATAR_COLORS.length];
+
 export function LeadsBoard({
   leads,
   onStageChanged,
   onLeadClick,
+  sessionAvatarUrl,
 }: {
   leads: Lead[];
   onStageChanged: () => void;
   onLeadClick?: (lead: Lead) => void;
+  sessionAvatarUrl?: string | null;
 }) {
   const session = useSession();
   const canWrite = can(session, "leads:write");
@@ -84,8 +90,8 @@ export function LeadsBoard({
   }
 
   return (
-    <div className="flex-1 overflow-x-auto px-6 py-3">
-      <div className="flex gap-3" style={{ minWidth: BOARD_STAGES.length * 280 }}>
+    <div className="flex min-h-0 flex-1 overflow-x-auto px-6 py-3">
+      <div className="flex min-h-0 flex-1 gap-3">
         {BOARD_STAGES.map((stage) => {
           const meta = leadStageMeta[stage] ?? { label: stage, tone: "neutral" as const };
           const style = STAGE_STYLE[stage] ?? STAGE_STYLE.new;
@@ -109,18 +115,18 @@ export function LeadsBoard({
                 if (lead) void move(lead, stage);
               }}
               className={cn(
-                "flex w-[280px] shrink-0 flex-col border transition-colors",
+                "flex min-w-[260px] flex-1 flex-col border transition-colors",
                 style.border,
                 dragOverStage === stage ? "ring-2 ring-accent/40" : "",
               )}
             >
-              <div className={cn("flex items-center gap-2 px-3 py-2.5", style.headerBg)}>
+              <div className={cn("flex items-center gap-2 px-3 py-2.5 shrink-0", style.headerBg)}>
                 <span className={cn("size-2.5 shrink-0 rounded-full", style.dot)} />
                 <h2 className="flex-1 text-xs font-bold uppercase tracking-wider">{meta.label}</h2>
                 <span className={cn("inline-flex size-5 items-center justify-center text-[10px] font-bold tabular-nums", style.countBg, style.countText)}>{items.length}</span>
               </div>
 
-              <div className={cn("flex max-h-[calc(100vh-250px)] flex-1 flex-col gap-2 overflow-y-auto p-2", style.bg)}>
+              <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2", style.bg)}>
                 {items.map((lead) => (
                   <LeadCard
                     key={lead.id}
@@ -132,6 +138,7 @@ export function LeadsBoard({
                     onClick={() => onLeadClick?.(lead)}
                     sessionUserId={session.user.id}
                     sessionUserName={session.user.name}
+                    sessionAvatarUrl={sessionAvatarUrl}
                   />
                 ))}
                 {items.length === 0 && (
@@ -158,6 +165,7 @@ function LeadCard({
   onClick,
   sessionUserId,
   sessionUserName,
+  sessionAvatarUrl,
 }: {
   lead: Lead;
   canDrag: boolean;
@@ -167,10 +175,12 @@ function LeadCard({
   onClick?: () => void;
   sessionUserId: string;
   sessionUserName: string;
+  sessionAvatarUrl?: string | null;
 }) {
   const name = lead.contactName?.trim() || lead.phone || lead.email || `Lead #${lead.id}`;
   const due = isDue(lead.nextFollowUpOn);
   const ownerName = lead.ownerId === sessionUserId ? sessionUserName : lead.ownerName || "Unassigned";
+  const isMe = lead.ownerId === sessionUserId;
 
   return (
     <article
@@ -179,7 +189,7 @@ function LeadCard({
         e.dataTransfer.setData("text/plain", lead.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      className="group flex flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
+      className="group flex shrink-0 flex-col gap-1.5 border border-border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-1.5">
@@ -229,13 +239,14 @@ function LeadCard({
       )}
 
       <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
-        <div className="flex items-center gap-1 min-w-0 text-[10px] text-muted-foreground">
-          <User className="size-3 shrink-0" />
+        <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-muted-foreground">
+          <OwnerAvatar name={ownerName} avatarUrl={isMe ? sessionAvatarUrl : null} />
           <span className="truncate">{ownerName}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {lead.nextFollowUpOn && (
-            <span className={cn("text-[10px] tabular-nums", due ? "font-semibold text-warning" : "text-muted-foreground")}>
+            <span className={cn("flex items-center gap-0.5 text-[10px] tabular-nums", due ? "font-semibold text-warning" : "text-muted-foreground")}>
+              <CalendarClock className="size-2.5" />
               {followUpWords(lead.nextFollowUpOn)}
             </span>
           )}
@@ -246,5 +257,17 @@ function LeadCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function OwnerAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt="" className="size-5 shrink-0 object-cover" />;
+  }
+  const initial = name.charAt(0).toUpperCase();
+  return (
+    <span className={cn("flex size-5 shrink-0 items-center justify-center text-[9px] font-semibold text-white", avatarColor(name))}>
+      {initial}
+    </span>
   );
 }
