@@ -227,13 +227,27 @@ export default function LeadSourcesPage() {
         title="Lead Sources"
         description="Where your enquiries come from. Connect a source to start capturing leads automatically."
         actions={
-          allowed ? (
-            <Button size="sm" asChild>
-              <Link href="/lead-sources/new"><Plus className="size-3.5" /> Add source</Link>
-            </Button>
-          ) : (
-            <Button size="sm" variant="secondary" disabled><Lock className="size-3" /> Add source</Button>
-          )
+          <div className="flex items-center gap-2">
+            {allowed && sourceRows.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={refreshing}
+                onClick={doRefresh}
+                className="min-w-[7rem]"
+              >
+                <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />
+                {refreshing ? "Refreshing…" : "Refresh"}
+              </Button>
+            )}
+            {allowed ? (
+              <Button size="sm" asChild>
+                <Link href="/lead-sources/new"><Plus className="size-3.5" /> Add source</Link>
+              </Button>
+            ) : (
+              <Button size="sm" variant="secondary" disabled><Lock className="size-3" /> Add source</Button>
+            )}
+          </div>
         }
       />
 
@@ -343,19 +357,9 @@ export default function LeadSourcesPage() {
           </section>
         )}
 
-        {/* ── Refresh + Pagination ── */}
+        {/* ── Status + Pagination ── */}
         {allowed && sourceRows.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 text-xs">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={refreshing}
-              onClick={doRefresh}
-              className="min-w-[7rem]"
-            >
-              <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </Button>
             {refreshError && (
               <span className="text-danger">
                 Couldn&apos;t refresh —{" "}
