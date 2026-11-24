@@ -180,28 +180,43 @@ async def update(
     if before == after:
         return output(deal, lead, contact, owner)
     old_stage = deal.stage
+    old_name = deal.name
+    old_amount = format(deal.amount, ".2f")
+    old_close = str(deal.expected_close_at or "")
     deal.name, deal.amount, deal.stage, deal.expected_close_at = after[:4]
     deal.version += 1
     deal.updated_at = lead.last_activity_at = now()
     set_lost(deal, data.stage, data.lostCategory, data.lostReason, deal.updated_at)
     if deal.stage in ("won", "lost"):
         lead.next_follow_up_on = None
+    changes: dict[str, str | int | bool] = {
+        "deal_id": deal.id,
+        "version": deal.version,
+    }
+    if old_stage != deal.stage:
+        changes["from_stage"] = old_stage
+        changes["to_stage"] = deal.stage
+    if old_name != deal.name:
+        changes["from_name"] = old_name
+        changes["to_name"] = deal.name
+    new_amount = format(deal.amount, ".2f")
+    if old_amount != new_amount:
+        changes["from_amount"] = old_amount
+        changes["to_amount"] = new_amount
+    new_close = str(deal.expected_close_at or "")
+    if old_close != new_close:
+        changes["from_expected_close_at"] = old_close
+        changes["to_expected_close_at"] = new_close
+    if deal.lost_category:
+        changes["lost_category"] = deal.lost_category
+    if deal.lost_reason:
+        changes["lost_reason"] = deal.lost_reason
     record(
         db,
         "deal.updated",
         user_id=actor.user.id,
         tenant_id=actor.session.tenant_id,
-        details={
-            "deal_id": deal.id,
-            "from_stage": old_stage,
-            "to_stage": deal.stage,
-            "name": deal.name,
-            "amount": format(deal.amount, ".2f"),
-            "expected_close_at": str(deal.expected_close_at or ""),
-            "lost_category": deal.lost_category or "",
-            "lost_reason": deal.lost_reason,
-            "version": deal.version,
-        },
+        details=changes,
     )
     await db.flush()
     return output(deal, lead, contact, owner)

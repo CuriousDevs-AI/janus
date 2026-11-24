@@ -384,12 +384,18 @@ async def update_lead(
                 409,
             )
 
+    old_name = contact.name or ""
+    old_phone = contact.phone_e164 or ""
+    old_email = contact.email or ""
+    old_company = contact.company or ""
+    old_requirement = lead.requirement or ""
+    old_stage = lead.stage
+
     contact.name = data.name.strip()
     contact.phone_e164 = phone
     contact.email = email
     contact.company = data.company.strip()
     lead.requirement = data.requirement.strip()
-    old_stage = lead.stage
     if old_stage == "converted":
         raise ApiError(
             "lead_converted",
@@ -402,17 +408,33 @@ async def update_lead(
     lead.last_activity_at = now()
     set_lost(lead, data.stage, data.lostCategory, data.lostReason, lead.last_activity_at)
     await db.flush()
+    changes: dict[str, str | int | bool] = {"lead_id": lead.id}
+    if old_stage != lead.stage:
+        changes["from_stage"] = old_stage
+        changes["to_stage"] = lead.stage
+    if old_name != contact.name:
+        changes["from_name"] = old_name
+        changes["to_name"] = contact.name or ""
+    if old_phone != (contact.phone_e164 or ""):
+        changes["from_phone"] = old_phone
+        changes["to_phone"] = contact.phone_e164 or ""
+    if old_email != (contact.email or ""):
+        changes["from_email"] = old_email
+        changes["to_email"] = contact.email or ""
+    if old_company != (contact.company or ""):
+        changes["from_company"] = old_company
+        changes["to_company"] = contact.company or ""
+    if old_requirement != (lead.requirement or ""):
+        changes["from_requirement"] = old_requirement
+        changes["to_requirement"] = lead.requirement or ""
+    if lead.lost_category:
+        changes["lost_category"] = lead.lost_category
     record(
         db,
         "lead.updated",
         user_id=user_id,
         tenant_id=tenant_id,
-        details={
-            "lead_id": lead.id,
-            "from_stage": old_stage,
-            "to_stage": lead.stage,
-            **({"lost_category": lead.lost_category} if lead.lost_category else {}),
-        },
+        details=changes,
     )
     owner = await db.get(User, lead.owner_id) if lead.owner_id else None
     return lead_out(lead, contact, owner)

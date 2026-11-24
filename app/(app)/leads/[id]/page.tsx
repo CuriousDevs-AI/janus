@@ -41,7 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatCurrencyINR } from "@/lib/utils";
 import { LEAD_STAGES as stages, TERMINAL_LEAD_STAGES, stageLabel as label, stageBadgeVariant as stageVariant } from "@/lib/lead-stages";
 import { SourceBadge } from "@/components/shared/source-badge";
 
@@ -52,6 +52,49 @@ function initials(value: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "L";
+}
+
+function dealChangeDetail(event: DealEvent): string {
+  const d = event.details;
+  const lines: string[] = [];
+  if (d.from_stage && d.to_stage && d.from_stage !== d.to_stage)
+    lines.push(`Stage: ${label(String(d.from_stage))} → ${label(String(d.to_stage))}`);
+  if (d.from_name && d.to_name && d.from_name !== d.to_name)
+    lines.push(`Name: "${d.from_name}" → "${d.to_name}"`);
+  if (d.from_amount && d.to_amount && d.from_amount !== d.to_amount)
+    lines.push(`Value: ${formatCurrencyINR(Number(d.from_amount), false)} → ${formatCurrencyINR(Number(d.to_amount), false)}`);
+  if (d.from_expected_close_at !== undefined && d.to_expected_close_at !== undefined && d.from_expected_close_at !== d.to_expected_close_at)
+    lines.push(`Close date: ${d.from_expected_close_at || "none"} → ${d.to_expected_close_at || "none"}`);
+  if (d.lost_category || d.lost_reason)
+    lines.push(`Lost: ${lostWords(String(d.lost_category || ""), String(d.lost_reason || ""))}`);
+  if (event.action === "deal.created") {
+    if (d.name) lines.push(`Deal: ${d.name}`);
+    if (d.amount) lines.push(`Value: ${formatCurrencyINR(Number(d.amount), false)}`);
+    if (d.stage) lines.push(`Stage: ${label(String(d.stage))}`);
+  }
+  if (event.userName) lines.push(`by ${event.userName}`);
+  return lines.join(" · ") || "Deal details changed.";
+}
+
+function leadChangeDetail(event: LeadEvent): string {
+  const d = event.details;
+  const lines: string[] = [];
+  if (d.from_stage && d.to_stage && d.from_stage !== d.to_stage)
+    lines.push(`Stage: ${label(String(d.from_stage))} → ${label(String(d.to_stage))}`);
+  if (d.from_name && d.to_name && d.from_name !== d.to_name)
+    lines.push(`Name: "${d.from_name}" → "${d.to_name}"`);
+  if (d.from_phone !== undefined && d.to_phone !== undefined && d.from_phone !== d.to_phone)
+    lines.push(`Phone: ${d.from_phone || "none"} → ${d.to_phone || "none"}`);
+  if (d.from_email !== undefined && d.to_email !== undefined && d.from_email !== d.to_email)
+    lines.push(`Email: ${d.from_email || "none"} → ${d.to_email || "none"}`);
+  if (d.from_company !== undefined && d.to_company !== undefined && d.from_company !== d.to_company)
+    lines.push(`Company: ${d.from_company || "none"} → ${d.to_company || "none"}`);
+  if (d.from_requirement !== undefined && d.to_requirement !== undefined && d.from_requirement !== d.to_requirement)
+    lines.push("Requirement updated");
+  if (d.lost_category)
+    lines.push(`Lost: ${lostWords(String(d.lost_category), "")}`);
+  if (event.userName) lines.push(`by ${event.userName}`);
+  return lines.join(" · ") || "Lead details updated.";
 }
 
 function TimelineItem({
@@ -318,18 +361,14 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           key={`deal-${event.id}`}
           icon={<CalendarClock className="size-4" />}
           title={event.action === "deal.created" ? "Deal created" : "Deal updated"}
-          detail={
-            event.details.to_stage
-              ? `Deal moved to ${label(String(event.details.to_stage))}.`
-              : "Deal details changed."
-          }
+          detail={dealChangeDetail(event)}
           time={formatDateTime(event.createdAt)}
           tone="accent"
         />
       ),
     })),
     ...(leadEvents.data ?? [])
-      .filter((e) => e.action === "lead.updated" && e.details.from_stage !== e.details.to_stage)
+      .filter((e) => e.action === "lead.updated")
       .map((event) => ({
         key: `lead-event-${event.id}`,
         at: event.createdAt,
@@ -337,8 +376,8 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           <TimelineItem
             key={`lead-event-${event.id}`}
             icon={<ChevronRight className="size-4" />}
-            title="Stage changed"
-            detail={`${label(String(event.details.from_stage))} → ${label(String(event.details.to_stage))}${event.userName ? ` · by ${event.userName}` : ""}`}
+            title={event.details.from_stage !== event.details.to_stage ? "Stage changed" : "Lead updated"}
+            detail={leadChangeDetail(event)}
             time={formatDateTime(event.createdAt)}
             tone="info"
           />

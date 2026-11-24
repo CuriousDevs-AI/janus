@@ -464,18 +464,14 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
                           {event.action === "deal.created"
                             ? "Deal created"
                             : event.details.from_stage !== event.details.to_stage
-                              ? `${stageWord(event.details.from_stage)} → ${stageWord(event.details.to_stage)}`
-                              : "Details updated"}
+                              ? `Stage: ${stageWord(event.details.from_stage)} → ${stageWord(event.details.to_stage)}`
+                              : "Deal updated"}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {formatRelativeTime(event.createdAt)}
-                          {event.userName && ` · ${event.userName}`}
+                          {event.userName && ` · by ${event.userName}`}
                         </p>
-                        {event.details.amount !== undefined && (
-                          <p className="mt-0.5 text-xs">
-                            Value: {formatCurrencyINR(Number(event.details.amount), false)}
-                          </p>
-                        )}
+                        <DealChanges event={event} />
                       </li>
                     ))}
                   </ol>
@@ -508,23 +504,14 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
                       {event.action === "deal.created"
                         ? "Deal created"
                         : event.details.from_stage !== event.details.to_stage
-                          ? `Moved from ${stageWord(event.details.from_stage)} to ${stageWord(event.details.to_stage)}`
-                          : "Deal details updated"}
+                          ? `Stage: ${stageWord(event.details.from_stage)} → ${stageWord(event.details.to_stage)}`
+                          : "Deal updated"}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatDateTime(event.createdAt)} ·{" "}
                       {event.userName || (event.userId ? `Member #${event.userId}` : "System")}
                     </p>
-                    {event.details.amount !== undefined && (
-                      <p className="mt-1 text-xs">
-                        Value: {formatCurrencyINR(Number(event.details.amount), false)}
-                      </p>
-                    )}
-                    {(event.details.lost_category || event.details.lost_reason) && (
-                      <p className="mt-1 whitespace-pre-wrap text-xs">
-                        Reason: {lostWords(String(event.details.lost_category || ""), String(event.details.lost_reason || ""))}
-                      </p>
-                    )}
+                    <DealChanges event={event} />
                   </li>
                 ))}
               </ol>
@@ -573,6 +560,38 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
         </>
       )}
     </div>
+  );
+}
+
+function DealChanges({ event }: { event: DealEvent }) {
+  const d = event.details;
+  const lines: string[] = [];
+  if (d.from_stage && d.to_stage && d.from_stage !== d.to_stage)
+    lines.push(`Stage changed from ${stageWord(d.from_stage)} to ${stageWord(d.to_stage)}`);
+  if (d.from_name && d.to_name && d.from_name !== d.to_name)
+    lines.push(`Name changed from "${d.from_name}" to "${d.to_name}"`);
+  if (d.from_amount && d.to_amount && d.from_amount !== d.to_amount)
+    lines.push(`Value changed from ${formatCurrencyINR(Number(d.from_amount), false)} to ${formatCurrencyINR(Number(d.to_amount), false)}`);
+  if (d.from_expected_close_at !== undefined && d.to_expected_close_at !== undefined && d.from_expected_close_at !== d.to_expected_close_at) {
+    const from = d.from_expected_close_at ? new Date(`${d.from_expected_close_at}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "none";
+    const to = d.to_expected_close_at ? new Date(`${d.to_expected_close_at}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "none";
+    lines.push(`Expected close changed from ${from} to ${to}`);
+  }
+  if (d.lost_category || d.lost_reason)
+    lines.push(`Lost reason: ${lostWords(String(d.lost_category || ""), String(d.lost_reason || ""))}`);
+  if (event.action === "deal.created") {
+    if (d.name) lines.push(`Deal: ${d.name}`);
+    if (d.amount) lines.push(`Value: ${formatCurrencyINR(Number(d.amount), false)}`);
+    if (d.stage) lines.push(`Stage: ${stageWord(d.stage)}`);
+    if (d.expected_close_at) lines.push(`Close date: ${new Date(`${d.expected_close_at}T12:00:00+05:30`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`);
+  }
+  if (lines.length === 0) return null;
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {lines.map((line) => (
+        <li key={line} className="text-xs text-muted-foreground">• {line}</li>
+      ))}
+    </ul>
   );
 }
 
