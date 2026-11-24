@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   CalendarClock,
   Clock,
@@ -52,9 +51,11 @@ const avatarColor = (name: string) => AVATAR_COLORS[Math.abs([...name].reduce((h
 export function LeadsBoard({
   leads,
   onStageChanged,
+  onLeadClick,
 }: {
   leads: Lead[];
   onStageChanged: () => void;
+  onLeadClick?: (lead: Lead) => void;
 }) {
   const session = useSession();
   const canWrite = can(session, "leads:write");
@@ -131,6 +132,7 @@ export function LeadsBoard({
                     canWrite={canWrite}
                     stages={BOARD_STAGES}
                     onMove={(s) => move(lead, s)}
+                    onClick={() => onLeadClick?.(lead)}
                     sessionUserId={session.user.id}
                     sessionUserName={session.user.name}
                   />
@@ -156,6 +158,7 @@ function LeadCard({
   canWrite,
   stages,
   onMove,
+  onClick,
   sessionUserId,
   sessionUserName,
 }: {
@@ -164,6 +167,7 @@ function LeadCard({
   canWrite: boolean;
   stages: LeadStage[];
   onMove: (stage: LeadStage) => void;
+  onClick?: () => void;
   sessionUserId: string;
   sessionUserName: string;
 }) {
@@ -172,14 +176,14 @@ function LeadCard({
   const ownerName = lead.ownerId === sessionUserId ? sessionUserName : lead.ownerName || "Unassigned";
 
   return (
-    <Link
-      href={`/leads/${lead.id}`}
+    <article
       draggable={canDrag}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", lead.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      className="group flex shrink-0 flex-col gap-2 border border-border bg-surface p-3.5 shadow-sm transition-shadow hover:shadow-md"
+      className="group flex shrink-0 flex-col gap-2 border border-border bg-surface p-3.5 shadow-sm transition-shadow hover:shadow-md cursor-pointer"
+      onClick={onClick}
     >
       {/* Header: name + menu */}
       <div className="flex items-start justify-between gap-1.5">
@@ -192,12 +196,12 @@ function LeadCard({
             <button
               type="button"
               className="shrink-0 p-0.5 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-              onClick={(e) => e.preventDefault()}
+              onClick={(e) => e.stopPropagation()}
             >
               <MoreVertical className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.preventDefault()}>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             {canWrite && (
               <>
                 {stages.filter((s) => s !== lead.stage).map((s) => (
@@ -234,26 +238,26 @@ function LeadCard({
         <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{lead.requirement}</p>
       )}
 
-      {/* Footer: owner + follow-up + time */}
+      {/* Follow-up date — prominent */}
+      {lead.nextFollowUpOn && (
+        <div className={cn("flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium", due ? "bg-warning/10 text-warning" : "bg-accent/10 text-accent")}>
+          <CalendarClock className="size-3 shrink-0" />
+          {followUpWords(lead.nextFollowUpOn)}
+        </div>
+      )}
+
+      {/* Footer: owner + time */}
       <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2">
         <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-muted-foreground">
           <User className="size-3.5 shrink-0" />
           <span className="truncate">{ownerName}</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {lead.nextFollowUpOn && (
-            <span className={cn("flex items-center gap-0.5 text-[10px] tabular-nums", due ? "font-semibold text-warning" : "text-muted-foreground")}>
-              <CalendarClock className="size-2.5" />
-              {followUpWords(lead.nextFollowUpOn)}
-            </span>
-          )}
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-            <Clock className="size-2.5" />
-            {formatRelativeTime(lead.lastActivityAt)}
-          </span>
-        </div>
+        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground shrink-0">
+          <Clock className="size-2.5" />
+          {formatRelativeTime(lead.lastActivityAt)}
+        </span>
       </div>
-    </Link>
+    </article>
   );
 }
 

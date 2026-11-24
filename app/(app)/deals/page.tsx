@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Plus, RefreshCw, Building2,
   LayoutGrid, List, Settings2, ArrowUpDown, ArrowUp, ArrowDown,
@@ -26,6 +25,7 @@ import { useCrmContext } from "@/lib/hooks/use-crm-context";
 import { columnBg, columnBorder } from "@/components/crm/deals/constants";
 import { DealCard } from "@/components/crm/deals/deal-card";
 import { StageSettingsDialog } from "@/components/crm/deals/stage-settings-dialog";
+import { DealDetailSheet } from "@/components/crm/deals/deal-detail-sheet";
 
 const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
@@ -42,7 +42,6 @@ function useLocalPref<T extends string>(key: string, fallback: T): [T, (v: T) =>
 }
 
 export default function DealsPage() {
-  const router = useRouter();
   const session = useSession();
   const { crms, multiCrm } = useCrmContext();
   const [crmFilter, setCrmFilter] = useState<string>("all");
@@ -67,6 +66,7 @@ export default function DealsPage() {
   const allDeals = everyDeal.data ?? deals;
   const [query, setQuery] = useState("");
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Deal | null>(null);
   const [busy, setBusy] = useState(false);
   const [closeFilter, setCloseFilter] = useState<"all" | "closing" | "slipped" | "undated" | "mine">("all");
   const [sortKey, setSortKey] = useState<SortKey>("updatedAt");
@@ -117,7 +117,7 @@ export default function DealsPage() {
 
   async function move(deal: Deal, stage: string) {
     if (!writable || busy || deal.stage === stage) return;
-    if (stage === "lost") { router.push(`/deals/${deal.id}`); return; }
+    if (stage === "lost") { setEditing({ ...deal, stage: stage as Deal["stage"] }); return; }
     setBusy(true);
     try {
       await api<Deal>(`/deals/${deal.id}`, { method: "PUT", body: JSON.stringify({ name: deal.name, amount: deal.amount, stage, expectedCloseAt: deal.expectedCloseAt, lostReason: "", version: deal.version }) });
@@ -329,7 +329,7 @@ export default function DealsPage() {
                     {/* Cards */}
                     <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2", colBg)}>
                       {items.map((deal) => (
-                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} stageColor={stage.color} stages={stages} onMove={(s) => move(deal, s)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} />
+                        <DealCard key={deal.id} deal={deal} writable={writable} busy={busy} today={today} sessionUserId={session.user.id} sessionUserName={session.user.name} stageColor={stage.color} stages={stages} onEdit={() => setEditing(deal)} onMove={(s) => move(deal, s)} onDragStart={(e) => { e.dataTransfer.setData("text/plain", deal.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDragOverStage(null)} />
                       ))}
                       {items.length === 0 && (
                         <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
@@ -411,7 +411,7 @@ export default function DealsPage() {
                             <DropdownMenuTrigger asChild><button type="button" className="rounded p-1 opacity-0 transition-opacity hover:bg-surface-2 group-hover:opacity-100"><MoreHorizontal className="size-3.5 text-muted-foreground" /></button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Eye className="size-3.5 mr-2" /> View</Link></DropdownMenuItem>
-                              {writable && <DropdownMenuItem asChild><Link href={`/deals/${deal.id}`}><Pencil className="size-3.5 mr-2" /> Edit</Link></DropdownMenuItem>}
+                              {writable && <DropdownMenuItem onClick={() => setEditing(deal)}><Pencil className="size-3.5 mr-2" /> Edit</DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
@@ -471,6 +471,19 @@ export default function DealsPage() {
 
       <StageSettingsDialog open={stageSettingsOpen} onOpenChange={setStageSettingsOpen} pipeline={pipeline} allDeals={allDeals} />
 
+      {editing && (
+        <DealDetailSheet
+          deal={editing}
+          open
+          onOpenChange={(o) => { if (!o) setEditing(null); }}
+          stages={stages}
+          writable={writable}
+          sessionUserId={session.user.id}
+          sessionUserName={session.user.name}
+          onMove={(stage) => { move(editing, stage); setEditing(null); }}
+          onSaved={() => { setEditing(null); reload(); toast.success("Deal saved"); }}
+        />
+      )}
     </div>
   );
 }
