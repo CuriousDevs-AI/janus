@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Clock3,
   ExternalLink,
@@ -66,12 +67,7 @@ function TimelineItem({
   time: string;
   tone?: "accent" | "success" | "info" | "warning";
 }) {
-  const barColor = {
-    accent: "bg-accent",
-    success: "bg-success",
-    info: "bg-info",
-    warning: "bg-warning",
-  };
+  const [open, setOpen] = useState(false);
   const iconColor = {
     accent: "text-accent",
     success: "text-success",
@@ -85,17 +81,24 @@ function TimelineItem({
     warning: "border-l-warning",
   };
   return (
-    <div className={`border border-border border-l-[3px] ${borderColor[tone]} bg-surface px-3.5 py-2.5 shadow-sm`}>
-      <div className="flex items-start gap-2.5">
-        <div className={`mt-0.5 shrink-0 ${iconColor[tone]}`}>{icon}</div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-[13px] font-medium text-foreground">{title}</p>
-            <time className="text-[11px] text-muted-foreground">{time}</time>
-          </div>
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{detail}</p>
+    <div className={`border border-border border-l-[3px] ${borderColor[tone]} bg-surface shadow-sm`}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-surface-2 transition-colors"
+      >
+        <div className={`shrink-0 ${iconColor[tone]}`}>{icon}</div>
+        <div className="min-w-0 flex-1 flex items-baseline justify-between gap-2">
+          <p className="text-[13px] font-medium text-foreground truncate">{title}</p>
+          <time className="shrink-0 text-[11px] text-muted-foreground">{time}</time>
         </div>
-      </div>
+        <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="border-t border-border/50 px-3.5 pb-2.5 pt-2 pl-10">
+          <p className="text-xs leading-5 text-muted-foreground">{detail}</p>
+        </div>
+      )}
     </div>
   );
 }
