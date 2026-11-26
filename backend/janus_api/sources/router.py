@@ -7,6 +7,7 @@ from janus_api.auth.schemas import Identifier
 from janus_api.auth.service import Actor
 from janus_api.core.deps import CurrentActor, Db, request_ip, require
 from janus_api.sources import api_keys, csv_imports, ingest, schemas, service, website
+from janus_api.sources.service import source_metrics
 
 router = APIRouter(prefix="/v1", tags=["Lead sources"])
 SourceManager = Annotated[Actor, Depends(require("sources:manage"))]
@@ -21,6 +22,11 @@ async def create(
     return await service.create_connection(
         db, actor.session.tenant_id, actor.user.id, data, request_ip(request)
     )
+
+
+@router.get("/sources/metrics", response_model=schemas.SourceMetrics)
+async def metrics(actor: SourceManager, db: Db) -> schemas.SourceMetrics:
+    return await source_metrics(db, actor.session.tenant_id)
 
 
 @router.get("/sources", response_model=list[schemas.ConnectionOut])
@@ -57,6 +63,11 @@ async def update(
     )
 
 
+@router.post("/sources/{connection_id}/test", response_model=schemas.TestResult)
+async def test_conn(connection_id: Identifier, actor: SourceManager, db: Db) -> schemas.TestResult:
+    return await service.test_connection(db, actor.session.tenant_id, connection_id)
+
+
 @router.post("/sources/{connection_id}/rotate-secret", response_model=schemas.ConnectionSecret)
 async def rotate(
     connection_id: Identifier, actor: SourceManager, db: Db, request: Request
@@ -75,6 +86,21 @@ async def events(
     limit: Limit = 100,
 ) -> list[schemas.EventOut]:
     return await service.list_events(db, connection_id, after_id, limit)
+
+
+@router.post(
+    "/sources/{connection_id}/events/{event_id}/retry",
+    response_model=schemas.EventOut,
+)
+async def retry_event(
+    connection_id: Identifier,
+    event_id: Identifier,
+    actor: SourceManager,
+    db: Db,
+) -> schemas.EventOut:
+    return await service.retry_failed_event(
+        db, actor.session.tenant_id, actor.user.id, connection_id, event_id
+    )
 
 
 @router.api_route(

@@ -203,6 +203,10 @@ async def process_event(db: AsyncSession, event: RawEvent) -> None:
     )
     thread.last_inbound_at = max(thread.last_inbound_at or received_at, received_at)
     thread.last_message_at = max(thread.last_message_at, received_at)
+    thread.last_message_body = body[:200] if body else None
+    thread.unread_count = (thread.unread_count or 0) + 1
+    if thread.status in ("resolved", "closed"):
+        thread.status = "open"
     db.add(
         Message(
             tenant_id=event.tenant_id,

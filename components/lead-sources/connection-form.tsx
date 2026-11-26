@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, message } from "@/lib/api/client";
 import type {
   FieldMapping,
@@ -8,6 +8,7 @@ import type {
   Source,
   SourceKind,
 } from "@/lib/api/types";
+import { useSession } from "@/components/auth/session-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +32,7 @@ const defaults: FieldMapping[] = [
   "requirement",
 ].map((field) => ({ rawField: field, mapsTo: field as MappingTarget }));
 export const selectClass =
-  "h-8 w-full rounded-md border border-input bg-surface-2 px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "h-8 w-full border border-input bg-surface-2 px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function ConnectionForm({
   kind,
@@ -48,17 +49,23 @@ export function ConnectionForm({
   initialPreset?: string;
   onSaved: (source: Source) => void;
 }) {
+  const session = useSession();
+  const crms = useMemo(() => session.crms ?? [], [session.crms]);
   const [preset, setPreset] = useState(
     initial?.preset || initialPreset || (callsOnly ? "exotel" : "custom"),
   );
   const [mapping, setMapping] = useState<FieldMapping[]>(
     initial?.fieldMapping || defaults,
   );
+  const [crmId, setCrmId] = useState<string>(() =>
+    initial?.crmId || (crms.length === 1 ? crms[0].id : ""),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const selected = presets.find((p) => p.value === preset);
   const showMapping =
     kind === "csv" || (kind === "webhook" && preset === "custom");
+
   return (
     <form
       className="flex max-w-2xl flex-col gap-4"
@@ -71,6 +78,7 @@ export function ConnectionForm({
           const body = {
             name: values.get("name"),
             description: values.get("description"),
+            crmId: crmId ? Number(crmId) : null,
             connectionKind: kind,
             preset: kind === "webhook" ? preset : "custom",
             ...(showMapping
@@ -126,6 +134,39 @@ export function ConnectionForm({
           defaultValue={initial?.description}
         />
       </div>
+
+      {/* ── CRM destination ── */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="source-crm">Destination CRM</Label>
+        {crms.length === 0 ? (
+          <p className="text-xs text-warning">No CRM workspaces available. Create a workspace first to route leads.</p>
+        ) : crms.length === 1 ? (
+          <div className="flex items-center gap-2">
+            <select id="source-crm" className={selectClass} value={crmId} disabled>
+              <option value={crms[0].id}>{crms[0].name}</option>
+            </select>
+            <span className="shrink-0 text-[11px] text-muted-foreground">Auto-selected</span>
+          </div>
+        ) : (
+          <select
+            id="source-crm"
+            className={selectClass}
+            value={crmId}
+            onChange={(e) => setCrmId(e.target.value)}
+          >
+            <option value="">Select a CRM workspace…</option>
+            {crms.map((crm) => (
+              <option key={crm.id} value={crm.id}>{crm.name}{crm.isDefault ? " (default)" : ""}</option>
+            ))}
+          </select>
+        )}
+        {crmId && (
+          <p className="text-[11px] text-muted-foreground">
+            New leads from this source will be created in <strong>{crms.find((c) => c.id === crmId)?.name}</strong>.
+          </p>
+        )}
+      </div>
+
       {kind === "embed" && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="source-origins">Allowed website origins</Label>

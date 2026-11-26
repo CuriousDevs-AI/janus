@@ -362,7 +362,9 @@ class CustomerListRow(BaseModel):
     email: str | None
     company: str
     leadCount: int
+    dealCount: int
     dealValue: str
+    dealStage: str | None
     stage: str
     ownerId: str | None
     ownerName: str | None
@@ -446,8 +448,10 @@ class ActivityOut(BaseModel):
     subject: str
     description: str
     leadId: str | None
+    leadName: str | None = None
     dealId: str | None = None
     contactId: str
+    contactName: str | None = None
     ownerId: str | None
     ownerName: str | None = None
     dueAt: datetime | None
@@ -618,8 +622,39 @@ class BulkDeleteIn(BaseModel):
     leadIds: list[str] = Field(min_length=1, max_length=100)
 
 
+class ContactBulkStageIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contactIds: list[str] = Field(min_length=1, max_length=100)
+    stage: LeadStage
+    lostCategory: LostCategory | None = None
+    lostReason: LostNote = ""
+
+    @model_validator(mode="after")
+    def loss_reason(self) -> "ContactBulkStageIn":
+        self.lostCategory, self.lostReason = check_lost(
+            self.stage, self.lostCategory, self.lostReason
+        )
+        return self
+
+
+class ContactBulkAssignIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contactIds: list[str] = Field(min_length=1, max_length=100)
+    ownerId: str | None = None
+
+
 class BulkResult(BaseModel):
     affected: int
+
+
+class JourneyEvent(BaseModel):
+    id: str
+    action: str
+    title: str
+    detail: str
+    userId: str | None
+    userName: str | None = None
+    createdAt: datetime
 
 
 # ---------------------------------------------------------------------------

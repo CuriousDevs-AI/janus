@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import {
   CalendarCheck, Phone, Video, Mail, ClipboardList, StickyNote,
   CheckCircle2, RefreshCw, Plus, ChevronLeft, ChevronRight,
-  BarChart3, TrendingUp, Clock, Users, Settings2, Filter, X,
+  BarChart3, TrendingUp, Clock, Users, Settings2, Filter, Trash2, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchInput } from "@/components/shared/search-input";
 import {
-  Bar, BarChart, CartesianGrid, Cell,
+  Bar, BarChart, CartesianGrid,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 const KIND_META: Record<ActivityKind, { label: string; icon: typeof Phone; color: string; chartColor: string }> = {
@@ -84,6 +84,7 @@ export default function ActivitiesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [logOpen, setLogOpen] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const today = todayIST();
@@ -206,6 +207,20 @@ export default function ActivitiesPage() {
       toast.error(message(e));
     } finally {
       setCompleting(null);
+    }
+  }
+
+  async function remove(id: string) {
+    setDeleting(id);
+    try {
+      await api(`/activities/${id}`, { method: "DELETE" });
+      toast.success("Activity deleted");
+      activities.reload();
+      allActivities.reload();
+    } catch (e) {
+      toast.error(message(e));
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -507,24 +522,39 @@ export default function ActivitiesPage() {
                       <p className="text-sm font-medium">{a.subject}</p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <Badge variant="neutral" className="text-[10px]">{meta.label}</Badge>
-                        {a.ownerName && <span>{a.ownerName}</span>}
-                        {a.dueAt && <span>Due {formatDateTime(a.dueAt)}</span>}
+                        {a.contactName && <span className="font-medium text-foreground">{a.contactName}</span>}
+                        {a.leadName && <span>· {a.leadName}</span>}
+                        {a.ownerName && <span>· {a.ownerName}</span>}
+                        {a.dueAt && <span>· Due {formatDateTime(a.dueAt)}</span>}
                       </div>
                     </div>
-                    {!a.completedAt && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      {!a.completedAt && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="size-8 p-0"
+                          disabled={completing === a.id}
+                          onClick={() => complete(a.id)}
+                          title="Mark complete"
+                        >
+                          <CheckCircle2 className="size-4 text-success" />
+                        </Button>
+                      )}
+                      {a.completedAt && (
+                        <Badge variant="success" className="text-[10px]">Done</Badge>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="shrink-0"
-                        disabled={completing === a.id}
-                        onClick={() => complete(a.id)}
+                        className="size-8 p-0 text-muted-foreground hover:text-danger"
+                        disabled={deleting === a.id}
+                        onClick={() => remove(a.id)}
+                        title="Delete"
                       >
-                        <CheckCircle2 className="size-4 text-success" />
+                        <Trash2 className="size-3.5" />
                       </Button>
-                    )}
-                    {a.completedAt && (
-                      <Badge variant="success" className="shrink-0 text-[10px]">Done</Badge>
-                    )}
+                    </div>
                   </div>
                 );
               })}

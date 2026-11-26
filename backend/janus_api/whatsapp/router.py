@@ -97,6 +97,106 @@ async def send(
     )
 
 
+@router.patch(
+    "/whatsapp/conversations/{conversation_id}/assign", response_model=schemas.ConversationOut
+)
+async def assign(
+    conversation_id: Identifier, data: schemas.AssignInput, actor: Sender, db: Db
+) -> schemas.ConversationOut:
+    return await service.assign_conversation(
+        db, actor, conversation_id, int(data.userId) if data.userId else None
+    )
+
+
+@router.patch(
+    "/whatsapp/conversations/{conversation_id}/status", response_model=schemas.ConversationOut
+)
+async def update_status(
+    conversation_id: Identifier, data: schemas.StatusInput, actor: Sender, db: Db
+) -> schemas.ConversationOut:
+    return await service.update_status(db, actor, conversation_id, data.status)
+
+
+@router.patch(
+    "/whatsapp/conversations/{conversation_id}/priority", response_model=schemas.ConversationOut
+)
+async def update_priority(
+    conversation_id: Identifier, data: schemas.PriorityInput, actor: Sender, db: Db
+) -> schemas.ConversationOut:
+    return await service.update_priority(db, actor, conversation_id, data.priority)
+
+
+@router.post(
+    "/whatsapp/conversations/{conversation_id}/read", response_model=schemas.ConversationOut
+)
+async def mark_read(conversation_id: Identifier, actor: Reader, db: Db) -> schemas.ConversationOut:
+    return await service.mark_read(db, actor, conversation_id)
+
+
+@router.get("/whatsapp/conversations/{conversation_id}/notes", response_model=list[schemas.NoteOut])
+async def list_notes(conversation_id: Identifier, actor: Reader, db: Db) -> list[schemas.NoteOut]:
+    return await service.list_notes(db, actor, conversation_id)
+
+
+@router.post(
+    "/whatsapp/conversations/{conversation_id}/notes",
+    response_model=schemas.NoteOut,
+    status_code=201,
+)
+async def add_note(
+    conversation_id: Identifier, data: schemas.NoteInput, actor: Sender, db: Db
+) -> schemas.NoteOut:
+    return await service.add_note(db, actor, conversation_id, data.body)
+
+
+@router.get("/whatsapp/tags", response_model=list[schemas.TagOut])
+async def list_tags(actor: Reader, db: Db) -> list[schemas.TagOut]:
+    return await service.list_tags(db, actor.session.tenant_id)
+
+
+@router.post(
+    "/whatsapp/conversations/{conversation_id}/tags", response_model=schemas.ConversationOut
+)
+async def add_tag(
+    conversation_id: Identifier, data: schemas.TagInput, actor: Sender, db: Db
+) -> schemas.ConversationOut:
+    return await service.add_tag(db, actor, conversation_id, data.name, data.color)
+
+
+@router.delete(
+    "/whatsapp/conversations/{conversation_id}/tags/{tag_id}",
+    response_model=schemas.ConversationOut,
+)
+async def remove_tag(
+    conversation_id: Identifier, tag_id: Identifier, actor: Sender, db: Db
+) -> schemas.ConversationOut:
+    return await service.remove_tag(db, actor, conversation_id, tag_id)
+
+
+@router.get("/whatsapp/quick-replies", response_model=list[schemas.QuickReplyOut])
+async def list_quick_replies(actor: Reader, db: Db) -> list[schemas.QuickReplyOut]:
+    return await service.list_quick_replies(db, actor)
+
+
+@router.post("/whatsapp/quick-replies", response_model=schemas.QuickReplyOut, status_code=201)
+async def create_quick_reply(
+    data: schemas.QuickReplyInput, actor: Sender, db: Db
+) -> schemas.QuickReplyOut:
+    return await service.create_quick_reply(db, actor, data)
+
+
+@router.put("/whatsapp/quick-replies/{reply_id}", response_model=schemas.QuickReplyOut)
+async def update_quick_reply(
+    reply_id: Identifier, data: schemas.QuickReplyInput, actor: Sender, db: Db
+) -> schemas.QuickReplyOut:
+    return await service.update_quick_reply(db, actor, reply_id, data)
+
+
+@router.delete("/whatsapp/quick-replies/{reply_id}", status_code=204)
+async def delete_quick_reply(reply_id: Identifier, actor: Sender, db: Db) -> None:
+    await service.delete_quick_reply(db, actor, reply_id)
+
+
 @router.get("/ingest/whatsapp/{key}", response_class=PlainTextResponse)
 async def verify(key: str, db: Db, request: Request) -> str:
     return await ingest.verify(db, key, request)

@@ -2,11 +2,13 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -55,10 +57,52 @@ class Conversation(Base):
     tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
     connection_id: Mapped[int] = mapped_column(BigInteger)
     contact_id: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(20), server_default="open")
+    assigned_user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
+    unread_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    priority: Mapped[str] = mapped_column(String(10), server_default="normal")
+    last_message_body: Mapped[str | None] = mapped_column(String(200))
     last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_message_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class ConversationNote(Base):
+    __tablename__ = "conversation_notes"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    conversation_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConversationTag(Base):
+    __tablename__ = "conversation_tags"
+    __table_args__ = (UniqueConstraint("tenant_id", "name"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    name: Mapped[str] = mapped_column(String(50))
+    color: Mapped[str] = mapped_column(String(20), server_default="gray")
+
+
+class ConversationTagLink(Base):
+    __tablename__ = "conversation_tag_links"
+    __table_args__ = (UniqueConstraint("conversation_id", "tag_id"),)
+    tenant_id: Mapped[int] = mapped_column(BigInteger)
+    conversation_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    tag_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("conversation_tags.id", ondelete="CASCADE")
+    )
+
+
+class QuickReply(Base):
+    __tablename__ = "quick_replies"
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(100))
+    body: Mapped[str] = mapped_column(String(4096))
+    shared: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Message(Base):

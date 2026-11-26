@@ -57,6 +57,19 @@ export interface Source {
   capturedLeads: number;
   signingSecret?: string | null;
   callbackUrl?: string | null;
+  crmId?: string | null;
+  crmName?: string | null;
+  healthStatus?: "healthy" | "warning" | "error" | "paused" | "needs_setup" | null;
+  lastErrorAt?: string | null;
+  errorCount?: number;
+}
+export interface SourceMetrics {
+  activeSources: number;
+  pausedSources: number;
+  totalLeadsCaptured: number;
+  leadsToday: number;
+  failedEvents: number;
+  sourcesNeedingAttention: number;
 }
 export interface Preset {
   value: string;
@@ -168,6 +181,14 @@ export interface WhatsAppConversation {
   name: string;
   phone: string | null;
   company: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  status: "open" | "pending" | "resolved" | "closed";
+  assignedUserId: string | null;
+  assignedUserName: string | null;
+  unreadCount: number;
+  priority: "normal" | "high" | "urgent";
+  lastMessageBody: string | null;
   whatsappOptIn: boolean;
   doNotContact: boolean;
   consentSource: string | null;
@@ -175,6 +196,7 @@ export interface WhatsAppConversation {
   lastMessageAt: string;
   lastInboundAt: string | null;
   replyWindowEndsAt: string | null;
+  tags: ConversationTag[];
 }
 export interface WhatsAppMessage {
   id: string;
@@ -183,6 +205,25 @@ export interface WhatsAppMessage {
   body: string;
   status: string;
   errorCode: string | null;
+  createdAt: string;
+}
+export interface ConversationNote {
+  id: string;
+  userId: string;
+  userName: string;
+  body: string;
+  createdAt: string;
+}
+export interface ConversationTag {
+  id: string;
+  name: string;
+  color: string;
+}
+export interface QuickReply {
+  id: string;
+  title: string;
+  body: string;
+  shared: boolean;
   createdAt: string;
 }
 
@@ -232,8 +273,10 @@ export interface Activity {
   subject: string;
   description: string;
   leadId: string | null;
+  leadName: string | null;
   dealId: string | null;
   contactId: string;
+  contactName: string | null;
   ownerId: string | null;
   ownerName: string | null;
   dueAt: string | null;

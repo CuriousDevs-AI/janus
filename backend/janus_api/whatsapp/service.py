@@ -4,11 +4,13 @@ import re
 from datetime import timedelta
 
 from cryptography.fernet import InvalidToken
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from janus_api.audit.service import record
+from janus_api.auth.models import User
 from janus_api.auth.service import Actor
 from janus_api.core.config import get_settings
 from janus_api.core.errors import ApiError
@@ -18,7 +20,15 @@ from janus_api.crm.service import get_contact, visible_owners
 from janus_api.org.service import lock_workspace
 from janus_api.sources.models import SourceConnection
 from janus_api.whatsapp import meta, schemas
-from janus_api.whatsapp.models import Conversation, Message, WhatsAppConnection
+from janus_api.whatsapp.models import (
+    Conversation,
+    ConversationNote,
+    ConversationTag,
+    ConversationTagLink,
+    Message,
+    QuickReply,
+    WhatsAppConnection,
+)
 
 
 def decrypt(value: str) -> str:
@@ -195,13 +205,36 @@ async def conversations(
 ) -> list[schemas.ConversationOut]:
     owners = await visible_owners(db, actor.session.tenant_id, actor.user.id, actor.permissions)
     visible = select(Lead.id).where(
-        Lead.contact_id == Conversation.contact_id, Lead.tenant_id == actor.session.tenant_id
+        Lead.contact_id == Conversation.contact_id,
+        Lead.tenant_id == actor.session.tenant_id,
     )
     if owners is not None:
         visible = visible.where(Lead.owner_id.in_(owners))
+    primary_lead = (
+        select(Lead.owner_id)
+        .where(
+            Lead.contact_id == Conversation.contact_id,
+            Lead.tenant_id == actor.session.tenant_id,
+        )
+        .order_by(Lead.id.desc())
+        .limit(1)
+        .correlate(Conversation)
+        .scalar_subquery()
+        .label("lead_owner_id")
+    )
+    LeadOwner = aliased(User, name="lead_owner")
+    AssignedUser = aliased(User, name="assigned_user")
     query = (
-        select(Conversation, Contact)
+        select(
+            Conversation,
+            Contact,
+            primary_lead,
+            LeadOwner.name.label("owner_name"),
+            AssignedUser.name.label("assigned_user_name"),
+        )
         .join(Contact, Contact.id == Conversation.contact_id)
+        .outerjoin(LeadOwner, LeadOwner.id == primary_lead)
+        .outerjoin(AssignedUser, AssignedUser.id == Conversation.assigned_user_id)
         .where(visible.exists())
     )
     if conversation_id is not None:
@@ -211,6 +244,23 @@ async def conversations(
     if before_id:
         query = query.where(Conversation.id < before_id)
     rows = (await db.execute(query.order_by(Conversation.id.desc()).limit(limit))).all()
+    conv_ids = [r[0].id for r in rows]
+    tag_rows = (
+        (
+            await db.execute(
+                select(ConversationTagLink.conversation_id, ConversationTag)
+                .join(ConversationTag, ConversationTag.id == ConversationTagLink.tag_id)
+                .where(ConversationTagLink.conversation_id.in_(conv_ids))
+            )
+        ).all()
+        if conv_ids
+        else []
+    )
+    tags_by_conv: dict[int, list[schemas.TagOut]] = {}
+    for link_conv_id, tag in tag_rows:
+        tags_by_conv.setdefault(link_conv_id, []).append(
+            schemas.TagOut(id=str(tag.id), name=tag.name, color=tag.color)
+        )
     return [
         schemas.ConversationOut(
             id=str(c.id),
@@ -218,6 +268,14 @@ async def conversations(
             name=p.name,
             phone=p.phone_e164,
             company=p.company,
+            ownerId=str(lead_owner_id) if lead_owner_id else None,
+            ownerName=owner_name,
+            status=c.status,
+            assignedUserId=str(c.assigned_user_id) if c.assigned_user_id else None,
+            assignedUserName=assigned_user_name,
+            unreadCount=c.unread_count,
+            priority=c.priority,
+            lastMessageBody=c.last_message_body,
             whatsappOptIn=p.whatsapp_opt_in,
             doNotContact=p.do_not_contact,
             consentSource=p.consent_source,
@@ -227,8 +285,9 @@ async def conversations(
             replyWindowEndsAt=c.last_inbound_at + timedelta(hours=24)
             if c.last_inbound_at
             else None,
+            tags=tags_by_conv.get(c.id, []),
         )
-        for c, p in rows
+        for c, p, lead_owner_id, owner_name, assigned_user_name in rows
     ]
 
 
@@ -371,6 +430,7 @@ async def queue_message(
     )
     db.add(message)
     thread.last_message_at = now()
+    thread.last_message_body = body[:200] if body else None
     await db.flush()
     record(
         db,
@@ -385,3 +445,211 @@ async def queue_message(
         },
     )
     return message_out(message)
+
+
+async def assign_conversation(
+    db: AsyncSession, actor: Actor, conversation_id: int, user_id: int | None
+) -> schemas.ConversationOut:
+    thread = await get_conversation(db, actor, conversation_id)
+    if user_id is not None:
+        assignee = await db.get(User, user_id)
+        if assignee is None:
+            raise ApiError("user_not_found", "That team member was not found.", 404)
+    thread.assigned_user_id = user_id
+    await db.flush()
+    record(
+        db,
+        "whatsapp.conversation_assigned",
+        user_id=actor.user.id,
+        tenant_id=actor.session.tenant_id,
+        details={"conversation_id": thread.id, "assigned_to": user_id},
+    )
+    return (await conversations(db, actor, conversation_id=conversation_id))[0]
+
+
+async def update_status(
+    db: AsyncSession, actor: Actor, conversation_id: int, status: str
+) -> schemas.ConversationOut:
+    thread = await get_conversation(db, actor, conversation_id)
+    thread.status = status
+    await db.flush()
+    record(
+        db,
+        "whatsapp.conversation_status",
+        user_id=actor.user.id,
+        tenant_id=actor.session.tenant_id,
+        details={"conversation_id": thread.id, "status": status},
+    )
+    return (await conversations(db, actor, conversation_id=conversation_id))[0]
+
+
+async def update_priority(
+    db: AsyncSession, actor: Actor, conversation_id: int, priority: str
+) -> schemas.ConversationOut:
+    thread = await get_conversation(db, actor, conversation_id)
+    thread.priority = priority
+    await db.flush()
+    return (await conversations(db, actor, conversation_id=conversation_id))[0]
+
+
+async def mark_read(
+    db: AsyncSession, actor: Actor, conversation_id: int
+) -> schemas.ConversationOut:
+    thread = await get_conversation(db, actor, conversation_id)
+    thread.unread_count = 0
+    await db.flush()
+    return (await conversations(db, actor, conversation_id=conversation_id))[0]
+
+
+async def list_notes(db: AsyncSession, actor: Actor, conversation_id: int) -> list[schemas.NoteOut]:
+    await get_conversation(db, actor, conversation_id)
+    rows = (
+        await db.execute(
+            select(ConversationNote, User.name.label("user_name"))
+            .outerjoin(User, User.id == ConversationNote.user_id)
+            .where(ConversationNote.conversation_id == conversation_id)
+            .order_by(ConversationNote.id.desc())
+        )
+    ).all()
+    return [
+        schemas.NoteOut(
+            id=str(n.id),
+            userId=str(n.user_id),
+            userName=user_name or "",
+            body=n.body,
+            createdAt=n.created_at,
+        )
+        for n, user_name in rows
+    ]
+
+
+async def add_note(
+    db: AsyncSession, actor: Actor, conversation_id: int, body: str
+) -> schemas.NoteOut:
+    await get_conversation(db, actor, conversation_id)
+    note = ConversationNote(
+        tenant_id=actor.session.tenant_id,
+        conversation_id=conversation_id,
+        user_id=actor.user.id,
+        body=body,
+    )
+    db.add(note)
+    await db.flush()
+    return schemas.NoteOut(
+        id=str(note.id),
+        userId=str(actor.user.id),
+        userName=actor.user.name,
+        body=note.body,
+        createdAt=note.created_at,
+    )
+
+
+async def list_tags(db: AsyncSession, tenant_id: int) -> list[schemas.TagOut]:
+    rows = (
+        await db.scalars(
+            select(ConversationTag)
+            .where(ConversationTag.tenant_id == tenant_id)
+            .order_by(ConversationTag.name)
+        )
+    ).all()
+    return [schemas.TagOut(id=str(t.id), name=t.name, color=t.color) for t in rows]
+
+
+async def add_tag(
+    db: AsyncSession, actor: Actor, conversation_id: int, name: str, color: str
+) -> schemas.ConversationOut:
+    await get_conversation(db, actor, conversation_id)
+    tenant_id = actor.session.tenant_id
+    tag = await db.scalar(
+        select(ConversationTag).where(
+            ConversationTag.tenant_id == tenant_id, ConversationTag.name == name
+        )
+    )
+    if tag is None:
+        tag = ConversationTag(tenant_id=tenant_id, name=name, color=color)
+        db.add(tag)
+        await db.flush()
+    await db.execute(
+        insert(ConversationTagLink)
+        .values(tenant_id=tenant_id, conversation_id=conversation_id, tag_id=tag.id)
+        .on_conflict_do_nothing(index_elements=["conversation_id", "tag_id"])
+    )
+    await db.flush()
+    return (await conversations(db, actor, conversation_id=conversation_id))[0]
+
+
+async def remove_tag(
+    db: AsyncSession, actor: Actor, conversation_id: int, tag_id: int
+) -> schemas.ConversationOut:
+    await get_conversation(db, actor, conversation_id)
+    await db.execute(
+        delete(ConversationTagLink).where(
+            ConversationTagLink.conversation_id == conversation_id,
+            ConversationTagLink.tag_id == tag_id,
+        )
+    )
+    await db.flush()
+    return (await conversations(db, actor, conversation_id=conversation_id))[0]
+
+
+async def list_quick_replies(db: AsyncSession, actor: Actor) -> list[schemas.QuickReplyOut]:
+    rows = (
+        await db.scalars(
+            select(QuickReply)
+            .where(
+                QuickReply.tenant_id == actor.session.tenant_id,
+                or_(QuickReply.user_id == actor.user.id, QuickReply.shared.is_(True)),
+            )
+            .order_by(QuickReply.title)
+        )
+    ).all()
+    return [
+        schemas.QuickReplyOut(
+            id=str(r.id), title=r.title, body=r.body, shared=r.shared, createdAt=r.created_at
+        )
+        for r in rows
+    ]
+
+
+async def create_quick_reply(
+    db: AsyncSession, actor: Actor, data: schemas.QuickReplyInput
+) -> schemas.QuickReplyOut:
+    row = QuickReply(
+        tenant_id=actor.session.tenant_id,
+        user_id=actor.user.id,
+        title=data.title,
+        body=data.body,
+        shared=data.shared,
+    )
+    db.add(row)
+    await db.flush()
+    return schemas.QuickReplyOut(
+        id=str(row.id), title=row.title, body=row.body, shared=row.shared, createdAt=row.created_at
+    )
+
+
+async def update_quick_reply(
+    db: AsyncSession, actor: Actor, reply_id: int, data: schemas.QuickReplyInput
+) -> schemas.QuickReplyOut:
+    row = await db.get(QuickReply, reply_id)
+    if row is None or row.tenant_id != actor.session.tenant_id:
+        raise ApiError("not_found", "Quick reply not found.", 404)
+    if row.user_id != actor.user.id:
+        raise ApiError("forbidden", "You can only edit your own quick replies.", 403)
+    row.title = data.title
+    row.body = data.body
+    row.shared = data.shared
+    await db.flush()
+    return schemas.QuickReplyOut(
+        id=str(row.id), title=row.title, body=row.body, shared=row.shared, createdAt=row.created_at
+    )
+
+
+async def delete_quick_reply(db: AsyncSession, actor: Actor, reply_id: int) -> None:
+    row = await db.get(QuickReply, reply_id)
+    if row is None or row.tenant_id != actor.session.tenant_id:
+        raise ApiError("not_found", "Quick reply not found.", 404)
+    if row.user_id != actor.user.id:
+        raise ApiError("forbidden", "You can only delete your own quick replies.", 403)
+    await db.delete(row)
+    await db.flush()

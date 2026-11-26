@@ -77,7 +77,10 @@ export function SourceTools({
   };
   return (
     <section className="flex flex-col gap-4 border border-border p-4">
-      <h2 className="text-sm font-semibold">Capture setup</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Capture setup</h2>
+        <TestConnectionButton sourceId={source.id} />
+      </div>
       {source.connectionKind !== "csv" && (
         <SecretValue title="Ingestion URL" value={source.callbackUrl || source.ingestUrl} />
       )}
@@ -399,14 +402,28 @@ function ImportRows({
     </div>
   );
 }
-export function EventList({ events }: { events: IngestEvent[] }) {
+export function EventList({ events, sourceId, onRetried }: { events: IngestEvent[]; sourceId?: string; onRetried?: () => void }) {
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const handleRetry = async (eventId: string) => {
+    if (!sourceId) return;
+    setRetrying(eventId);
+    try {
+      await api(`/sources/${sourceId}/events/${eventId}/retry`, { method: "POST" });
+      toast.success("Event queued for retry");
+      onRetried?.();
+    } catch (error) {
+      toast.error(message(error));
+    } finally {
+      setRetrying(null);
+    }
+  };
   return (
     <div className="overflow-auto">
       <table className="w-full text-left text-xs">
         <thead className="bg-surface-2 text-muted-foreground">
           <tr>
-            {["Received", "Status", "Result", "Lead"].map((label) => (
-              <th key={label} className="p-3 font-medium">
+            {["Received", "Status", "Result", "Lead", ""].map((label) => (
+              <th key={label || "actions"} className="p-3 font-medium">
                 {label}
               </th>
             ))}
@@ -437,6 +454,18 @@ export function EventList({ events }: { events: IngestEvent[] }) {
                   "—"
                 )}
               </td>
+              <td className="p-3">
+                {event.status === "failed" && sourceId && (
+                  <button
+                    type="button"
+                    disabled={retrying === event.id}
+                    onClick={() => handleRetry(event.id)}
+                    className="text-accent hover:underline disabled:opacity-50"
+                  >
+                    {retrying === event.id ? "Retrying…" : "Retry"}
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -445,6 +474,51 @@ export function EventList({ events }: { events: IngestEvent[] }) {
         <p className="p-4 text-sm text-muted-foreground">
           No events on this page. Send an enquiry or upload a CSV to begin.
         </p>
+      )}
+    </div>
+  );
+}
+
+
+function TestConnectionButton({ sourceId }: { sourceId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; checks: { name: string; ok: boolean; detail: string }[] } | null>(null);
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const r = await api<{ ok: boolean; checks: { name: string; ok: boolean; detail: string }[] }>(
+              `/sources/${sourceId}/test`,
+              { method: "POST" },
+            );
+            setResult(r);
+          } catch (error) {
+            toast.error(message(error));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Testing…" : "Test connection"}
+      </Button>
+      {result && (
+        <div className="w-full border border-border bg-surface p-3">
+          <p className={cn("mb-2 text-xs font-medium", result.ok ? "text-success" : "text-danger")}>
+            {result.ok ? "All checks passed" : "Some checks failed"}
+          </p>
+          {result.checks.map((check) => (
+            <div key={check.name} className="flex items-center gap-2 py-1 text-xs">
+              <span className={cn("size-1.5 shrink-0 rounded-full", check.ok ? "bg-success" : "bg-danger")} />
+              <span className="font-medium">{check.name}</span>
+              <span className="text-muted-foreground">{check.detail}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

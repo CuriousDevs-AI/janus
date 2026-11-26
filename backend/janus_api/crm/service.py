@@ -672,6 +672,33 @@ async def update_contact_consent(
     )
 
 
+async def delete_contact(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+) -> None:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    has_leads = await db.scalar(
+        select(Lead.id).where(Lead.tenant_id == tenant_id, Lead.contact_id == contact_id)
+    )
+    if has_leads:
+        raise ApiError(
+            "contact_has_leads",
+            "This contact still has leads. Delete all leads first.",
+            409,
+        )
+    await db.delete(contact)
+    record(
+        db,
+        "contact.deleted",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"contact_id": contact_id},
+    )
+
+
 async def manual_connection(db: AsyncSession, tenant_id: int) -> SourceConnection:
     """The company's connection for leads typed in by hand, created when first needed."""
     connection = await db.scalar(
@@ -841,7 +868,9 @@ async def list_customers(
             Contact.email,
             Contact.company,
             func.count(Lead.id).label("lead_count"),
+            func.count(Deal.id).label("deal_count"),
             func.coalesce(func.sum(Deal.amount), 0).label("deal_value"),
+            func.max(Deal.stage).label("deal_stage"),
             func.max(stage_rank).label("max_stage_rank"),
             func.max(Lead.last_activity_at).label("last_activity_at"),
         )
@@ -925,7 +954,9 @@ async def list_customers(
             email=row.email,
             company=row.company or "",
             leadCount=int(row.lead_count),
+            dealCount=int(row.deal_count),
             dealValue=format(row.deal_value, ".2f"),
+            dealStage=row.deal_stage,
             stage=rank_to_stage.get(int(row.max_stage_rank), "new"),
             ownerId=owner_info.get(int(row.contact_id), (None, None))[0],
             ownerName=owner_info.get(int(row.contact_id), (None, None))[1],
@@ -933,6 +964,182 @@ async def list_customers(
         )
         for row in rows
     ]
+
+
+_JOURNEY_ACTIONS = {
+    "lead.captured": "Lead created",
+    "lead.updated": "Stage changed",
+    "lead.assigned": "Lead assigned",
+    "lead.followed_up": "Follow-up logged",
+    "lead.deleted": "Lead deleted",
+    "deal.created": "Converted to deal",
+    "deal.updated": "Deal updated",
+    "activity.created": "Activity logged",
+    "activity.completed": "Activity completed",
+    "contact.updated": "Contact updated",
+    "contact.consent_updated": "Consent updated",
+    "contact.note_added": "Note added",
+}
+
+
+def _journey_detail(action: str, details: dict) -> str:
+    if action == "lead.captured":
+        return f"Source: {details.get('source', '—')}"
+    if action == "lead.updated":
+        from_s = details.get("from_stage", "")
+        to_s = details.get("to_stage", "")
+        if from_s and to_s:
+            return f"{from_s.replace('_', ' ').title()} → {to_s.replace('_', ' ').title()}"
+        return f"Stage: {to_s or '—'}"
+    if action == "deal.created":
+        return f"{details.get('name', 'Deal')} · {details.get('stage', 'new')}"
+    if action == "deal.updated":
+        from_s = details.get("from_stage", "")
+        to_s = details.get("to_stage", "")
+        if from_s and to_s:
+            return f"Deal: {from_s.replace('_', ' ').title()} → {to_s.replace('_', ' ').title()}"
+        return f"Deal stage: {to_s or details.get('stage', '—')}"
+    if action == "lead.assigned":
+        return f"{details.get('leads', 1)} lead(s) assigned"
+    if action == "lead.followed_up":
+        nxt = details.get("next", "")
+        return f"Next follow-up: {nxt}" if nxt else "Follow-up recorded"
+    if action == "activity.created":
+        return f"{details.get('kind', 'activity').title()}"
+    return ""
+
+
+async def contact_journey(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+    limit: int = 50,
+) -> list[schemas.JourneyEvent]:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    lead_ids = (
+        await db.scalars(
+            select(Lead.id).where(Lead.tenant_id == tenant_id, Lead.contact_id == contact.id)
+        )
+    ).all()
+    deal_ids = []
+    if lead_ids:
+        deal_ids = (
+            await db.scalars(
+                select(Deal.id).where(Deal.tenant_id == tenant_id, Deal.lead_id.in_(lead_ids))
+            )
+        ).all()
+    all_entity_ids = [str(i) for i in lead_ids] + [str(i) for i in deal_ids]
+    if not all_entity_ids:
+        return []
+    rows = (
+        await db.execute(
+            select(AuditLog, User.name)
+            .outerjoin(User, User.id == AuditLog.user_id)
+            .where(
+                AuditLog.tenant_id == tenant_id,
+                AuditLog.action.in_(list(_JOURNEY_ACTIONS.keys())),
+                (
+                    AuditLog.details["lead_id"].astext.in_([str(i) for i in lead_ids])
+                    | AuditLog.details["deal_id"].astext.in_([str(i) for i in deal_ids])
+                    | AuditLog.details["contact_id"].astext.in_([str(contact.id)])
+                ),
+            )
+            .order_by(AuditLog.created_at.asc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        schemas.JourneyEvent(
+            id=str(row.id),
+            action=row.action,
+            title=_JOURNEY_ACTIONS.get(row.action, row.action),
+            detail=_journey_detail(row.action, row.details),
+            userId=str(row.user_id) if row.user_id else None,
+            userName=user_name,
+            createdAt=row.created_at,
+        )
+        for row, user_name in rows
+    ]
+
+
+async def contact_bulk_assign(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    data: schemas.ContactBulkAssignIn,
+) -> schemas.BulkResult:
+    from janus_api.org import overview as org
+
+    contact_ids = [int(c) for c in data.contactIds if c.isdigit()]
+    owner: User | None = None
+    if data.ownerId is not None:
+        if (
+            not data.ownerId.isdigit()
+            or await org.active_role(db, tenant_id, int(data.ownerId)) is None
+        ):
+            raise ApiError(
+                "invalid_owner", "Choose someone who is an active member of this company.", 422
+            )
+        owner = await db.get(User, int(data.ownerId))
+    leads = (
+        await db.scalars(
+            select(Lead)
+            .where(Lead.tenant_id == tenant_id, Lead.contact_id.in_(contact_ids))
+            .with_for_update()
+        )
+    ).all()
+    for lead in leads:
+        lead.owner_id = owner.id if owner else None
+    await db.flush()
+    record(
+        db,
+        "lead.assigned",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"leads": len(leads), "owner_id": owner.id if owner else ""},
+    )
+    return schemas.BulkResult(affected=len(leads))
+
+
+async def contact_bulk_stage(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    data: schemas.ContactBulkStageIn,
+) -> schemas.BulkResult:
+    contact_ids = [int(c) for c in data.contactIds if c.isdigit()]
+    leads = (
+        await db.scalars(
+            select(Lead)
+            .where(
+                Lead.tenant_id == tenant_id,
+                Lead.contact_id.in_(contact_ids),
+                Lead.stage.not_in(("won", "lost")) if data.stage not in ("won", "lost") else True,
+            )
+            .with_for_update()
+        )
+    ).all()
+    for lead in leads:
+        old_stage = lead.stage
+        lead.stage = data.stage
+        lead.last_activity_at = now()
+        if data.stage == "lost":
+            lead.lost_category = data.lostCategory
+            lead.lost_reason = data.lostReason or ""
+            lead.lost_at = now()
+        record(
+            db,
+            "lead.updated",
+            user_id=user_id,
+            tenant_id=tenant_id,
+            details={"lead_id": lead.id, "from_stage": old_stage, "to_stage": data.stage},
+        )
+    await db.flush()
+    return schemas.BulkResult(affected=len(leads))
 
 
 async def _visible_lead(

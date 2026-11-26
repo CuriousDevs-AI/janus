@@ -284,6 +284,40 @@ async def customers(
     )
 
 
+@router.delete("/contacts/{contact_id}", status_code=204)
+async def delete_contact(contact_id: Identifier, actor: Writer, db: Db) -> None:
+    await service.delete_contact(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
+    )
+
+
+@router.get("/contacts/{contact_id}/journey", response_model=list[schemas.JourneyEvent])
+async def contact_journey(
+    contact_id: Identifier, actor: Reader, db: Db, limit: Limit = 50
+) -> list[schemas.JourneyEvent]:
+    return await service.contact_journey(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id, limit
+    )
+
+
+@router.post("/contacts/bulk-assign", response_model=schemas.BulkResult)
+async def contacts_bulk_assign(
+    data: schemas.ContactBulkAssignIn, actor: Assigner, db: Db
+) -> schemas.BulkResult:
+    return await service.contact_bulk_assign(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, data
+    )
+
+
+@router.post("/contacts/bulk-stage", response_model=schemas.BulkResult)
+async def contacts_bulk_stage(
+    data: schemas.ContactBulkStageIn, actor: Writer, db: Db
+) -> schemas.BulkResult:
+    return await service.contact_bulk_stage(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, data
+    )
+
+
 @router.get("/deals", response_model=list[schemas.DealOut])
 async def deals_list(
     actor: Reader,
@@ -387,6 +421,7 @@ async def list_activities(
     after_id: AfterId = 0,
     limit: Limit = 50,
     crm_id: int | None = None,
+    kind: str | None = None,
 ) -> list[schemas.ActivityOut]:
     return await activities.list_activities(
         db,
@@ -397,6 +432,7 @@ async def list_activities(
         after_id=after_id,
         limit=limit,
         crm_id=crm_id,
+        kind=kind,
     )
 
 

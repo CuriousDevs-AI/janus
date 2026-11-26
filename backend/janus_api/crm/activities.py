@@ -2,6 +2,7 @@
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from janus_api.audit.service import record
 from janus_api.auth.models import User
@@ -11,15 +12,22 @@ from janus_api.crm import schemas
 from janus_api.crm.models import Activity, Contact, Deal, Lead
 
 
-def _out(a: Activity, owner_name: str | None = None) -> schemas.ActivityOut:
+def _out(
+    a: Activity,
+    owner_name: str | None = None,
+    contact_name: str | None = None,
+    lead_name: str | None = None,
+) -> schemas.ActivityOut:
     return schemas.ActivityOut(
         id=str(a.id),
         kind=a.kind,
         subject=a.subject,
         description=a.description,
         leadId=str(a.lead_id) if a.lead_id else None,
+        leadName=lead_name,
         dealId=str(a.deal_id) if a.deal_id else None,
         contactId=str(a.contact_id),
+        contactName=contact_name,
         ownerId=str(a.owner_id) if a.owner_id else None,
         ownerName=owner_name,
         dueAt=a.due_at,
@@ -40,16 +48,34 @@ async def list_activities(
     after_id: int = 0,
     limit: int = 50,
     crm_id: int | None = None,
+    kind: str | None = None,
 ) -> list[schemas.ActivityOut]:
+    c_alias = aliased(Contact)
+    l_alias = aliased(Lead)
     query = (
-        select(Activity, User.name)
+        select(
+            Activity,
+            User.name.label("owner_name"),
+            c_alias.name.label("contact_name"),
+            l_alias.requirement.label("lead_name"),
+        )
         .outerjoin(User, User.id == Activity.owner_id)
+        .outerjoin(
+            c_alias,
+            (c_alias.id == Activity.contact_id)
+            & (c_alias.tenant_id == Activity.tenant_id),
+        )
+        .outerjoin(
+            l_alias,
+            (l_alias.id == Activity.lead_id)
+            & (l_alias.tenant_id == Activity.tenant_id),
+        )
         .where(Activity.tenant_id == tenant_id)
     )
     if crm_id is not None:
-        query = query.join(
-            Lead, (Lead.id == Activity.lead_id) & (Lead.tenant_id == Activity.tenant_id)
-        ).where(Lead.crm_id == crm_id)
+        query = query.where(l_alias.crm_id == crm_id)
+    if kind is not None:
+        query = query.where(Activity.kind == kind)
     if contact_id is not None:
         query = query.where(Activity.contact_id == contact_id)
     if lead_id is not None:
@@ -58,8 +84,15 @@ async def list_activities(
         query = query.where(Activity.deal_id == deal_id)
     if after_id:
         query = query.where(Activity.id > after_id)
-    rows = (await db.execute(query.order_by(Activity.created_at.desc()).limit(limit))).all()
-    return [_out(a, name) for a, name in rows]
+    rows = (
+        await db.execute(
+            query.order_by(Activity.created_at.desc()).limit(limit)
+        )
+    ).all()
+    return [
+        _out(a, oname, cname, lname)
+        for a, oname, cname, lname in rows
+    ]
 
 
 async def create_activity(

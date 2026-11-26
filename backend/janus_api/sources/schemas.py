@@ -37,6 +37,7 @@ class ConnectionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Name
     description: str = Field(default="", max_length=1000)
+    crmId: int | None = None
     connectionKind: Literal["webhook", "embed", "api_key", "csv"] = "webhook"
     preset: Literal[
         "custom",
@@ -125,6 +126,11 @@ class ConnectionOut(BaseModel):
     eventIdField: str | None
     lastEventAt: datetime | None
     capturedLeads: int = 0
+    crmId: str | None = None
+    crmName: str | None = None
+    healthStatus: Literal["healthy", "warning", "error", "paused", "needs_setup"] | None = None
+    lastErrorAt: datetime | None = None
+    errorCount: int = 0
 
 
 class ConnectionSecret(ConnectionOut):
@@ -218,3 +224,17 @@ class ChannelVoteInput(BaseModel):
     notify: bool | None = None
     requested: bool | None = None
     requestMessage: str = Field(default="", max_length=1000)
+
+
+class SourceMetrics(BaseModel):
+    activeSources: int
+    pausedSources: int
+    totalLeadsCaptured: int
+    leadsToday: int
+    failedEvents: int
+    sourcesNeedingAttention: int
+
+
+class TestResult(BaseModel):
+    ok: bool
+    checks: list[dict[str, object]]

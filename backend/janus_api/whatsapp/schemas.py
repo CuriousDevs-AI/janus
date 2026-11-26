@@ -63,12 +63,26 @@ class SendMessage(BaseModel):
         return self
 
 
+class TagOut(BaseModel):
+    id: str
+    name: str
+    color: str
+
+
 class ConversationOut(BaseModel):
     id: str
     contactId: str
     name: str
     phone: str | None
     company: str
+    ownerId: str | None
+    ownerName: str | None
+    status: str
+    assignedUserId: str | None
+    assignedUserName: str | None
+    unreadCount: int
+    priority: str
+    lastMessageBody: str | None
     whatsappOptIn: bool
     doNotContact: bool
     consentSource: str | None
@@ -76,6 +90,56 @@ class ConversationOut(BaseModel):
     lastMessageAt: datetime
     lastInboundAt: datetime | None
     replyWindowEndsAt: datetime | None
+    tags: list[TagOut]
+
+
+class NoteOut(BaseModel):
+    id: str
+    userId: str
+    userName: str
+    body: str
+    createdAt: datetime
+
+
+class QuickReplyOut(BaseModel):
+    id: str
+    title: str
+    body: str
+    shared: bool
+    createdAt: datetime
+
+
+class AssignInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    userId: Identifier | None = None
+
+
+class StatusInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["open", "pending", "resolved", "closed"]
+
+
+class PriorityInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    priority: Literal["normal", "high", "urgent"]
+
+
+class NoteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body: str = Field(min_length=1, max_length=4000, pattern=r"^[^\x00]*$")
+
+
+class TagInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=50, pattern=r"^[^\x00]*$")
+    color: str = Field(default="gray", max_length=20, pattern=r"^[a-z]+$|^#[0-9a-fA-F]{6}$")
+
+
+class QuickReplyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=100, pattern=r"^[^\x00]*$")
+    body: str = Field(min_length=1, max_length=4096, pattern=r"^[^\x00]*$")
+    shared: bool = False
 
 
 class MessageOut(BaseModel):

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Phone, Video, Mail, ClipboardList, StickyNote } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Phone, Video, Mail, ClipboardList, StickyNote, Search } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
+import { useApi } from "@/lib/api/use-api";
 import type { Activity, ActivityKind } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -30,12 +31,19 @@ const OUTCOMES = [
   { value: "follow_up", label: "Scheduled Follow-up" },
 ];
 
+interface ContactOption {
+  contactId: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
 export function ActivityForm({
   open,
   onOpenChange,
   leadId,
   dealId,
-  contactId,
+  contactId: fixedContactId,
   onSaved,
 }: {
   open: boolean;
@@ -45,6 +53,8 @@ export function ActivityForm({
   contactId: string;
   onSaved?: () => void;
 }) {
+  const needsContactPicker = !fixedContactId;
+
   const [kind, setKind] = useState<ActivityKind>("call");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -52,10 +62,23 @@ export function ActivityForm({
   const [duration, setDuration] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [busy, setBusy] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  const [pickedContactId, setPickedContactId] = useState("");
+
+  const contacts = useApi<ContactOption[]>(
+    needsContactPicker && open ? `/customers?limit=20${contactSearch ? `&q=${encodeURIComponent(contactSearch)}` : ""}` : null,
+  );
+  const contactOptions = useMemo(() => contacts.data ?? [], [contacts.data]);
+
+  const resolvedContactId = fixedContactId || pickedContactId;
 
   async function save() {
     if (!subject.trim()) {
       toast.error("Enter a subject");
+      return;
+    }
+    if (!resolvedContactId) {
+      toast.error("Select a contact");
       return;
     }
     setBusy(true);
@@ -68,7 +91,7 @@ export function ActivityForm({
           description: description.trim(),
           leadId: leadId || null,
           dealId: dealId || null,
-          contactId,
+          contactId: resolvedContactId,
           outcome: outcome || null,
           durationSeconds: duration ? parseInt(duration, 10) * 60 : null,
           dueAt: dueAt || null,
@@ -80,6 +103,8 @@ export function ActivityForm({
       setOutcome("");
       setDuration("");
       setDueAt("");
+      setPickedContactId("");
+      setContactSearch("");
       onOpenChange(false);
       onSaved?.();
     } catch (e) {
@@ -113,6 +138,55 @@ export function ActivityForm({
               </button>
             ))}
           </div>
+          {needsContactPicker && (
+            <div>
+              <Label>Contact</Label>
+              {pickedContactId ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
+                  <span className="flex-1">
+                    {contactOptions.find((c) => c.contactId === pickedContactId)?.name || `Contact #${pickedContactId}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPickedContactId("")}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                      placeholder="Search contacts…"
+                      className="pl-8"
+                    />
+                  </div>
+                  {contactOptions.length > 0 && (
+                    <div className="max-h-36 overflow-auto rounded-md border border-border bg-surface">
+                      {contactOptions.map((c) => (
+                        <button
+                          key={c.contactId}
+                          type="button"
+                          onClick={() => setPickedContactId(c.contactId)}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-2"
+                        >
+                          <span className="font-medium">{c.name || c.phone || c.email || `#${c.contactId}`}</span>
+                          {c.phone && <span className="text-muted-foreground">{c.phone}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {contacts.loading && (
+                    <p className="px-1 text-xs text-muted-foreground">Loading…</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <Label>Subject</Label>
             <Input

@@ -23,6 +23,16 @@ interface CustomerNote {
   createdAt: string;
 }
 
+interface JourneyEvent {
+  id: string;
+  action: string;
+  title: string;
+  detail: string;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
+}
+
 const label = titleCase;
 
 function displayName(contact: Contact) {
@@ -35,6 +45,19 @@ type TimelineEvent = {
   detail: string;
   at: string;
   href?: string;
+};
+
+const journeyColors: Record<string, string> = {
+  "lead.captured": "bg-accent",
+  "lead.updated": "bg-info",
+  "lead.assigned": "bg-muted-foreground",
+  "lead.followed_up": "bg-warning",
+  "deal.created": "bg-success",
+  "deal.updated": "bg-success",
+  "activity.created": "bg-accent",
+  "activity.completed": "bg-success",
+  "contact.updated": "bg-muted-foreground",
+  "contact.note_added": "bg-muted-foreground",
 };
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -63,6 +86,10 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const customerConversations = (conversations.data ?? []).filter(
     (conversation) => conversation.contactId === id,
   );
+  const journey = useApi<JourneyEvent[]>(
+    contact.data ? `/contacts/${encodeURIComponent(id)}/journey?limit=50` : null,
+  );
+  const journeyEvents = useMemo(() => journey.data ?? [], [journey.data]);
   const timeline = useMemo<TimelineEvent[]>(() => {
     const events: TimelineEvent[] = customerLeads.flatMap((lead) => [
       {
@@ -118,6 +145,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
     deals.reload();
     conversations.reload();
     notes.reload();
+    journey.reload();
     setExtraNotes([]);
   };
 
@@ -305,13 +333,127 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               </section>
 
               <section className="rounded-lg border border-border bg-surface p-5">
-                <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Customer timeline</h2><p className="mt-1 text-xs text-muted-foreground">Lead and deal events linked to this contact.</p></div><CalendarClock className="size-4 text-accent" /></div>
-                {(leads.loading || deals.loading || conversations.loading) && <p role="status" className="mt-5 text-sm text-muted-foreground">Loading related CRM activity…</p>}
-                {(leads.error || deals.error || conversations.error) && <p role="alert" className="mt-5 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800">Some related CRM activity is unavailable. Refresh to try again; the records shown below may be incomplete.</p>}
-                {!leads.loading && !deals.loading && !conversations.loading && !leads.error && !deals.error && !conversations.error && timeline.length === 0 && <p className="mt-5 text-sm text-muted-foreground">No linked lead, deal or conversation activity yet.</p>}
-                <ol className="mt-5 space-y-4">
-                  {timeline.map((event) => <li key={event.id} className="relative flex gap-3 border-l border-border pl-4"><span className="absolute -left-1.5 top-1 size-2.5 rounded-full bg-accent" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline justify-between gap-2"><p className="text-sm font-medium">{event.href ? <Link href={event.href} className="hover:text-accent">{event.title}<ChevronRight className="ml-1 inline size-3" /></Link> : event.title}</p><time className="text-[11px] text-muted-foreground">{formatDateTime(event.at)}</time></div><p className="mt-1 text-xs text-muted-foreground">{event.detail} · {formatRelativeTime(event.at)}</p></div></li>)}
-                </ol>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold">Journey</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      End-to-end pipeline: lead creation → stage changes → deal conversion → current status.
+                    </p>
+                  </div>
+                  <CalendarClock className="size-4 text-accent" />
+                </div>
+                {journey.loading && (
+                  <p role="status" className="mt-5 text-sm text-muted-foreground">
+                    Loading journey…
+                  </p>
+                )}
+                {journey.error && (
+                  <p role="alert" className="mt-5 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-200">
+                    Journey could not be loaded. Refresh to try again.
+                  </p>
+                )}
+                {!journey.loading && !journey.error && journeyEvents.length === 0 && (
+                  <p className="mt-5 text-sm text-muted-foreground">
+                    No journey events recorded yet.
+                  </p>
+                )}
+                {journeyEvents.length > 0 && (
+                  <ol className="mt-5 space-y-0">
+                    {journeyEvents.map((event, idx) => (
+                      <li key={event.id} className="relative flex gap-3 pb-4 last:pb-0">
+                        {idx < journeyEvents.length - 1 && (
+                          <span className="absolute left-[4.5px] top-3 bottom-0 w-px bg-border" />
+                        )}
+                        <span
+                          className={`relative z-10 mt-0.5 size-2.5 shrink-0 rounded-full ${journeyColors[event.action] ?? "bg-muted-foreground"}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="text-sm font-medium">{event.title}</p>
+                            <time className="text-[11px] text-muted-foreground">
+                              {formatDateTime(event.createdAt)}
+                            </time>
+                          </div>
+                          {event.detail && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {event.detail}
+                            </p>
+                          )}
+                          {event.userName && (
+                            <p className="mt-0.5 text-[10px] text-muted-foreground/70">
+                              by {event.userName} · {formatRelativeTime(event.createdAt)}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {/* WhatsApp + older events fallback */}
+                {timeline.length > 0 && journeyEvents.length > 0 && (
+                  <details className="mt-4">
+                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                      {timeline.length} other event{timeline.length !== 1 ? "s" : ""} (WhatsApp, activity)
+                    </summary>
+                    <ol className="mt-3 space-y-3">
+                      {timeline.map((event) => (
+                        <li key={event.id} className="relative flex gap-3 border-l border-border pl-4">
+                          <span className="absolute -left-1.5 top-1 size-2.5 rounded-full bg-muted-foreground" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                              <p className="text-sm font-medium">
+                                {event.href ? (
+                                  <Link href={event.href} className="hover:text-accent">
+                                    {event.title}
+                                    <ChevronRight className="ml-1 inline size-3" />
+                                  </Link>
+                                ) : (
+                                  event.title
+                                )}
+                              </p>
+                              <time className="text-[11px] text-muted-foreground">
+                                {formatDateTime(event.at)}
+                              </time>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {event.detail} · {formatRelativeTime(event.at)}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+                {/* Show old timeline if journey is empty but timeline has events */}
+                {journeyEvents.length === 0 && timeline.length > 0 && (
+                  <ol className="mt-5 space-y-4">
+                    {timeline.map((event) => (
+                      <li key={event.id} className="relative flex gap-3 border-l border-border pl-4">
+                        <span className="absolute -left-1.5 top-1 size-2.5 rounded-full bg-accent" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="text-sm font-medium">
+                              {event.href ? (
+                                <Link href={event.href} className="hover:text-accent">
+                                  {event.title}
+                                  <ChevronRight className="ml-1 inline size-3" />
+                                </Link>
+                              ) : (
+                                event.title
+                              )}
+                            </p>
+                            <time className="text-[11px] text-muted-foreground">
+                              {formatDateTime(event.at)}
+                            </time>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {event.detail} · {formatRelativeTime(event.at)}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </section>
 
               <section className="rounded-lg border border-border bg-surface p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Linked deals</h2><p className="mt-1 text-xs text-muted-foreground">Open, won and lost opportunities for this customer.</p></div><CircleDollarSign className="size-4 text-success" /></div>{customerDeals.length === 0 ? <p className="mt-5 text-sm text-muted-foreground">No deals linked yet.</p> : <div className="mt-4 divide-y divide-border">{customerDeals.map((deal) => <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-3 py-3 hover:text-accent"><span className="min-w-0"><span className="block truncate text-sm font-medium">{deal.name}</span><span className="mt-1 block text-xs text-muted-foreground">{label(deal.stage)} · Updated {formatRelativeTime(deal.updatedAt)}</span></span><span className="shrink-0 text-sm font-semibold">{formatCurrencyINR(Number(deal.amount))}</span></Link>)}</div>}</section>
