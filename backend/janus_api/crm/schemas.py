@@ -369,6 +369,7 @@ class CustomerListRow(BaseModel):
     ownerId: str | None
     ownerName: str | None
     lastActivityAt: datetime | None
+    tags: list["TagOut"] = []
 
 
 class AccountInvoiceOut(BaseModel):
@@ -1070,12 +1071,22 @@ class WebFormSubmitOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class DuplicateEntity(BaseModel):
+    id: str
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    company: str | None = None
+    leadCount: int = 0
+
+
 class DuplicateGroupOut(BaseModel):
     id: str
     entityType: str
     matchField: str
     matchValue: str
     entityIds: list[str]
+    entities: list[DuplicateEntity] = []
     status: str
     mergedIntoId: str | None
     createdAt: datetime

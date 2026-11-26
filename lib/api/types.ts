@@ -480,6 +480,7 @@ export interface CustomerListRow {
   ownerId: string | null;
   ownerName: string | null;
   lastActivityAt: string | null;
+  tags: CrmTag[];
 }
 
 export interface LeadScore {
@@ -625,11 +626,21 @@ export interface CrmMember {
   createdAt: string;
 }
 
+export interface DuplicateEntity {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  leadCount: number;
+}
+
 export interface DuplicateGroup {
   id: string;
   entityType: string;
   matchField: string;
   matchValue: string;
   entityIds: string[];
+  entities: DuplicateEntity[];
   status: string;
 }

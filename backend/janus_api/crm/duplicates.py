@@ -10,18 +10,78 @@ from janus_api.crm import schemas
 from janus_api.crm.models import Contact, DuplicateGroup, Lead
 
 
-def _out(g: DuplicateGroup) -> schemas.DuplicateGroupOut:
+def _out(
+    g: DuplicateGroup,
+    entities: list[schemas.DuplicateEntity] | None = None,
+) -> schemas.DuplicateGroupOut:
     return schemas.DuplicateGroupOut(
         id=str(g.id),
         entityType=g.entity_type,
         matchField=g.match_field,
         matchValue=g.match_value,
         entityIds=[str(eid) for eid in (g.entity_ids or [])],
+        entities=entities or [],
         status=g.status,
         mergedIntoId=str(g.merged_into_id) if g.merged_into_id else None,
         createdAt=g.created_at,
         resolvedAt=g.resolved_at,
     )
+
+
+async def _enrich_groups(
+    db: AsyncSession,
+    tenant_id: int,
+    groups: list[DuplicateGroup],
+) -> list[schemas.DuplicateGroupOut]:
+    all_ids: set[int] = set()
+    for g in groups:
+        all_ids.update(int(eid) for eid in (g.entity_ids or []))
+    if not all_ids:
+        return [_out(g) for g in groups]
+
+    contacts = {
+        c.id: c
+        for c in (
+            await db.execute(
+                select(Contact).where(
+                    Contact.tenant_id == tenant_id,
+                    Contact.id.in_(all_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+
+    lead_counts: dict[int, int] = {}
+    if contacts:
+        rows = (
+            await db.execute(
+                select(Lead.contact_id, func.count(Lead.id))
+                .where(Lead.tenant_id == tenant_id, Lead.contact_id.in_(all_ids))
+                .group_by(Lead.contact_id)
+            )
+        ).all()
+        lead_counts = {int(cid): int(cnt) for cid, cnt in rows}
+
+    result = []
+    for g in groups:
+        entities = []
+        for eid in g.entity_ids or []:
+            c = contacts.get(int(eid))
+            if c:
+                entities.append(schemas.DuplicateEntity(
+                    id=str(c.id),
+                    name=c.name or c.phone_e164 or c.email or f"Contact #{c.id}",
+                    phone=c.phone_e164,
+                    email=c.email,
+                    company=c.company,
+                    leadCount=lead_counts.get(int(eid), 0),
+                ))
+            else:
+                entities.append(schemas.DuplicateEntity(id=str(eid), name=f"#{eid}"))
+        result.append(_out(g, entities))
+    return result
 
 
 async def find_duplicates(
@@ -43,7 +103,7 @@ async def find_duplicates(
         .all()
     )
     if pending:
-        return [_out(g) for g in pending]
+        return await _enrich_groups(db, tenant_id, list(pending))
 
     if entity_type == "contact":
         phone_dupes = (
@@ -104,7 +164,7 @@ async def find_duplicates(
             groups.append(g)
 
         await db.flush()
-        return [_out(g) for g in groups]
+        return await _enrich_groups(db, tenant_id, groups)
 
     return []
 

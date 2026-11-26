@@ -79,6 +79,7 @@ interface CustomerRow {
   ownerId: string | null;
   ownerName: string | null;
   lastActivityAt: string | null;
+  tags: CrmTag[];
 }
 
 function displayName(row: CustomerRow) {
@@ -200,8 +201,10 @@ export default function CustomersPage() {
       rows = rows.filter((r) =>
         typeFilter === "has_deals" ? r.dealCount > 0 : r.dealCount === 0,
       );
+    if (tagFilter !== "all")
+      rows = rows.filter((r) => r.tags?.some((t) => t.id === tagFilter));
     return rows;
-  }, [serverRows, typeFilter]);
+  }, [serverRows, typeFilter, tagFilter]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -272,24 +275,31 @@ export default function CustomersPage() {
   async function deleteSelected() {
     if (!selectedIds.size) return;
     setBulkUpdating(true);
-    try {
-      let deleted = 0;
-      for (const cid of selectedIds) {
+    let deleted = 0;
+    let skipped = 0;
+    for (const cid of selectedIds) {
+      try {
         await api(`/contacts/${encodeURIComponent(cid)}`, { method: "DELETE" });
         deleted++;
+      } catch {
+        skipped++;
       }
-      toast.success(
-        `${deleted} contact${deleted === 1 ? "" : "s"} deleted`,
-      );
-      setDeleting(false);
-      setSelectedIds(new Set());
-      customers.reload();
-    } catch {
-      toast.error("Could not delete all contacts");
-      customers.reload();
-    } finally {
-      setBulkUpdating(false);
     }
+    if (deleted > 0 && skipped === 0) {
+      toast.success(`${deleted} contact${deleted === 1 ? "" : "s"} deleted`);
+    } else if (deleted > 0 && skipped > 0) {
+      toast.success(
+        `${deleted} deleted, ${skipped} skipped (have leads)`,
+      );
+    } else if (skipped > 0) {
+      toast.error(
+        `${skipped} contact${skipped === 1 ? "" : "s"} skipped — delete their leads first`,
+      );
+    }
+    setDeleting(false);
+    setSelectedIds(new Set());
+    setBulkUpdating(false);
+    customers.reload();
   }
 
   if (selectedContactId) {
@@ -705,6 +715,7 @@ export default function CustomersPage() {
                   </span>
                 </th>
                 <th className="pb-2 pr-3">Type</th>
+                <th className="pb-2 pr-3">Tags</th>
                 <th className="pb-2 pr-3">Phone</th>
                 <th
                   className="cursor-pointer select-none pb-2 pr-3"
@@ -797,6 +808,25 @@ export default function CustomersPage() {
                           Lead
                         </span>
                       )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(row.tags ?? []).map((t) => (
+                          <span
+                            key={t.id}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-foreground bg-surface-2"
+                          >
+                            <span
+                              className="inline-block size-1.5 shrink-0"
+                              style={{ background: t.color }}
+                            />
+                            {t.name}
+                          </span>
+                        ))}
+                        {(!row.tags || row.tags.length === 0) && (
+                          <span className="text-[10px] text-muted-foreground/40">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-xs text-muted-foreground">
                       {row.phone ? (
@@ -955,10 +985,33 @@ export default function CustomersPage() {
               Delete {selectedIds.size} contact{selectedIds.size === 1 ? "" : "s"}?
             </DialogTitle>
             <DialogDescription>
-              Contacts with existing leads cannot be deleted — only contacts
-              with no leads will be removed. This action cannot be undone.
+              This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {(() => {
+            const withLeads = sorted.filter(
+              (r) => selectedIds.has(r.contactId) && r.leadCount > 0,
+            );
+            if (withLeads.length > 0)
+              return (
+                <div className="rounded border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+                  <p className="font-medium">
+                    {withLeads.length} contact{withLeads.length === 1 ? " has" : "s have"} leads and will be skipped:
+                  </p>
+                  <ul className="mt-1 list-disc pl-4 text-muted-foreground">
+                    {withLeads.slice(0, 5).map((r) => (
+                      <li key={r.contactId}>
+                        {displayName(r)} ({r.leadCount} lead{r.leadCount === 1 ? "" : "s"})
+                      </li>
+                    ))}
+                    {withLeads.length > 5 && (
+                      <li>…and {withLeads.length - 5} more</li>
+                    )}
+                  </ul>
+                </div>
+              );
+            return null;
+          })()}
           <DialogFooter>
             <Button
               type="button"

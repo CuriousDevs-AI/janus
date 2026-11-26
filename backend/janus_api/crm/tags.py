@@ -87,6 +87,31 @@ async def tags_for_contact(
     return [_out(t) for t in rows]
 
 
+async def tags_for_contacts(
+    db: AsyncSession,
+    tenant_id: int,
+    contact_ids: list[int],
+) -> dict[int, list[schemas.TagOut]]:
+    """Bulk-fetch tags for a list of contacts, returned as {contact_id: [TagOut]}."""
+    if not contact_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(ContactTag.contact_id, CrmTag)
+            .join(CrmTag, CrmTag.id == ContactTag.tag_id)
+            .where(
+                ContactTag.tenant_id == tenant_id,
+                ContactTag.contact_id.in_(contact_ids),
+            )
+            .order_by(ContactTag.contact_id, CrmTag.name)
+        )
+    ).all()
+    result: dict[int, list[schemas.TagOut]] = {}
+    for cid, tag in rows:
+        result.setdefault(int(cid), []).append(_out(tag))
+    return result
+
+
 async def tag_lead(
     db: AsyncSession,
     tenant_id: int,

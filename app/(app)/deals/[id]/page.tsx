@@ -3,7 +3,7 @@
 import { lostWords } from "@/lib/lost-reasons";
 import { ContactConversation } from "@/components/chat/contact-conversation";
 import { CustomerCalls } from "@/components/calls/customer-call";
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -28,6 +28,27 @@ import {
   CalendarClock, CheckCircle2, Clock, Plus, ExternalLink, Building2,
   User, IndianRupee,
 } from "lucide-react";
+
+interface JourneyEvent {
+  action: string;
+  label: string;
+  detail: string;
+  userName: string | null;
+  createdAt: string;
+}
+
+const journeyColors: Record<string, string> = {
+  "lead.captured": "bg-accent",
+  "lead.updated": "bg-info",
+  "lead.assigned": "bg-muted-foreground",
+  "lead.followed_up": "bg-warning",
+  "deal.created": "bg-success",
+  "deal.updated": "bg-success",
+  "activity.created": "bg-accent",
+  "activity.completed": "bg-success",
+  "contact.updated": "bg-muted-foreground",
+  "contact.note_added": "bg-muted-foreground",
+};
 
 const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const inDays = (days: number) => {
@@ -92,6 +113,11 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
 
   const activities = useApi<Activity[]>(result.data ? `/activities?deal_id=${id}&limit=50` : null);
 
+  const journey = useApi<JourneyEvent[]>(
+    result.data ? `/contacts/${encodeURIComponent(result.data.customerId)}/journey?limit=50` : null,
+  );
+  const journeyEvents = useMemo(() => journey.data ?? [], [journey.data]);
+
   const deal = result.data;
   const [refreshing, setRefreshing] = useState(false);
   const [actOpen, setActOpen] = useState(false);
@@ -105,7 +131,7 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   async function refresh() {
     setRefreshing(true);
     try {
-      await Promise.all([result.reload(), history.reload(), activities.reload()]);
+      await Promise.all([result.reload(), history.reload(), activities.reload(), journey.reload()]);
     } finally {
       setTimeout(() => setRefreshing(false), 400);
     }
@@ -451,6 +477,37 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
                     </ol>
                   )}
                 </section>
+
+                {/* Journey timeline */}
+                {journeyEvents.length > 0 && (
+                  <section className="rounded-lg border border-border bg-surface p-4">
+                    <h2 className="mb-4 text-sm font-semibold">Journey</h2>
+                    <ol className="space-y-0">
+                      {journeyEvents.map((event, idx) => (
+                        <li key={`${event.action}-${event.createdAt}-${idx}`} className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            {idx < journeyEvents.length - 1 && (
+                              <div className="absolute mt-3 h-full w-px bg-border" />
+                            )}
+                            <div
+                              className={`relative z-10 mt-0.5 size-2.5 shrink-0 rounded-full ${journeyColors[event.action] ?? "bg-muted-foreground"}`}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1 pb-3">
+                            <p className="text-xs font-medium text-foreground">{event.label}</p>
+                            {event.detail && (
+                              <p className="text-[11px] text-muted-foreground">{event.detail}</p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground/70">
+                              {formatRelativeTime(event.createdAt)}
+                              {event.userName && ` · ${event.userName}`}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
 
                 {/* Recent deal history */}
                 <section className="rounded-lg border border-border bg-surface p-4">

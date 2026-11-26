@@ -926,8 +926,13 @@ async def list_customers(
     # Reverse map stage rank to label.
     rank_to_stage = {v: k for k, v in _STAGE_ORDER.items()}
 
-    # Resolve owner for each contact's most recent lead.
+    # Resolve owner and tags for each contact.
     contact_ids = [row.contact_id for row in rows]
+
+    from janus_api.crm import tags as tag_svc
+
+    tags_map = await tag_svc.tags_for_contacts(db, tenant_id, contact_ids)
+
     owner_info: dict[int, tuple[str | None, str | None]] = {}
     if contact_ids:
         # For each contact, find the latest lead's owner.
@@ -961,6 +966,7 @@ async def list_customers(
             ownerId=owner_info.get(int(row.contact_id), (None, None))[0],
             ownerName=owner_info.get(int(row.contact_id), (None, None))[1],
             lastActivityAt=row.last_activity_at,
+            tags=tags_map.get(int(row.contact_id), []),
         )
         for row in rows
     ]

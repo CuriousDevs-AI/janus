@@ -95,19 +95,29 @@ export function DuplicateDetector() {
                 </div>
                 <Badge variant="neutral">{g.entityIds.length} records</Badge>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {g.entityIds.map((id) => (
+              <div className="mt-3 flex flex-col gap-2">
+                {(g.entities?.length ? g.entities : g.entityIds.map((id) => ({ id, name: `#${id}`, phone: null, email: null, company: null, leadCount: 0 }))).map((entity) => (
                   <div
-                    key={id}
-                    className="flex items-center gap-2 rounded border border-border bg-surface-2 px-2.5 py-1.5"
+                    key={entity.id}
+                    className="flex items-center gap-3 rounded border border-border bg-surface-2 px-3 py-2"
                   >
-                    <span className="text-xs font-mono">#{id}</span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-medium">{entity.name}</span>
+                      <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                        {entity.phone && <span>{entity.phone}</span>}
+                        {entity.email && <span>{entity.email}</span>}
+                        {entity.company && <span>{entity.company}</span>}
+                        {entity.leadCount > 0 && (
+                          <span>{entity.leadCount} lead{entity.leadCount === 1 ? "" : "s"}</span>
+                        )}
+                      </div>
+                    </div>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-5 px-1.5 text-[10px]"
+                      className="h-6 shrink-0 px-2 text-[10px]"
                       disabled={busy === g.id}
-                      onClick={() => merge(g.id, id)}
+                      onClick={() => merge(g.id, entity.id)}
                     >
                       <GitMerge className="size-3 mr-0.5" /> Keep this
                     </Button>
