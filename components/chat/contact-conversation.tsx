@@ -38,7 +38,7 @@ export function ContactConversation({ contactId }: { contactId: string }) {
           ) : conversation.error ? (
             <p className="text-xs text-destructive">{conversation.error}</p>
           ) : !row ? (
-            <p className="text-xs text-muted-foreground">No WhatsApp conversation with this contact yet.</p>
+            <p className="text-xs text-muted-foreground">No WhatsApp conversation with this customer yet.</p>
           ) : (
             <p className="text-xs text-muted-foreground">
               Last message {formatDateTime(row.lastMessageAt)} ·{" "}

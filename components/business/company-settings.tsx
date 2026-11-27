@@ -183,7 +183,7 @@ export function LiveAccessReview() {
 }
 
 const exported = [
-  ["Sales", "Leads, contacts, deals and calls"],
+  ["Sales", "Leads, customers, deals and calls"],
   ["Finance", "Invoices, payments, credit notes, bills, bank lines, budgets, payroll postings"],
   ["People", "Employees, leave, attendance and the rest of HR, and payslips"],
   ["Stock", "Items, batches, movements, purchase orders, dispatches, returns, transfers"],

@@ -250,7 +250,7 @@ function LogCallDialog({
         <form onSubmit={save} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{direction === "inbound" ? `Log a call from ${name}` : `Log a call with ${name}`}</DialogTitle>
-            <DialogDescription>It goes on the contact&apos;s record, where the team can see it.</DialogDescription>
+            <DialogDescription>It goes on the customer&apos;s record, where the team can see it.</DialogDescription>
           </DialogHeader>
           <OutcomePicker value={outcome} onChange={setOutcome} />
           {outcome === "connected" ? (
@@ -351,7 +351,7 @@ function BrowserCallDialog({
             {call.stage === "starting" ? "Making a call link…" :
               call.stage === "ringing" ? "Send the link. The call starts when they open it, for the next 30 minutes." :
               call.stage === "live" ? (call.connected ? "Connected" : "They opened the link. Connecting…") :
-              "Note how it went; it goes on the contact's record."}
+              "Note how it went; it goes on the customer's record."}
           </DialogDescription>
         </DialogHeader>
 
@@ -379,7 +379,7 @@ function BrowserCallDialog({
               <p className="text-xs text-muted-foreground">
                 {conversation
                   ? "WhatsApp free text is closed for this chat (24 hours after their last message). Copy the link and send it another way."
-                  : "This contact has no WhatsApp chat yet. Copy the link and send it another way."}
+                  : "This customer has no WhatsApp chat yet. Copy the link and send it another way."}
               </p>
             )}
             <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
@@ -625,7 +625,7 @@ export function CustomerCalls({ contactId }: { contactId: string }) {
         {person ? (
           <CustomerCallButton
             contactId={contactId}
-            name={person.name || person.phone || "this contact"}
+            name={person.name || person.phone || "this customer"}
             phone={person.phone}
             doNotContact={person.doNotContact}
             conversation={conversation.data}

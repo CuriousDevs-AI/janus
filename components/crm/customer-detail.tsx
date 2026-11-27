@@ -1346,7 +1346,7 @@ export function CustomerDetailPanel({
         </DialogContent>
       </Dialog>
 
-      {/* Edit contact */}
+      {/* Edit customer */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>

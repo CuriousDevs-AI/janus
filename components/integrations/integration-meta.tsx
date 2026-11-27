@@ -53,8 +53,8 @@ export function IntegrationCategoryBadge({ category, className }: { category: In
  * already-masked `connectedAccount` label from the integration record.
  */
 export const integrationPermissions: Record<Integration["category"], string[]> = {
-  communication: ["Send messages", "Read message history", "Manage contact list"],
-  crm: ["Read contacts & companies", "Read & write deals", "Read pipeline stages"],
+  communication: ["Send messages", "Read message history", "Manage customer list"],
+  crm: ["Read customers & companies", "Read & write deals", "Read pipeline stages"],
   calendar: ["Read calendar events", "Create & update events", "Check free/busy availability"],
   commerce: ["Read orders", "Read customers", "Read payment & refund history"],
   productivity: ["Post messages to channels", "Read channel list", "Manage webhooks"],
