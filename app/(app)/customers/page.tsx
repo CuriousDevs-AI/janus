@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Archive,
   ArrowUpDown,
@@ -16,13 +17,14 @@ import {
   Search,
   SlidersHorizontal,
   Tag,
+  MessageCircle,
   Trash2,
   User,
   Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api/client";
+import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
 import { useSession } from "@/components/auth/session-provider";
 import { can } from "@/lib/permissions";
@@ -114,6 +116,7 @@ function followUpStatus(dateStr: string | null): { label: string; cls: string } 
 }
 
 export default function CustomersPage() {
+  const router = useRouter();
   const session = useSession();
   const canWrite = can(session, "leads:write");
   const { crms, multiCrm } = useCrmContext();
@@ -137,6 +140,7 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingContact, setDeletingContact] = useState<{ id: string; name: string } | null>(null);
 
   const DRAWER_MIN = 420;
   const DRAWER_MAX = 1200;
@@ -365,6 +369,21 @@ export default function CustomersPage() {
     setSelectedIds(new Set());
     setBulkUpdating(false);
     customers.reload();
+  }
+
+  async function deleteSingleContact() {
+    if (!deletingContact) return;
+    setBulkUpdating(true);
+    try {
+      await api(`/contacts/${encodeURIComponent(deletingContact.id)}`, { method: "DELETE" });
+      toast.success("Contact deleted");
+      customers.reload();
+    } catch (e) {
+      toast.error(message(e));
+    } finally {
+      setBulkUpdating(false);
+      setDeletingContact(null);
+    }
   }
 
   return (
@@ -924,6 +943,24 @@ export default function CustomersPage() {
                       className="py-2.5"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <div className="flex items-center gap-1 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
+                        <button
+                          className="inline-flex size-7 items-center justify-center text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+                          title="Chat"
+                          onClick={() => router.push("/inbox")}
+                        >
+                          <MessageCircle className="size-3.5" />
+                        </button>
+                        <button
+                          className="inline-flex size-7 items-center justify-center text-muted-foreground transition-colors hover:bg-surface-2 hover:text-danger"
+                          title="Delete"
+                          onClick={() => {
+                            setDeletingContact({ id: row.contactId, name: row.name });
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1083,6 +1120,23 @@ export default function CustomersPage() {
               disabled={bulkUpdating}
               onClick={() => void deleteSelected()}
             >
+              {bulkUpdating ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deletingContact} onOpenChange={(open) => !open && setDeletingContact(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-danger">Delete {deletingContact?.name}?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. All associated data will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeletingContact(null)} disabled={bulkUpdating}>Cancel</Button>
+            <Button variant="destructive" onClick={deleteSingleContact} disabled={bulkUpdating}>
               {bulkUpdating ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
