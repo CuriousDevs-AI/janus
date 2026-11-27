@@ -12,9 +12,6 @@ import {
   ChevronRight,
   GripVertical,
   Loader2,
-  Mail,
-  MessageCircle,
-  Phone,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -927,37 +924,6 @@ export default function CustomersPage() {
                       className="py-2.5"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex items-center gap-1 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
-                        {row.phone && (
-                          <a
-                            href={`tel:${row.phone.replace(/[^\d+]/g, "")}`}
-                            className="inline-flex size-7 items-center justify-center text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
-                            title="Call"
-                          >
-                            <Phone className="size-3.5" />
-                          </a>
-                        )}
-                        {row.phone && (
-                          <a
-                            href={`https://wa.me/${row.phone.replace(/[^\d+]/g, "")}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex size-7 items-center justify-center text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
-                            title="WhatsApp"
-                          >
-                            <MessageCircle className="size-3.5" />
-                          </a>
-                        )}
-                        {row.email && (
-                          <a
-                            href={`mailto:${row.email}`}
-                            className="inline-flex size-7 items-center justify-center text-muted-foreground transition-colors hover:bg-surface-2 hover:text-accent"
-                            title="Email"
-                          >
-                            <Mail className="size-3.5" />
-                          </a>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 );
