@@ -292,6 +292,11 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
     doNotContact: leadData.doNotContact,
     consentSource: leadData.consentSource,
     consentUpdatedAt: leadData.consentUpdatedAt,
+    paymentTerms: null,
+    creditLimit: null,
+    gstin: null,
+    placeOfSupply: null,
+    archivedAt: null,
   };
   const displayName = contactData.name || contactData.phone || contactData.email || `Lead #${leadData.id}`;
   const owner = leadData.ownerId === session.user.id

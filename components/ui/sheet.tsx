@@ -25,8 +25,8 @@ const sheetVariants = cva(
   {
     variants: {
       side: {
-        right: "inset-y-0 right-0 h-full w-full max-w-md border-l data-[state=closed]:translate-x-full data-[state=open]:translate-x-0",
-        left: "inset-y-0 left-0 h-full w-full max-w-md border-r data-[state=closed]:-translate-x-full data-[state=open]:translate-x-0",
+        right: "inset-y-0 right-0 h-full w-full sm:max-w-md border-l data-[state=closed]:translate-x-full data-[state=open]:translate-x-0",
+        left: "inset-y-0 left-0 h-full w-full sm:max-w-md border-r data-[state=closed]:-translate-x-full data-[state=open]:translate-x-0",
       },
     },
     defaultVariants: { side: "right" },

@@ -80,6 +80,12 @@ class Contact(Base):
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     consent_source: Mapped[str | None] = mapped_column(String(80))
     consent_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_terms: Mapped[str | None] = mapped_column(String(30))
+    credit_limit: Mapped[int | None] = mapped_column(BigInteger)
+    gstin: Mapped[str | None] = mapped_column(String(15))
+    place_of_supply: Mapped[str | None] = mapped_column(String(60))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -102,6 +108,9 @@ class Lead(Base):
     stage: Mapped[str] = mapped_column(String(30), default="new")
     owner_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     requirement: Mapped[str] = mapped_column(String(4000), default="")
+    requirement_status: Mapped[str] = mapped_column(
+        String(20), default="received", server_default="received",
+    )
     campaign: Mapped[str | None] = mapped_column(String(200))
     recording_reference: Mapped[str | None] = mapped_column(String(2048))
     recording_url: Mapped[str | None] = mapped_column(String(2048))
@@ -508,6 +517,25 @@ class WebForm(Base):
     created_by: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContactEntry(Base):
+    """Feedback or issue tracked against a contact."""
+    __tablename__ = "contact_entries"
+    __table_args__ = (
+        Index("ix_contact_entries_contact", "tenant_id", "contact_id"),
+    )
+    tenant_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    contact_id: Mapped[int] = mapped_column(BigInteger)
+    entry_type: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="received")
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    assigned_to: Mapped[str | None] = mapped_column(String(160))
+    created_by: Mapped[str | None] = mapped_column(String(160))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DuplicateGroup(Base):

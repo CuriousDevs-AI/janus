@@ -116,6 +116,11 @@ class ContactOut(BaseModel):
     doNotContact: bool
     consentSource: str | None
     consentUpdatedAt: datetime | None
+    paymentTerms: str | None = None
+    creditLimit: int | None = None
+    gstin: str | None = None
+    placeOfSupply: str | None = None
+    archivedAt: datetime | None = None
 
 
 class ContactUpdate(BaseModel):
@@ -125,6 +130,10 @@ class ContactUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=64)
     email: EmailStr | None = None
     company: str = Field(default="", max_length=200)
+    paymentTerms: str | None = Field(default=None, max_length=30)
+    creditLimit: int | None = None
+    gstin: str | None = Field(default=None, max_length=15)
+    placeOfSupply: str | None = Field(default=None, max_length=60)
 
 
 class ContactConsentUpdate(BaseModel):
@@ -167,6 +176,7 @@ class LeadOut(BaseModel):
     ownerId: str | None
     ownerName: str | None
     requirement: str
+    requirementStatus: str = "received"
     campaign: str | None
     recordingReference: str | None
     recordingUrl: str | None
@@ -216,6 +226,7 @@ class LeadUpdate(BaseModel):
     email: EmailStr | None = None
     company: str = Field(default="", max_length=200)
     requirement: str = Field(default="", max_length=4000)
+    requirementStatus: str = Field(default="received", pattern=r"^(received|evaluating|available|customizing|fulfilled)$")
     stage: LeadStage = "new"
     lostCategory: LostCategory | None = None
     lostReason: LostNote = ""
@@ -277,6 +288,8 @@ class DealOut(BaseModel):
     lostCategory: LostCategory | None = None
     lostReason: str
     lostAt: datetime | None = None
+    requirement: str = ""
+    requirementStatus: str = "received"
     version: int
     createdAt: datetime
     updatedAt: datetime
@@ -369,6 +382,8 @@ class CustomerListRow(BaseModel):
     ownerId: str | None
     ownerName: str | None
     lastActivityAt: datetime | None
+    nextFollowUpOn: date | None = None
+    source: str | None = None
     tags: list["TagOut"] = []
 
 
@@ -682,6 +697,7 @@ class ContactLeadSummary(BaseModel):
     stage: str
     source: str
     requirement: str
+    requirementStatus: str = "received"
     createdAt: datetime
     dealId: str | None = None
     dealName: str | None = None
@@ -1101,3 +1117,43 @@ class MergeIn(BaseModel):
 class MergeResult(BaseModel):
     merged: int
     winnerId: str
+
+
+# Contact entries (feedback / issues)
+# ---------------------------------------------------------------------------
+
+FeedbackStatus = Literal["received", "reviewing", "responded", "closed"]
+IssueStatus = Literal["reported", "assigned", "working", "fixed", "closed"]
+EntryPriority = Literal["low", "normal", "high", "urgent"]
+
+
+class ContactEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entryType: Literal["feedback", "issue"]
+    subject: str = Field(min_length=2, max_length=300)
+    body: str = Field(default="", max_length=5000)
+    priority: EntryPriority = "normal"
+    assignedTo: str | None = Field(default=None, max_length=160)
+
+
+class ContactEntryUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject: str | None = Field(default=None, min_length=2, max_length=300)
+    body: str | None = Field(default=None, max_length=5000)
+    status: str | None = Field(default=None, max_length=20)
+    priority: EntryPriority | None = None
+    assignedTo: str | None = Field(default=None, max_length=160)
+
+
+class ContactEntryOut(BaseModel):
+    id: str
+    contactId: str
+    entryType: str
+    subject: str
+    body: str
+    status: str
+    priority: str
+    assignedTo: str | None
+    createdBy: str | None
+    resolvedAt: datetime | None
+    createdAt: datetime

@@ -34,6 +34,25 @@ def normalize_phone(value: str | None) -> str | None:
     return str(phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164))
 
 
+def _contact_out(c: Contact) -> ContactOut:
+    return ContactOut(
+        id=str(c.id),
+        name=c.name,
+        phone=c.phone_e164,
+        email=c.email,
+        company=c.company,
+        whatsappOptIn=c.whatsapp_opt_in,
+        doNotContact=c.do_not_contact,
+        consentSource=c.consent_source,
+        consentUpdatedAt=c.consent_updated_at,
+        paymentTerms=c.payment_terms,
+        creditLimit=c.credit_limit,
+        gstin=c.gstin,
+        placeOfSupply=c.place_of_supply,
+        archivedAt=c.archived_at,
+    )
+
+
 async def capture(
     db: AsyncSession,
     tenant_id: int,
@@ -176,6 +195,7 @@ def lead_out(lead: Lead, contact: Contact | None = None, owner: User | None = No
         ownerId=str(lead.owner_id) if lead.owner_id else None,
         ownerName=owner.name if owner else None,
         requirement=lead.requirement,
+        requirementStatus=lead.requirement_status,
         campaign=lead.campaign,
         recordingUrl=lead.recording_url,
         recordingReference=lead.recording_reference,
@@ -396,6 +416,7 @@ async def update_lead(
     contact.email = email
     contact.company = data.company.strip()
     lead.requirement = data.requirement.strip()
+    lead.requirement_status = data.requirementStatus
     if old_stage == "converted":
         raise ApiError(
             "lead_converted",
@@ -525,17 +546,7 @@ async def get_contact(
     )
     if contact is None:
         raise ApiError("not_found", "Contact not found.", 404)
-    return ContactOut(
-        id=str(contact.id),
-        name=contact.name,
-        phone=contact.phone_e164,
-        email=contact.email,
-        company=contact.company,
-        whatsappOptIn=contact.whatsapp_opt_in,
-        doNotContact=contact.do_not_contact,
-        consentSource=contact.consent_source,
-        consentUpdatedAt=contact.consent_updated_at,
-    )
+    return _contact_out(contact)
 
 
 async def update_contact(
@@ -596,6 +607,14 @@ async def update_contact(
     contact.phone_e164 = phone
     contact.email = email
     contact.company = data.company.strip()
+    if data.paymentTerms is not None:
+        contact.payment_terms = data.paymentTerms
+    if data.creditLimit is not None:
+        contact.credit_limit = data.creditLimit
+    if data.gstin is not None:
+        contact.gstin = data.gstin
+    if data.placeOfSupply is not None:
+        contact.place_of_supply = data.placeOfSupply
     await db.flush()
     record(
         db,
@@ -604,17 +623,7 @@ async def update_contact(
         tenant_id=tenant_id,
         details={"contact_id": contact.id},
     )
-    return ContactOut(
-        id=str(contact.id),
-        name=contact.name,
-        phone=contact.phone_e164,
-        email=contact.email,
-        company=contact.company,
-        whatsappOptIn=contact.whatsapp_opt_in,
-        doNotContact=contact.do_not_contact,
-        consentSource=contact.consent_source,
-        consentUpdatedAt=contact.consent_updated_at,
-    )
+    return _contact_out(contact)
 
 
 async def update_contact_consent(
@@ -659,16 +668,75 @@ async def update_contact_consent(
             "source": contact.consent_source or "",
         },
     )
-    return ContactOut(
-        id=str(contact.id),
-        name=contact.name,
-        phone=contact.phone_e164,
-        email=contact.email,
-        company=contact.company,
-        whatsappOptIn=contact.whatsapp_opt_in,
-        doNotContact=contact.do_not_contact,
-        consentSource=contact.consent_source,
-        consentUpdatedAt=contact.consent_updated_at,
+    return _contact_out(contact)
+
+
+async def contact_impact(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+) -> dict:
+    await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    lead_count = (await db.scalar(
+        select(func.count()).select_from(Lead).where(Lead.tenant_id == tenant_id, Lead.contact_id == contact_id)
+    )) or 0
+    deal_count = (await db.scalar(
+        select(func.count()).select_from(Deal).where(
+            Deal.tenant_id == tenant_id,
+            Deal.lead_id.in_(select(Lead.id).where(Lead.tenant_id == tenant_id, Lead.contact_id == contact_id)),
+        )
+    )) or 0
+    note_count = (await db.scalar(
+        select(func.count()).select_from(CustomerNote).where(
+            CustomerNote.tenant_id == tenant_id, CustomerNote.contact_id == contact_id
+        )
+    )) or 0
+    return {"leads": lead_count, "deals": deal_count, "notes": note_count}
+
+
+async def archive_contact(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+) -> None:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    if contact.archived_at:
+        raise ApiError("already_archived", "This contact is already archived.", 409)
+    contact.archived_at = now()
+    contact.archived_by = user_id
+    await db.flush()
+    record(
+        db,
+        "contact.archived",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"contact_id": contact_id},
+    )
+
+
+async def restore_contact(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    permissions: list[str],
+    contact_id: int,
+) -> None:
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id, include_archived=True)
+    if not contact.archived_at:
+        raise ApiError("not_archived", "This contact is not archived.", 409)
+    contact.archived_at = None
+    contact.archived_by = None
+    await db.flush()
+    record(
+        db,
+        "contact.restored",
+        user_id=user_id,
+        tenant_id=tenant_id,
+        details={"contact_id": contact_id},
     )
 
 
@@ -679,7 +747,7 @@ async def delete_contact(
     permissions: list[str],
     contact_id: int,
 ) -> None:
-    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
+    contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id, include_archived=True)
     has_leads = await db.scalar(
         select(Lead.id).where(Lead.tenant_id == tenant_id, Lead.contact_id == contact_id)
     )
@@ -849,6 +917,8 @@ async def list_customers(
     query: str | None = None,
     filter_kind: str = "all",
     crm_id: int | None = None,
+    owner_id: int | None = None,
+    include_archived: bool = False,
 ) -> list[schemas.CustomerListRow]:
     """Paged customer list with lead/deal summaries, respecting lead-owner visibility."""
     owners = await visible_owners(db, tenant_id, user_id, permissions)
@@ -873,6 +943,8 @@ async def list_customers(
             func.max(Deal.stage).label("deal_stage"),
             func.max(stage_rank).label("max_stage_rank"),
             func.max(Lead.last_activity_at).label("last_activity_at"),
+            func.min(Lead.next_follow_up_on).label("next_follow_up_on"),
+            func.min(Lead.source).label("lead_source"),
         )
         .select_from(Lead)
         .join(Contact, (Contact.id == Lead.contact_id) & (Contact.tenant_id == Lead.tenant_id))
@@ -882,8 +954,12 @@ async def list_customers(
         )
         .where(Lead.tenant_id == tenant_id)
     )
+    if not include_archived:
+        base = base.where(Contact.archived_at.is_(None))
     if crm_id is not None:
         base = base.where(Lead.crm_id == crm_id)
+    if owner_id is not None:
+        base = base.where(Lead.owner_id == owner_id)
     if owners is not None:
         base = base.where(Lead.owner_id.in_(owners))
 
@@ -966,6 +1042,8 @@ async def list_customers(
             ownerId=owner_info.get(int(row.contact_id), (None, None))[0],
             ownerName=owner_info.get(int(row.contact_id), (None, None))[1],
             lastActivityAt=row.last_activity_at,
+            nextFollowUpOn=row.next_follow_up_on,
+            source=row.lead_source,
             tags=tags_map.get(int(row.contact_id), []),
         )
         for row in rows
@@ -1011,7 +1089,9 @@ def _journey_detail(action: str, details: dict) -> str:
         nxt = details.get("next", "")
         return f"Next follow-up: {nxt}" if nxt else "Follow-up recorded"
     if action == "activity.created":
-        return f"{details.get('kind', 'activity').title()}"
+        kind = details.get("kind", "activity").title()
+        subj = details.get("subject", "")
+        return f"{kind}: {subj}" if subj else kind
     return ""
 
 
@@ -1281,7 +1361,8 @@ async def assign_leads(
 
 
 async def _visible_contact(
-    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], contact_id: int
+    db: AsyncSession, tenant_id: int, user_id: int, permissions: list[str], contact_id: int,
+    *, include_archived: bool = False,
 ) -> Contact:
     """The contact, if this person may see at least one of its leads."""
     owners = await visible_owners(db, tenant_id, user_id, permissions)
@@ -1429,17 +1510,7 @@ async def contact_detail(
     from janus_api.crm import tags as tag_svc
 
     contact = await _visible_contact(db, tenant_id, user_id, permissions, contact_id)
-    contact_out = schemas.ContactOut(
-        id=str(contact.id),
-        name=contact.name,
-        phone=contact.phone_e164,
-        email=contact.email,
-        company=contact.company,
-        whatsappOptIn=contact.whatsapp_opt_in,
-        doNotContact=contact.do_not_contact,
-        consentSource=contact.consent_source,
-        consentUpdatedAt=contact.consent_updated_at,
-    )
+    contact_out = _contact_out(contact)
 
     leads_rows = (
         (
@@ -1467,6 +1538,7 @@ async def contact_detail(
             stage=lead.stage,
             source=lead.source,
             requirement=lead.requirement,
+            requirementStatus=lead.requirement_status,
             createdAt=lead.created_at,
             dealId=str(deal.id) if deal else None,
             dealName=deal.name if deal else None,

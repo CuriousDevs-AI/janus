@@ -141,7 +141,10 @@ async def create_activity(
         "activity.created",
         user_id=user_id,
         tenant_id=tenant_id,
-        details={"activity_id": a.id, "kind": a.kind, "contact_id": contact_id},
+        details={
+            "activity_id": a.id, "kind": a.kind,
+            "subject": a.subject, "contact_id": contact_id,
+        },
     )
     owner = await db.get(User, user_id)
     return _out(a, owner.name if owner else None)

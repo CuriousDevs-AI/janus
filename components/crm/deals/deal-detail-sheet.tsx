@@ -2,11 +2,12 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Phone, Video, Mail, ClipboardList, StickyNote, Clock, ExternalLink, Send,
+  Inbox, Package, Settings, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, message } from "@/lib/api/client";
 import { useApi } from "@/lib/api/use-api";
-import type { Deal, DealEvent, Activity } from "@/lib/api/types";
+import type { Deal, DealEvent, Activity, RequirementStatus } from "@/lib/api/types";
 import type { PipelineStage } from "@/lib/hooks/use-pipeline-config";
 import { dealStageMeta } from "@/lib/status-meta";
 import { cn, formatCurrencyINR, formatRelativeTime, formatDateTime } from "@/lib/utils";
@@ -21,6 +22,14 @@ const ACTIVITY_ICONS: Record<string, typeof Phone> = {
 };
 const ACTIVITY_COLORS: Record<string, string> = {
   call: "text-blue-500", meeting: "text-violet-500", email: "text-amber-500", task: "text-cyan-500", note: "text-muted-foreground",
+};
+
+const REQ_STATUS: Record<string, { label: string; icon: typeof Phone; bg: string; border: string; text: string }> = {
+  received: { label: "Received", icon: Inbox, bg: "bg-slate-50 dark:bg-slate-950", border: "border-slate-200 dark:border-slate-700", text: "text-slate-600 dark:text-slate-400" },
+  evaluating: { label: "Evaluating", icon: Clock, bg: "bg-amber-50 dark:bg-amber-950", border: "border-amber-200 dark:border-amber-700", text: "text-amber-600 dark:text-amber-400" },
+  available: { label: "Available", icon: Package, bg: "bg-blue-50 dark:bg-blue-950", border: "border-blue-200 dark:border-blue-700", text: "text-blue-600 dark:text-blue-400" },
+  customizing: { label: "Customizing", icon: Settings, bg: "bg-violet-50 dark:bg-violet-950", border: "border-violet-200 dark:border-violet-700", text: "text-violet-600 dark:text-violet-400" },
+  fulfilled: { label: "Fulfilled", icon: CheckCircle2, bg: "bg-emerald-50 dark:bg-emerald-950", border: "border-emerald-200 dark:border-emerald-700", text: "text-emerald-600 dark:text-emerald-400" },
 };
 
 const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -133,6 +142,24 @@ export function DealDetailSheet({ deal, open, onOpenChange, stages, writable, se
                   <p className="mt-0.5 font-medium">{formatDateTime(deal.createdAt)}</p>
                 </div>
               </div>
+
+              {/* Requirement */}
+              {deal.requirement && (() => {
+                const rs = REQ_STATUS[deal.requirementStatus] ?? REQ_STATUS.received;
+                const StatusIcon = rs.icon;
+                return (
+                  <div className="rounded-lg border border-border bg-surface-2/30 px-3.5 py-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requirement</p>
+                      <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold", rs.bg, rs.border, rs.text)}>
+                        <StatusIcon className="size-2.5" />
+                        {rs.label}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">{deal.requirement}</p>
+                  </div>
+                );
+              })()}
 
               {/* Stage move */}
               {writable && !["won", "lost"].includes(deal.stage) && (

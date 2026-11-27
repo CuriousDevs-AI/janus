@@ -98,6 +98,7 @@ export interface Lead {
   ownerId: string | null;
   ownerName: string | null;
   requirement: string;
+  requirementStatus: "received" | "evaluating" | "available" | "customizing" | "fulfilled";
   campaign: string | null;
   recordingUrl: string | null;
   recordingReference: string | null;
@@ -119,6 +120,11 @@ export interface Contact {
   doNotContact: boolean;
   consentSource: string | null;
   consentUpdatedAt: string | null;
+  paymentTerms: string | null;
+  creditLimit: number | null;
+  gstin: string | null;
+  placeOfSupply: string | null;
+  archivedAt: string | null;
 }
 export interface IngestEvent {
   id: string;
@@ -244,6 +250,8 @@ export interface Deal {
   lostCategory?: import("@/lib/lost-reasons").LostCategory | null;
   lostReason: string;
   lostAt?: string | null;
+  requirement: string;
+  requirementStatus: RequirementStatus;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -378,12 +386,32 @@ export interface CustomerNote {
   createdAt: string;
 }
 
+export type RequirementStatus = "received" | "evaluating" | "available" | "customizing" | "fulfilled";
+
+export type FeedbackStatus = "received" | "reviewing" | "responded" | "closed";
+export type IssueStatus = "reported" | "assigned" | "working" | "fixed" | "closed";
+
+export interface ContactEntry {
+  id: string;
+  contactId: string;
+  entryType: "feedback" | "issue";
+  subject: string;
+  body: string;
+  status: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  assignedTo: string | null;
+  createdBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 export interface ContactLeadSummary {
   id: string;
   crmId?: string;
   stage: string;
   source: string;
   requirement: string;
+  requirementStatus: RequirementStatus;
   createdAt: string;
   dealId: string | null;
   dealName: string | null;
@@ -475,11 +503,15 @@ export interface CustomerListRow {
   email: string | null;
   company: string;
   leadCount: number;
+  dealCount: number;
   dealValue: string;
+  dealStage: string | null;
   stage: string;
   ownerId: string | null;
   ownerName: string | null;
   lastActivityAt: string | null;
+  nextFollowUpOn: string | null;
+  source: string | null;
   tags: CrmTag[];
 }
 
@@ -633,6 +665,16 @@ export interface DuplicateEntity {
   email: string | null;
   company: string | null;
   leadCount: number;
+}
+
+export interface JourneyEvent {
+  id: string;
+  action: string;
+  title: string;
+  detail: string;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
 }
 
 export interface DuplicateGroup {

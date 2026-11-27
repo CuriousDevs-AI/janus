@@ -2,6 +2,9 @@ from datetime import datetime, timedelta
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
+import os
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Header, Query, Response, UploadFile
 from sqlalchemy import select
 
@@ -32,7 +35,7 @@ from janus_api.crm import (
     tags,
     web_forms,
 )
-from janus_api.crm.models import Lead
+from janus_api.crm.models import ContactEntry, Lead
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/v1", tags=["CRM"])
@@ -270,6 +273,8 @@ async def customers(
     q: str | None = None,
     filter: str = "all",
     crm_id: int | None = None,
+    owner_id: int | None = None,
+    include_archived: bool = False,
 ) -> list[schemas.CustomerListRow]:
     return await service.list_customers(
         db,
@@ -281,6 +286,29 @@ async def customers(
         q,
         filter,
         crm_id=crm_id,
+        owner_id=owner_id,
+        include_archived=include_archived,
+    )
+
+
+@router.get("/contacts/{contact_id}/impact")
+async def contact_impact(contact_id: Identifier, actor: Reader, db: Db) -> dict:
+    return await service.contact_impact(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
+    )
+
+
+@router.post("/contacts/{contact_id}/archive", status_code=204)
+async def archive_contact(contact_id: Identifier, actor: Writer, db: Db) -> None:
+    await service.archive_contact(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
+    )
+
+
+@router.post("/contacts/{contact_id}/restore", status_code=204)
+async def restore_contact(contact_id: Identifier, actor: Writer, db: Db) -> None:
+    await service.restore_contact(
+        db, actor.session.tenant_id, actor.user.id, actor.permissions, contact_id
     )
 
 
@@ -931,6 +959,42 @@ async def set_custom_field_value(
 # Attachments
 # ---------------------------------------------------------------------------
 
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
+
+
+@router.get("/attachments/{attachment_id}/file")
+async def download_attachment(
+    attachment_id: Identifier,
+    actor: Reader,
+    db: Db,
+) -> Response:
+    a = await attachments.get_attachment(db, actor.session.tenant_id, attachment_id)
+    full_path = os.path.join(attachments.UPLOAD_DIR, a.storage_key)
+    if not os.path.exists(full_path):
+        return Response(status_code=404)
+    with open(full_path, "rb") as f:
+        data = f.read()
+    disposition = "inline" if a.content_type in IMAGE_TYPES or a.content_type == "application/pdf" else "inline"
+    name = quote(a.filename)
+    return Response(
+        content=data,
+        media_type=a.content_type,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{name}",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-cache",
+        },
+    )
+
+
+@router.delete("/attachments/{attachment_id}", status_code=204)
+async def delete_attachment(
+    attachment_id: Identifier,
+    actor: Writer,
+    db: Db,
+) -> None:
+    await attachments.delete_attachment(db, actor.session.tenant_id, actor.user.id, attachment_id)
+
 
 @router.get(
     "/attachments/{entity_type}/{entity_id}",
@@ -968,15 +1032,6 @@ async def upload_attachment(
         file.content_type or "application/octet-stream",
         content,
     )
-
-
-@router.delete("/attachments/{attachment_id}", status_code=204)
-async def delete_attachment(
-    attachment_id: Identifier,
-    actor: Writer,
-    db: Db,
-) -> None:
-    await attachments.delete_attachment(db, actor.session.tenant_id, actor.user.id, attachment_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1294,3 +1349,119 @@ async def remove_crm_member(
     await crm_workspace.remove_member(
         db, actor.session.tenant_id, actor.user.id, crm_id, member_id,
     )
+
+
+# ── Contact entries (feedback / issues) ──────────────────────────────────
+
+FEEDBACK_STATUSES = {"received", "reviewing", "responded", "closed"}
+ISSUE_STATUSES = {"reported", "assigned", "working", "fixed", "closed"}
+
+
+def _entry_out(e: ContactEntry) -> schemas.ContactEntryOut:
+    return schemas.ContactEntryOut(
+        id=str(e.id),
+        contactId=str(e.contact_id),
+        entryType=e.entry_type,
+        subject=e.subject,
+        body=e.body,
+        status=e.status,
+        priority=e.priority,
+        assignedTo=e.assigned_to,
+        createdBy=e.created_by,
+        resolvedAt=e.resolved_at,
+        createdAt=e.created_at,
+    )
+
+
+@router.get(
+    "/contacts/{contact_id}/entries",
+    response_model=list[schemas.ContactEntryOut],
+)
+async def list_contact_entries(
+    contact_id: Identifier,
+    actor: Reader,
+    db: Db,
+    entry_type: str | None = Query(default=None),
+) -> list[schemas.ContactEntryOut]:
+    tid = actor.session.tenant_id
+    q = (
+        select(ContactEntry)
+        .where(ContactEntry.tenant_id == tid, ContactEntry.contact_id == int(contact_id))
+        .order_by(ContactEntry.created_at.desc())
+        .limit(100)
+    )
+    if entry_type:
+        q = q.where(ContactEntry.entry_type == entry_type)
+    rows = await db.scalars(q)
+    return [_entry_out(r) for r in rows.all()]
+
+
+@router.post(
+    "/contacts/{contact_id}/entries",
+    response_model=schemas.ContactEntryOut,
+    status_code=201,
+)
+async def create_contact_entry(
+    contact_id: Identifier,
+    data: schemas.ContactEntryIn,
+    actor: Writer,
+    db: Db,
+) -> schemas.ContactEntryOut:
+    default_status = "received" if data.entryType == "feedback" else "reported"
+    e = ContactEntry(
+        tenant_id=actor.session.tenant_id,
+        contact_id=int(contact_id),
+        entry_type=data.entryType,
+        subject=data.subject.strip(),
+        body=data.body.strip(),
+        status=default_status,
+        priority=data.priority,
+        assigned_to=data.assignedTo,
+        created_by=actor.user.name,
+    )
+    db.add(e)
+    await db.flush()
+    return _entry_out(e)
+
+
+@router.patch(
+    "/contacts/{contact_id}/entries/{entry_id}",
+    response_model=schemas.ContactEntryOut,
+)
+async def update_contact_entry(
+    contact_id: Identifier,
+    entry_id: Identifier,
+    data: schemas.ContactEntryUpdate,
+    actor: Writer,
+    db: Db,
+) -> schemas.ContactEntryOut:
+    from janus_api.core.errors import ApiError
+    from janus_api.core.security import now
+
+    tid = actor.session.tenant_id
+    e = await db.scalar(
+        select(ContactEntry).where(
+            ContactEntry.tenant_id == tid,
+            ContactEntry.contact_id == int(contact_id),
+            ContactEntry.id == int(entry_id),
+        )
+    )
+    if e is None:
+        raise ApiError("not_found", "Entry not found.", 404)
+    if data.subject is not None:
+        e.subject = data.subject.strip()
+    if data.body is not None:
+        e.body = data.body.strip()
+    if data.status is not None:
+        allowed = FEEDBACK_STATUSES if e.entry_type == "feedback" else ISSUE_STATUSES
+        if data.status not in allowed:
+            raise ApiError("invalid_status", f"Status must be one of: {', '.join(sorted(allowed))}", 422)
+        e.status = data.status
+        if data.status in ("closed", "fixed", "responded"):
+            e.resolved_at = now()
+    if data.priority is not None:
+        e.priority = data.priority
+    if data.assignedTo is not None:
+        e.assigned_to = data.assignedTo
+    await db.flush()
+    return _entry_out(e)

@@ -9,7 +9,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useApi } from "@/lib/api/use-api";
 import { api, message } from "@/lib/api/client";
-import type { Deal, DealEvent, Activity } from "@/lib/api/types";
+import type { Deal, DealEvent, Activity, RequirementStatus } from "@/lib/api/types";
 import { RecordDocuments } from "@/components/shared/record-documents";
 import { todayIso } from "@/lib/today";
 import { useSession } from "@/components/auth/session-provider";
@@ -26,7 +26,7 @@ import { usePipelineConfig, barColor } from "@/lib/hooks/use-pipeline-config";
 import {
   ArrowLeft, RefreshCw, Phone, Video, Mail, ClipboardList, StickyNote,
   CalendarClock, CheckCircle2, Clock, Plus, ExternalLink, Building2,
-  User, IndianRupee,
+  User, IndianRupee, Inbox, Package, Settings,
 } from "lucide-react";
 
 interface JourneyEvent {
@@ -36,6 +36,14 @@ interface JourneyEvent {
   userName: string | null;
   createdAt: string;
 }
+
+const REQ_STATUS: Record<string, { label: string; icon: typeof Phone; bg: string; border: string; text: string }> = {
+  received: { label: "Received", icon: Inbox, bg: "bg-slate-50 dark:bg-slate-950", border: "border-slate-200 dark:border-slate-700", text: "text-slate-600 dark:text-slate-400" },
+  evaluating: { label: "Evaluating", icon: Clock, bg: "bg-amber-50 dark:bg-amber-950", border: "border-amber-200 dark:border-amber-700", text: "text-amber-600 dark:text-amber-400" },
+  available: { label: "Available", icon: Package, bg: "bg-blue-50 dark:bg-blue-950", border: "border-blue-200 dark:border-blue-700", text: "text-blue-600 dark:text-blue-400" },
+  customizing: { label: "Customizing", icon: Settings, bg: "bg-violet-50 dark:bg-violet-950", border: "border-violet-200 dark:border-violet-700", text: "text-violet-600 dark:text-violet-400" },
+  fulfilled: { label: "Fulfilled", icon: CheckCircle2, bg: "bg-emerald-50 dark:bg-emerald-950", border: "border-emerald-200 dark:border-emerald-700", text: "text-emerald-600 dark:text-emerald-400" },
+};
 
 const journeyColors: Record<string, string> = {
   "lead.captured": "bg-accent",
@@ -356,6 +364,24 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
                     Updated {formatDateTime(deal.updatedAt)}
                   </p>
                 </section>
+
+                {/* Requirement from lead */}
+                {deal.requirement && (() => {
+                  const rs = REQ_STATUS[deal.requirementStatus] ?? REQ_STATUS.received;
+                  const StatusIcon = rs.icon;
+                  return (
+                    <section className="rounded-lg border border-border bg-surface p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h2 className="text-sm font-semibold">Requirement</h2>
+                        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold", rs.bg, rs.border, rs.text)}>
+                          <StatusIcon className="size-3" />
+                          {rs.label}
+                        </span>
+                      </div>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">{deal.requirement}</p>
+                    </section>
+                  );
+                })()}
 
                 {/* Follow-up box */}
                 {canWrite && deal.stage !== "won" && deal.stage !== "lost" && (
