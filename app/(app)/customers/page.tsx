@@ -101,7 +101,7 @@ interface CustomerRow {
 }
 
 function displayName(row: CustomerRow) {
-  return row.name || row.phone || row.email || `Contact #${row.contactId}`;
+  return row.name || row.phone || row.email || `Customer #${row.contactId}`;
 }
 
 function followUpStatus(dateStr: string | null): { label: string; cls: string } {

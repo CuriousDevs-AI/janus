@@ -552,7 +552,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
 
         <aside className="flex min-w-0 flex-col gap-5">
           <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-            <h2 className="text-sm font-semibold">Contact</h2>
+            <h2 className="text-sm font-semibold">Customer</h2>
             <div className="mt-3 space-y-2.5 text-sm">
               <div className="flex items-start justify-between gap-2">
                 <span className="text-xs text-muted-foreground">Name</span>

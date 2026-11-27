@@ -63,7 +63,7 @@ export function DuplicateDetector() {
                   : "bg-surface-2 text-muted-foreground hover:bg-surface-3",
               )}
             >
-              {t}s
+              {t === "contact" ? "customers" : `${t}s`}
             </button>
           ))}
         </div>

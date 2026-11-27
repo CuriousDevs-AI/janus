@@ -72,7 +72,7 @@ export const crmNavSections: NavSection[] = [
       { label: "Chats", href: "/inbox", icon: MessageCircle, essential: true },
       { label: "Leads", href: "/leads", icon: UserRoundPlus, requiredPermission: "leads:write", essential: true },
       { label: "Deals", href: "/deals", icon: Handshake, requiredPermission: "leads:write", essential: true },
-      { label: "Contacts", href: "/customers", icon: Users, essential: true },
+      { label: "Customers", href: "/customers", icon: Users, essential: true },
       { label: "Activities", href: "/activities", icon: CalendarCheck },
       { label: "Forecast", href: "/forecast", icon: TrendingUp, requiredPermission: "reports:read" },
       { label: "Products", href: "/products", icon: Package, requiredPermission: "settings:manage" },
@@ -349,7 +349,7 @@ const moduleNavSections: Record<Exclude<WorkspaceId, "portfolio" | "business" | 
     { title: "Customer Support & Success", items: [
       { label: "Support Overview", href: "/workspace/customer-support", icon: LayoutDashboard, essential: true },
       { label: "Tickets", href: "/workspace/customer-support?view=tickets", icon: LifeBuoy, essential: true },
-      { label: "Contacts", href: "/customers?workspace=customer-support", icon: Users },
+      { label: "Customers", href: "/customers?workspace=customer-support", icon: Users },
       { label: "Queues & Assignments", href: "/workspace/customer-support?view=queues", icon: Users },
       { label: "SLA Management", href: "/workspace/customer-support?view=sla", icon: Gauge },
       { label: "Knowledge Base", href: "/knowledge?workspace=customer-support", icon: Database },

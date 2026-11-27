@@ -126,7 +126,7 @@ export function CrmManagementSection() {
         open={creating}
         onOpenChange={setCreating}
         title="Create CRM Workspace"
-        description="A new CRM with its own pipeline. Contacts are shared across all CRMs."
+        description="A new CRM with its own pipeline. Customers are shared across all CRMs."
         onSubmit={createCrm}
         busy={busy}
       />

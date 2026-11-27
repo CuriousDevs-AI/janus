@@ -500,7 +500,7 @@ export default function ActivitiesPage() {
             <EmptyState
               icon={CalendarCheck}
               title={tab === "today" ? "Nothing due today" : tab === "overdue" ? "No overdue tasks" : "Nothing upcoming"}
-              description="Log activities against leads and contacts to see them here"
+              description="Log activities against leads and customers to see them here"
             />
           ) : (
             <div className="space-y-2">

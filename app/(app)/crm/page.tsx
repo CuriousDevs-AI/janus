@@ -92,7 +92,7 @@ export default function CrmWorkspacesPage() {
     <div className="mx-auto max-w-[1200px]">
       <PageHeader
         title="CRM Workspaces"
-        description="Manage separate CRM pipelines for different divisions. Contacts are shared; leads, deals and pipeline stages are per-CRM."
+        description="Manage separate CRM pipelines for different divisions. Customers are shared; leads, deals and pipeline stages are per-CRM."
         actions={
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-3.5" /> New CRM
@@ -217,7 +217,7 @@ export default function CrmWorkspacesPage() {
         open={creating}
         onOpenChange={setCreating}
         title="Create CRM Workspace"
-        description="A new CRM with its own pipeline. Contacts are shared across all CRMs."
+        description="A new CRM with its own pipeline. Customers are shared across all CRMs."
         onSubmit={createCrm}
         busy={busy}
       />
@@ -347,7 +347,7 @@ function ArchiveConfirmDialog({ open, onOpenChange, crmName, isDefault, leadCoun
             <ul className="mt-1.5 list-inside list-disc space-y-1 text-muted-foreground">
               <li><strong>{leadCount}</strong> lead{leadCount !== 1 ? "s" : ""} and <strong>{dealCount}</strong> deal{dealCount !== 1 ? "s" : ""} will be hidden from lists</li>
               <li>Data is preserved and can be restored</li>
-              <li>Contacts are shared and not affected</li>
+              <li>Customers are shared and not affected</li>
               <li>This action is logged in audit logs</li>
             </ul>
           </div>

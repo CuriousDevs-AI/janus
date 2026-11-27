@@ -488,7 +488,7 @@ function ArchiveDialog({ open, onOpenChange, crmName, isDefault, leadCount, deal
             <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
               <li><strong>{leadCount}</strong> lead{leadCount !== 1 && "s"}, <strong>{dealCount}</strong> deal{dealCount !== 1 && "s"} hidden</li>
               <li>Data preserved, can be restored</li>
-              <li>Contacts not affected</li>
+              <li>Customers not affected</li>
             </ul>
           </div>
           <div>

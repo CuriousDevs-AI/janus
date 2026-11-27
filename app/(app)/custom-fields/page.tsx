@@ -17,7 +17,7 @@ export default function CustomFieldsPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Custom Fields"
-        description="Add custom fields to leads, contacts and deals to capture the data your business needs."
+        description="Add custom fields to leads, customers and deals to capture the data your business needs."
       />
       <div className="px-6 pb-4">
         <div className="flex gap-2 overflow-x-auto">

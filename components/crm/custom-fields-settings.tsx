@@ -105,7 +105,7 @@ export function CustomFieldsSettings() {
                   : "bg-surface-2 text-muted-foreground hover:bg-surface-3",
               )}
             >
-              {t}
+              {t === "contact" ? "Customer" : t}
             </button>
           ))}
         </div>

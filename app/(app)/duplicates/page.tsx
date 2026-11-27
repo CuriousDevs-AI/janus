@@ -9,7 +9,7 @@ export default function DuplicatesPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Duplicate Detection"
-        description="Find and merge duplicate leads and contacts to keep your CRM clean."
+        description="Find and merge duplicate leads and customers to keep your CRM clean."
       />
       <div className="px-6 pb-4">
         <div className="grid grid-cols-3 gap-3">

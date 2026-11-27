@@ -175,7 +175,7 @@ export function ActivityForm({
       return;
     }
     if (!resolvedContactId) {
-      toast.error("Select a contact");
+      toast.error("Select a customer");
       return;
     }
     setBusy(true);
@@ -243,11 +243,11 @@ export function ActivityForm({
           {/* Contact picker */}
           {needsContactPicker && (
             <div>
-              <Label className="text-xs">Contact</Label>
+              <Label className="text-xs">Customer</Label>
               {pickedContactId ? (
                 <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
                   <span className="flex-1">
-                    {contactOptions.find((c) => c.contactId === pickedContactId)?.name || `Contact #${pickedContactId}`}
+                    {contactOptions.find((c) => c.contactId === pickedContactId)?.name || `Customer #${pickedContactId}`}
                   </span>
                   <button
                     type="button"
@@ -264,7 +264,7 @@ export function ActivityForm({
                     <Input
                       value={contactSearch}
                       onChange={(e) => setContactSearch(e.target.value)}
-                      placeholder="Search contacts…"
+                      placeholder="Search customers…"
                       className="pl-8"
                     />
                   </div>
