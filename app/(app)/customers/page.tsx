@@ -851,7 +851,7 @@ export default function CustomersPage() {
                         onCheckedChange={() => toggleSelect(row.contactId)}
                       />
                     </td>
-                    {/* Contact: name, company, source badge, tag dots */}
+                    {/* Customer: name, company, source badge, tag dots */}
                     <td className="py-2.5 pr-3">
                       <div className="flex items-center gap-2.5">
                         <CustomerAvatar

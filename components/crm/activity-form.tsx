@@ -240,7 +240,7 @@ export function ActivityForm({
             ))}
           </div>
 
-          {/* Contact picker */}
+          {/* Customer picker */}
           {needsContactPicker && (
             <div>
               <Label className="text-xs">Customer</Label>

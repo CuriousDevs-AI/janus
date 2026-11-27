@@ -92,7 +92,7 @@ export function CrmManagementSection() {
         <div>
           <h2 className="text-base font-semibold">CRM Workspaces</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Create separate CRM pipelines for different divisions. Contacts are shared; leads, deals and pipeline stages are per-CRM.
+            Create separate CRM pipelines for different divisions. Customers are shared; leads, deals and pipeline stages are per-CRM.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreating(true)}>
@@ -148,7 +148,7 @@ export function CrmManagementSection() {
           <DialogHeader>
             <DialogTitle>Delete CRM Workspace?</DialogTitle>
             <DialogDescription>
-              This permanently removes &quot;{deleting?.name}&quot; and all its leads, deals and pipeline stages. Contacts are not affected.
+              This permanently removes &quot;{deleting?.name}&quot; and all its leads, deals and pipeline stages. Customers are not affected.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
