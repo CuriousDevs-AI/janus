@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -363,20 +363,10 @@ export function CustomerDetailPanel({
   const [tab, setTab] = useState("overview");
   const [journeyAsc, setJourneyAsc] = useState(true);
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
-  const [impact, setImpact] = useState<{ leads: number; deals: number; notes: number } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", company: "", paymentTerms: "", creditLimit: "", gstin: "", placeOfSupply: "" });
   const [editSaving, setEditSaving] = useState(false);
-
-  const fetchImpact = useCallback(async () => {
-    try {
-      const data = await api(`/contacts/${contactId}/impact`);
-      setImpact(data as { leads: number; deals: number; notes: number });
-    } catch { setImpact({ leads: 0, deals: 0, notes: 0 }); }
-  }, [contactId]);
 
   const c = detail.data?.contact;
   if (!c) {
@@ -424,17 +414,6 @@ export function CustomerDetailPanel({
     fuStatus = fuDiff < 0 ? "overdue" : fuDiff === 0 ? "today" : "upcoming";
   }
 
-  async function openChat() {
-    try {
-      const conv = await api(`/whatsapp/contacts/${contactId}/conversation`);
-      if (conv && typeof conv === "object" && "id" in conv) {
-        router.push(`/inbox?c=${(conv as { id: string }).id}`);
-        return;
-      }
-    } catch {}
-    router.push(`/inbox?workspace=crm-sales`);
-  }
-
   async function addNote() {
     if (!noteBody.trim()) return;
     setSavingNote(true);
@@ -473,20 +452,6 @@ export function CustomerDetailPanel({
       await api(`/contacts/${contactId}/restore`, { method: "POST" });
       toast.success("Customer restored");
       detail.reload();
-    } catch (e) {
-      toast.error(message(e));
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleDelete() {
-    setActionLoading(true);
-    try {
-      await api(`/contacts/${contactId}`, { method: "DELETE" });
-      toast.success("Customer permanently deleted");
-      setDeleteOpen(false);
-      onBack();
     } catch (e) {
       toast.error(message(e));
     } finally {
@@ -589,8 +554,8 @@ export function CustomerDetailPanel({
                 </Button>
               ) : (
                 <>
-                  <Button variant="secondary" size="sm" className="gap-1.5" onClick={openChat}>
-                    <Send className="size-3.5" /> Send message
+                  <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => router.push("/inbox")}>
+                    <Send className="size-3.5" /> Message
                   </Button>
                   <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setActivityOpen(true)}>
                     <Plus className="size-3.5" /> Log activity
@@ -617,13 +582,6 @@ export function CustomerDetailPanel({
                       <RotateCcw className="mr-2 size-3.5" /> Restore customer
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-danger focus:text-danger"
-                    onClick={() => { fetchImpact(); setDeleteOpen(true); setDeleteConfirm(""); }}
-                  >
-                    <Trash2 className="mr-2 size-3.5" /> Delete customer
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -1386,53 +1344,6 @@ export function CustomerDetailPanel({
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation */}
-      <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-danger">Permanently delete this customer?</DialogTitle>
-            <DialogDescription>
-              Deleting this customer may permanently remove important business information associated with this relationship.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm">
-            {impact && impact.leads > 0 && (
-              <p className="font-medium text-danger">{impact.leads} lead{impact.leads > 1 ? "s" : ""} and {impact.deals} deal{impact.deals > 1 ? "s" : ""} will need to be deleted first.</p>
-            )}
-            <ul className="list-disc pl-4 space-y-1 text-muted-foreground text-xs">
-              <li>Associated leads may be deleted or become inaccessible</li>
-              <li>Linked deals and pipeline history may be affected</li>
-              <li>Activities and follow-up records may be lost</li>
-              <li>Notes, documents, and relationship history may be permanently removed</li>
-              <li>Reports, analytics, and historical references may be affected</li>
-            </ul>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Type <strong className="text-foreground">DELETE</strong> to confirm
-            </label>
-            <Input
-              value={deleteConfirm}
-              onChange={(e) => setDeleteConfirm(e.target.value)}
-              placeholder="DELETE"
-              className="font-mono"
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={actionLoading}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={actionLoading || deleteConfirm !== "DELETE"}
-            >
-              {actionLoading ? "Deleting…" : "Permanently delete customer"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
