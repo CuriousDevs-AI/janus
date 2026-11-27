@@ -376,7 +376,7 @@ export function CustomerDetailPanel({
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="size-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          <span className="text-sm text-muted-foreground">Loading contact...</span>
+          <span className="text-sm text-muted-foreground">Loading customer...</span>
         </div>
       </div>
     );
@@ -389,7 +389,7 @@ export function CustomerDetailPanel({
   const activities = detail.data?.activities ?? [];
   const leadNotes = detail.data?.leadNotes ?? [];
   const notes = detail.data?.notes ?? [];
-  const name = c.name || c.phone || c.email || "Contact";
+  const name = c.name || c.phone || c.email || "Customer";
   const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const latestLead = leads[0];
   const lastActivityAt = activities[0]?.createdAt ?? latestLead?.createdAt ?? null;
@@ -511,7 +511,7 @@ export function CustomerDetailPanel({
       setEditOpen(false);
       detail.reload();
       account.reload();
-      toast.success("Contact updated");
+      toast.success("Customer updated");
     } catch (e) {
       toast.error(message(e));
     } finally {
@@ -525,7 +525,7 @@ export function CustomerDetailPanel({
       <div className="border-b border-border bg-surface">
         <div className="px-6 pt-4 pb-5">
           <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2 mb-3 gap-1 text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="size-3.5" /> All contacts
+            <ArrowLeft className="size-3.5" /> All customers
           </Button>
           <div className="flex items-start gap-4">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent/80 to-accent text-lg font-bold text-white shadow-sm">
@@ -578,7 +578,7 @@ export function CustomerDetailPanel({
                   </Button>
                 </>
               )}
-              <Button variant="ghost" size="sm" className="size-8 p-0" onClick={openEdit} title="Edit contact">
+              <Button variant="ghost" size="sm" className="size-8 p-0" onClick={openEdit} title="Edit customer">
                 <Pencil className="size-3.5" />
               </Button>
               <DropdownMenu>
@@ -1350,8 +1350,8 @@ export function CustomerDetailPanel({
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit contact</DialogTitle>
-            <DialogDescription>Update contact details and billing information.</DialogDescription>
+            <DialogTitle>Edit customer</DialogTitle>
+            <DialogDescription>Update customer details and billing information.</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void saveContact(); }}>
             <div className="grid gap-3 sm:grid-cols-2">

@@ -355,14 +355,14 @@ export default function CustomersPage() {
       }
     }
     if (deleted > 0 && skipped === 0) {
-      toast.success(`${deleted} contact${deleted === 1 ? "" : "s"} deleted`);
+      toast.success(`${deleted} customer${deleted === 1 ? "" : "s"} deleted`);
     } else if (deleted > 0 && skipped > 0) {
       toast.success(
         `${deleted} deleted, ${skipped} skipped (have leads)`,
       );
     } else if (skipped > 0) {
       toast.error(
-        `${skipped} contact${skipped === 1 ? "" : "s"} skipped — delete their leads first`,
+        `${skipped} customer${skipped === 1 ? "" : "s"} skipped — delete their leads first`,
       );
     }
     setDeleting(false);
@@ -376,7 +376,7 @@ export default function CustomersPage() {
     setBulkUpdating(true);
     try {
       await api(`/contacts/${encodeURIComponent(deletingContact.id)}`, { method: "DELETE" });
-      toast.success("Contact deleted");
+      toast.success("Customer deleted");
       customers.reload();
     } catch (e) {
       toast.error(message(e));
@@ -389,7 +389,7 @@ export default function CustomersPage() {
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col">
       <PageHeader
-        title="Contacts"
+        title="Customers"
         description="Every customer across your pipeline."
         actions={
           <Button
@@ -413,7 +413,7 @@ export default function CustomersPage() {
           role="alert"
           className="mx-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger sm:mx-6"
         >
-          Your contacts could not be loaded: {loadError}. Refresh to try again;
+          Your customers could not be loaded: {loadError}. Refresh to try again;
           nothing is lost.
         </p>
       )}
@@ -440,7 +440,7 @@ export default function CustomersPage() {
             </p>
           </div>
           <div className="rounded-lg border border-border bg-surface px-3 py-2.5 sm:p-4">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-[11px]">Active contacts</p>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-[11px]">Active customers</p>
             <p className="mt-0.5 text-xl font-semibold sm:mt-1 sm:text-2xl">{stats.activeCount}</p>
             <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-xs">
               {stats.total} total
@@ -472,7 +472,7 @@ export default function CustomersPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search contacts..."
+            placeholder="Search customers..."
             className="h-7 w-full border-0 bg-transparent pl-5 pr-6 text-[13px] text-foreground placeholder:text-muted-foreground/60 outline-none"
           />
           {query && (
@@ -486,7 +486,7 @@ export default function CustomersPage() {
           )}
         </div>
 
-        {/* My contacts toggle */}
+        {/* My customers toggle */}
         <button
           type="button"
           aria-pressed={myOnly}
@@ -497,7 +497,7 @@ export default function CustomersPage() {
           )}
         >
           <User className="size-3" />
-          My contacts
+          My customers
         </button>
 
         {/* Status filter */}
@@ -707,7 +707,7 @@ export default function CustomersPage() {
         <div className="ml-auto flex items-center gap-1">
           {customers.data && (
             <span className="hidden text-[11px] tabular-nums text-muted-foreground sm:inline">
-              {sorted.length} contacts
+              {sorted.length} customers
             </span>
           )}
         </div>
@@ -735,15 +735,15 @@ export default function CustomersPage() {
           <Users className="size-8 text-muted-foreground/40" />
           <p className="text-sm font-medium">
             {filtersActive
-              ? "No contacts match"
+              ? "No customers match"
               : afterId === "0"
-                ? "No contacts yet"
+                ? "No customers yet"
                 : "End of list"}
           </p>
           <p className="text-xs text-muted-foreground">
             {filtersActive
               ? "Adjust filters or clear them."
-              : "Contacts are created when leads are captured."}
+              : "Customers are created when leads are captured."}
           </p>
           {filtersActive && (
             <button
@@ -780,7 +780,7 @@ export default function CustomersPage() {
                   onClick={() => toggleSort("name")}
                 >
                   <span className="inline-flex items-center gap-1">
-                    Contact {sortIcon("name")}
+                    Customer {sortIcon("name")}
                   </span>
                 </th>
                 <th
@@ -1040,7 +1040,7 @@ export default function CustomersPage() {
             </DropdownMenu>
             {!loadError && (
               <span className="text-[11px] tabular-nums text-muted-foreground">
-                Showing {sorted.length} contact
+                Showing {sorted.length} customer
                 {sorted.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -1076,7 +1076,7 @@ export default function CustomersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Delete {selectedIds.size} contact{selectedIds.size === 1 ? "" : "s"}?
+              Delete {selectedIds.size} customer{selectedIds.size === 1 ? "" : "s"}?
             </DialogTitle>
             <DialogDescription>
               This action cannot be undone.
@@ -1090,7 +1090,7 @@ export default function CustomersPage() {
               return (
                 <div className="rounded border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
                   <p className="font-medium">
-                    {withLeads.length} contact{withLeads.length === 1 ? " has" : "s have"} leads and will be skipped:
+                    {withLeads.length} customer{withLeads.length === 1 ? " has" : "s have"} leads and will be skipped:
                   </p>
                   <ul className="mt-1 list-disc pl-4 text-muted-foreground">
                     {withLeads.slice(0, 5).map((r) => (
