@@ -363,6 +363,8 @@ export function CustomerDetailPanel({
   const [tab, setTab] = useState("overview");
   const [journeyAsc, setJourneyAsc] = useState(true);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", company: "", paymentTerms: "", creditLimit: "", gstin: "", placeOfSupply: "" });
@@ -438,6 +440,20 @@ export function CustomerDetailPanel({
       await api(`/contacts/${contactId}/archive`, { method: "POST" });
       toast.success("Customer archived");
       setArchiveOpen(false);
+      onBack();
+    } catch (e) {
+      toast.error(message(e));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    setActionLoading(true);
+    try {
+      await api(`/contacts/${contactId}`, { method: "DELETE" });
+      toast.success("Customer deleted");
+      setDeleteOpen(false);
       onBack();
     } catch (e) {
       toast.error(message(e));
@@ -572,6 +588,9 @@ export function CustomerDetailPanel({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => router.push("/inbox")}>
+                    <Send className="mr-2 size-3.5" /> Chat
+                  </DropdownMenuItem>
                   {!isArchived && (
                     <DropdownMenuItem onClick={() => setArchiveOpen(true)}>
                       <Archive className="mr-2 size-3.5" /> Archive customer
@@ -582,6 +601,13 @@ export function CustomerDetailPanel({
                       <RotateCcw className="mr-2 size-3.5" /> Restore customer
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-danger focus:text-danger"
+                    onClick={() => { setDeleteOpen(true); setDeleteConfirm(""); }}
+                  >
+                    <Trash2 className="mr-2 size-3.5" /> Delete customer
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -1282,6 +1308,39 @@ export function CustomerDetailPanel({
             <Button variant="ghost" onClick={() => setArchiveOpen(false)} disabled={actionLoading}>Cancel</Button>
             <Button variant="secondary" onClick={handleArchive} disabled={actionLoading}>
               {actionLoading ? "Archiving…" : "Archive customer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteConfirm(""); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-danger">Permanently delete this customer?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. All associated data including leads, deals, activities, and notes will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              Type <strong className="text-foreground">DELETE</strong> to confirm
+            </label>
+            <Input
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="DELETE"
+              className="font-mono"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={actionLoading}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={actionLoading || deleteConfirm !== "DELETE"}
+            >
+              {actionLoading ? "Deleting…" : "Delete customer"}
             </Button>
           </DialogFooter>
         </DialogContent>
